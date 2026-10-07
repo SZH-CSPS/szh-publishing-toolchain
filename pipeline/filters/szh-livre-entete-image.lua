@@ -1,43 +1,25 @@
--- Pré-passe de szh-livre-entete.lua (livre uniquement) : protège l'image d'un
--- falc-header de la numérotation de figures.
+-- Livre seulement : retire l'image d'un falc-header avant la numérotation des figures.
 --
--- MESURÉ (23.09.2026, corpus réel) : szh-livre-entete.lua vit en fin de FILTRES_CHAPITRE
--- (après szh-livre-auteurs.lua, pour le placement — voir son en-tête). Mais szh-figure.lua
--- et szh-numerotation.lua, EUX, numérotent SANS EXCEPTION toute image-seule qu'ils
--- rencontrent, où qu'elle soit dans le document — y compris dans un falc-header, qui n'est
--- pas une figure du corps mais un encadré. Résultat observé : « Abbildung 1 — Ein weisses
--- Schnecken-Haus » s'imprimait en toutes lettres DANS le texte de l'encadré, une légende de
--- figure que rien ne demandait.
+-- szh-figure.lua et szh-numerotation.lua numérotent toute image seule, où qu'elle soit.
+-- Dans un falc-header (un encadré, pas une figure du corps), on verrait apparaître
+-- « Abbildung 1 — … » dans le texte de l'encadré.
 --
--- Cette passe retire donc la ou les image(s) trouvée(s) dans un Div .falc-header AVANT que
--- szh-figure.lua ne s'exécute, et les stocke en attributs du Div : `img-src`/`img-alt` de
--- la PREMIÈRE image-seule trouvée, `img-extra` = nombre d'images en trop (pour
--- l'avertissement « plusieurs-images », émis par szh-livre-entete.lua — cette passe-ci ne
--- juge rien, elle protège). szh-livre-entete.lua les relit de là.
+-- La passe retire les images seules d'un Div .falc-header et les note en attributs du
+-- Div : `img-src` et `img-alt` de la première, `img-extra` = nombre d'images en trop.
+-- szh-livre-entete.lua les relit et émet l'avertissement « plusieurs-images ».
 --
--- Position dans FILTRES_CHAPITRE (livre.mk) : juste APRÈS szh-typographie.lua, juste AVANT
--- szh-metafichier.lua — l'alt de l'image profite ainsi normalement de la typographie
--- maison (nbsp, guillemets…) avant d'être mis de côté, et aucun filtre qui numérote ou
--- regroupe des images (metafichier, grille, figure, numerotation, tableau-boite,
--- legende-avant) ne voit plus jamais cette image.
+-- Place dans FILTRES_CHAPITRE (livre.mk) : juste après szh-typographie.lua (l'alt reçoit
+-- la typographie maison), juste avant szh-metafichier.lua (aucun filtre qui numérote ou
+-- regroupe les images ne la voit). szh-livre-entete.lua reste en fin de chaîne : il se
+-- place sous le bloc auteurs, qui n'existe qu'après szh-livre-auteurs.lua. Le texte et le
+-- qr-link de l'encadré n'ont pas besoin de protection.
 --
--- Pourquoi une passe séparée plutôt que d'avancer tout szh-livre-entete.lua ici : le
--- placement (après le titre ET le bloc auteurs) a besoin d'un bloc auteurs déjà posé par
--- szh-livre-auteurs.lua (fiche YAML) ou déjà présent (import Word) — les deux ne sont sûrs
--- qu'en fin de chaîne, après szh-livre-auteurs.lua. Le texte et le qr-link du falc-header,
--- eux, n'ont besoin d'AUCUNE protection : ni le contenu texte (Para/Plain ordinaires) ni le
--- Div qr-link (jamais touché par ces filtres génériques — ils ciblent Image/Figure, ou une
--- classe .szh-grille explicite) ne sont modifiés par la chaîne intermédiaire.
---
--- ⚠ Le lecteur `commonmark_x+sourcepos` de l'aperçu enveloppe chaque bloc IMBRIQUÉ (donc le
--- contenu du falc-header) dans un Div « wrapper=1 » (voir szh-sourcepos.lua, szh-grille.lua
--- en tête). Cette passe défait ces enveloppes en LISANT (sans_enveloppe, même fonction que
--- szh-grille.lua) et réécrit `div.content` déjà PLAT (sans wrapper) — sans conséquence sur
--- le clic vers la source : le falc-header entier finit de toute façon en RawBlock HTML
--- opaque (szh-livre-entete.lua), qui ne porte aucun data-pos individuel, wrappers ou pas.
+-- Dans l'aperçu, le lecteur `commonmark_x+sourcepos` enveloppe chaque bloc imbriqué dans un
+-- Div « wrapper=1 » (voir szh-sourcepos.lua). sans_enveloppe() les défait et `div.content`
+-- est réécrit à plat. Sans effet sur le clic vers la source : szh-livre-entete.lua rend
+-- l'encadré entier en un seul RawBlock HTML.
 
--- Module commun (contexte, a_classe, texte) : un chargement raté arrête la compilation, ce filtre ne
--- pouvant plus dire dans quelle langue il compose.
+-- Module commun. Sans lui le filtre ne peut pas travailler : la compilation s'arrête.
 local commun
 do
   local function dossier_ce_fichier()

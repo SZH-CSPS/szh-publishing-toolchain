@@ -1,9 +1,7 @@
--- Livre seulement : l'encadré « écouter cette histoire » de la première page d'un chapitre.
--- Renommé depuis szh-livre-ecouter.lua (23.09.2026) : la clé YAML `ecouter:` du
--- <slug>.meta.yaml disparaît, remplacée par un bloc écrit DIRECTEMENT dans le .md du
--- chapitre — aucun livre réel ne s'était mis à utiliser la clé YAML, rien à migrer.
+-- Livres : l'encadré « écouter cette histoire » de la première page d'un chapitre, écrit
+-- dans le .md du chapitre.
 --
--- Syntaxe, où qu'elle soit écrite dans le chapitre (accepte aussi `{.falc-header}`) :
+-- Syntaxe, n'importe où dans le chapitre (`{.falc-header}` est aussi accepté) :
 --
 --   :::: falc-header
 --   Diese Geschichte gibt es auch zum Hören.
@@ -18,30 +16,21 @@
 --   :::
 --   ::::
 --
--- Quatre parties, toutes facultatives sauf le texte n'a de sens que si l'encadré n'est pas
--- vide (voir « bloc vide » plus bas) :
---   * du texte, en un ou plusieurs paragraphes — CHAQUE ligne écrite devient une ligne
---     imprimée (lecteur hard_line_breaks OU markdown normal : un saut de ligne SoftBreak et
---     un LineBreak sont traités pareil ici, voir normaliser_lignes) ;
---   * des étapes, en liste numérotée (`1. …`, la première trouvée) : un vrai <ol>, dont
---     les numéros passent par ::marker (LI > Lbl dans le PDF) ; le texte qui précède
---     devient alors son intitulé ;
---   * une image, texte alternatif OBLIGATOIRE (`![alt](chemin)`) — sans alt, l'image est
---     omise (avertissement), jamais un <img> muet (PDF/UA-1 7.3) ;
---   * un bloc qr-link (szh-qr-commun.lua, M.construire_qr — mêmes options que le bloc
---     qr-link autonome de szh-qr.lua, voir son en-tête).
+-- Quatre parties, toutes facultatives :
+--   * du texte, en un ou plusieurs paragraphes : chaque ligne écrite devient une ligne
+--     imprimée, quel que soit le lecteur (voir lignes_en_inlines) ;
+--   * des étapes, en liste numérotée (la première trouvée) : un <ol> dont les numéros
+--     passent par ::marker (LI > Lbl dans le PDF) ; le texte devient alors son intitulé ;
+--   * une image, avec un texte alternatif obligatoire (`![alt](chemin)`) : sans alt,
+--     l'image est omise (PDF/UA-1 7.3) ;
+--   * un bloc qr-link, aux mêmes options que celui de szh-qr.lua.
 --
--- Placement : juste après le titre (h1) du chapitre, et après le bloc auteurs
--- (szh-livre-auteurs.lua, <p class="szh-auteurs">, ou le Div `.szh-auteurs` importé du
--- Word) si ce chapitre en a un — d'où la place de ce filtre dans FILTRES_CHAPITRE
--- (pipeline/profils/livre.mk) : immédiatement après szh-livre-auteurs.lua, avant
--- szh-citations.lua. Un gabarit pandoc ne sait rien intercaler, il écrit ce qui suit
--- `$body$` : ce filtre retire donc le Div `falc-header` d'où il a été écrit et le
--- réinsère à la bonne place.
+-- Placement : après le titre du chapitre, et après le bloc auteurs s'il y en a un. Le
+-- filtre retire le Div `falc-header` de là où il est écrit et le réinsère à cette place.
+-- Il vient donc juste après szh-livre-auteurs.lua dans FILTRES_CHAPITRE
+-- (pipeline/profils/livre.mk).
 --
--- Balisage, classes STABLES (renommées .szh-ecouter* -> .szh-falc-header*, CSS web/epub
--- comprises) pour qu'une autre maquette de l'encadré ne demande que du CSS, jamais un
--- nouveau filtre :
+-- Balisage (une autre maquette ne demande que du CSS) :
 --   <div class="szh-falc-header" data-image="oui|non">
 --     <div class="szh-falc-header-texte">
 --       <p>Ligne 1<br>Ligne 2…</p>       <!-- <p class="szh-falc-header-titre"> s'il y a des étapes -->
@@ -50,43 +39,25 @@
 --     </div>
 --     <img class="szh-falc-header-image" src="…" alt="…">   <!-- seulement si data-image="oui" -->
 --   </div>
--- Le lien QR reprend EXACTEMENT le patron de szh-qr-commun.lua/M.construire_qr — voir son
--- en-tête (un <a> VIDE, le SVG en background-image, jamais un <svg> enfant : mesuré au
--- veraPDF, une zone cliquable par boîte interne sinon, au lieu d'une seule).
+-- Le lien QR suit le modèle de szh-qr-commun.lua : un <a> vide, le SVG en image de fond,
+-- pour n'avoir qu'une zone cliquable.
 --
--- L'image N'EST PAS décorative (elle illustre le contenu audio, l'alt est du texte
--- alternatif réel) : un <img> ordinaire, embarqué comme toute autre image du chapitre par
--- --embed-resources (chemin relatif au dossier du chapitre, comme `media/…` dans le corps).
+-- L'image n'est pas décorative : c'est un <img> ordinaire, embarqué par --embed-resources
+-- comme les autres images du chapitre.
 --
--- ⚠ CE FILTRE NE VOIT PLUS JAMAIS L'IMAGE ELLE-MÊME : szh-livre-entete-image.lua (pré-passe,
--- juste après szh-typographie.lua dans FILTRES_CHAPITRE, bien avant szh-figure.lua/
--- szh-numerotation.lua) l'a déjà retirée du Div et stockée en attributs
--- (img-src/img-alt/img-extra) — voir son en-tête. Raison : szh-figure.lua et
--- szh-numerotation.lua numérotent SANS EXCEPTION toute image-seule qu'ils rencontrent, où
--- qu'elle soit dans le document ; sans cette protection, l'image du falc-header ressortait
--- « Abbildung 1 — … » en toutes lettres DANS le texte de l'encadré (mesuré 23.09.2026, une
--- légende de figure que rien ne demandait). classer() ci-dessous lit donc ces attributs,
--- jamais un Para/Figure d'image.
+-- Ce filtre ne voit pas l'image elle-même : szh-livre-entete-image.lua, plus tôt dans la
+-- chaîne, l'a retirée du Div et rangée dans ses attributs img-src, img-alt et img-extra.
+-- Sinon szh-figure.lua et szh-numerotation.lua la numéroteraient comme une figure.
 --
--- Repère de langue : celle du contexte de composition (szh-contexte.lua).
+-- Dans l'aperçu, les blocs enfants du Div sont enveloppés dans des Div « wrapper=1 »
+-- (lecteur `commonmark_x+sourcepos`) : sans_enveloppe() les traverse, comme dans
+-- szh-grille.lua.
 --
--- ⚠ Le lecteur `commonmark_x+sourcepos` de l'aperçu enveloppe chaque bloc IMBRIQUÉ (donc les
--- paragraphes de texte et le Div qr-link, enfants du Div falc-header) dans un Div
--- « wrapper=1 » — szh-sourcepos.lua ne les défait pas, à dessein (voir son en-tête : c'est
--- de là que vient le data-pos du clic vers la source). `sans_enveloppe()` ci-dessous les
--- traverse pour lire ce qu'il y a dedans, exactement comme szh-grille.lua le fait déjà pour
--- la même raison — sans jamais les retirer de l'arbre avant que ce filtre n'ait fini : le
--- Div falc-header entier est de toute façon remplacé en bloc par le RawBlock HTML qu'on
--- construit, wrappers compris.
---
--- Repli, jamais de plantage :
---   * pas de bloc `falc-header` dans le chapitre -> rien (le cas le plus fréquent) ;
---   * bloc vide (ni texte, ni image, ni qr-link reconnus) -> avertissement, rien d'imprimé ;
---   * plus d'une image -> avertissement, seule la première est gardée ;
---   * image sans alt -> avertissement, l'image est omise (le reste de l'encadré reste) ;
---   * deux blocs falc-header dans le même chapitre -> avertissement, seul le premier
---     (dans l'ordre du document) est imprimé, les suivants disparaissent silencieusement
---     après l'avertissement (aucune règle ne dit où imprimer un second encadré).
+-- Cas particuliers, signalés par un avertissement sans arrêter la compilation :
+--   * bloc vide (ni texte, ni étapes, ni image, ni qr-link) : rien n'est imprimé ;
+--   * plusieurs images : seule la première est gardée ;
+--   * image sans alt : l'image est omise, le reste de l'encadré est imprimé ;
+--   * plusieurs blocs falc-header dans le chapitre : seul le premier est imprimé.
 
 local function dossier_ce_fichier()
   local source = debug.getinfo(1, 'S').source
@@ -131,9 +102,8 @@ local function avertir(slug, code, phrase_fr, phrase_de)
   commun.constat('livre-entete', 'avertissement', code, { 'chapitre « ' .. slug .. ' »' }, phrase_fr, phrase_de)
 end
 
--- Défait les Div « wrapper=1 » de szh-sourcepos.lua (aperçu seulement) pour lire ce qu'il y
--- a dedans — jamais dans le résultat final, seulement pour la classification ci-dessous.
--- Voir szh-grille.lua, même fonction, même raison (en-tête de ce fichier).
+-- Aplatit les Div « wrapper=1 » de l'aperçu, pour la lecture seulement : le Div entier
+-- est ensuite remplacé par le HTML de l'encadré.
 local function sans_enveloppe(blocs)
   local plat = pandoc.Blocks({})
   for _, b in ipairs(blocs) do
@@ -146,15 +116,9 @@ local function sans_enveloppe(blocs)
   return plat
 end
 
--- L'image du falc-header (détection/extraction) n'est PAS ici : szh-livre-entete-image.lua
--- (pré-passe) l'a déjà mise de côté en attributs du Div avant que ce filtre ne s'exécute —
--- voir son en-tête, et classer() plus bas.
-
--- Une ligne écrite = une ligne imprimée : SoftBreak et LineBreak comptent pareil, quel que
--- soit le lecteur du chapitre (markdown ou markdown+hard_line_breaks — voir livre.mk,
--- LECTEUR). Plusieurs paragraphes de texte dans le même falc-header se recollent avec un
--- saut de ligne entre eux, comme un `texte:` YAML à plusieurs blocs le faisait déjà avant
--- ce filtre.
+-- Une ligne écrite donne une ligne imprimée : SoftBreak et LineBreak deviennent tous deux un
+-- saut de ligne, quel que soit le lecteur du chapitre (LECTEUR dans livre.mk). Plusieurs
+-- paragraphes se suivent, séparés par un saut de ligne.
 local function lignes_en_inlines(blocs_texte)
   local resultat = pandoc.Inlines({})
   for i, b in ipairs(blocs_texte) do
@@ -195,14 +159,9 @@ local function inlines_vers_html(inlines)
   return table.concat(morceaux)
 end
 
--- Classe le contenu du Div falc-header : lignes de texte, Div qr-link (le premier trouvé).
--- L'IMAGE, elle, n'est plus ici : szh-livre-entete-image.lua (pré-passe, juste après
--- szh-typographie.lua dans FILTRES_CHAPITRE) l'a déjà retirée du contenu et stockée en
--- attributs du Div (img-src/img-alt/img-extra) — voir son en-tête pour pourquoi (protéger
--- l'image de la numérotation de figures, qui numérote SANS EXCEPTION toute image-seule
--- qu'elle rencontre, où qu'elle soit). Tout le reste du contenu (non prévu par le cahier
--- des charges, ex. une liste à puces) est silencieusement ignoré — aucune place définie pour lui
--- dans l'encadré.
+-- Classe le contenu du Div falc-header : paragraphes de texte, première liste numérotée,
+-- premier Div qr-link, et l'image lue dans les attributs du Div. Le reste (une liste à
+-- puces, par exemple) est ignoré.
 local function classer(div, slug)
   local blocs_texte, qr_div, etapes = {}, nil, nil
   for _, b in ipairs(sans_enveloppe(div.content)) do
@@ -229,8 +188,7 @@ local function classer(div, slug)
   return blocs_texte, image, qr_div, etapes
 end
 
--- Une étape par <li> ; ses paragraphes (enveloppes de l'aperçu comprises) se recollent par
--- un saut de ligne, comme les lignes du texte.
+-- Une étape par <li> ; ses paragraphes se suivent, séparés par un saut de ligne.
 local function etapes_vers_html(liste)
   local items = {}
   for _, item in ipairs(liste.content) do
@@ -274,10 +232,8 @@ local function construire_encadre(div, lang, slug)
         'Der qr-link des falc-header ist leer: ohne URL wird kein QR-Code gedruckt.')
     else
       local attrs = qr_div.attributes or {}
-      -- Nom accessible : `title=` explicite du qr-link, sinon la première ligne du texte
-      -- de l'encadré (pas une formule générique) — et seulement à défaut, le repli par
-      -- langue de szh-qr-commun.lua (ni title ni texte : cas d'un qr-link seul, sans texte,
-      -- dans un falc-header — rare mais pas empêché par la syntaxe).
+      -- Nom accessible : le `title=` du qr-link, sinon la première ligne du texte de
+      -- l'encadré, sinon le libellé par défaut de szh-qr-commun.lua.
       local titre = attrs['title']
       if (titre == nil or titre == '') and a_texte then titre = premiere_ligne(lignes) end
       local html, erreur = commun_qr.construire_qr(url, {
@@ -295,7 +251,7 @@ local function construire_encadre(div, lang, slug)
       else
         io.stderr:write('[szh-livre-entete] QR impossible pour « ' .. url .. ' » : ' .. tostring(erreur) .. '\n')
         io.stderr:write('[szh-livre-entete] [de] QR nicht möglich für « ' .. url .. ' »: ' .. tostring(erreur) .. '\n')
-        -- Repli : un vrai lien texte (même raison que szh-qr.lua pour le même cas).
+        -- Repli : un lien texte.
         qr_html = string.format('<a href="%s">%s</a>', ech_attr(url), ech(url))
       end
     end
@@ -325,8 +281,8 @@ local function construire_encadre(div, lang, slug)
   return pandoc.RawBlock('html', table.concat(html))
 end
 
--- Le bloc auteurs d'un chapitre, sous deux formes possibles (voir szh-livre-auteurs.lua et
--- docx-styles-corps.py) : repris à l'identique de l'ancien szh-livre-ecouter.lua.
+-- Le bloc auteurs d'un chapitre, sous ses deux formes : <p class="szh-auteurs">
+-- (szh-livre-auteurs.lua) ou Div `.szh-auteurs` importé du Word (docx-styles-corps.py).
 local function est_bloc_auteurs(b)
   if b == nil then return false end
   if b.t == 'RawBlock' and b.format == 'html'
@@ -343,17 +299,13 @@ function Pandoc(doc)
   if slug == '' then slug = '?' end
   local lang = langue_de(doc.meta)
 
-  -- Trouve TOUS les Div falc-header du document (à n'importe quelle profondeur : sous
-  -- l'aperçu, un falc-header écrit au premier niveau du chapitre n'est pas lui-même
-  -- enveloppé — seuls ses ENFANTS le sont, voir sans_enveloppe ci-dessus — mais rien
-  -- n'empêche un rédacteur de l'imbriquer ailleurs). walk() suffit : il visite chaque Div,
-  -- où qu'il soit.
+  -- Retire tous les Div falc-header du document, à n'importe quelle profondeur.
   local trouves = {}
   doc.blocks = doc.blocks:walk({
     Div = function(el)
       if a_classe(el, 'falc-header') then
         trouves[#trouves + 1] = el
-        return {} -- retiré d'où il était écrit ; réinséré plus bas au bon endroit
+        return {} -- réinséré plus bas, sous le titre
       end
     end,
   })

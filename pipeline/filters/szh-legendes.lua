@@ -1,40 +1,26 @@
--- Import : « bake » les légendes dans le .md.
---   * figures : une image seule dans un Para, avec un paragraphe voisin légende (avant ou
---     après), reçoit cette légende ; le paragraphe est retiré et szh-figure.lua en fera un
---     <figure><figcaption>. Un voisin est une légende s'il est tout en gras, si
---     docx-meta.py l'a identifié par style (lignes « F<TAB>texte » de SZH_META), ou s'il
---     commence par « Figure N » suivi d'un séparateur — exigé pour ne pas prendre
---     « Figure 1 montre… » pour une légende.
---   * tableaux : docx-tables.py a déjà baké le <caption> et consigné le texte des légendes
---     prises (SZH_LEGENDES_TABLES) ; on retire ici les paragraphes correspondants du .md,
---     par appariement au texte exact, gras non requis.
---   * texte alternatif : Word range l'alt de l'auteur dans wp:docPr/@descr, que le lecteur
---     docx met dans la description de l'Image. On le déplace en {alt="…"}, contrat lu par
---     szh-numerotation.lua. Une image sans légende y passe aussi, sinon implicit_figures
---     en ferait une légende visible au rendu.
---   * bloc Figure : quand la légende Word porte le STYLE de légende, le lecteur docx ne
---     rend pas deux paragraphes voisins mais un seul bloc `Figure`, légende comprise. On
---     l'aplatit ici en la forme unique du .md — un Para d'image, description = légende,
---     descr de Word en {alt="…"}. Voir ci-dessous pourquoi ce n'est pas cosmétique.
--- Conservateur : sans légende voisine claire, l'image ou le tableau reste tel quel.
---
--- POURQUOI APLATIR LES `Figure` N'EST PAS UN DÉTAIL.
---
--- Le writer markdown ne sait écrire une Figure en `![légende](img){…}` que si la légende
--- du bloc et la description de l'image sont IDENTIQUES. Sur une figure venue de Word
--- elles ne le sont jamais : la description est l'alt de l'auteur, la légende est la
--- phrase « Figure 1 : … ». Le writer renonce alors au markdown et écrit du HTML brut
---     <figure><img src=… alt=…><figcaption><p>…</p></figcaption></figure>
--- au milieu du .md. Rien ne l'annonce. Le rédacteur ne peut plus toucher à la légende
--- dans l'éditeur, szh-numerotation.lua ne numérote pas ce qu'il ne reconnaît pas, et le
--- numéro manuel « Figure 1 : » de Word reste figé. Constaté sur pandoc 3.5, celui de la
--- machine de production ; pandoc 3.9 écrit le markdown attendu — un import dépendait donc
--- silencieusement de la version installée. L'aplatissement rend le résultat identique
--- partout.
+-- Import Word : pose les légendes, les textes alternatifs et les crédits des figures dans
+-- le .md.
+--   * figure : une image seule dans un paragraphe prend pour légende un paragraphe voisin
+--     (avant ou après), qui est retiré. Un voisin est une légende s'il est tout en gras,
+--     si docx-meta.py l'a reconnu à son style (lignes « F<TAB>texte » de SZH_META), ou
+--     s'il commence par « Figure N » suivi d'un séparateur (« Figure 1 montre… » n'en est
+--     pas une).
+--   * tableau : docx-tables.py a déjà posé le <caption> et listé les légendes prises
+--     (SZH_LEGENDES_TABLES) ; leurs paragraphes sont retirés du .md, à texte égal.
+--   * texte alternatif : Word le range dans wp:docPr/@descr, que le lecteur docx met dans
+--     la description de l'image. Il passe en {alt="…"}, lu par szh-numerotation.lua. Une
+--     image sans légende y passe aussi, sinon pandoc en ferait une légende visible.
+--   * bloc Figure : quand la légende Word porte le style de légende, le lecteur docx rend
+--     un bloc `Figure`. Il est ramené à un paragraphe d'image, description = légende.
+--     Sinon, selon la version de pandoc, l'écrivain markdown écrit la figure en HTML brut
+--     dès que légende et description diffèrent : la légende n'est plus modifiable dans
+--     l'éditeur et szh-numerotation.lua ne la numérote pas.
+--   * blocs du gabarit Pronto : voir charger_blocs_pronto().
+-- Sans légende reconnue, l'image ou le tableau reste tel quel.
 
 local utils = pandoc.utils
 
--- Module commun (constats) : un chargement raté arrête la conversion.
+-- Module commun. Sans lui le filtre ne peut pas travailler : la conversion s'arrête.
 local commun
 do
   local function dossier_ce_fichier()
@@ -64,7 +50,7 @@ local function normaliser(t)
   return (assainir(t):gsub('%s+', ' '):gsub('^%s+', ''):gsub('%s+$', ''))
 end
 
--- Un ensemble d'inlines est-il entièrement en gras (hors espaces) ?
+-- Vrai si les inlines sont tous en gras, espaces exceptées.
 local function tout_gras(inls)
   local reel = 0
   for _, i in ipairs(inls) do
@@ -76,8 +62,8 @@ local function tout_gras(inls)
   return reel > 0
 end
 
--- Nettoyage du numéro de figure en tête de légende : le numéro manuel du Word part
--- ici, szh-numerotation.lua le repose à la compilation.
+-- Retire le numéro manuel en tête de légende ; szh-numerotation.lua numérote à la
+-- compilation.
 local MOTS_FIGURE = { '^[Ff]igure%s+%d+[a-z]?%s*[:%.%-–—]?%s*',
                       '^[FfAa]bb?%.%s*%d+[a-z]?%s*[:%.%-–—]?%s*',
                       '^[Aa]bbildung%s+%d+[a-z]?%s*[:%.%-–—]?%s*',
@@ -90,8 +76,8 @@ local function nettoyer_figure(txt)
   return txt
 end
 
--- Motif strict « Figure N » + séparateur obligatoire, pour un voisin ni gras ni
--- stylé — l'assainissement a déjà réduit – — ‑ à '-'.
+-- Motif strict « Figure N » suivi d'un séparateur, pour un voisin ni gras ni stylé.
+-- assainir() a déjà ramené les tirets à '-'. Au-delà de 50 mots, ce n'est pas une légende.
 local MOTS_FIGURE_STRICTS = { '^[Ff]igure%s+%d+[a-z]?%s*[:%.%-]',
                               '^[FfAa]bb?%.%s*%d+[a-z]?%s*[:%.%-]',
                               '^[Aa]bbildung%s+%d+[a-z]?%s*[:%.%-]',
@@ -118,7 +104,7 @@ local function para_legende_et_image(b)
       if img then return nil end             -- plusieurs images : ne pas toucher
       img = x
     elseif img then
-      return nil                             -- du texte APRÈS l'image : autre chose
+      return nil                             -- du texte après l'image : autre chose
     else
       texte[#texte + 1] = x
     end
@@ -131,9 +117,8 @@ end
 
 -- ─── Texte alternatif venu de Word ───────────────────────────────────────────
 -- Les descriptions automatiques de Word et de Copilot (« Automatisch generierte
--- Beschreibung ») ne sont pas du texte alternatif : les importer donnerait une fausse
--- impression d'accessibilité. On les jette, l'image reste sans alt — donc décorative
--- au rendu — jusqu'à ce qu'un humain en écrive un.
+-- Beschreibung ») ne sont pas un texte alternatif : elles sont jetées, et l'image reste
+-- sans alt jusqu'à ce qu'une personne en écrive un.
 local MARQUEURS_AUTO = {
   'automatisch generierte beschreibung',
   'automatisch erstellte beschreibung',
@@ -152,9 +137,9 @@ local function alt_automatique(txt)
 end
 
 -- Déplace la description de l'image (le descr de Word) vers l'attribut alt et vide la
--- description pour laisser la place à la légende. Renvoie 1 si un alt a été posé. Le
--- texte est normalisé : un attribut n'admet pas de saut de ligne, et Word en met
--- volontiers. Rejeté si vide, automatique, ou identique à la légende.
+-- description, place de la légende. Rend 1 si un alt a été posé, 0 sinon. Le texte est
+-- normalisé, car Word y met des sauts de ligne. Rejeté s'il est vide, automatique ou
+-- identique à la légende.
 local function alt_depuis_word(img, legende)
   local descr = normaliser(s(img.caption))
   img.caption = pandoc.Inlines({})
@@ -164,7 +149,7 @@ local function alt_depuis_word(img, legende)
   return 1
 end
 
--- Un Para dont le seul contenu significatif est une image -> renvoie l'image.
+-- Rend l'image d'un Para qui ne porte qu'une image (et des blancs), nil sinon.
 local function para_image(b)
   if b.t ~= 'Para' then return nil end
   local img = nil
@@ -180,11 +165,9 @@ local function para_image(b)
 end
 
 -- ─── Bloc Figure du lecteur docx -> la forme unique du .md ───────────────────
--- Rend (image, légende) d'une Figure réductible : un seul bloc, une seule image, rien
--- d'autre que des blancs autour. Une Figure qui contient deux images ou du texte n'est
--- pas réductible — on la laisse telle quelle plutôt que d'en perdre une partie.
--- L'identifiant de la Figure passe sur l'image : c'est lui que visent les renvois
--- internes du Word, et le .md ne garde plus d'autre endroit où le poser.
+-- Rend (image, légende) d'une Figure qui ne contient qu'une image et des blancs, nil
+-- sinon (la Figure reste alors telle quelle). L'identifiant de la Figure, visé par les
+-- renvois internes du Word, passe sur l'image.
 local function figure_a_plat(f)
   if #f.content ~= 1 then return nil end
   local seul = f.content[1]
@@ -202,7 +185,6 @@ local function figure_a_plat(f)
   if f.identifier and f.identifier ~= '' and img.identifier == '' then
     img.identifier = f.identifier
   end
-  -- Le numéro manuel du Word part ici, szh-numerotation.lua le repose à la compilation.
   return img, trim(nettoyer_figure(trim(s(f.caption.long))))
 end
 
@@ -220,7 +202,7 @@ local function charger_legendes_table()
   return ens
 end
 
--- Légendes de figure détectées par style par docx-meta.py (lignes F de $SZH_META).
+-- Légendes de figure reconnues à leur style par docx-meta.py (lignes F de $SZH_META).
 local function charger_legendes_figures()
   local ens = {}
   local chemin = os.getenv('SZH_META')
@@ -244,29 +226,22 @@ end
 --   FG<TAB>k<TAB>légende<TAB>texte alternatif<TAB>copyright<TAB>source<TAB>note[<TAB>clé…]
 --   FT<TAB>k<TAB>légende<TAB>texte alternatif<TAB>copyright<TAB>source<TAB>note[<TAB>clé…]
 --   (FT : les champs vont au tableau par docx-tables.py ; ici, seules ses clés partent.)
--- Les cinq valeurs sont celles que l'autrice ou l'auteur a TAPÉES dans le document, sous
--- les étiquettes « Légende : », « Texte alternatif : », « Copyright : », « Source : »,
--- « Note : » (le champ note est toujours présent, vide si rien n'est tapé). Sans
--- cette reprise, elles s'imprimeraient telles quelles au milieu de l'article et le texte
--- alternatif serait perdu — mesuré sur le gabarit réel avant le branchement.
+-- Les cinq valeurs sont celles que l'auteur a tapées dans le document sous les étiquettes
+-- « Légende : », « Texte alternatif : », « Copyright : », « Source : », « Note : » (le
+-- champ note est toujours présent, vide si rien n'est tapé).
 --
--- `images` (FI) : une entrée par image, séparées par « ; », chacune donnant TOUS les noms de
--- fichier que cette image peut porter, séparés par « | ». Plusieurs noms parce que Word range
--- une image vectorielle derrière un aperçu PNG, le lecteur voit le PNG et pandoc écrit le SVG
--- (voir images_de_paragraphe() de pronto_docx.py) : on apparie sur le nom, en acceptant
--- toutes les variantes — un rang se décalerait au premier paragraphe d'image de plus.
--- Plusieurs entrées (29.09.2026, décision de Robin) : le bloc porte plusieurs images, deux
--- dans un même paragraphe ou plusieurs paragraphes à la suite, et il devient UN groupe
--- d'images (voir poser_groupe()). FG : le contenu du bloc est le k-ième tableau, un tableau de
--- mise en page d'images que szh-meta.lua a déjà remplacé par un bloc `.szh-grille`.
+-- `images` (FI) : une entrée par image, séparées par « ; ». Chaque entrée donne tous les
+-- noms de fichier possibles de l'image, séparés par « | » : Word range une image
+-- vectorielle derrière un aperçu PNG, le lecteur voit le PNG et pandoc écrit le SVG (voir
+-- images_de_paragraphe() de pronto_docx.py). L'appariement se fait sur le nom, pas sur le
+-- rang. Un bloc de plusieurs images devient un groupe (voir poser_groupe()).
+-- FG : le bloc contient le k-ième tableau, un tableau de mise en page d'images que
+-- szh-meta.lua a déjà remplacé par un bloc `.szh-grille`.
 --
--- Les `clé…` sont les textes des paragraphes d'étiquette du bloc. ⚠ Ce filtre, et lui seul,
--- les retire du corps — AU MOMENT où il pose leurs valeurs sur l'image, jamais avant, jamais
--- autrement (garantie « rien ne disparaît », décision de Robin du 29.09.2026). Jusque-là,
--- szh-meta.lua les retirait d'avance (lignes P) : le jour où l'image ne se laissait pas
--- trouver ici — deux images dans un paragraphe, mesuré —, légende, texte alternatif et copyright
--- disparaissaient sans un mot. Un bloc qu'on n'a pas su poser garde donc ses paragraphes
--- tels quels dans le texte, et l'avertissement « bloc-valeur-non-reprise » le dit.
+-- Les `clé…` sont les textes des paragraphes d'étiquette du bloc. Ce filtre seul les retire
+-- du corps, au moment où il pose leurs valeurs sur l'image. Un bloc qui n'a pas pu être
+-- posé garde donc ses paragraphes dans le texte, et l'avertissement
+-- « bloc-valeur-non-reprise » le signale : aucune valeur tapée ne se perd.
 local function lire_champs(reste)
   local champs = {}
   for champ in (reste .. '\t'):gmatch('([^\t]*)\t') do champs[#champs + 1] = champ end
@@ -280,10 +255,10 @@ local function lire_champs(reste)
   return champs[1] or '', bloc
 end
 
--- FT<TAB>k<TAB>… (bloc TABLEAU) : docx-tables.py pose les cinq champs sur tables/table-NN
--- .html ; ici, on ne fait que retirer les clés, juste devant le k-ième tableau, quand on le
--- rencontre. `sautes` : les ordinaux que szh-meta.lua a déjà ôtés du corps (T) ou changés en
--- groupe (FG) — la numérotation des Table restants saute les mêmes, comme docx-tables.py.
+-- FT (bloc tableau) : docx-tables.py pose les cinq champs dans tables/table-NN.html ; ce
+-- filtre retire seulement les clés, juste devant le k-ième tableau. `sautes` : les rangs
+-- de tableau que szh-meta.lua a déjà ôtés du corps (T) ou changés en groupe (FG). Le
+-- comptage des tableaux restants les saute, comme docx-tables.py.
 local function charger_blocs_pronto()
   local par_nom, grilles, tous, tableaux, sautes = {}, {}, {}, {}, {}
   local chemin = os.getenv('SZH_META')
@@ -321,10 +296,10 @@ local function charger_blocs_pronto()
 end
 
 -- ─── Avertissement au rédacteur ──────────────────────────────────────────────
--- Même format que szh_commun.avertir() côté Python — « [import-avertissement] code | champs
--- | phrase FR | [de] phrase DE » —, pour que lib/journal.js n'ait qu'une forme à lire, sur
--- stderr ET dans le journal d'import ($SZH_IMPORT_LOG), que pandoc n'écrit pas pour nous.
--- « | » sépare les champs : il est remplacé dans les valeurs, comme sans_barre() ailleurs.
+-- Même format que szh_commun.avertir() côté Python : « [import-avertissement] code |
+-- champs | phrase fr | [de] phrase de », lu par lib/journal.js. La ligne part sur stderr et
+-- dans le journal d'import ($SZH_IMPORT_LOG). « | » sépare les champs : sans_barre() le
+-- remplace dans les valeurs.
 local function sans_barre(t) return commun.sans_barre(t or '') end
 
 local function avertir(code, champs, fr, de)
@@ -336,8 +311,8 @@ local function avertir(code, champs, fr, de)
   commun.journaliser(ligne)
 end
 
--- Un bloc dont aucune image n'a été retrouvée : ses valeurs restent dans le texte, dans les
--- paragraphes que l'autrice ou l'auteur a tapés (jamais retirés, voir plus haut).
+-- Avertit pour un bloc dont aucune image n'a été retrouvée : ses valeurs restent dans le
+-- texte, dans les paragraphes tapés par l'auteur.
 local function avertir_bloc_non_repris(bloc)
   local valeurs, premiere = {}, nil
   for _, c in ipairs({ { 'legende', 'légende', 'Legende' }, { 'alt', 'texte alternatif',
@@ -365,11 +340,11 @@ local function avertir_bloc_non_repris(bloc)
       .. 'Absätze danach aus dem Text.')
 end
 
--- Retire du corps DÉJÀ ÉMIS (`sortie`) les paragraphes d'étiquette d'un bloc qu'on vient de
--- poser. Ils précèdent directement son contenu (pandoc ne rend pas les paragraphes vides que
--- le gabarit tolère entre les deux) : on remonte depuis la fin tant que le dernier bloc émis
--- est l'une de ces clés, une clé ne retirant qu'une occurrence. Ce qui ne se trouve pas là
--- reste imprimé — une clé en double vaut mieux qu'une clé perdue.
+-- Retire de `sortie` (le corps déjà émis) les paragraphes d'étiquette d'un bloc qui vient
+-- d'être posé. Ils précèdent directement son contenu, car pandoc ne rend pas les
+-- paragraphes vides. On remonte depuis la fin tant que le dernier bloc émis est l'une de
+-- ces clés, chaque clé ne retirant qu'une occurrence. Une clé qui n'est pas là reste dans
+-- le texte.
 local function retirer_cles(sortie, bloc)
   local reste = {}
   for _, c in ipairs(bloc.cles) do
@@ -386,10 +361,10 @@ local function retirer_cles(sortie, bloc)
   end
 end
 
--- ⚠ Table recopiée depuis pipeline/filters/szh-grille.lua et lib/references.js
---   (DISPOSITIONS) : test/filtres-import.test.js vérifie qu'elle reste identique à celle du
---   cockpit. Elle ne sert ici qu'à décider si la forme lue dans le Word est une disposition
---   que le formulaire Médias sait afficher ; sinon « auto », que les deux savent lire.
+-- Même table que DISPOSITIONS de lib/references.js et de szh-grille.lua ;
+-- test/filtres-import.test.js vérifie qu'elle reste identique à celle du cockpit. Elle
+-- dit si la disposition lue dans le Word est proposée par le formulaire Médias ; sinon
+-- « auto ».
 local DISPOSITIONS = {
   [2] = { '2', '1-1' },
   [3] = { '3', '2-1', '1-2', '1-1-1' },
@@ -398,9 +373,9 @@ local DISPOSITIONS = {
   [6] = { '3-3', '2-2-2', '6' },
 }
 
--- La disposition que dessinait le Word : une rangée de paragraphe ou de tableau par nombre
--- d'images, « 2 » pour deux images côte à côte, « 1-1 » pour l'une sous l'autre, « 2-2 »
--- pour un tableau 2×2. Inconnue du menu -> « auto », comme le cockpit à la création.
+-- Code de disposition d'après le nombre d'images de chaque rangée : « 2 » pour deux images
+-- côte à côte, « 1-1 » pour l'une sous l'autre, « 2-2 » pour un tableau 2×2. Code absent
+-- de DISPOSITIONS : « auto ».
 local function disposition_de(rangees, n)
   local bouts = {}
   for _, r in ipairs(rangees) do bouts[#bouts + 1] = tostring(r) end
@@ -411,8 +386,8 @@ local function disposition_de(rangees, n)
   return 'auto'
 end
 
--- Un Para/Plain qui ne porte que des images (et des blancs) -> la liste de ses images ;
--- nil sinon.
+-- Rend la liste des images d'un Para ou Plain qui ne porte que des images (et des
+-- blancs), nil sinon.
 local function images_seules(b)
   if b.t ~= 'Para' and b.t ~= 'Plain' then return nil end
   local lot = {}
@@ -424,14 +399,14 @@ local function images_seules(b)
   return lot
 end
 
--- Nom de fichier seul d'un src d'image : les chemins du .md sont relatifs (media/…, ./media/…)
--- et le lecteur, lui, ne connaît que le nom sous media/.
+-- Nom de fichier seul d'un src d'image : le .md porte des chemins relatifs (media/…,
+-- ./media/…), les lignes FI des noms de fichier seuls.
 local function base_fichier(chemin)
   return (tostring(chemin):gsub('[?#].*$', ''):gsub('^.*[/\\]', ''))
 end
 
--- Pose les cinq champs d'un bloc Pronto sur son image. Renvoie (nfig, nalt) à ajouter aux
--- compteurs. Le contrat d'attributs est celui de szh-numerotation.lua :
+-- Pose les cinq champs d'un bloc Pronto sur son image. Rend (nfig, nalt) à ajouter aux
+-- compteurs. Les attributs sont ceux que lit szh-numerotation.lua :
 --   ![légende](media/x.png){alt="…" copyright="…" source="…" note="…"}
 local function poser_bloc_pronto(img, bloc)
   local nfig, nalt = 0, 0
@@ -440,8 +415,8 @@ local function poser_bloc_pronto(img, bloc)
     img.attributes['alt'] = bloc.alt
     nalt = 1
   else
-    -- Rien de tapé sous « Texte alternatif : » : le descr de Word, s'il existe et n'est pas
-    -- une description automatique, vaut mieux que rien.
+    -- Rien de tapé sous « Texte alternatif : » : le descr de Word, s'il n'est pas
+    -- automatique.
     nalt = alt_depuis_word(img, bloc.legende)
   end
   if bloc.credit ~= '' then img.attributes['copyright'] = bloc.credit end
@@ -452,47 +427,41 @@ local function poser_bloc_pronto(img, bloc)
     img.caption = pandoc.Inlines({ pandoc.Str(legende) })
     nfig = 1
   elseif bloc.credit ~= '' or bloc.source ~= '' or (bloc.note or '') ~= '' then
-    -- Sans légende, droits et note n'auraient aucun endroit où s'écrire : la classe fait de
-    -- l'image une figure hors numérotation (szh-numerotation.lua), qui les porte.
+    -- Sans légende, crédits et note n'ont pas où s'écrire : la classe fait de l'image une
+    -- figure hors numérotation (szh-numerotation.lua), qui les porte.
     img.classes = pandoc.List(img.classes)
     img.classes:insert('szh-hors-figure')
   end
   return nfig, nalt
 end
 
--- Une ligne d'image de groupe, telle que pandoc l'écrit : c'est pandoc lui-même qui échappe
--- la légende et cite les attributs, comme partout ailleurs dans le .md.
+-- Une ligne d'image de groupe, écrite par pandoc, qui échappe la légende et les attributs.
 local function ligne_image(img)
   local md = pandoc.write(pandoc.Pandoc({ pandoc.Plain({ img }) }), 'markdown',
                           { wrap_text = 'none' })
   return trim(md)
 end
 
--- Un groupe d'images (décision de Robin, 29.09.2026) : UNE figure, un numéro, une légende,
--- écrite EXACTEMENT comme l'écrit « Ajouter une image à côté » du formulaire Médias
--- (poserDansGrille() de lib/references.js), pour que ce formulaire la relise et l'édite :
+-- Un groupe d'images : une figure, un numéro, une légende. Il s'écrit comme l'écrit
+-- « Ajouter une image à côté » du formulaire Médias (poserDansGrille() de
+-- lib/references.js), pour que ce formulaire le relise :
 --
 --   ::: {.szh-grille disposition="2"}
 --     ![Légende de la figure](media/a.png){alt="…" copyright="© A"}
 --     ![](media/b.png){alt="…" copyright="© A"}
 --   :::
 --
---   * une image par ligne, sans ligne vide entre elles — sans quoi lireGrilles() (cockpit)
---     ne verrait pas ses membres, et la lecture markdown ferait une figure de chacune. C'est
---     pour tenir cette forme que le bloc sort en markdown brut : écrit comme un Div, pandoc
---     (--wrap=none) mettait les deux images sur UNE ligne, séparées d'une espace (mesuré) ;
---   * la légende sur la première image seulement, les suivantes entre crochets vides ;
---   * le texte alternatif TAPÉ va sur la première image ; les suivantes gardent la
---     description que Word leur donnait (descr), si elle existe et n'est pas automatique.
---     Une image restée sans alt est nommée après l'import (figure-alt-a-completer,
---     docx-controle-import.py), jamais laissée muette en silence ;
---   * copyright et source sur CHAQUE image : le cockpit tient les droits image par image, et
---     szh-numerotation.lua ne répète pas un crédit identique sous la figure. Posés sur la
---     première seulement, ils se perdraient le jour où elle quitte le groupe ;
---   * la note, elle, sur la première image seulement : c'est une donnée de la figure, comme
---     la légende, pas un droit propre à chaque image.
--- `autres` : ce qu'un tableau de mise en page portait d'autre que des images (FG) — gardé,
--- à la suite, dans le bloc ; szh-grille.lua l'imprime sous les images.
+--   * une image par ligne, sans ligne vide : sinon lireGrilles() (cockpit) ne voit pas les
+--     images du groupe, et le lecteur markdown fait une figure de chacune. D'où le markdown
+--     brut : écrit comme un Div, pandoc (--wrap=none) met les images sur une seule ligne ;
+--   * la légende et la note sur la première image seulement ;
+--   * le texte alternatif tapé va sur la première image ; les suivantes gardent le descr de
+--     Word s'il n'est pas automatique. Une image restée sans alt est signalée après l'import
+--     (figure-alt-a-completer, docx-controle-import.py) ;
+--   * copyright et source sur chaque image : le cockpit tient les crédits image par image,
+--     et szh-numerotation.lua ne répète pas un crédit identique sous la figure.
+-- `autres` : ce qu'un tableau de mise en page portait d'autre que des images (FG), gardé à
+-- la suite dans le bloc ; szh-grille.lua l'imprime sous les images.
 local function poser_groupe(imgs, rangees, bloc, autres)
   local nfig, nalt = 0, 0
   local legende = trim(nettoyer_figure(bloc.legende or ''))
@@ -535,8 +504,7 @@ function Pandoc(doc)
     return ordinal_table
   end
 
-  -- 1) retirer les paragraphes déjà bakés en <caption> de tableau (appariement au
-  --    texte exact du sidecar, gras non requis)
+  -- 1) Retire les paragraphes déjà posés en <caption> de tableau (à texte égal).
   local blocs = pandoc.List()
   for _, b in ipairs(doc.blocks) do
     if b.t == 'Para' and next(legT) ~= nil and legT[normaliser(s(b))] then
@@ -546,15 +514,14 @@ function Pandoc(doc)
     end
   end
 
-  -- 2) figures : image seule + légende voisine (avant, puis après)
+  -- 2) Figures.
   local consommes = {}
   local sortie = pandoc.List()
   for idx, b in ipairs(blocs) do
     if consommes[idx] then goto continue end
-    -- Figure déjà formée par le lecteur docx (légende stylée dans le Word) : on
-    -- l'aplatit avant tout le reste. Avec légende, elle est complète et ne doit surtout
-    -- pas repasser par la règle du voisinage, qui lui en collerait une autre ; sans
-    -- légende, elle redevient une image seule et suit le chemin ordinaire.
+    -- Figure formée par le lecteur docx. Avec légende, elle est complète et ne passe pas
+    -- par la règle du voisinage, qui lui en donnerait une autre ; sans légende, elle
+    -- redevient une image seule et suit le chemin ordinaire.
     if b.t == 'Figure' then
       local imgf, capf = figure_a_plat(b)
       if imgf then
@@ -568,8 +535,8 @@ function Pandoc(doc)
         b = pandoc.Para({ imgf })
       end
     end
-    -- Bloc tableau du gabarit (ligne FT) : ses champs sont déjà dans tables/table-NN.html
-    -- (docx-tables.py) ; ses clés quittent le corps ici, juste devant LUI.
+    -- Bloc tableau du gabarit (ligne FT) : ses clés, juste avant le tableau, quittent le
+    -- corps.
     if b.t == 'Table' then
       local bloc = tableauxP[ordinal_suivant()]
       if bloc and not bloc.pose then
@@ -579,8 +546,8 @@ function Pandoc(doc)
       sortie:insert(b)
       goto continue
     end
-    -- Tableau de mise en page d'images (ligne FG) : szh-meta.lua l'a déjà remplacé par un
-    -- bloc `.szh-grille` marqué `szh-tableau`, une rangée du tableau par paragraphe.
+    -- Tableau de mise en page d'images (ligne FG) : szh-meta.lua l'a remplacé par un bloc
+    -- `.szh-grille` marqué `szh-tableau`, un paragraphe par rangée du tableau.
     if b.t == 'Div' and b.attributes['szh-tableau'] then
       local bloc = grillesP[tonumber(b.attributes['szh-tableau'])]
                    or { legende = '', alt = '', credit = '', source = '', note = '', cles = {} }
@@ -601,25 +568,23 @@ function Pandoc(doc)
         nfig, nalt = nfig + dfig, nalt + dalt
         sortie:insert(raw)
       else
-        -- Plus une seule image lisible : le contenu reste, tel quel, hors du bloc.
+        -- Aucune image lisible : le contenu reste tel quel, hors du bloc.
         b.attributes['szh-tableau'] = nil
         for _, dedans in ipairs(b.content) do sortie:insert(dedans) end
       end
       goto continue
     end
-    -- Bloc du gabarit : tout est écrit, il n'y a rien à deviner. La règle du voisinage est
-    -- court-circuitée EXPRÈS — un paragraphe de corps tout en gras juste au-dessus de la
-    -- figure lui volerait sa légende alors que l'autrice ou l'auteur en a tapé une.
+    -- Bloc figure du gabarit : les valeurs sont données, la règle du voisinage ne
+    -- s'applique pas. Un paragraphe en gras juste au-dessus lui prendrait sa légende.
     do
       local lot = images_seules(b)
       local entree = lot and blocsP[base_fichier(lot[1].src)]
       if entree and not entree.bloc.pose then
         local bloc = entree.bloc
-        -- Les images de CE paragraphe, puis des paragraphes d'images qui suivent, tant
-        -- qu'elles appartiennent toutes au même bloc : (a) deux images dans un paragraphe,
-        -- (b) plusieurs paragraphes à la suite. Une image étrangère au bloc arrête la
-        -- collecte ; si c'est dans le tout premier paragraphe, rien n'est posé (voir plus
-        -- bas : le bloc reste alors visible, et averti).
+        -- Rassemble les images de ce paragraphe et des paragraphes d'images qui suivent,
+        -- tant qu'elles appartiennent toutes au même bloc. Une image étrangère au bloc
+        -- arrête la collecte ; dans le premier paragraphe, rien n'est posé et le bloc
+        -- reste visible, avec un avertissement.
         local imgs, rangees, j = {}, {}, idx
         while j <= #blocs and #imgs < #bloc.images do
           local l = images_seules(blocs[j])
@@ -635,12 +600,10 @@ function Pandoc(doc)
           if j > idx then consommes[j] = true end
           j = j + 1
         end
-        -- Décision de Robin (29.09.2026) : des paragraphes d'UNE image chacun, à la suite sous
-        -- le même en-tête (cas b), sont des images CÔTE À CÔTE — une seule rangée (« 2 »,
-        -- « 3 »… jusqu'à « 6 », toutes dans la table ; au-delà, « auto »), jamais « 1-1 ».
-        -- Des paragraphes qui portent chacun PLUSIEURS images dessinent, eux, des rangées
-        -- voulues (un tableau de mise en page que le nettoyeur a posé à plat, par exemple) :
-        -- leur forme est gardée.
+        -- Des paragraphes d'une image chacun forment une seule rangée d'images côte à côte
+        -- (« 2 » à « 6 », au-delà « auto »). Des paragraphes de plusieurs images dessinent
+        -- des rangées voulues, par exemple un tableau de mise en page mis à plat par le
+        -- nettoyeur : leur forme est gardée.
         local une_par_paragraphe = #rangees > 1
         for _, r in ipairs(rangees) do
           if r ~= 1 then une_par_paragraphe = false end
@@ -663,7 +626,7 @@ function Pandoc(doc)
         end
       end
     end
-    -- cas soudé : « Légende : … [image] » dans un seul paragraphe
+    -- Légende et image dans un seul paragraphe.
     local cap_soude, img_soude = para_legende_et_image(b)
     if cap_soude then
       local propre = trim(nettoyer_figure(cap_soude))
@@ -675,6 +638,7 @@ function Pandoc(doc)
         goto continue
       end
     end
+    -- Image seule et légende voisine, cherchée avant puis après.
     local img = para_image(b)
     if img then
       local cap, capidx = nil, nil
@@ -698,10 +662,8 @@ function Pandoc(doc)
         sortie:insert(pandoc.Para({ img }))
         nfig = nfig + 1
       else
-        -- Image seule sans légende : sa description est le descr de Word, pas une
-        -- légende. La laisser là en ferait une <figcaption> visible au rendu
-        -- (implicit_figures) ; on la déplace en {alt="…"}, ou on la jette si elle
-        -- est automatique.
+        -- Image sans légende : sa description est le descr de Word. Laissée là, pandoc en
+        -- ferait une <figcaption> visible (implicit_figures) ; elle passe en {alt="…"}.
         nalt = nalt + alt_depuis_word(img, nil)
         sortie:insert(pandoc.Para({ img }))
       end
@@ -711,11 +673,9 @@ function Pandoc(doc)
     ::continue::
   end
 
-  -- 3) Balayage final : une description automatique de Word survit là où les règles
-  --    ci-dessus ne passent pas, typiquement une vignette dans un lien
-  --    (`[![descr](img)](url)`), qui n'est pas un para_image. On la jette ici aussi.
-  --    No-op sur ce qui a déjà été traité au-dessus.
-  --    (pandoc.Blocks() : `sortie` est une pandoc.List générique, sans :walk.)
+  -- 3) Jette les descriptions automatiques restées là où les règles ci-dessus ne passent
+  --    pas, par exemple une image dans un lien (`[![descr](img)](url)`).
+  --    pandoc.Blocks() : `sortie` est une pandoc.List, qui n'a pas :walk.
   doc.blocks = pandoc.Blocks(sortie):walk({
     Image = function(img)
       local descr = trim(s(img.caption))
@@ -726,8 +686,7 @@ function Pandoc(doc)
       return nil
     end,
   })
-  -- Garantie « rien ne disparaît » : un bloc du gabarit qu'on n'a pas su poser a gardé ses
-  -- paragraphes d'étiquette dans le texte (ils ne sont retirés qu'à la pose) — on le dit.
+  -- Un bloc du gabarit non posé a gardé ses paragraphes dans le texte : on le signale.
   for _, bloc in ipairs(tousP) do
     if not bloc.pose then avertir_bloc_non_repris(bloc) end
   end

@@ -1,18 +1,16 @@
--- Lit UNE clé de premier niveau d'un YAML (ausgabe.yaml, buch.yaml, une fiche <slug>.meta.yaml)
--- et l'imprime sur stdout, sans fin de ligne, en passant par le lecteur pandoc lui-même :
--- le Makefile lit ainsi la configuration exactement comme pandoc la relira à la compilation.
--- Remplace l'analyseur ligne à ligne maison qu'il portait jusqu'ici.
+-- Imprime sur stdout, sans fin de ligne, une clé de premier niveau d'un YAML (ausgabe.yaml,
+-- buch.yaml, une fiche <slug>.meta.yaml). Le fichier est lu par le lecteur de pandoc : le
+-- Makefile voit la configuration comme pandoc la verra à la compilation.
 --
 --   pandoc lua szh-lire-config.lua <fichier.yaml> <cle>
 --
--- <cle> peut être un chemin pointé (impression.profil-cmjn) : il descend dans les maps,
--- mais une clé de premier niveau qui porte ce nom exact gagne toujours.
+-- <cle> peut être un chemin pointé (impression.profil-cmjn) qui descend dans les maps ;
+-- une clé de premier niveau qui porte ce nom exact passe avant.
 --
--- Méthode : le fichier est enveloppé dans un bloc de métadonnées markdown (--- ... ---) et
--- lu par pandoc.read(texte, 'markdown-smart') ; le « -smart » coupe la conversion des
--- guillemets droits, apostrophes et tirets en signes typographiques, pour rendre les
--- scalaires tels quels (une couleur #5F9FBC, un slug avec un double tiret, un titre qui finit
--- par "..."). La clé cherchée est ensuite lue dans doc.meta[cle].
+-- Le fichier est enveloppé dans un bloc de métadonnées (--- ... ---) et lu par
+-- pandoc.read(texte, 'markdown-smart'). « -smart » garde les guillemets droits,
+-- apostrophes et tirets tels quels (une couleur #5F9FBC, un slug à double tiret, un titre
+-- qui finit par "...").
 --
 -- Ce qu'imprime chaque forme :
 --   cle: valeur                     -> valeur (MetaString/MetaInlines, stringifiée)
@@ -21,24 +19,16 @@
 --     - a                              liste en blocs (MetaList) -> a b
 --     - b
 --   cle:                            -> bloc map (MetaMap) -> la première valeur non vide,
---     fr: Bonjour                      dans un ordre déterministe : fr, de, it, en, puis les
---     de: Hallo                        autres clés triées (pandoc rend une map en table Lua,
---                                       et l'ordre d'itération d'une table n'est pas celui du
+--     fr: Bonjour                      dans l'ordre fr, de, it, en, puis les autres clés
+--     de: Hallo                        triées (l'ordre d'une table Lua n'est pas celui du
 --                                       fichier)
 --   cle: true / false                -> MetaBool -> "true" / "false"
 --
--- Code de sortie : 0 si la clé existe (valeur vide ou non) ; 1 si elle est absente, si le
--- fichier est illisible, ou si pandoc.read échoue sur le contenu.
+-- Code de sortie : 0 si la clé existe, même vide (`cle:`, `cle: ""`, `cle: ~`) ; 1 si
+-- elle est absente, si le fichier est illisible ou si pandoc.read échoue.
 --
--- Clé présente mais sans valeur (`cle:`, `cle: ""`, `cle: ~`) : mesuré à la main sous pandoc
--- 3.5, dans les combinaisons LF/CRLF et avec/sans BOM, en fin de fichier et suivie d'une
--- autre clé : la clé reste présente dans doc.meta (MetaString ou MetaInlines vide), jamais
--- omise. Le repli textuel envisagé pour ce cas n'est donc pas nécessaire ici.
---
--- BOM UTF-8 en tête : ôté avant l'enveloppe. Sans ce retrait, pandoc.read échoue (« did not
--- find expected <document start> ») car le BOM atterrit au milieu de la première ligne, entre
--- le "---" d'ouverture et le nom de la première clé. CRLF : laissé tel quel, pandoc.read le
--- digère seul (mesuré, y compris pour une liste en blocs).
+-- Le BOM UTF-8 de tête est retiré avant l'enveloppe : placé entre « --- » et la première
+-- clé, il ferait échouer pandoc.read. Les fins de ligne CRLF sont acceptées telles quelles.
 
 local chemin, cle = arg[1], arg[2]
 if not chemin or not cle or cle == '' then
@@ -51,7 +41,7 @@ if not fh then os.exit(1) end
 local brut = fh:read('a') or ''
 fh:close()
 
--- BOM UTF-8 en tête seulement : un BOM ailleurs dans le texte n'arrive jamais dans nos fiches.
+-- BOM UTF-8 en tête de fichier seulement.
 brut = brut:gsub('^\239\187\191', '')
 
 local texte = '---\n' .. brut .. '\n---\n'
@@ -59,8 +49,8 @@ local ok, doc = pcall(pandoc.read, texte, 'markdown-smart')
 if not ok then os.exit(1) end
 
 local valeur = doc.meta[cle]
--- Chemin pointé (`impression.profil-cmjn`) : une sous-clé d'une map, lue seulement si
--- aucune clé de premier niveau ne porte ce nom exact.
+-- Chemin pointé : une sous-clé, lue seulement si aucune clé de premier niveau ne porte ce
+-- nom exact.
 if valeur == nil and cle:find('.', 1, true) then
   local premier = true
   valeur = doc.meta
@@ -73,14 +63,14 @@ if valeur == nil and cle:find('.', 1, true) then
 end
 if valeur == nil then os.exit(1) end
 
--- Ordre déterministe pour une MetaMap (title: fr/de/..., impression: grammage/dos-mm/...).
+-- Ordre des sous-clés d'une MetaMap (title: fr/de/..., impression: grammage/dos-mm/...).
 local ORDRE_LANGUES = { 'fr', 'de', 'it', 'en' }
 
--- Convertit une valeur de meta (quel que soit son type pandoc) en la chaîne de sortie.
--- Déclarée d'avance : elle et premiere_valeur_non_vide s'appellent l'une l'autre.
+-- Convertit une valeur de meta, de tout type pandoc, en chaîne de sortie. Déclarée
+-- d'avance : elle et premiere_valeur_non_vide s'appellent l'une l'autre.
 local valeur_depuis_meta
 
--- MetaMap -> la première sous-valeur non vide, dans l'ordre déterministe ci-dessus.
+-- MetaMap -> la première sous-valeur non vide, dans l'ordre ci-dessus.
 local function premiere_valeur_non_vide(map)
   local vues = {}
   for _, sous_cle in ipairs(ORDRE_LANGUES) do
@@ -116,7 +106,7 @@ valeur_depuis_meta = function(v)
   elseif t == 'table' then
     return premiere_valeur_non_vide(v)
   else
-    -- 'string' (MetaString), 'Inlines' (MetaInlines), 'Blocks' (MetaBlocks) : un scalaire.
+    -- MetaString, MetaInlines ou MetaBlocks : un scalaire.
     return pandoc.utils.stringify(v)
   end
 end

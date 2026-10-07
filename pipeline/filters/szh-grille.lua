@@ -7,38 +7,32 @@
 --   ![](media/d.png){alt="…"}
 --   :::
 --
--- Un numéro, une légende, un bloc qui ne se coupe pas — c'est ce qu'attend une planche de
--- photos ou un avant/après. Le contrat d'écriture vit dans lib/references.js, côté cockpit ;
--- les deux fichiers portent la même table de dispositions, et test/js/contrats.test.js
--- refuse qu'elles divergent.
+-- La grille a un numéro, une légende, et ne se coupe pas d'une page à l'autre. Le format
+-- d'écriture est défini dans lib/references.js (cockpit), qui porte la même table de
+-- dispositions ; test/js/contrats.test.js vérifie qu'elles sont identiques.
 --
--- Ce qui sort :
+-- Sortie :
 --   <figure class="szh-grille szh-grille-2-2">
 --     <figcaption>Figure 3 — Légende</figcaption>       (posée par szh-numerotation.lua)
 --     <div class="szh-grille-rangee">
 --       <span class="szh-grille-case" style="flex-grow:1.5000"><img …></span>
 --       …
 --
--- Pourquoi flex-grow porte le rapport largeur/hauteur de l'image, et non « une colonne par
--- image » : dans une rangée dont les cases ont une base nulle, une croissance
--- proportionnelle au rapport donne à toutes les images la même hauteur, et la rangée
--- remplit exactement la colonne. C'est la mise en page justifiée des planches imprimées.
--- Quand toutes les images ont le même format — le cas ordinaire d'une série — cela revient
--- à des colonnes égales. Aucune image n'est jamais recadrée.
+-- flex-grow vaut le rapport largeur/hauteur de l'image : avec une base nulle, toutes les
+-- images d'une rangée ont alors la même hauteur et la rangée remplit la colonne. Des images
+-- de même format donnent des colonnes égales. Aucune image n'est recadrée.
 --
--- Le mode « auto » (disposition absente, vide, « auto », ou incohérente avec le nombre
--- d'images) choisit la disposition dont le bloc rendu s'approche le plus de CIBLE fois la
--- largeur de la colonne. Deux panoramas partent donc l'un sur l'autre, deux portraits côte
--- à côte : c'est ce que ferait un maquettiste, et c'est mesuré sur les fichiers.
+-- Le mode « auto » (disposition absente, vide, « auto » ou incohérente avec le nombre
+-- d'images) choisit la disposition dont la hauteur rendue s'approche le plus de CIBLE fois
+-- la largeur de la colonne : deux panoramas l'un sur l'autre, deux portraits côte à côte.
 --
--- Place dans la chaîne : avant szh-figure.lua — une grille tombée à une seule image se
--- dissout en paragraphe, et c'est szh-figure.lua qui en refera une figure sous le lecteur
--- de l'aperçu — donc avant szh-numerotation.lua, qui numérote la figure produite ici et y
--- pose les crédits de toutes ses images.
+-- Place dans la chaîne : avant szh-figure.lua, qui refait une figure d'une grille réduite
+-- à une image dans l'aperçu, et donc avant szh-numerotation.lua, qui numérote la figure et
+-- y pose les crédits de toutes ses images.
 
 local utils = pandoc.utils
 
--- Module commun (a_classe) : un chargement raté arrête la compilation.
+-- Module commun (a_classe). Sans lui, la compilation s'arrête.
 local commun
 do
   local function dossier_ce_fichier()
@@ -59,13 +53,12 @@ end
 local CLASSE = 'szh-grille'
 local AUTO = 'auto'
 
--- Six images au plus. Au-delà, la colonne n'a plus assez de largeur pour que chacune se
--- lise : le geste juste est de scinder en deux figures. Le cockpit l'interdit ; ici, on
--- compose quand même — un .md édité à la main ne doit pas faire échouer un rendu.
+-- Six images au plus, au-delà desquelles elles deviennent trop petites. Le cockpit refuse
+-- d'en mettre plus ; un .md édité à la main se compose quand même, avec un avertissement.
 local MAX = 6
 
--- ⚠ Table recopiée depuis lib/references.js (DISPOSITIONS). Les deux doivent rester
---   identiques : le menu du cockpit propose ce que ce filtre sait composer.
+-- Copie de DISPOSITIONS (lib/references.js) : le menu du cockpit propose ce que ce filtre
+-- sait composer.
 local DISPOSITIONS = {
   [2] = { '2', '1-1' },
   [3] = { '3', '2-1', '1-2', '1-1-1' },
@@ -74,7 +67,7 @@ local DISPOSITIONS = {
   [6] = { '3-3', '2-2-2', '6' },
 }
 
--- ⚠ Recopiée elle aussi depuis lib/references.js (GRILLE_CIBLE).
+-- Copie de GRILLE_CIBLE (lib/references.js).
 local CIBLE = 0.62
 
 -- Rangées d'une disposition : « 2-2 » -> { 2, 2 } ; nil si la forme n'est pas celle-là.
@@ -87,7 +80,7 @@ local function rangees_de(code)
     liste[#liste + 1] = v
   end
   if #liste == 0 then return nil end
-  -- Une suite qui ne totalise pas le compte attendu est vérifiée par l'appelant.
+  -- L'appelant vérifie que le total correspond au nombre d'images.
   return liste
 end
 
@@ -104,8 +97,8 @@ local function disposition_connue(code, n)
   return false
 end
 
--- Largeur et hauteur naturelles d'une image, en pixels ; nil si elle est illisible.
--- Même lecture que szh-numerotation.lua : la mediabag porte les fichiers déjà chargés.
+-- Largeur et hauteur naturelles d'une image, en pixels, lues dans la mediabag ; nil si
+-- elle est illisible.
 local function mesure_image(src)
   local ok, _, contenu = pcall(pandoc.mediabag.fetch, src)
   if not ok or type(contenu) ~= 'string' then return nil end
@@ -116,11 +109,10 @@ local function mesure_image(src)
   return l, h
 end
 
--- Mode automatique. `ratios` donne largeur/hauteur de chaque image, dans l'ordre ; une
--- seule valeur manquante et l'on rend le repli — la première disposition de la table —
--- plutôt qu'un calcul fait sur des carrés imaginaires.
--- Une rangée justifiée sur la largeur de la colonne a pour hauteur 1 / Σ(ses ratios) :
--- c'est la somme de ces hauteurs que l'on compare à CIBLE.
+-- Mode automatique. `ratios` donne largeur/hauteur de chaque image, dans l'ordre. S'il en
+-- manque un, rend la première disposition de la table.
+-- Une rangée de la largeur de la colonne a pour hauteur 1 / Σ(ses ratios) ; la somme des
+-- hauteurs des rangées est comparée à CIBLE.
 local function disposition_auto(n, ratios)
   local codes = DISPOSITIONS[n]
   if not codes then return nil end
@@ -144,8 +136,7 @@ local function disposition_auto(n, ratios)
   return meilleur
 end
 
--- Au-delà de six images, aucune disposition n'est nommée : on remplit des rangées de trois,
--- la dernière portant le reste. Le rendu reste lisible, et le cockpit, lui, a refusé.
+-- Au-delà de MAX images : des rangées de trois, la dernière portant le reste.
 local function rangees_de_secours(n)
   local liste = {}
   local reste = n
@@ -156,26 +147,9 @@ end
 
 local a_classe = commun.a_classe
 
--- Les images du bloc, dans l'ordre, chacune avec sa légende visible, et ce que le bloc
--- contient d'autre. Deux lectures possibles, et il faut les deux — c'est le piège de ce
--- filtre :
---   * plusieurs images en suite dans un même paragraphe (la forme que le cockpit écrit,
---     et la seule sous commonmark_x) : la légende est la description de l'Image, l'alt est
---     resté dans ses attributs ;
---   * une image seule dans son paragraphe sous le lecteur `markdown` : implicit_figures en
---     a déjà fait une Figure, la légende est celle de la figure, et la description de
---     l'Image porte l'alt, que le lecteur y a déplacé.
--- Prendre la description de l'Image dans les deux cas donnait la légende de l'une et le
--- texte alternatif de l'autre, sans que rien ne le dise.
--- Ce qui n'est ni l'un ni l'autre est conservé tel quel, à la suite des rangées : rien de
--- ce qu'un rédacteur a écrit ne doit disparaître sans un mot.
 -- Le lecteur `commonmark_x+sourcepos` de l'aperçu enveloppe chaque bloc imbriqué dans un
--- Div « wrapper=1 » : les paragraphes d'images d'une grille arrivaient donc en Div, jamais
--- en Para, et collecter() les rangeait tous dans `autres` — la grille n'était pas construite
--- du tout, l'aperçu montrait des images l'une sous l'autre là où le PDF composait ses
--- rangées (constaté le 11.09.2026). szh-sourcepos.lua ne défait pas ces Div, à dessein :
--- c'est d'eux que pandoc tire le `data-pos` de bloc dont dépend le clic vers la source.
--- On les traverse donc ici, où l'on sait ce qu'on cherche.
+-- Div « wrapper=1 », d'où pandoc tire le `data-pos` du clic vers la source. Ces Div sont
+-- laissés en place par szh-sourcepos.lua et traversés ici pour trouver les images.
 local function sans_enveloppe(blocs)
   local plat = pandoc.Blocks({})
   for _, b in ipairs(blocs) do
@@ -188,6 +162,14 @@ local function sans_enveloppe(blocs)
   return plat
 end
 
+-- Rend les images du bloc, dans l'ordre, chacune avec sa légende visible, et les autres
+-- blocs, conservés tels quels après les rangées. Deux formes à lire :
+-- - plusieurs images dans un même paragraphe (ce qu'écrit le cockpit, et la seule forme
+--   sous commonmark_x) : la légende est la description de l'Image, l'alt reste dans ses
+--   attributs ;
+-- - une image seule dans son paragraphe, sous le lecteur `markdown` : implicit_figures en
+--   a fait une Figure, dont la légende est la légende, et la description de l'Image porte
+--   l'alt.
 local function collecter(div)
   local trouvees, autres = {}, pandoc.Blocks({})
   for _, b in ipairs(sans_enveloppe(div.content)) do
@@ -211,8 +193,7 @@ local function collecter(div)
       local legende = utils.blocks_to_inlines(b.caption.long)
       b.content:walk({
         Image = function(img)
-          -- La légende de la figure va à la première image seulement : une Figure n'en
-          -- porte qu'une, et la recopier sur les suivantes en ferait autant de légendes.
+          -- La légende de la Figure va à la première image seulement.
           trouvees[#trouvees + 1] = { image = img,
             legende = (#trouvees == avant) and legende or pandoc.Inlines({}) }
         end
@@ -225,50 +206,33 @@ local function collecter(div)
   return trouvees, autres
 end
 
--- Dans une grille, la description de l'image ne porte plus la légende de la figure — on
--- vient de la relever, et c'est la figure qui la portera. Si un alt= est écrit, il devient
--- donc la seule source du texte alternatif, et la description est vidée : le writer HTML
--- fait déjà primer l'attribut, mais laisser les deux ferait dépendre le rendu d'une
--- préséance qu'aucune ligne du dépôt ne garantit.
+-- La légende passe à la figure. Si un alt= est écrit, la description de l'image est vidée
+-- et l'alt= devient la seule source du texte alternatif.
 --
--- ⚠ L'attribut alt= est laissé en place, et ce n'est pas un oubli. C'est lui, et lui seul,
--- que lit szh-apercu-lecteur-ecran.lua pour distinguer les trois cas de son encadré
--- « ce qu'un lecteur d'écran reçoit » : un alt= rempli, un alt="" voulu (image décorative)
--- et un alt absent (rien de saisi, et l'encadré crie). Le déplacer dans la description
--- rendait un alt= saisi indiscernable d'une légende recopiée, et un alt="" volontaire
--- indiscernable d'un oubli. La normalisation, quand la grille est numérotée, est faite
--- plus tard par szh-numerotation.lua — après que l'encadré a lu l'intention.
+-- L'attribut alt= reste en place : szh-apercu-lecteur-ecran.lua le lit pour distinguer un
+-- alt rempli, un alt="" voulu (image décorative) et un alt absent. szh-numerotation.lua
+-- normalise ensuite.
 --
--- La classe .szh-hors-figure, elle, n'a aucun sens ici : c'est la grille entière qui est
--- la figure. On l'ôte plutôt que de la laisser sortir sur le <img>.
+-- La classe .szh-hors-figure est retirée : c'est la grille entière qui est la figure.
 local function normaliser_alt(img)
   img.classes = img.classes:filter(function(c) return c ~= 'szh-hors-figure' end)
   if img.attributes['alt'] ~= nil then img.caption = pandoc.Inlines({}) end
 end
 
--- Une rangée : un Div qui porte le flex, une case par image qui porte sa croissance et
--- sa max-width. `rangees` (nombre total de rangées de la grille) est posé ici en
--- --szh-rangees, sur ce Div : print.css en lit cette variable pour calculer le plafond
--- de hauteur divisé par le nombre de rangées. La case, elle, reçoit une propriété
--- personnalisée --szh-case-max (calculée ici, appliquée en print.css) qui donne à
--- l'image exactement la hauteur plafonnée, sans déformation — WeasyPrint 69 ne
--- rétrécit pas en max-height sur l'image, il l'écrase. C'est une propriété personnalisée,
--- pas une max-width directe, pour pouvoir l'annuler sans !important depuis une requête
--- d'écran (sous 34rem, la rangée se défait et chaque image reprend le plafond entier).
--- ⚠ Posé sur le Div de la rangée, pas sur la <figure> englobante : szh-legende-avant.lua
--- réécrit à la main la balise ouvrante de la <figure> et n'y reprend que l'id et les
--- classes — tout `style` qu'on y poserait s'y perdrait (mesuré). Un Div de rangée, lui,
--- reste jusqu'au bout un bloc pandoc ordinaire, et son `style=` survit tel quel ; la
--- propriété personnalisée est héritée par les <img> qu'il contient, comme si elle avait
--- été posée plus haut. La max-width sur la case est aussi écrite en style=, donc elle
--- y survit.
+-- Une rangée : un Div en flex, avec une case par image.
+-- - Le Div porte --szh-rangees, le nombre de rangées de la grille : print.css partage le
+--   plafond de hauteur des figures entre les rangées. Il est posé sur le Div et non sur la
+--   <figure>, car szh-legende-avant.lua réécrit la balise de la <figure> sans son `style`.
+-- - Chaque case porte sa croissance et --szh-case-max, la largeur qui donne à l'image la
+--   hauteur plafonnée. Un max-height déformerait l'image dans WeasyPrint. Une propriété
+--   personnalisée se laisse annuler sans !important sur écran étroit, où la rangée se
+--   défait.
 local function rangee(images, ratios, debut, combien, rangees)
   local cases = pandoc.Inlines({})
   for k = debut, debut + combien - 1 do
     local r = ratios[k]
     local attrs = {}
-    -- Sans mesure, la case garde la croissance de la feuille de style (1) : les images de
-    -- la rangée se partagent alors la largeur à parts égales.
+    -- Sans mesure, la case garde la croissance 1 de la feuille de style : parts égales.
     if type(r) == 'number' and r > 0 then
       attrs['style'] = string.format(
         'flex-grow:%.4f;--szh-case-max:calc((var(--plafond-figure) - 12px)'
@@ -285,13 +249,10 @@ function Div(div)
   local trouvees, autres = collecter(div)
   local n = #trouvees
 
-  -- Rien à mettre en grille : le bloc n'a plus rien à dire, on rend ce qu'il portait.
+  -- Aucune image : rend le contenu du bloc.
   if n == 0 then return div.content end
-  -- Une seule image : ce n'est pas une grille, c'est une figure — celle qu'elle aurait été
-  -- sans le bloc. On la refait ici plutôt que de rendre le paragraphe à szh-figure.lua :
-  -- sous le lecteur `markdown`, la légende visible est déjà passée sur la Figure et la
-  -- description de l'image porte l'alt ; lui rendre un paragraphe ferait de l'alt la
-  -- légende, et la vraie légende disparaîtrait.
+  -- Une seule image : une figure ordinaire, construite ici. Rendue en paragraphe sous le
+  -- lecteur `markdown`, l'alt deviendrait la légende et la vraie légende serait perdue.
   if n == 1 then
     local t = trouvees[1]
     local legende_seule = pandoc.Inlines(t.legende)   -- relevée avant qu'on y touche
@@ -311,10 +272,8 @@ function Div(div)
   local images = {}
   for i, t in ipairs(trouvees) do images[i] = t.image end
 
-  -- La légende de la figure : la première qu'une image porte. Faute d'alt= sur cette
-  -- image-là, elle lui reste aussi comme description, où elle sert de texte alternatif de
-  -- repli — exactement comme pour une figure ordinaire, dont le lecteur markdown recopie
-  -- la légende dans l'alt.
+  -- La légende de la figure est la première trouvée. Sans alt= sur cette image, elle reste
+  -- aussi sa description et sert de texte alternatif, comme pour une figure ordinaire.
   local legende = nil
   for _, t in ipairs(trouvees) do
     if #t.legende > 0 then legende = pandoc.Inlines(t.legende); break end
@@ -354,13 +313,8 @@ function Div(div)
   end
   contenu:extend(autres)
 
-  -- La classe de disposition rend le HTML lisible et donne prise à une feuille de revue
-  -- qui voudrait traiter un cas à part, mais ce n'est plus elle qui sert print.css : c'est
-  -- --szh-rangees qui sert, posé par la fonction rangee() ci-dessus sur chaque Div de
-  -- rangée (et non ici, sur la <figure> — voir pourquoi dans son commentaire). Une image
-  -- de figure a un plafond de hauteur (--plafond-figure, socle.css), et dans une grille
-  -- les rangées s'empilent : le plafond doit se partager entre elles, ce que
-  -- .szh-grille-case > img fait en divisant par --szh-rangees.
+  -- La classe de disposition (szh-grille-2-2…) n'est pas utilisée par print.css ; elle
+  -- permet à une feuille de style de traiter une disposition à part.
   return pandoc.Figure(
     contenu,
     { long = legende and pandoc.Blocks({ pandoc.Plain(legende) }) or pandoc.Blocks({}) },

@@ -1,32 +1,25 @@
 -- Import : détache la bibliographie du corps et l'écrit dans son propre fichier,
 --   <slug>.biblio.md    les références seules, sans titre, telles que pandoc les rend
 --   ::: {.szh-biblio src="<slug>.biblio.md"}    reste à leur place dans le .md
--- C'est le patron des tableaux (tables/table-NN.html + szh-tabelle-inclure.lua) : le
--- contenu détaché est un fichier, la place qu'il occupait est une référence. À la
--- compilation, szh-citations.lua résout la référence, pose le titre dans la langue de
--- l'article et ancre chaque entrée.
+-- Même principe que les tableaux (tables/table-NN.html et szh-tabelle-inclure.lua). À la
+-- compilation, szh-citations.lua lit le fichier, pose le titre dans la langue de l'article
+-- et ancre chaque entrée.
 --
--- Ce filtre ne décide rien. L'étendue à détacher est décidée par docx-meta.py, qui lit les
--- STYLES du .docx — le seul signal fiable, mesuré sur les 421 galleys publiés. Il arrive
--- ici en lignes B de $SZH_META (une clé de comparaison par paragraphe) et BT (le titre de
--- section, qui quitte le corps puisqu'il est reposé à la compilation).
+-- Les paragraphes à détacher sont choisis par docx-meta.py, d'après les styles du .docx.
+-- Il les transmet dans le fichier $SZH_META : une ligne B par paragraphe (sa clé, voir
+-- cle()) et une ligne BT pour le titre de section, retiré du corps car la compilation le
+-- repose.
 --
--- Sans lignes B — l'auteur n'a fourni aucune bibliographie — <slug>.biblio.md se crée
--- quand même, VIDE, avec son marqueur posé en fin d'article : c'est là qu'une
--- bibliographie se lit, et c'est là que la rédaction ira l'écrire après coup si le besoin
--- vient. Un fichier vide n'imprime rien à la compilation (szh-citations.lua, est_vide()) :
--- l'article sort exactement comme s'il n'avait pas de bibliographie, mais le geste pour en
--- ajouter une est désormais le même que pour n'importe quel article — ouvrir le fichier
--- dans l'arborescence du cockpit, jamais un geste à part. ⚠ Ceci ne vaut que pour un import
--- qui a lieu : un article déjà présent sur le disque, importé avant ce filtre, n'en reçoit
--- pas un rétroactivement — rien ici ne balaie les numéros existants.
+-- Sans ligne B, <slug>.biblio.md est créé vide et son marqueur placé en fin d'article : la
+-- rédaction peut y écrire une bibliographie plus tard. Un fichier vide n'imprime rien
+-- (szh-citations.lua, est_vide()).
 --
--- Doit tourner après szh-titres (les titres promus sont des Header) et avant
--- szh-tabelle-reference (les Table sont encore des Table).
+-- S'exécute après szh-titres (les titres promus sont des Header) et avant
+-- szh-tabelle-reference (les tableaux sont encore des Table).
 
 local utils = pandoc.utils
 
--- Module commun (constats) : un chargement raté arrête la conversion.
+-- Module commun. Sans lui, la conversion s'arrête.
 local commun
 do
   local function dossier_ce_fichier()
@@ -44,19 +37,16 @@ do
   commun = module
 end
 
--- Clé d'appariement : les quarante premiers caractères [A-Za-z0-9], et rien d'autre.
--- Identique à cle_comparaison() de docx-meta.py, classe par classe explicite des deux
--- côtés. Ce que le .docx et pandoc ne rendent pas pareil — tiret insécable, caractère en
--- police Symbole, tiret conditionnel, hyperlien sans cible — est de la ponctuation, ou vit
--- en fin de référence : la clé n'en voit rien.
+-- Clé d'appariement : les quarante premiers caractères [A-Za-z0-9]. Doit rester identique
+-- à cle_comparaison() de docx-meta.py. Elle ignore ce que le .docx et pandoc rendent
+-- différemment (tirets insécables ou conditionnels, ponctuation).
 local function cle(t)
   return (t:gsub('[^A-Za-z0-9]', '')):sub(1, 40)
 end
 
--- Un constat au rédacteur, au format que le cockpit lit déjà :
+-- Message au rédacteur, au format lu par le cockpit :
 --   [import-<ton>] <code> | <champ nommé> | … | <fr> | [de] <de>
--- stderr et articles-word/.import.log, comme avertir() de docx-meta.py : c'est dans la vue
--- « Word » que le rédacteur regarde après une conversion.
+-- Écrit sur stderr et dans articles-word/.import.log, comme avertir() de docx-meta.py.
 local function constat(ton, code, champs, fr, de)
   local nommes = {}
   for _, c in ipairs(champs) do nommes[#nommes + 1] = commun.sans_barre(c) end
@@ -75,7 +65,7 @@ local function slug_article()
   return (chemin:gsub('.*[/\\]', ''):gsub('%.docx$', ''))
 end
 
--- Les instructions de docx-meta.py : les clés de l'étendue, et celle du titre.
+-- Lit $SZH_META : rend les clés des lignes B et la clé du titre (BT).
 local function charger_meta()
   local bornes, titre = {}, nil
   local chemin = os.getenv('SZH_META')
@@ -94,29 +84,22 @@ local function charger_meta()
   return bornes, titre
 end
 
--- Point d'entrée de test : test/js/biblio.test.js charge ce fichier par dofile et compare
--- cle() à cle_comparaison() de docx-meta.py sur les mêmes textes. Comparer les deux sources
--- à l'œil ne prouverait rien du résultat, et c'est le résultat qui apparie.
+-- Pour test/js/biblio.test.js, qui compare cle() à cle_comparaison() de docx-meta.py.
 SZH_BIBLIO_DETACHER = { cle = cle }
 
 local function est_paragraphe(b)
   return b.t == 'Para' or b.t == 'Plain'
 end
 
--- L'étendue, retrouvée en remontant depuis la fin du document.
+-- Retrouve les paragraphes de la bibliographie en remontant depuis la fin du document.
 --
--- docx-meta.py annonce la clé de chaque paragraphe de l'étendue, y compris ceux qui ont
--- perdu le style en chemin : un paragraphe du corps n'a donc jamais sa clé dans la liste, et
--- c'est ce qui rend la remontée sûre. On consomme les clés en multi-ensemble — deux entrées
--- du même auteur institutionnel commencent par les mêmes quarante caractères, et les
--- compter à part était un décalage d'un paragraphe, mesuré sur le corpus.
+-- docx-meta.py donne la clé de chaque paragraphe à détacher ; un paragraphe du corps n'a
+-- pas sa clé dans la liste. Les clés se comptent avec leurs répétitions : deux références
+-- du même auteur institutionnel peuvent avoir la même clé.
 --
--- Les bornes sont les paragraphes appariés les plus extrêmes ; tout ce qui est entre elles
--- part avec la liste, apparié ou non. C'est ce qui répare le défaut mesuré sur le corpus —
--- un paragraphe dont la clé diverge (un caractère en police Symbole dans ses quarante
--- premiers signes) ne fait plus sortir de la liste tout ce qui le précède. Et le sens de
--- lecture — de la fin vers le haut — garantit qu'on ne remonte jamais au-dessus du premier
--- paragraphe apparié : le corps de l'article est hors d'atteinte.
+-- L'étendue va du premier au dernier paragraphe apparié ; tout ce qui est entre les deux
+-- part, apparié ou non. Ainsi une clé qui diverge (caractère en police Symbole) ne laisse
+-- pas une partie de la liste dans le corps.
 --
 -- Rend (début, fin, nombre de clés appariées).
 local function etendue(blocs, bornes)
@@ -134,8 +117,8 @@ local function etendue(blocs, bornes)
     if apparie(blocs[i]) then fin = i; break end
   end
   if not fin then return nil, nil, 0 end
-  -- Garde-fou : au-delà de l'étendue annoncée et d'une marge, on n'apparie plus rien de
-  -- sensé — une clé encore attendue est une clé qui a divergé, et il est temps de s'arrêter.
+  -- La remontée s'arrête au nombre de clés attendues plus une marge : une clé encore
+  -- attendue au-delà est une clé qui a divergé.
   local limite = #bornes + 5
   local debut, reconnus = fin, 0
   for i = fin, math.max(1, fin - limite), -1 do
@@ -151,11 +134,9 @@ local function etendue(blocs, bornes)
   return debut, fin, reconnus
 end
 
--- Le Word n'a pas de bibliographie détectée : le fichier se crée quand même, vide, et le
--- marqueur rejoint la fin de l'article — voir le commentaire d'en-tête. `io.open(…, 'w')`
--- écrase un fichier qui existerait déjà sous ce nom ; cela n'arrive jamais ici, la
--- conversion tournant toujours dans un dossier neuf (le dossier de l'article à l'import,
--- ou le chantier voisin d'un réimport, voir import-docx.sh et reimporter.py).
+-- Sans bibliographie détectée : crée <slug>.biblio.md vide et place le marqueur en fin
+-- d'article. Le fichier est ouvert en écriture sans risque d'écraser : la conversion
+-- tourne toujours dans un dossier neuf (import-docx.sh, reimporter.py).
 local function creer_biblio_vide(doc)
   local fichier = slug_article() .. '.biblio.md'
   local f = io.open(fichier, 'w')
@@ -194,9 +175,8 @@ function Pandoc(doc)
     return nil
   end
 
-  -- Le titre de section quitte le corps : il est reposé à la compilation, dans la langue de
-  -- l'article et selon le réglage de l'application. Cherché juste au-dessus de l'étendue,
-  -- et reconnu sur sa clé — pas sur son texte, et pas plus loin que trois blocs.
+  -- Le titre de section est retiré du corps, car la compilation le repose. Il est cherché
+  -- par sa clé dans les trois blocs au-dessus de l'étendue.
   local bloc_titre = nil
   if cle_titre then
     for i = debut - 1, math.max(1, debut - 3), -1 do
@@ -208,8 +188,8 @@ function Pandoc(doc)
     end
   end
 
-  -- L'étendue part en entier : les paragraphes qui ont perdu le style de bibliographie en
-  -- chemin sont dedans, et c'est justement ce qui les sauve.
+  -- Tous les paragraphes de l'étendue partent, y compris ceux qui ont perdu le style de
+  -- bibliographie. Les autres blocs (tableau, titre…) restent dans le corps.
   local refs, garde, pris = pandoc.List(), pandoc.List(), 0
   local slug = slug_article()
   local fichier = slug .. '.biblio.md'
@@ -222,7 +202,7 @@ function Pandoc(doc)
         refs:insert(b)
         pris = pris + 1
       else
-        garde:insert(b)            -- un bloc étranger à l'étendue n'est pas emporté
+        garde:insert(b)
       end
     elseif i ~= bloc_titre then
       garde:insert(b)
@@ -231,8 +211,8 @@ function Pandoc(doc)
 
   if pris == 0 then return nil end
 
-  -- Le fichier ne porte que les références, sans titre. Écrit dans le dossier de l'article :
-  -- pandoc tourne déjà dedans, comme tables/ et media/.
+  -- Le fichier ne porte que les références, sans titre. Il est écrit dans le dossier
+  -- courant, qui est celui de l'article.
   local opts = pandoc.WriterOptions({ wrap_text = 'none' })
   local texte = pandoc.write(pandoc.Pandoc(refs),
     'markdown-simple_tables-multiline_tables-grid_tables', opts)
@@ -251,13 +231,10 @@ function Pandoc(doc)
 
   doc.blocks = garde
 
-  -- Le compte, toujours : c'est la seule preuve qu'aucune référence n'est restée derrière.
-  -- Deux faits, et il faut les deux pour conclure à un reste. Une clé non appariée seule ne
-  -- prouve rien : le paragraphe est peut-être dans l'étendue, et il est alors parti quand
-  -- même. Moins de blocs qu'annoncé ne prouve rien non plus : pandoc rend parfois deux
-  -- paragraphes Word en un seul, ce qui ne perd rien. C'est leur conjonction qui signe un
-  -- paragraphe resté dehors — sur le corpus des 421 galleys, un seul article, et c'était un
-  -- intertitre de la liste promu en titre par szh-titres.
+  -- Un paragraphe est resté dans le corps seulement si deux conditions sont réunies : une
+  -- clé non appariée (seule, le paragraphe a pu partir dans l'étendue) et moins de
+  -- paragraphes détachés qu'annoncé (seul, pandoc a pu fusionner deux paragraphes Word).
+  -- Cas connu : un intertitre de la liste promu en titre par szh-titres.
   local manquants = (reconnus < #bornes and pris < #bornes) and (#bornes - pris) or 0
   if manquants > 0 then
     constat('avertissement', 'biblio-incomplete',
@@ -270,10 +247,8 @@ function Pandoc(doc)
         .. 'Einträge, geben Sie ihnen im Word die Formatvorlage für '
         .. 'Literaturverzeichnisse und importieren Sie neu.', manquants))
   else
-    -- Le cas nominal. La phrase le dit comme tel : le compte reste dans le journal, qui
-    -- est la preuve, mais l'écran n'a pas à faire lire une soustraction pour conclure que
-    -- tout s'est bien passé. Le cockpit lui substitue de toute façon sa propre phrase
-    -- (ctl.import.biblio-detachee) ; celle-ci sert au journal et aux vieux numéros.
+    -- Tout est détaché. Le cockpit affiche sa propre phrase (ctl.import.biblio-detachee) ;
+    -- celle-ci va au journal.
     constat('info', 'biblio-detachee',
       { 'article « ' .. slug .. ' »', 'attendus ' .. #bornes, 'detaches ' .. pris },
       string.format('Bibliographie correctement récupérée (%d paragraphe(s) sur %d).',

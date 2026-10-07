@@ -1,27 +1,19 @@
--- Place la légende avant l'image : pandoc écrit toujours <img> puis <figcaption>, et
--- l'ordre du DOM est celui que lisent le flux du PDF, l'extraction de texte et les
--- lecteurs d'écran — le corriger en CSS ne changerait que l'apparence. La Figure est
--- remplacée par la suite de blocs équivalente, seules les balises passant en HTML brut :
--- légende et image restent des blocs pandoc, donc alt, role, les data-* de crédits et
--- --embed-resources se comportent comme avant.
--- Doit tourner après szh-numerotation.lua, qui écrit « Figure N — », les crédits et
--- l'alt dans la Figure : après ce filtre-ci, il n'y a plus de Figure.
--- Exception : la <figcaption> d'une figure marquée .szh-credit-seul (szh-numerotation.lua,
--- images hors numérotation) ne porte pas de légende mais une mention de droits ; elle se
--- lit donc après l'image, comme dans l'usage imprimé. Une figure marquée
--- .szh-legende-dessous (livre normal, `legende: dessous`) garde aussi sa légende après.
--- La note de figure (<p class="szh-bloc-note">, posée par szh-numerotation.lua dans le
--- contenu de la Figure) reste toujours sous l'image, et après la <figcaption> d'un crédit
--- seul : elle est écartée du contenu et remise en dernier.
--- Réservé aux sorties HTML : un writer non-HTML jette les RawBlock html et les images
--- disparaîtraient. La garde ci-dessous le rappelle.
+-- Place la légende avant l'image. Pandoc écrit <img> puis <figcaption>, et l'ordre du DOM
+-- est celui du flux PDF, de l'extraction de texte et des lecteurs d'écran : le CSS ne
+-- changerait que l'apparence. La Figure est remplacée par une suite de blocs où seules les
+-- balises <figure> et <figcaption> sont en HTML brut ; légende et image restent des blocs
+-- pandoc (alt, role, data-* de crédits et --embed-resources fonctionnent normalement).
 --
--- ⚠ Les motifs Lua n'ont pas d'alternation « | » (ce n'est pas une expression régulière) :
--- '^(html|epub)' matchait le texte littéral « (html|epub) », jamais trouvé en tête de
--- FORMAT ('html5', 'epub3'…) — le filtre se désactivait donc toujours, quel que soit le
--- format. C'était la cause réelle de A9 (légende sous l'image au lieu d'avant) : le
--- reste du fichier était correct et n'a jamais tourné. Deux motifs simples, l'un ou
--- l'autre, remplacent l'alternation absente.
+-- S'exécute après szh-numerotation.lua, qui écrit « Figure N — », les crédits et l'alt
+-- dans la Figure.
+--
+-- La légende reste après l'image pour une figure .szh-credit-seul (image hors
+-- numérotation : la <figcaption> n'est qu'une mention de droits) et pour une figure
+-- .szh-legende-dessous (livre normal, `legende: dessous`). La note de figure
+-- (<p class="szh-bloc-note">) est toujours remise en dernier.
+--
+-- Sorties HTML seulement : un writer non-HTML jette les RawBlock html, et l'image
+-- disparaîtrait. Les motifs Lua n'ont pas d'alternative « | », d'où deux motifs.
 if not (FORMAT:match('^html') or FORMAT:match('^epub')) then return {} end
 
 -- Échappement HTML d'une valeur d'attribut (identifiant/classe d'un `![](){#id}`).
@@ -63,8 +55,7 @@ end
 function Figure(fig)
   local blocs = pandoc.Blocks({ pandoc.RawBlock('html', balise_ouvrante(fig)) })
   local apres = credit_seul(fig)
-  -- Figure sans légende : pas de <figcaption> vide. Une figure décorative garde son
-  -- <figure> et son image, szh-numerotation.lua l'ayant déjà déclarée décorative.
+  -- Figure sans légende : pas de <figcaption> vide.
   local legende = pandoc.Blocks({})
   if #fig.caption.long > 0 then
     legende:insert(pandoc.RawBlock('html',

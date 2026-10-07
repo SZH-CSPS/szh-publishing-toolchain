@@ -1,8 +1,7 @@
--- Construit les Figure que le lecteur `commonmark_x` de l'aperçu ne fait pas : il rend
--- `![lég](img)` en Para{Image}, là où le lecteur `markdown` (PDF et HTML) produit déjà
--- une Figure via l'extension implicit_figures. Les deux chaînes rendent ainsi le même
--- <figure><figcaption>. Idempotent : une image sans légende reste une image inline.
--- szh-numerotation.lua, branché après, a besoin des Figure construites ici.
+-- Aperçu : construit les Figure que le lecteur `commonmark_x` ne fait pas. Il rend
+-- `![lég](img)` en Para{Image}, alors que le lecteur `markdown` (PDF et HTML) en fait une
+-- Figure (extension implicit_figures). Une image sans légende reste une image en ligne.
+-- S'exécute avant szh-numerotation.lua, qui a besoin de ces Figure.
 
 local function image_seule(inls)
   local img = nil

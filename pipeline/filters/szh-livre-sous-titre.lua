@@ -1,17 +1,15 @@
--- Livre seulement : le sous-titre d'un chapitre, depuis la clé `subtitle` de sa fiche
--- <slug>.meta.yaml (par langue, comme `title` — voir szh-livre-titre.lua). Rien n'est écrit
--- quand la clé manque : la plupart des chapitres n'en ont pas.
+-- Livre seulement : pose sous le titre d'un chapitre le sous-titre lu dans la clé
+-- `subtitle` de sa fiche <slug>.meta.yaml (par langue, comme `title`, voir
+-- szh-livre-titre.lua). Rien n'est posé si la clé manque.
 --
--- Place dans la chaîne : APRÈS szh-livre-auteurs.lua et szh-livre-entete.lua, et c'est
--- voulu. Ces deux filtres cherchent leur emplacement « juste sous le titre » ou « sous le
--- bloc auteurs » ; un sous-titre déjà posé là les ferait se glisser entre le titre et lui.
--- Inséré en dernier, il passe devant eux : titre, sous-titre, auteur·e·s, encadré.
+-- Le second passage s'exécute après szh-livre-auteurs.lua et szh-livre-entete.lua, qui se
+-- placent juste sous le titre. Inséré en dernier juste sous le titre, le sous-titre passe
+-- devant eux : titre, sous-titre, auteur·e·s, encadré.
 --
--- Le texte passe par la typographie maison (voir plus bas), puis est écrit en HTML brut.
--- Un « // » y devient un <br> (retour à la ligne forcé).
+-- Le texte passe par la typographie maison, puis est écrit en HTML brut. « // » devient
+-- un <br>.
 
--- Module commun (contexte) : un chargement raté arrête la compilation, ce filtre ne
--- pouvant plus dire dans quelle langue il compose.
+-- Module commun. Sans lui le filtre ne peut pas travailler : la compilation s'arrête.
 local commun
 do
   local function dossier_ce_fichier()
@@ -70,10 +68,10 @@ local function sous_titre_de(meta)
   return ''
 end
 
--- Deux passages (le filtre est listé deux fois dans livre.mk). Le premier, AVANT
--- szh-typographie.lua, pose le sous-titre en Div « attente » : la typographie maison le
--- traite comme le reste du chapitre. Le second, à la place décrite plus haut, le retire et
--- le réécrit en <p class="szh-sous-titre"> sous le titre.
+-- Deux passages (le filtre est listé deux fois dans livre.mk). Le premier, avant
+-- szh-typographie.lua, pose le sous-titre dans un Div « attente » pour qu'il reçoive la
+-- typographie maison. Le second le retire et l'écrit en <p class="szh-sous-titre"> sous
+-- le titre.
 local ATTENTE = 'szh-sous-titre-attente'
 
 function Pandoc(doc)

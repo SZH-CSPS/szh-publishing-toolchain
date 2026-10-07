@@ -1,30 +1,21 @@
--- Bloc des auteur·e·s, posé dans le document et non par le gabarit.
+-- Pose le bloc des auteur·e·s dans le document, juste avant le marqueur
+-- « ::: {.szh-biblio src=…} ». Un gabarit pandoc ne peut écrire qu'après `$body$`, donc
+-- après la bibliographie ; ici, l'ordre du DOM (celui du PDF, de l'extraction de texte et
+-- des lecteurs d'écran) place les auteurs avant les références.
 --
--- Pourquoi il a quitté templates/szh-article.html : un gabarit pandoc ne sait rien
--- intercaler, il écrit ce qui suit `$body$`. Le bloc auteurs se retrouvait donc toujours
--- après la bibliographie, alors qu'il doit venir avant elle — les références ferment
--- l'article, elles ne sont pas suivies d'autre chose. Écrit ici, le bloc s'insère juste
--- devant le marqueur « ::: {.szh-biblio src=…} », et l'ordre du DOM — celui que lisent le
--- flux du PDF, l'extraction de texte et les lecteurs d'écran — devient le bon.
+-- S'exécute après szh-sections.lua (le titre du bloc ne reçoit pas de numéro de section)
+-- et avant szh-citations.lua (qui remplace le marqueur .szh-biblio par le titre et les
+-- entrées).
 --
--- Doit tourner après szh-sections.lua et avant szh-citations.lua :
---   * après szh-sections, sinon le titre du bloc recevrait un numéro de section (il n'en
---     porte pas : c'est un titre de clôture, comme celui de la bibliographie) ;
---   * avant szh-citations, qui dissout le marqueur .szh-biblio en titre + entrées. Après
---     lui, il n'y aurait plus de repère pour savoir où finit l'article.
+-- Le portrait est un <span> vide à fond CSS, pas un <img> : WeasyPrint balise tout <img>
+-- en /Figure, qui serait ici sans /Alt (PDF/UA-1 7.3). Voir print.css. Le <style> qui
+-- porte l'URL de chaque portrait reste dans l'en-tête du gabarit : --embed-resources ne
+-- réécrit url() que dans un <style>.
 --
--- Le balisage reproduit exactement celui que le gabarit écrivait, à la lettre près :
--- <span> vide à fond CSS pour le portrait et pas un <img> (le pourquoi est dans
--- print.css § 8 — en un mot : WeasyPrint balise tout <img> en /Figure, ce serait une
--- /Figure sans /Alt, donc PDF/UA-1 7.3 violée). Le <style> qui porte l'URL de chaque
--- portrait reste, lui, dans l'en-tête du gabarit : --embed-resources ne réécrit url()
--- que dans un <style>, et un chemin relatif ailleurs partirait en lien mort.
---
--- Article importé avant la bibliographie détachée : il n'a pas de marqueur, sa liste de
--- références vit encore dans le corps. Faute de repère, le bloc est alors ajouté à la fin,
--- soit exactement la place qu'il occupait avant ce filtre. Rien ne casse, rien ne se perd.
+-- Un article importé sans bibliographie détachée n'a pas de marqueur : le bloc est alors
+-- ajouté à la fin.
 
--- Module commun (texte) : un chargement raté arrête la compilation.
+-- Module commun. Sans lui le filtre ne peut pas travailler : la compilation s'arrête.
 local commun
 do
   local function dossier_ce_fichier()
@@ -44,9 +35,8 @@ end
 
 local texte = commun.texte
 
--- Échappement HTML : le gabarit pandoc le faisait pour nous, ce filtre écrit du RawBlock.
--- Une esperluette dans une affiliation (« Haute école & institut ») produirait sans cela
--- un document mal formé, que le lecteur html du galley DOCX refuserait.
+-- Échappement HTML : le filtre écrit du RawBlock. Une esperluette non échappée (« Haute
+-- école & institut ») rendrait le document mal formé pour le lecteur html du galley DOCX.
 local function ech(v)
   return (texte(v):gsub('&', '&amp;'):gsub('<', '&lt;'):gsub('>', '&gt;'):gsub('"', '&quot;'))
 end
@@ -70,12 +60,9 @@ local function bloc_auteur(a, rang)
       '    <span class="szh-auteur-photo szh-auteur-photo-%s" role="presentation"></span>',
       ech(a['photo-rang'] ~= nil and a['photo-rang'] or rang)))
   else
-    -- Personne sans photo : la silhouette du gabarit de mise en page tient la case, au
-    -- même format. Sans elle, la colonne de texte de cette personne repartait à la marge
-    -- pendant que celle de ses voisins commençait après le portrait — le bloc descendait
-    -- en escalier dès qu'un auteur sur trois refusait la sienne.
-    -- Même span vide à fond CSS que le portrait, et pour la même raison — une balise
-    -- d'image ressortirait en /Figure sans /Alt. Le dessin est dans print.css § 8.
+    -- Personne sans photo : une silhouette tient la case au même format, pour que les
+    -- colonnes de texte des auteurs restent alignées. Même <span> à fond CSS que le
+    -- portrait, pour la même raison (voir print.css).
     ins('    <span class="szh-auteur-photo szh-auteur-photo-silhouette" role="presentation"></span>')
   end
   ins('    <div class="szh-auteur-texte">')
@@ -106,8 +93,8 @@ end
 local function section_auteurs(meta)
   local auteurs = meta.author or meta.auteurs
   if type(auteurs) ~= 'table' then return nil end
-  -- Une fiche à un seul auteur peut arriver en map nue plutôt qu'en liste d'une map :
-  -- la reconnaître à ses clés, et non au type pandoc, qui varie d'une version à l'autre.
+  -- Une fiche à un seul auteur peut arriver en map nue plutôt qu'en liste : on la
+  -- reconnaît à ses clés, le type pandoc variant selon la version.
   if auteurs.nom ~= nil or auteurs.prenom ~= nil then auteurs = { auteurs } end
   if #auteurs == 0 then return nil end
 
@@ -134,7 +121,7 @@ function Pandoc(doc)
     end
     sortie:insert(b)
   end
-  if not pose then sortie:insert(section) end   -- pas de marqueur : à la fin, comme avant
+  if not pose then sortie:insert(section) end   -- pas de marqueur : à la fin
 
   return pandoc.Pandoc(sortie, doc.meta)
 end

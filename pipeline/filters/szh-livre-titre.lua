@@ -1,31 +1,25 @@
--- Livre seulement : le titre d'un chapitre vient de sa fiche <slug>.meta.yaml (clé `title`,
--- par langue), plus du .md. Le filtre pose le <h1> en tête du document, comme si le
--- rédacteur avait écrit « # Titre » : tout ce qui suit (niveaux, numéro de section,
--- ancre, sommaire que livre-assembler.py relève dans le fragment) le voit comme un titre
--- ordinaire.
+-- Livre seulement : pose en tête du chapitre le titre lu dans sa fiche <slug>.meta.yaml
+-- (clé `title`, par langue), en <h1>, comme si le .md commençait par « # Titre ». Les
+-- filtres suivants (niveaux, numéro de section, ancre) et le sommaire de
+-- livre-assembler.py le voient comme un titre ordinaire.
 --
--- Première position de FILTRES_CHAPITRE, et ce n'est pas un hasard : szh-niveaux.lua,
--- szh-sections.lua et szh-numerotation.lua raisonnent sur le premier titre de niveau 1 ;
--- posé plus tard, il leur échapperait (pas de numéro de chapitre dans le <h1>).
+-- Premier filtre de FILTRES_CHAPITRE : szh-niveaux.lua, szh-sections.lua et
+-- szh-numerotation.lua s'appuient sur le premier titre de niveau 1.
 --
--- Un chapitre qui porte encore son « # Titre » dans le .md (livre pas encore migré par
--- livre-migrer-meta.py) garde ce titre-là : il n'y en a jamais deux. Le .md gagne parce
--- qu'il est le texte réel ; la fiche n'a alors que valeur de repli.
+-- Un chapitre dont le .md porte encore son « # Titre » (livre non migré par
+-- livre-migrer-meta.py) garde ce titre ; la fiche n'est pas lue.
 --
--- Le champ `title` est une table par langue (`fr:`, `de:`…) comme dans les fiches de la
--- revue, ou une chaîne seule. La langue est celle du chapitre : `lang` de la fiche, à
--- défaut de buch.yaml. Langue vide dans une table : on prend la première langue remplie et
--- on le dit — un titre dans la mauvaise langue se remarque, un chapitre sans titre non.
+-- `title` est une table par langue (`fr:`, `de:`…) ou une chaîne. La langue est celle du
+-- chapitre : `lang` de la fiche, sinon buch.yaml. Si cette langue est vide dans la table,
+-- le filtre prend la première langue remplie et le signale.
 --
--- Un « // » dans le titre (espaces autour ignorés) est un retour à la ligne forcé : un
--- LineBreak dans le <h1>. L'ancre se fabrique sur le titre plat. Le sommaire et l'en-tête
--- courant relisent le <h1> : livre-assembler.py lit un <br> comme une espace.
+-- Un « // » dans le titre est un retour à la ligne forcé (LineBreak dans le <h1>). L'ancre
+-- se calcule sur le titre plat ; livre-assembler.py lit un <br> comme une espace.
 --
--- Ne tourne que sur un chapitre (SZH_CHAPITRE posé par livre.mk) : une pièce liminaire ou
--- la 4e de couverture n'ont pas de fiche, et buch.yaml écrit `titre`, pas `title`.
+-- Ne tourne que sur un chapitre (SZH_CHAPITRE posé par livre.mk) : les pièces liminaires
+-- et la 4e de couverture n'ont pas de fiche.
 
--- Module commun (contexte) : un chargement raté arrête la compilation, ce filtre ne
--- pouvant plus dire dans quelle langue il compose.
+-- Module commun. Sans lui le filtre ne peut pas travailler : la compilation s'arrête.
 local commun
 do
   local function dossier_ce_fichier()
@@ -66,7 +60,7 @@ local function titre_de(meta)
   local t = meta and meta.title
   if t == nil then return '' end
   local lang = langue_de(meta)
-  -- Chaîne seule ou texte en ligne : pas de table de langues à consulter.
+  -- Chaîne seule ou texte en ligne : pas de table de langues.
   local genre = pandoc.utils.type(t)
   if genre == 'Inlines' or genre == 'Blocks' or genre == 'string' then
     return texte(t), lang
@@ -97,14 +91,13 @@ function Pandoc(doc)
       string.format('Der Kapiteltitel ist in der Fiche auf %s leer: stattdessen wird der Titel in « %s » gedruckt.', lang, langue_titre))
   end
 
-  -- Le titre se lit comme du markdown, exactement comme s'il avait été écrit « # Titre »
-  -- dans le .md : emphase, notes de langue, tout passe par le même lecteur — et c'est lui
-  -- qui fabrique l'identifiant d'ancre. Un titre sur une seule ligne, quoi qu'il arrive.
+  -- Le titre est lu par le lecteur markdown, comme un « # Titre » du .md : emphase,
+  -- marques de langue et identifiant d'ancre en viennent. Toujours sur une seule ligne.
   local ligne = titre:gsub('%s*[\r\n]+%s*', ' ')
   local lignes = titre_lignes(ligne)
   local plat = table.concat(lignes, ' ')
   local avec_saut = #lignes > 1
-  -- Le saut passe par un jeton sans ponctuation, que le lecteur ne touche pas.
+  -- Le saut passe par un mot sans ponctuation, que le lecteur laisse intact.
   local JETON = 'SZHSAUTLIGNE'
   local source = avec_saut and table.concat(lignes, JETON) or ligne
   local ok, lu = pcall(pandoc.read, '# ' .. source, 'markdown')
@@ -134,8 +127,8 @@ function Pandoc(doc)
     h.identifier = (hp and hp.t == 'Header') and hp.identifier or ''
   end
 
-  -- L'ancre ne doit pas déjà exister : le lecteur, qui a vu le .md SANS ce titre, a pu
-  -- donner le même identifiant à un titre de section de même texte.
+  -- L'ancre peut déjà exister : le lecteur, qui a lu le .md sans ce titre, a pu donner le
+  -- même identifiant à une section de même texte.
   local pris = {}
   doc.blocks:walk({ Header = function(x) if x.identifier ~= '' then pris[x.identifier] = true end end })
   if h.identifier == '' or pris[h.identifier] then

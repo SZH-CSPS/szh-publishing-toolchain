@@ -7,47 +7,22 @@
 --   [Die Geschichte anhören](https://exemple.ch/x){.qr}
 --   [Écouter](https://exemple.ch/x){.qr size="30mm"}
 --
--- La forme bloc (`qr-link`) est la forme de référence du cahier des charges — réutilisable
--- N'IMPORTE OÙ dans un chapitre, y compris EMBARQUÉE dans un falc-header (voir
--- szh-livre-entete.lua, qui la traite lui-même avant que ce filtre ne s'exécute : un
--- qr-link consommé par un falc-header n'atteint donc jamais ce filtre-ci). La forme courte
--- `.qr` reste acceptée pour compatibilité, MÊMES options anglaises, `taille=` gardé en
--- repli SILENCIEUX pour `size=` (pas d'avertissement : c'est la même valeur, seul le nom de
--- la clé change, et le corpus réel écrit déjà `taille=` — un avertissement à chaque
--- compilation d'un livre existant n'apprendrait rien).
+-- Les deux formes acceptent les mêmes options. Le lien `.qr` accepte aussi `taille=` à la
+-- place de `size=`, sans avertissement, car des livres existants l'écrivent ainsi. Un
+-- qr-link placé dans un falc-header est traité avant, par szh-livre-entete.lua.
 --
--- Toute la construction du <a> (résolution Shlink, palette, avertissements de contraste et
--- de quadri imprimeur) vit dans szh-qr-commun.lua, M.construire_qr — un seul endroit pour
--- les deux syntaxes ET pour szh-livre-entete.lua. Voir son en-tête pour le détail des
--- options et le patron du <a> VIDE (SVG en background-image, jamais en enfant : un <svg>
--- enfant du <a> casse le balisage PDF/UA du lien, mesuré au veraPDF le 23.09.2026 — une
--- zone cliquable par boîte interne, au lieu d'une seule).
+-- Le <a> est construit par szh-qr-commun.lua (M.construire_qr), qui décrit les options.
+-- Un QR seul dans son paragraphe s'affiche en bloc par le CSS (.szh-qr).
 --
--- « QR en bloc » (bloc `qr-link`, ou lien `.qr` seul dans son paragraphe) : rien à détecter
--- ici, la règle CSS (`display:block` sur .szh-qr) en fait un bloc, quelle que soit la
--- syntaxe d'origine.
+-- Dans l'aperçu (lecteur commonmark_x), un Div qr-link peut être enveloppé dans un Div
+-- « wrapper=1 » ; stringify le traverse, l'URL se lit pareil.
 --
--- Fonctionne identiquement dans l'aperçu (SZH_APERCU=1, lecteur commonmark_x+sourcepos) :
--- vérifié (23.09.2026) que ce lecteur ne place PAS le Link `.qr` lui-même dans un Span
--- « wrapper=1 » (seuls ses inlines enfants le sont, sans conséquence sur `lien.target`) ;
--- le Div `qr-link`, lui, peut être enveloppé dans un Div « wrapper=1 » (bloc imbriqué —
--- szh-sourcepos.lua ne défait PAS ces Div, à dessein, voir son en-tête), mais
--- `pandoc.utils.stringify(div.content)` traverse un tel Div sans s'en soucier : rien à
--- déballer pour lire l'URL.
+-- S'exécute en dernier dans la chaîne (pipeline/filtres.mk) : le HTML brut qu'il produit
+-- ne doit pas passer par la typographie ni la césure.
 --
--- Position dans la chaîne (FILTRES_CHAPITRE/_EPUB, pipeline/profils/livre.mk) : en tout
--- dernier, après szh-cesure.lua (et szh-notes.lua côté PDF), et après szh-livre-entete.lua.
--- Une fois le Link/Div changé en RawInline/RawBlock, aucun filtre suivant n'a de raison de
--- le regarder — le placer plus tôt exposerait un <a><svg>…</svg></a> brut aux passes de
--- typographie/coupure de mots, qui walkent Str/Link du document entier sans savoir qu'il
--- s'agit ici de balisage, pas de texte.
---
--- Lien court Shlink (pipeline/liens-courts.py) : si SZH_LIENS_COURTS pointe vers le
--- liens-courts.yaml du livre et que l'URL longue y figure, le href ET le contenu encodé du
--- QR deviennent le lien court — sauf `tracked=false`, qui garde toujours l'URL d'origine,
--- jamais passée par le cache. Sans variable, sans fichier, ou URL absente du cache : l'URL
--- longue traverse telle quelle (l'avertissement « lien court indisponible » est du ressort
--- de liens-courts.py à la compilation, pas de ce filtre, qui n'a pas accès au réseau).
+-- Lien court : si le cache de SZH_LIENS_COURTS (écrit par pipeline/liens-courts.py) connaît
+-- l'URL, le lien et le QR portent l'URL courte, sauf avec `tracked=false`. Sinon, l'URL
+-- d'origine est gardée.
 
 local function dossier_ce_fichier()
   local source = debug.getinfo(1, 'S').source
@@ -76,7 +51,7 @@ local a_classe = commun.a_classe
 
 local texte = commun.texte
 
--- Langue du contexte de composition (szh-contexte.lua).
+-- Langue du document, selon szh-contexte.lua.
 local function langue_de(meta)
   return commun.contexte(meta).lang
 end
@@ -85,12 +60,12 @@ local function avertir(slug, code, phrase_fr, phrase_de)
   commun.constat('qr', 'avertissement', code, { 'chapitre « ' .. slug .. ' »' }, phrase_fr, phrase_de)
 end
 
--- Un lien `.qr` : options identiques au bloc qr-link, en attributs du lien markdown.
+-- Lien `.qr` -> <a> QR. Si le QR ne peut pas être construit, le lien reste ordinaire.
 local function traiter_lien_qr(lien, lang, slug)
   if not a_classe(lien, 'qr') then return nil end
   local attrs = lien.attributes or {}
   local taille = attrs['size']
-  if taille == nil or taille == '' then taille = attrs['taille'] end -- repli silencieux, voir en-tête
+  if taille == nil or taille == '' then taille = attrs['taille'] end
 
   local html, erreur = commun_qr.construire_qr(lien.target, {
     tracked = commun_qr.analyser_bool(attrs['tracked'], true),
@@ -104,15 +79,13 @@ local function traiter_lien_qr(lien, lang, slug)
   if not html then
     io.stderr:write('[szh-qr] QR impossible pour « ' .. lien.target .. ' » : ' .. tostring(erreur) .. '\n')
     io.stderr:write('[szh-qr] [de] QR nicht möglich für « ' .. lien.target .. ' »: ' .. tostring(erreur) .. '\n')
-    return nil -- repli : le lien reste un lien ordinaire, sans QR
+    return nil
   end
   return pandoc.RawInline('html', html)
 end
 
--- Un bloc `qr-link` seul (pas embarqué dans un falc-header, déjà consommé avant ce filtre —
--- voir l'en-tête). Contenu : une seule URL, éventuellement dans un Para. Les autres blocs
--- (pas d'URL reconnaissable) traversent tels quels : ce n'est alors pas un qr-link valide,
--- rien à imprimer de plus sûr que le contenu écrit.
+-- Bloc `qr-link` -> <a> QR. Son contenu est une URL. Vide : il disparaît, avec un
+-- avertissement. Si le QR ne peut pas être construit : un lien texte vers l'URL.
 local function traiter_div_qr_link(div, lang, slug)
   if not a_classe(div, 'qr-link') then return nil end
   local url = texte(S(div.content))
@@ -136,8 +109,6 @@ local function traiter_div_qr_link(div, lang, slug)
   if not html then
     io.stderr:write('[szh-qr] QR impossible pour « ' .. url .. ' » : ' .. tostring(erreur) .. '\n')
     io.stderr:write('[szh-qr] [de] QR nicht möglich für « ' .. url .. ' »: ' .. tostring(erreur) .. '\n')
-    -- Repli : un vrai lien texte, pour que « le lien doit rester navigable » reste vrai
-    -- même sans QR (mêmes termes que szh-livre-entete.lua pour le même cas).
     return pandoc.Para({ pandoc.Link({ pandoc.Str(url) }, url) })
   end
   return pandoc.RawBlock('html', html)

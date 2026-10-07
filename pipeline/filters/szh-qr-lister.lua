@@ -1,23 +1,15 @@
--- Liste, pour pipeline/liens-courts.py (Shlink), les URL des blocs QR d'un chapitre —
--- qr-link fencé (n'importe où, y compris embarqué dans un falc-header) et lien court `.qr`
--- — SANS réimplémenter le parseur markdown : ce filtre tourne avec le VRAI lecteur pandoc
--- de la compilation ($(LECTEUR) de livre.mk, markdown ou markdown+hard_line_breaks) et se
--- contente d'écrire ce qu'il trouve. Un motif texte (l'ancien --scan de liens-courts.py) ne
--- peut pas distinguer un lien réellement lu comme tel d'un exemple en bloc de code, ni
--- suivre les mêmes règles de lecture que la compilation elle-même — d'où ce filtre plutôt
--- qu'un `re.compile` de plus.
+-- Liste les URL des QR d'un chapitre (blocs qr-link, y compris dans un falc-header, et
+-- liens `.qr`) pour pipeline/liens-courts.py, qui en fait des liens courts Shlink. Le
+-- chapitre est lu par le même lecteur pandoc que la compilation : un exemple dans un bloc
+-- de code n'est pas pris pour un lien.
 --
--- Sortie : une ligne JSON par lien trouvé, AJOUTÉE (mode "a", jamais tronqué) au fichier
--- désigné par la variable d'environnement SZH_QR_LISTE — jamais sur stdout, que pandoc
--- utilise déjà pour le document transformé (sortie envoyée vers /dev/null côté appelant,
--- voir liens-courts.py, scanner_liens_qr()).
+-- Sortie : une ligne JSON par QR, ajoutée au fichier nommé par SZH_QR_LISTE (stdout porte
+-- le document, que liens-courts.py jette) :
 --   {"url":"https://…","tracked":true}
--- `tracked` absent du bloc source -> true, le même défaut que szh-qr.lua/szh-qr-commun.lua
--- (M.analyser_bool). Un lien `tracked=false` est quand même LISTÉ ici (pour audit) mais
--- liens-courts.py ne le résout pas — voir son en-tête.
+-- `tracked` vaut true par défaut, comme dans szh-qr.lua. Un QR `tracked=false` est listé,
+-- mais liens-courts.py ne le raccourcit pas.
 --
--- Ce filtre ne modifie RIEN : il observe seulement (les fonctions renvoient nil partout),
--- le document rendu n'a aucune importance ici.
+-- Le document n'est pas modifié.
 
 local function dossier_ce_fichier()
   local source = debug.getinfo(1, 'S').source

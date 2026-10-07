@@ -1,17 +1,12 @@
--- Fonction partagée pour générer un QR code en SVG inline (un seul <path> pour tous les
--- modules noirs), à partir de l'encodeur Lua pur vendoré dans vendor/luaqrcode/qrencode.lua
--- (speedata/luaqrcode, BSD-3 — voir ce fichier pour la provenance exacte, URL et commit).
+-- Module commun des QR codes : SVG d'un QR, <a> cliquable complet, cache des liens courts
+-- Shlink, contraste des couleurs. L'encodeur est vendor/luaqrcode/qrencode.lua
+-- (speedata/luaqrcode, BSD-3 ; provenance dans ce fichier).
 --
--- Chargé par dofile (patron décrit en tête de szh-commun.lua) : le dossier de CE fichier se
--- retrouve par debug.getinfo, jamais par PANDOC_SCRIPT_FILE, qui nomme le script que pandoc
--- a reçu en ligne de commande — pas celui qui appelle dofile.
+-- Utilisé par szh-qr.lua, szh-qr-lister.lua et szh-livre-entete.lua.
+-- svg_qr() rend un SVG nu : chaque appelant l'habille (lien, nom accessible, taille).
 --
--- Trois appelants aujourd'hui : szh-qr.lua (le lien `{.qr}` du rédacteur), szh-livre-
--- ecouter.lua (l'encadré « écouter cette histoire » de la page d'ouverture d'un chapitre —
--- même QR, sans le <a> ni l'attribut `taille` propres à la syntaxe markdown du lien), et le
--- cache de liens courts Shlink que les deux se partagent (M.lien_court ci-dessous).
--- C'est pourquoi svg_qr() rend le SVG nu : au lien de l'habiller (href, title, aria-label
--- sur le <a>, taille en CSS) revient à chaque appelant, pas à ce module.
+-- Chargé par dofile. Le dossier de ce fichier se lit par debug.getinfo : PANDOC_SCRIPT_FILE
+-- donnerait celui du script passé à pandoc, qui peut être un autre.
 
 local function dossier_ce_fichier()
   local source = debug.getinfo(1, 'S').source
@@ -31,17 +26,15 @@ end
 
 local M = {}
 
--- Échappement minimal pour une valeur d'attribut HTML (l'URL et le texte alternatif
--- peuvent porter &, <, >, ").
+-- Échappe &, <, > et " dans une valeur d'attribut HTML.
 local function echapper_attr(s)
   s = tostring(s or '')
   return (s:gsub('&', '&amp;'):gsub('<', '&lt;'):gsub('>', '&gt;'):gsub('"', '&quot;'))
 end
 M.echapper_attr = echapper_attr
 
--- Un <path> par ligne de modules noirs, fusionnés en plages horizontales contiguës — pas
--- un rectangle par module : c'est ce qui rend le SVG « compact » (cahier des charges) sur
--- une version 5-6 (une centaine de modules de côté) plutôt que quelques milliers de commandes.
+-- Tracé des modules noirs : une commande par plage horizontale contiguë plutôt qu'un
+-- rectangle par module, ce qui garde le SVG compact.
 local function chemin_modules(matrice, taille, marge)
   local segs = {}
   for y = 1, taille do
@@ -60,24 +53,18 @@ local function chemin_modules(matrice, taille, marge)
   return table.concat(segs)
 end
 
--- Rend le SVG (chaîne « <svg>…</svg> ») d'un QR code encodant `contenu` (typiquement une
--- URL). En succès : (svg, taille_modules). En échec (contenu trop long pour un QR — voir
--- qrencode.qrcode(), qui lève une assertion "Data too long to encode in QR code" au-delà de
--- la version 40) : (nil, message_erreur). L'appelant décide alors du repli (lien nu, etc.).
+-- SVG (« <svg>…</svg> ») d'un QR code qui encode `contenu`, en général une URL.
+-- Rend (svg, taille en modules), ou (nil, message) si le contenu est trop long pour un QR :
+-- l'appelant choisit alors un repli.
 --
--- opts (toutes optionnelles) :
---   niveau_ec    1=L 2=M 3=Q 4=H — défaut 2 (M, le niveau demandé par le cahier des charges)
---   marge        marge de silence en modules — défaut 4 (le minimum du standard ISO 18004,
---                toujours dans le dessin : la quiet zone du cahier des charges du bloc
---                qr-link, pas seulement celle du lien `.qr` d'origine)
---   aria_label   texte complet de l'attribut aria-label posé sur le <svg> — défaut `contenu`
---                lui-même. Le préfixe « QR-Code : » n'est PAS ajouté ici : chaque appelant
---                compose son propre texte.
---   couleur      couleur des modules (le `color` du cahier des charges) — défaut '#000'
---   fond         couleur du rectangle de fond, ou nil/'transparent' pour AUCUN rectangle
---                (le SVG reste transparent, c'est ce qui laisse voir le `background` du
---                bloc qr-link — défaut nil : pas de rect, cohérent avec le défaut
---                `background: transparent` du cahier des charges)
+-- opts, toutes facultatives :
+--   niveau_ec    correction d'erreur, 1=L 2=M 3=Q 4=H ; défaut 2
+--   marge        zone de silence en modules, dessinée dans le SVG ; défaut 4, le minimum
+--                de la norme ISO 18004
+--   aria_label   aria-label du <svg> ; défaut `contenu`
+--   couleur      couleur des modules ; défaut '#000'
+--   fond         couleur d'un rectangle de fond ; nil ou 'transparent' : pas de rectangle,
+--                le fond de la page reste visible
 function M.svg_qr(contenu, opts)
   opts = opts or {}
   if not contenu or contenu == '' then return nil, 'contenu vide' end
@@ -88,8 +75,8 @@ function M.svg_qr(contenu, opts)
   local fond = opts.fond
 
   local ok_appel, reussi, matrice_ou_msg = pcall(qrencode.qrcode, contenu, niveau_ec)
-  if not ok_appel then return nil, tostring(reussi) end          -- assertion levée (trop long)
-  if not reussi then return nil, tostring(matrice_ou_msg) end    -- échec explicite (rare)
+  if not ok_appel then return nil, tostring(reussi) end          -- assertion : contenu trop long
+  if not reussi then return nil, tostring(matrice_ou_msg) end
 
   local matrice = matrice_ou_msg
   local taille = #matrice
@@ -111,13 +98,9 @@ function M.svg_qr(contenu, opts)
   return svg, taille
 end
 
--- Base64 standard (RFC 4648, alphabet A-Za-z0-9+/, complété par « = »). Écrit ici plutôt
--- que dépendre d'une bibliothèque : szh-qr.lua en a besoin pour poser le SVG en
--- background-image: url(data:image/svg+xml;base64,…) d'un <a> VIDE — voir son en-tête
--- pour la raison (un <a> qui contient un <svg> enfant casse le balisage PDF/UA du lien,
--- mesuré avec veraPDF sur le 23.09.2026 : WeasyPrint pose une zone cliquable par boîte
--- de l'intérieur du lien, au lieu d'une seule). Vérifié contre les vecteurs de test de la
--- RFC (« man » -> « bWFu », « light work. » -> « bGlnaHQgd29yay4= », etc.).
+-- Base64 standard (RFC 4648). Sert à poser le SVG en background-image d'un <a> vide :
+-- un <svg> enfant du <a> casse le balisage PDF/UA du lien, car WeasyPrint pose alors une
+-- zone cliquable par boîte intérieure au lieu d'une seule.
 local B64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
 function M.base64(donnees)
@@ -141,17 +124,11 @@ function M.base64(donnees)
   return table.concat(resultat)
 end
 
--- Cache des liens courts (URL longue -> URL courte), écrit par liens-courts.py dans le
--- dossier du livre. Format : une entrée par ligne, `"<longue>": "<courte>"`, guillemets et
--- antislashs échappés — voir liens-courts.py, ecrire_cache(). Un format à soi plutôt qu'un
--- vrai YAML : pas de dépendance à un analyseur, une seule paire par ligne à relire.
--- Chargé une fois, au premier appel, quel que soit l'appelant (szh-qr.lua et szh-livre-
--- ecouter.lua partagent le même cache en mémoire). Absent ou illisible : cache vide,
--- silencieusement (SZH_LIENS_COURTS peut ne pas être posé du tout — livre sans Shlink
--- configuré).
--- Déplacé ici depuis szh-qr.lua (23.09.2026) pour que l'encadré « écouter » y accède aussi,
--- sans dupliquer la lecture du fichier ni son format d'échappement — comportement de
--- szh-qr.lua inchangé, seul l'endroit qui porte le code a bougé.
+-- Cache des liens courts (URL longue -> URL courte), écrit par liens-courts.py
+-- (ecrire_cache()) dans le fichier que nomme SZH_LIENS_COURTS. Une entrée par ligne,
+-- `"<longue>": "<courte>"`, guillemets et antislashs échappés ; ce n'est pas du YAML
+-- complet. Lu une fois, au premier appel. Variable absente ou fichier illisible : cache
+-- vide (livre sans Shlink).
 local cache_liens = nil
 local function charger_cache_liens()
   if cache_liens then return cache_liens end
@@ -171,17 +148,15 @@ local function charger_cache_liens()
   return cache_liens
 end
 
--- L'URL courte si le cache Shlink en connaît une pour `url_longue`, sinon `url_longue`
--- telle quelle (livre sans Shlink configuré, ou URL absente du cache).
+-- L'URL courte connue du cache pour `url_longue`, sinon `url_longue` telle quelle.
 function M.lien_court(url_longue)
   return charger_cache_liens()[url_longue] or url_longue
 end
 
 -- ──────────────────────────────────────────────────────────────────────────────────────
--- Booléen tolérant (options `tracked` du cahier des charges du bloc qr-link, TOUTES en
--- anglais, mais la valeur elle-même tolère aussi oui/non) : true/false/yes/no/oui/non,
--- insensible à la casse. Valeur absente, vide, ou non reconnue -> `defaut`, jamais d'erreur
--- — une faute de frappe sur une option de mise en forme ne doit pas faire disparaître le QR.
+-- Lit un booléen d'option (`tracked`) : true/false, yes/no, oui/non, 1/0, sans égard à la
+-- casse. Une valeur absente, vide ou inconnue rend `defaut`, pour qu'une faute de frappe ne
+-- fasse pas disparaître le QR.
 function M.analyser_bool(valeur, defaut)
   if valeur == nil or valeur == '' then return defaut end
   local v = tostring(valeur):lower()
@@ -191,12 +166,9 @@ function M.analyser_bool(valeur, defaut)
 end
 
 -- ──────────────────────────────────────────────────────────────────────────────────────
--- Contraste WCAG (couleur du QR contre son fond — voir M.construire_qr) : luminance
--- relative (formule sRGB de la norme, WCAG 2.x §1.4.3/1.4.11) puis ratio (L1+0.05)/(L2+0.05),
--- L1 la plus claire des deux. « transparent » compte comme blanc : c'est la comparaison la
--- plus sûre par défaut (une page imprimée est blanche), et l'appelant le dit dans son
--- message d'avertissement — le fond RÉEL (celui de l'encadré, du papier…) peut être plus
--- sombre, auquel cas le contraste réel serait pire que celui calculé ici, jamais meilleur.
+-- Contraste WCAG entre la couleur du QR et son fond : luminance relative sRGB, puis ratio
+-- (L1+0.05)/(L2+0.05), L1 étant la plus claire. « transparent » compte comme blanc, la
+-- couleur du papier ; un fond réel plus sombre donnerait un contraste plus faible.
 local function hex_vers_rgb(s)
   s = tostring(s or ''):gsub('^#', '')
   if #s == 3 then s = s:sub(1, 1):rep(2) .. s:sub(2, 2):rep(2) .. s:sub(3, 3):rep(2) end
@@ -214,9 +186,8 @@ local function canal_lineaire(c)
   return ((c + 0.055) / 1.055) ^ 2.4
 end
 
--- Luminance relative (0..1) d'une couleur hexadécimale #RRGGBB/#RGB, ou nil si elle ne se
--- décode pas (repli : pas d'avertissement plutôt qu'un plantage sur une valeur libre du
--- rédacteur). 'transparent' (et '') -> luminance du blanc, voir la note ci-dessus.
+-- Luminance relative (0..1) d'une couleur #RRGGBB ou #RGB ; '' et 'transparent' valent
+-- blanc. Rend nil pour une couleur non hexadécimale : aucun avertissement n'est alors émis.
 function M.luminance(couleur)
   local c = tostring(couleur or ''):lower()
   if c == '' or c == 'transparent' then c = '#ffffff' end
@@ -225,8 +196,7 @@ function M.luminance(couleur)
   return 0.2126 * canal_lineaire(r) + 0.7152 * canal_lineaire(g) + 0.0722 * canal_lineaire(b)
 end
 
--- Ratio de contraste WCAG entre deux couleurs (1:1 à 21:1) ; nil si l'une des deux ne se
--- décode pas.
+-- Ratio de contraste WCAG (de 1 à 21) ; nil si l'une des couleurs ne se lit pas.
 function M.ratio_contraste(c1, c2)
   local l1, l2 = M.luminance(c1), M.luminance(c2)
   if not l1 or not l2 then return nil end
@@ -235,37 +205,31 @@ function M.ratio_contraste(c1, c2)
 end
 
 -- ──────────────────────────────────────────────────────────────────────────────────────
--- Le nom accessible par défaut du bloc qr-link (`title` omis) : « Lien vers : <url> » et
--- ses deux autres langues — la narrow no-break space devant le deux-points français suit
--- la même règle que le reste de la chaîne (szh-typographie.lua), écrite ici en dur : ce
--- filtre tourne APRÈS szh-typographie.lua dans FILTRES_CHAPITRE (voir livre.mk), un texte
--- qu'il écrit lui-même n'est donc jamais repassé par cette règle.
+-- Nom accessible par défaut, quand `title` est omis. L'espace fine insécable devant le
+-- deux-points français est écrite en dur : szh-qr.lua tourne après szh-typographie.lua
+-- (livre.mk), qui ne repasse donc pas sur ce texte.
 local TITRE_DEFAUT = {
   fr = 'Lien vers\u{202F}: %s',
   de = 'Link zu: %s',
   it = 'Link a: %s',
 }
 
--- Construit le <a> QR cliquable complet — VIDE, SVG en fond (voir szh-qr.lua en tête pour
--- le pourquoi PDF/UA) — à partir d'une URL et des options ANGLAISES du cahier des charges
--- du bloc qr-link. Point d'entrée UNIQUE pour szh-qr.lua (bloc qr-link seul ET forme courte
--- `{.qr}`) et pour szh-livre-entete.lua (qr-link embarqué dans un falc-header) : même
--- résolution Shlink, même palette, mêmes avertissements de contraste/quadri, écrits une
--- seule fois plutôt que dans chaque appelant.
+-- Construit le <a> QR cliquable : un <a> vide, le SVG en image de fond (voir M.base64).
+-- Sert au bloc qr-link, au lien `.qr` (szh-qr.lua) et au qr-link d'un falc-header
+-- (szh-livre-entete.lua).
 --
 -- opts :
---   tracked     bool, défaut true (false : lien d'origine, jamais passé par le cache Shlink)
---   background  CSS, défaut 'transparent'
---   color       CSS hexa #RRGGBB, défaut '#000000'
---   size        CSS (mm/cm/px/em…), défaut '25mm'
---   title       nom accessible ; nil/vide -> défaut par langue (TITRE_DEFAUT)
---   lang        'fr'|'de'|'it' ; défaut 'fr'
---   classe_sup  une classe CSS de plus sur le <a>, en plus de "szh-qr" (ex. le falc-header
---               y ajoute "szh-falc-header-qr" pour son propre `margin-top`)
---   avertir     function(code, phrase_fr, phrase_de) — jamais appelé si tout va bien
+--   tracked     booléen ; défaut true. false garde l'URL d'origine, sans lien court
+--   background  CSS ; défaut 'transparent'
+--   color       hexadécimal #RRGGBB ; défaut '#000000'
+--   size        longueur CSS ; défaut '25mm'
+--   title       nom accessible ; vide : TITRE_DEFAUT dans la langue `lang`
+--   lang        'fr', 'de' ou 'it' ; défaut 'fr'
+--   classe_sup  classe ajoutée à "szh-qr" (le falc-header pose "szh-falc-header-qr")
+--   avertir     function(code, phrase_fr, phrase_de), appelée si le contraste est sous
+--               3:1 ou si le QR n'est pas noir (risque au tirage en quadrichromie)
 --
--- Rend le HTML du <a> en succès, ou (nil, message_erreur) si le contenu ne s'encode pas en
--- QR (URL trop longue) — à l'appelant de décider du repli, comme pour M.svg_qr.
+-- Rend le HTML du <a>, ou (nil, message) si l'URL est trop longue pour un QR.
 function M.construire_qr(url_longue, opts)
   opts = opts or {}
   local lang = opts.lang or 'fr'
@@ -314,9 +278,8 @@ function M.construire_qr(url_longue, opts)
   local classes = 'szh-qr'
   if opts.classe_sup and opts.classe_sup ~= '' then classes = classes .. ' ' .. opts.classe_sup end
 
-  -- --qr-taille seulement si elle diffère du défaut CSS (partage-filtres.css,
-  -- `var(--qr-taille, 25mm)`) : un <a> sans variable, sous ce défaut, est ce que les tests
-  -- et le CSS existants attendent déjà pour la forme courte `.qr` sans option.
+  -- --qr-taille n'est posée que si elle diffère du défaut de partage-filtres.css
+  -- (`var(--qr-taille, 25mm)`).
   local style = 'background-image:url(data:image/svg+xml;base64,' .. M.base64(svg) .. ')'
   if size ~= '25mm' then
     style = style .. ';--qr-taille:' .. echapper_attr(size)

@@ -1,46 +1,31 @@
--- Normalise les niveaux de titre du corps, pour le rendu HTML et PDF (RGAA 9.1) : le
--- <h1> du document est le titre de l'article (couverture), le corps commence donc à
--- <h2>. Dans le .md, « # » reste la section de premier niveau.
+-- Normalise les niveaux de titre du corps (RGAA 9.1, PDF/UA-1 7.4.2-1). Le <h1> est le
+-- titre de l'article (posé par le gabarit) ou du chapitre ; le corps commence à <h2>. Dans
+-- le .md, « # » reste la section de premier niveau.
 --
--- Ce filtre ne décale pas, il **compacte** : les niveaux réellement présents sont
--- renumérotés 2, 3, 4… sans trou. Un article stylé Heading 2 puis Heading 4 sous Word
--- sortait en <h2> puis <h4> — un saut de niveau, que le RGAA 9.1 interdit et qu'un
--- lecteur d'écran annonce comme une section manquante. Le cas est majoritaire : l'auteur
--- choisit ses styles Word à l'œil, et c'est précisément le désordre que docx-titres.py
--- existe pour rattraper.
+-- Les niveaux présents sont compactés : renumérotés 2, 3, 4… sans trou. Un Word stylé
+-- Heading 2 puis Heading 4 donnerait sinon un saut de niveau, qu'un lecteur d'écran annonce
+-- comme une section manquante.
 --
--- Borne à 6, parce que pandoc dégraderait un niveau 7 en <p class="heading">, sans
--- sémantique de titre. Cinq rangs tiennent entre 2 et 6 : au-delà, deux niveaux distincts
--- se retrouvent au même, et **ce filtre le dit** en nommant l'article. Un écrasement
--- silencieux — l'ancien comportement — est ce qu'on corrige ici.
+-- Borne à 6 : pandoc rendrait un niveau 7 en <p class="heading">, sans sémantique de
+-- titre. Au-delà de cinq rangs, plusieurs niveaux se retrouvent en <h6>, et le filtre le
+-- signale en nommant l'article.
 --
--- À garder aligné avec szh-sections.lua, qui numérote les titres du corps dans le texte
--- (2.1, 2.1.1) sur les trois premiers rangs seulement, et avec print.css, qui les style
--- en miroir.
+-- À garder aligné avec szh-sections.lua (qui numérote les trois premiers rangs, 2.1,
+-- 2.1.1) et avec print.css.
 
--- Le rang le plus haut du corps. Dans un article, le <h1> est le titre de la couverture,
--- posé par le gabarit et absent du document : le corps commence donc à <h2>. Dans un
--- livre, le « # » d'un chapitre est le titre de ce chapitre, donc son <h1> : le corps
--- commence à <h2> aussi, mais le h1 doit rester h1 et ne pas entrer dans le compactage.
---
--- ⚠ Ce filtre n'était pas branché du tout côté livre, au motif qu'il aurait décalé les
---   titres. Le prix s'est vu au premier livre réel : un manuscrit Word qui passe de « # »
---   à « ### » produit un saut de niveau, et le PDF sort non conforme PDF/UA-1
---   (ISO 14289-1 7.4.2-1, « un niveau de titre est sauté »). Un lecteur d'écran y perd le
---   plan du document. Le compactage est donc branché des deux côtés ; seul le h1 du
---   chapitre est mis à part.
--- Posé par Pandoc(doc), d'après le contexte de composition.
+-- Livre : le h1 est le titre du chapitre ; il garde son rang et n'entre pas dans le
+-- compactage. Posé par Pandoc(doc), d'après le contexte de composition.
 local LIVRE = false
 local MIN_CIBLE = 2
 local MAX_CIBLE = 6
 
+-- Module commun. Sans lui le filtre ne peut pas travailler : la compilation s'arrête.
 -- Module commun (slug_article, contexte) : un chargement raté arrête la compilation, ce
 -- filtre ne pouvant plus nommer l'article dans ses messages sans lui.
 local commun
 do
-  -- debug.getinfo, pas PANDOC_SCRIPT_FILE : voir szh-commun.lua (celui-ci nomme le script
-  -- reçu par pandoc en ligne de commande, pas ce fichier quand un autre le charge par
-  -- dofile).
+  -- debug.getinfo donne le chemin de ce fichier ; PANDOC_SCRIPT_FILE donnerait celui du
+  -- script passé à pandoc, qui peut être un autre.
   local function dossier_ce_fichier()
     local source = debug.getinfo(1, 'S').source
     if source:sub(1, 1) == '@' then source = source:sub(2) end
@@ -56,8 +41,7 @@ do
   commun = module
 end
 
--- Nom de l'article pour le journal : le fichier d'entrée suffit, la chaîne compile dans
--- le dossier de l'article et le slug est ce que le rédacteur reconnaît.
+-- Nom de l'article pour le journal : son slug.
 local function nom_article()
   return commun.slug_article('article')
 end
@@ -79,23 +63,19 @@ local function signaler(niveaux_ecrases)
     .. 'Screenreader ununterscheidbar. Zu tun: die tiefsten Untertitel um eine Stufe anheben.\n')
 end
 
--- Une rubrique de la Documentation porte sa propre hiérarchie, que la chaîne ne touche
--- pas : szh-rubrique.lua lui posera un <h2> de titre (déduit du type et de la langue) et
--- rabattra ses titres intérieurs sous ce <h2>. Les compacter ici les remonterait au rang
--- du titre de la rubrique — un « Rundschau » suivi d'un « International » de même rang,
--- donc un plan faux pour un lecteur d'écran. Ce filtre passe avant szh-rubrique.lua, mais
--- la classe est déjà là : le fenced div du .md la porte dès la lecture.
---
--- ⚠ Un titre de rubrique ne compte pas non plus dans le recensement : sans cela, une
---   Documentation (dont TOUS les titres vivent dans des rubriques) verrait ses rangs
---   recalculés d'après eux seuls.
+-- Une rubrique de la Documentation garde sa propre hiérarchie : szh-rubrique.lua lui pose
+-- un <h2> de titre et place ses titres intérieurs dessous. Les compacter ici les
+-- remonterait au rang de ce titre. Ce filtre passe avant szh-rubrique.lua, mais la classe
+-- est déjà posée par le fenced div du .md.
+-- Les titres d'une rubrique ne sont pas non plus recensés : une Documentation, dont tous
+-- les titres sont dans des rubriques, verrait sinon ses rangs calculés d'après eux.
 local CLASSE_RUBRIQUE = 'szh-rubrique'
 local function est_rubrique(el)
   return el.t == 'Div' and commun.a_classe(el, CLASSE_RUBRIQUE)
 end
 
 -- Parcours qui s'arrête au seuil d'une rubrique : `false` en second retour dit à pandoc
--- de ne pas descendre dans ce bloc (traverse = 'topdown', pandoc >= 2.17).
+-- de ne pas descendre dans ce bloc (traverse = 'topdown').
 local function parcourir_hors_rubriques(cible, sur_titre)
   return cible:walk({
     traverse = 'topdown',
@@ -108,8 +88,7 @@ function Pandoc(doc)
   LIVRE = commun.contexte(doc.meta).produit == 'livre'
   local presents = {}
   parcourir_hors_rubriques(doc,
-    -- En mode livre, le h1 est le titre du chapitre : il garde son rang et ne participe
-    -- pas au calcul, sinon il descendrait en h2 et le chapitre perdrait son titre.
+    -- Livre : le h1 est le titre du chapitre, il n'entre pas dans le calcul.
     function(h)
       if not (LIVRE and h.level == 1) then presents[h.level] = true end
     end)
@@ -118,8 +97,7 @@ function Pandoc(doc)
   if #rangs == 0 then return doc end   -- aucun titre dans le corps
   table.sort(rangs)
 
-  -- Le rang i (1-based) devient MIN_CIBLE + i - 1 : la suite est compacte par
-  -- construction, aucun trou possible.
+  -- Le rang i (à partir de 1) devient MIN_CIBLE + i - 1 : la suite est sans trou.
   local cible, ecrases = {}, {}
   for i, niveau in ipairs(rangs) do
     local vise = MIN_CIBLE + i - 1
@@ -130,9 +108,8 @@ function Pandoc(doc)
     cible[niveau] = vise
   end
   if #ecrases > 0 then
-    -- Le premier niveau légitimement en MAX_CIBLE est écrasé avec les suivants : on le
-    -- nomme aussi, sinon le message désignerait un seul niveau et ne dirait pas avec quoi
-    -- il fusionne.
+    -- Le premier niveau placé en MAX_CIBLE est nommé aussi, pour que le message dise
+    -- avec quoi les suivants fusionnent.
     table.insert(ecrases, 1, tostring(rangs[MAX_CIBLE - MIN_CIBLE + 1]))
     signaler(ecrases)
   end

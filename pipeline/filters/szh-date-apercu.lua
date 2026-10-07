@@ -1,13 +1,12 @@
--- La forme imprimée d'une date de fiche, pour l'aperçu du cockpit (lib/date-apercu.js) : les
--- fonctions de szh-commun.lua, celles de la compilation, appliquées à une saisie.
+-- Forme imprimée d'une date de fiche, pour l'aperçu du cockpit (lib/date-apercu.js). Utilise
+-- les fonctions de date de szh-commun.lua, les mêmes qu'à la compilation.
 --
 --   echo '{"saisie":"date|date_partielle|plage","lang":"fr|de","valeurs":["…","…"]}' | pandoc lua szh-date-apercu.lua
 --
 -- Sortie : {"forme":"05.01.2026"}, ou {"forme":"30.02.2026","erreur":"impossible"}. `forme`
--- dit toujours ce que le PDF imprimerait, même quand la saisie est fautive. La demande vient
--- sur stdin : une valeur tapée dans le formulaire ne passe jamais par un shell. La langue est
--- reçue sans servir, l'imprimé étant le même en fr et en de. Code 2 si la demande est
--- illisible.
+-- est ce que le PDF imprimerait, même si la saisie est fautive. La demande arrive sur stdin
+-- pour qu'une valeur saisie ne passe pas par un shell. La langue est reçue mais inutilisée :
+-- l'imprimé est le même en fr et en de. Code de sortie 2 si la demande est illisible.
 
 local function dossier_ce_fichier()
   local source = debug.getinfo(1, 'S').source

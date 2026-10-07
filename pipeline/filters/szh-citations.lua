@@ -1,53 +1,41 @@
--- Compilation : réinsère la bibliographie détachée à l'import, lui pose son titre, ancre
--- chaque référence et transforme les appels du corps en liens internes. Le texte des
--- références n'est jamais réécrit — seul un identifiant et des liens s'y ajoutent.
+-- Réinsère la bibliographie détachée à l'import, lui pose son titre, ancre chaque
+-- référence et transforme les appels du corps en liens internes. Le texte des références
+-- n'est pas modifié : seuls un identifiant et des liens s'y ajoutent.
 --
--- Trois temps :
---   1. la liste : la référence « ::: {.szh-biblio src="<slug>.biblio.md"} » que l'import a
---      laissée dans le .md est résolue — c'est le patron des tableaux — et le titre est
---      posé au-dessus, dans la langue de l'article et selon le réglage du poste
---      (TITRES_BIBLIO_DEFAUT, surchargé par config.json). Il n'est plus dans le texte :
---      c'est ce qui lui évite le numéro de section, et ce qui permet de le corriger sans
---      republier le logiciel. Chaque entrée reçoit un Div « szh-reference » portant un id
---      déduit de son contenu (ref-nom-annee), donc stable d'une compilation à l'autre.
---      Un article importé avant ce changement porte encore sa liste dans le corps : un
---      repli la retrouve sous son titre, et le dit.
+-- Trois étapes :
+--   1. la liste : le bloc « ::: {.szh-biblio src="<slug>.biblio.md"} » laissé par l'import
+--      est remplacé par le contenu du fichier, comme pour les tableaux. Le titre est posé
+--      au-dessus, dans la langue de l'article (TITRES_BIBLIO_DEFAUT, surchargé par le
+--      config.json du poste). Chaque entrée reçoit un Div « szh-reference » d'id
+--      ref-nom-annee, déduit de son contenu et donc stable d'une compilation à l'autre.
+--      Un article dont la liste est encore dans le corps est traité par un repli, qui
+--      avertit.
 --   2. les appels : « (Bovey, 2022) », « (vgl. Kunz, 2016) », « Capurso et al. (2025) »,
 --      « (Grimminger et al., 2021; Fisseler, 2023) », « (Pelgrims, 2001, 2006) »… Seule la
---      parenthèse devient le lien ; la prose autour n'est pas touchée. Un appel narratif
---      met donc le lien sur l'année, comme le font les revues en ligne.
---   3. le rapport : chaque appel sans référence et chaque référence jamais appelée part sur
---      stderr, où le journal de compilation le montre au rédacteur — en constats codés, qui
---      nomment leur article (voir « constats au rédacteur » plus bas). Avec SZH_APERCU=1,
---      les appels non liés reçoivent en plus la classe « szh-appel-orphelin », que
---      print.css souligne en pointillé dans l'aperçu seulement.
+--      parenthèse devient le lien : dans un appel narratif, le lien porte sur l'année.
+--   3. le rapport : appels sans référence et références jamais appelées partent sur stderr
+--      en constats (voir « constats au rédacteur »). Avec SZH_APERCU=1, les appels non liés
+--      reçoivent aussi la classe « szh-appel-orphelin », soulignée en pointillé dans
+--      l'aperçu.
 --
--- Un lien écrit à la main dans le .md (« [(Shaw et al., 2023)](#ref-shaw-2023) », ce que
--- pose l'action « Lier à une référence » du cockpit) est respecté tel quel ; s'il pointe
--- vers un ancrage inexistant, un avertissement le dit.
+-- Un lien écrit à la main dans le .md (« [(Shaw et al., 2023)](#ref-shaw-2023) », posé par
+-- l'action « Lier à une référence » du cockpit) est gardé tel quel. S'il vise un ancrage
+-- inexistant, un avertissement le signale.
 --
--- Réglage szh.desactiverLiensReferences (config.json du poste, clé desactiverLiensReferences,
--- même relais que le titre de la bibliographie — voir CONFIG_POSTE plus bas) : actif, l'étape
--- 2 ne pose plus le Link autour d'un appel apparié. Seul ce lien disparaît : l'entrée de
--- référence garde son Div ancré (étape 3, id=ref-nom-annee), donc un lien écrit à la main y
--- mène toujours ; le bilan, les constats appel-sans-reference/appel-ambigu et la marque
--- d'aperçu des appels orphelins/ambigus ne changent pas — l'appel reste apparié, il n'est
--- simplement plus cliquable.
+-- Réglage desactiverLiensReferences du config.json (szh.desactiverLiensReferences dans
+-- VSCodium) : l'étape 2 ne pose plus de lien autour des appels appariés. Tout le reste est
+-- inchangé : ancre des références, bilan, constats, marques d'aperçu.
 --
--- Tourne après szh-sections.lua : le titre de bibliographie qu'il pose ne doit pas recevoir
--- de numéro de section, et une bibliographie n'en porte pas. Le repli
--- des articles anciens, lui, retrouve son titre malgré le numéro déjà collé devant : voir
--- texte_de_titre().
+-- S'exécute après szh-sections.lua, pour que le titre de bibliographie ne reçoive pas de
+-- numéro de section.
 
 local utils = pandoc.utils
 
--- Module commun (slug_article, trim, contexte) : un chargement raté arrête la
--- compilation, ce filtre ne pouvant plus dire de langue ni de slug fiables sans lui.
+-- Module commun. Sans lui le filtre ne peut pas travailler : la compilation s'arrête.
 local commun
 do
-  -- debug.getinfo, pas PANDOC_SCRIPT_FILE : ce dernier nomme le script reçu par pandoc en
-  -- ligne de commande, pas celui-ci quand il est chargé par dofile depuis un autre script
-  -- (test/js/ancrages.test.js le fait, par un harnais situé ailleurs) — voir szh-commun.lua.
+  -- debug.getinfo donne le chemin de ce fichier ; PANDOC_SCRIPT_FILE donnerait celui du
+  -- script passé à pandoc, qui peut être un autre (les tests chargent ce filtre par dofile).
   local function dossier_ce_fichier()
     local source = debug.getinfo(1, 'S').source
     if source:sub(1, 1) == '@' then source = source:sub(2) end
@@ -78,25 +66,17 @@ local function normaliser(t) return trim(assainir(t):gsub('%s+', ' ')) end
 --
 --   [citations-<ton>] <code> | article « <slug> » | <champ> | … | <fr> | [de] <de>
 --
--- Le préfixe porte le ton, le deuxième champ un code stable, et l'article est nommé.
--- Deux défauts corrigés d'un coup : ces lignes n'étaient qu'en français, et le cockpit
--- devait reconnaître leurs phrases pour les redire en allemand ; elles ne disaient pas de
--- quel article elles parlaient, et le cockpit prenait celui de la ligne
--- « pandoc articles/<slug>/… » qui précédait — sous « make -j », celle d'un autre article.
--- La prose n'est plus qu'un repli d'affichage : elle se reformule sans rien casser.
---
--- slug_article() est le même que celui de szh-maquette.lua : commun.slug_article().
+-- Le préfixe porte le ton, le deuxième champ un code stable. L'article est nommé dans la
+-- ligne, car sous « make -j » les lignes de plusieurs articles se mélangent. La prose sert
+-- seulement à l'affichage : le cockpit lit le code.
 local slug_article = commun.slug_article
 
--- « | » sépare les champs : un texte d'article qui en porte un couperait la ligne en deux
--- et emporterait la moitié allemande. Le seul endroit où cela peut venir du texte, c'est
--- l'appel et l'entrée de bibliographie recopiés dans un champ.
+-- « | » sépare les champs : sans_barre() le retire des textes recopiés de l'article (appel,
+-- entrée de bibliographie), qui couperaient sinon la ligne.
 local sans_barre = commun.sans_barre
 
--- Livre (posé par Pandoc(doc), d'après le contexte de composition) : le champ nommé du
--- constat devient « chapitre « <slug> » » plutôt que « article « <slug> » » — le cockpit
--- reconnaît ses champs par leur nom, jamais par leur position, donc ce seul mot suffit à
--- faire lire correctement les constats de citations d'un chapitre.
+-- Livre (posé par Pandoc(doc)) : le constat nomme « chapitre « <slug> » » au lieu de
+-- « article « <slug> » ». Le cockpit reconnaît les champs par leur nom.
 local LIVRE = false
 
 local function constat(ton, code, champs, fr, de)
@@ -107,33 +87,23 @@ end
 
 local function avertir(code, champs, fr, de) constat('avertissement', code, champs, fr, de) end
 
--- Repli des lettres latines sur leur base ASCII, en un seul endroit pour toute la chaîne :
--- lib/citations.js du cockpit relit ces tables ici plutôt que d'en tenir une copie. Deux
--- copies, c'étaient deux résultats — « Zieliński » donnait « zielinski » au cockpit et
--- « zieliski » à la compilation, et le lien posé à la main mourait dans le PDF.
+-- Repli des lettres latines sur leur base ASCII. lib/citations.js du cockpit lit ces
+-- tables dans ce fichier : le cockpit et la compilation calculent ainsi les mêmes
+-- identifiants, et un lien posé à la main trouve son ancre dans le PDF.
 --
--- Un jeton par point de code, dans l'ordre du bloc, séparés par des espaces : la base
--- ASCII (« ae », « ss », « oe » pour les ligatures) ou « - » pour un caractère qui n'est
--- pas une lettre. Les quatre blocs couvrent le latin entier, diacritiques polonais,
--- turcs, roumains, croates et lettons compris.
+-- Format : un jeton par point de code, dans l'ordre du bloc, séparés par des espaces. Le
+-- jeton est la base ASCII (« ae », « ss », « oe » pour les ligatures) ou « - » pour un
+-- caractère retiré. Les quatre blocs couvrent tout l'alphabet latin.
 --
--- Les jetons viennent de la décomposition Unicode (NFD), complétée à la main pour les
--- lettres barrées qu'elle ne décompose pas : Đ, Ł, Ø, Ħ, Ŧ, Ð, Þ, ß, Æ, Œ. Un caractère
--- absent des blocs n'est pas remplacé par du vide en douce : il part sur stderr.
---
--- Refaire ou vérifier un jeton, sans autre outil que Node : la base ASCII d'un point de
--- code est sa décomposition NFD privée de ses marques combinantes, quand il n'en reste que
--- de l'ASCII.
+-- La base ASCII d'un point de code est sa décomposition NFD sans marques combinantes :
 --
 --   node -e "const s=String.fromCodePoint(0x0144).normalize('NFD').replace(/\p{M}/gu,'');
 --            console.log(/^[A-Za-z0-9]+$/.test(s) ? s.toLowerCase() : 'a poser a la main')"
 --
--- Une quarantaine de lettres ne se décomposent pas et n'ont donc pas de base calculable :
--- leurs jetons sont posés à la main, une fois. Le contrôle, lui, est automatique :
--- test/js/ancrages.test.js replie des deux côtés tous les points de code des quatre blocs,
--- les marques combinantes et un échantillon non latin, puis compare. Un jeton faux ou
--- décalé s'y voit ; un bloc raccourci aussi, le cockpit refusant une table de moins de
--- 600 jetons.
+-- Une quarantaine de lettres ne se décomposent pas (Đ, Ł, Ø, Ħ, Ŧ, Ð, Þ, ß, Æ, Œ…) : leurs
+-- jetons sont posés à la main. test/js/ancrages.test.js compare le repli Lua et le repli
+-- JavaScript sur tous les points de code des blocs. Le cockpit refuse une table de moins
+-- de 600 jetons.
 local REPLI_BLOCS = {
   -- U+00C0..U+00FF  latin-1
   { 0x00C0, [[
@@ -178,8 +148,7 @@ local REPLI_BLOCS = {
   ]] },
 }
 
--- Retirés sans un mot : espaces, ponctuation, marques combinantes, symboles. Aucun d'eux
--- ne porte d'identifiant, et les signaler noierait le journal de compilation.
+-- Retirés sans avertissement : espaces, ponctuation, marques combinantes, symboles.
 local PLAGES_IGNOREES = {
   { 0x00A0, 0x00BF }, { 0x02B0, 0x02FF }, { 0x0300, 0x036F }, { 0x1AB0, 0x1AFF },
   { 0x1DC0, 0x1DFF }, { 0x2000, 0x206F }, { 0x2070, 0x209F }, { 0x20A0, 0x20D0 },
@@ -190,7 +159,7 @@ local REPLI = {}
 for _, bloc in ipairs(REPLI_BLOCS) do
   local cp = bloc[1]
   for jeton in bloc[2]:gmatch('%S+') do
-    -- « - » : retiré sans un mot. « ? » : hors table, donc signalé.
+    -- « - » : retiré sans avertissement. « ? » : hors table, donc signalé.
     if jeton ~= '?' then REPLI[cp] = (jeton == '-') and '' or jeton end
     cp = cp + 1
   end
@@ -203,9 +172,8 @@ local function ignore(cp)
   return false
 end
 
--- Un caractère hors des tables est retiré — mais jamais en silence. C'est ce silence qui
--- faisait « Şahin » devenir « ahin » ici et « sahin » au cockpit : l'ancre du PDF et le
--- lien du .md ne se rencontraient plus, et rien ne le disait.
+-- Un caractère hors des tables est retiré et signalé une fois : le cockpit pourrait le
+-- replier autrement, et le lien du .md ne trouverait plus l'ancre du PDF.
 local signales = {}
 local function signaler(cp)
   if signales[cp] then return end
@@ -229,11 +197,11 @@ local function repli(cp)
   return ''
 end
 
--- Replie les lettres accentuées et laisse le reste tel quel : virgules, points et espaces
--- restent en place, ce dont noms_de() a besoin pour découper une en-tête.
+-- Replie les lettres accentuées et laisse le reste tel quel : noms_de() a besoin des
+-- virgules, points et espaces pour découper une en-tête.
 --
--- ⚠ Décodage UTF-8 à la main, et non utf8.codes : celui-ci lève sur un octet isolé, et un
--- .md relu d'un docx en porte parfois un. Ici l'octet fautif est simplement retiré.
+-- Le décodage UTF-8 est fait à la main : utf8.codes lève une erreur sur un octet isolé,
+-- et un .md issu d'un docx en porte parfois. Ici l'octet fautif est retiré.
 local function replier(t)
   local out, i, n = {}, 1, #(t or '')
   while i <= n do
@@ -290,19 +258,10 @@ local TITRES_BIB = {
   'referencesbibliographiques', 'riferimenti', 'riferimentibibliografici',
 }
 
--- Le titre que la compilation pose au-dessus de la bibliographie détachée, par revue et par
--- langue d'article. Ce sont les valeurs par défaut : le config.json du poste les surcharge
--- clé par clé, et le bloc « Bibliographie » des Réglages SZH les modifie sans republier
--- l'extension.
---
--- D'où viennent ces valeurs : du corpus des 421 galleys publiés. La Zeitschrift écrit
--- « Literatur » dans ses 230 articles à bibliographie, sans une exception. La Revue écrit
--- « Références » 69 fois sur 73, « Références bibliographiques » 3 fois, et « Bibliografia »
--- une fois — pour son seul article italien. Aucun article n'a jamais porté le titre de
--- l'autre langue : c'est la langue qui décide, et les deux revues partent donc du même jeu.
---
--- ⚠ lib/citations.js du cockpit relit cette table ici, comme il relit le lexique et les
---   tables de repli : deux copies, ce seraient deux titres.
+-- Titre posé au-dessus de la bibliographie, par revue et par langue d'article. Ce sont les
+-- valeurs par défaut : le config.json du poste les surcharge clé par clé (bloc
+-- « Bibliographie » des Réglages). Le titre dépend de la langue, pas de la revue.
+-- lib/citations.js du cockpit lit cette table dans ce fichier.
 local TITRES_BIBLIO_DEFAUT = {
   revue       = { fr = [[Références]], de = [[Literatur]], it = [[Bibliografia]] },
   zeitschrift = { fr = [[Références]], de = [[Literatur]], it = [[Bibliografia]] },
@@ -312,7 +271,7 @@ local TITRES_BIBLIO_DEFAUT = {
 local AMORCES = { 'vgl', 'siehe', 'zb', 'ua', 'cf', 'voir', 'voiraussi', 'selon', 'nach',
                   'dapres', 'etwa', 'insb', 'bes', 'parex', 'eg', 'zitn' }
 
--- Mots capitalisés qui ouvrent une phrase et ne sont jamais un nom d'auteur.
+-- Mots capitalisés qui ouvrent une phrase et ne sont pas des noms d'auteur.
 local OUVREURS = {}
 for m in ([[selon voir cf comme ainsi apres avec dans chez depuis enfin mais sans sous sur
 toutefois cependant or et ou le la les un une ce cette cet il elle ils elles on nous vous je
@@ -329,16 +288,10 @@ for m in ('van von de des du della di da dos der den ter te le la zu zur af av e
   PARTICULES[m] = true
 end
 
--- Titre de bibliographie : comparaison exacte sur la forme aplatie, jamais par préfixe.
--- Le préfixe faisait de « Literaturhinweise für die Praxis » un titre de bibliographie, et
--- tout ce qui suivait — de la prose — cessait d'être regardé : le défaut était invisible.
--- Le lexique porte donc les formes complètes que la maison écrit ; les trois relevées sur
--- le corpus des 421 galleys y sont (« Références » 69 fois, « Références bibliographiques »
--- 3, « Literatur » 230).
---
--- Un titre déjà numéroté par szh-sections.lua porte son numéro dans un Span de tête :
--- texte_de_titre() l'écarte avant de comparer. Sans cela, « 6 Références » ne serait plus
--- reconnu, et ce filtre tournant maintenant après szh-sections, plus rien ne le serait.
+-- Titre de bibliographie : comparaison exacte de la forme aplatie avec TITRES_BIB. Une
+-- comparaison par préfixe prendrait « Literaturhinweise für die Praxis » pour une
+-- bibliographie, et la prose qui suit ne serait plus lue. Le numéro de section est retiré
+-- avant par texte_de_titre().
 local function est_titre_bib(txt)
   local p = plat(txt)
   for _, t in ipairs(TITRES_BIB) do
@@ -386,10 +339,8 @@ local function sigles_de(entete)
 end
 
 local function noms_de(entete)
-  -- ⚠ Replier les accents avant de découper. Les motifs Lua comptent les octets : sur le
-  -- texte d'origine, « Weiß » se coupait en « Wei » puis « ß », et « Schröttle » en
-  -- « Schr » puis « öttle » — le nom relevé ne correspondait alors plus à celui de l'appel,
-  -- et la référence passait pour introuvable.
+  -- Les accents sont repliés avant de découper : les motifs Lua comptent les octets, et
+  -- couperaient « Weiß » en « Wei » et « ß ».
   local f = replier(assainir(entete or ''))
   local noms = {}
   -- « Nom, X. », « Nom & Autre » : le nom est ce qui précède la virgule ou l'esperluette.
@@ -411,10 +362,9 @@ local function noms_de(entete)
   return plats
 end
 
--- Nom qui nomme l'identifiant. Volontairement bête : on replie les accents et les
--- ligatures, puis on prend le premier mot de deux lettres au moins. Aucune détection de
--- majuscule n'entre ici, ce qui permet à lib/citations.js du cockpit de calculer le même
--- identifiant en JavaScript — sans quoi le lien posé à la main pointerait dans le vide.
+-- Nom qui entre dans l'identifiant : le premier mot de deux lettres au moins, accents et
+-- ligatures repliés. La règle reste simple pour que lib/citations.js du cockpit calcule le
+-- même identifiant en JavaScript.
 local function nom_pour_id(entete)
   local f = replier(assainir(entete or ''))
   for jeton in f:lower():gmatch('[a-z0-9]+') do
@@ -434,22 +384,16 @@ local function fiche_de_reference(txt)
     noms = noms_de(entete),
     sigles = sigles_de(entete),
     entete = plat(entete),
-    -- « Nom, X. » : des personnes. Sans ce motif, l'en-tête est une raison sociale, et
-    -- c'est le seul cas où l'on cherche le nom appelé n'importe où dans l'en-tête.
+    -- « Nom, X. » : des personnes. Sans ce motif, l'en-tête est une raison sociale, et le
+    -- nom appelé peut être cherché n'importe où dans l'en-tête.
     institutionnel = entete:find('[%u][%w\128-\191\'%-]+,%s*%u%.') == nil,
   }
 end
 
--- Une entrée commence-t-elle ici, ou est-ce la suite de la précédente ?
---
--- C'est la question que l'ancien `debut_entree` de szh-biblio.lua traitait par « le
--- paragraphe commence-t-il par une majuscule ? », test qui rejetait « Übereinkommen »,
--- « École », « van der Aa » et l'astérisque des revues systématiques, et recollait donc
--- 100 références du corpus à la précédente. La règle retenue ici ne demande plus de
--- reconnaître une majuscule dans un encodage multi-octets : une suite est une ligne d'URL
--- seule, ou une ligne qui commence par une minuscule ASCII sans porter d'année. Tout le
--- reste — accentuée, astérisque, chiffre, guillemet, ou minuscule suivie d'une année comme
--- « insieme Schweiz (2024) » — ouvre une entrée.
+-- Vrai si le paragraphe continue l'entrée précédente : une ligne d'URL, ou une ligne qui
+-- commence par une minuscule ASCII sans année. Tout le reste ouvre une entrée : lettre
+-- accentuée (« Übereinkommen »), astérisque, chiffre, guillemet, ou minuscule suivie
+-- d'une année (« insieme Schweiz (2024) »).
 local function est_continuation(txt)
   if txt:sub(1, 4):lower() == 'http' or txt:sub(1, 3):lower() == 'www' then return true end
   local c = txt:byte(1) or 0
@@ -457,29 +401,24 @@ local function est_continuation(txt)
   return txt:sub(1, 130):find('%f[%d](%d%d%d%d)%f[%D]') == nil
 end
 
--- Point d'entrée de test : test/js/ancrages.test.js charge ce fichier par dofile et
--- exécute ces fonctions sur les mêmes entrées que lib/citations.js du cockpit, puis compare
--- les résultats. Comparer les deux sources par expression régulière ne prouvait rien du
--- résultat : c'est ainsi que l'écart de repli a pu vivre.
+-- Point d'entrée de test : test/js/ancrages.test.js charge ce fichier par dofile, exécute
+-- ces fonctions sur les mêmes entrées que lib/citations.js du cockpit et compare.
 SZH_CITATIONS = {
   replier = replier, plat = plat, nom_pour_id = nom_pour_id,
   est_titre_bib = est_titre_bib, est_continuation = est_continuation,
 }
 
 -- ------------------------------------------------ le titre de la bibliographie, réglable
--- La bibliographie n'a plus de titre dans le texte : l'import l'a retiré, la compilation le
--- pose. Il vient du config.json du poste — le même fichier que l'emplacement des revues et
--- la configuration OJS — et retombe sur TITRES_BIBLIO_DEFAUT clé par clé.
+-- L'import retire le titre de la bibliographie ; la compilation le pose. Il vient du
+-- config.json du poste et retombe sur TITRES_BIBLIO_DEFAUT clé par clé.
 --
--- Pourquoi lire le fichier ici plutôt que le recevoir en variable d'environnement : le
--- cockpit lance la compilation par wsl.exe, qui ne transmet pas l'environnement de Windows
--- sans WSLENV. Le fichier, lui, est monté et se lit. SZH_CONFIG impose un chemin, ce dont
--- le banc d'essai se sert pour éprouver le réglage sans écrire dans C:\ProgramData.
+-- Le filtre lit le fichier lui-même : le cockpit lance la compilation par wsl.exe, qui ne
+-- transmet pas l'environnement de Windows sans WSLENV. SZH_CONFIG impose un autre chemin
+-- (utilisé par les tests).
 local CONFIG_POSTE = '/mnt/c/ProgramData/SZH/config.json'
 
--- Lecteur JSON minimal : objets, tableaux, chaînes, nombres, booléens, null. Sur du JSON
--- mal formé, rend nil — et les valeurs par défaut jouent. Écrit ici parce qu'un filtre
--- pandoc n'a pas de chemin de recherche de modules (même arbitrage que slug_article).
+-- Lecteur JSON minimal : objets, tableaux, chaînes, nombres, booléens, null. Rend nil sur
+-- du JSON mal formé, et les valeurs par défaut s'appliquent.
 local function lire_json(s)
   local i = 1
   local valeur                                  -- déclaration avant usage mutuel
@@ -587,15 +526,14 @@ local function lire_config_poste()
   return lire_json((brut:gsub('^\239\187\191', '')))   -- BOM d'anciens config.json
 end
 
--- Jeu de titres par défaut : celui de la Zeitschrift, ou celui de la revue, que le livre
--- reprend.
+-- Jeu de titres par défaut : celui de la Zeitschrift, sinon celui de la Revue (livre
+-- compris).
 local function jeton_revue(contexte)
   return contexte.produit == 'zeitschrift' and 'zeitschrift' or 'revue'
 end
 
--- « Références bibliographiques » en inlines pandoc : un Str par mot, un Space entre. Un
--- seul Str contenant une espace se rend juste en HTML mais n'est pas un document pandoc
--- valide, et les autres écritures — le galley DOCX, par exemple — ne le promettent pas.
+-- Titre en inlines pandoc : un Str par mot, un Space entre. Un Str contenant une espace
+-- n'est pas valide pour pandoc, et les sorties autres que HTML (galley DOCX) le rendent mal.
 local function inlines_du_titre(titre)
   local out = pandoc.List()
   for mot in titre:gmatch('%S+') do
@@ -615,8 +553,8 @@ local function titre_bibliographie(meta)
   local pose = cfg and cfg.biblio and cfg.biblio.titres
   pose = pose and pose[revue]
   pose = pose and pose[lang]
-  -- « La clé présente gagne, même vide » : c'est la règle de la configuration OJS, et vider
-  -- le champ dans les Réglages doit avoir un effet — ici, pas de titre du tout.
+  -- La clé présente l'emporte, même vide : un champ vidé dans les Réglages supprime le
+  -- titre.
   if type(pose) == 'string' then titre = pose end
   return normaliser(titre)
 end
@@ -625,9 +563,8 @@ end
 -- vise (MIN_CIBLE), le <h1> étant le titre de l'article sur la couverture.
 local NIVEAU_BIB = 2
 
--- Texte d'un titre, numéro de section exclu. szh-sections.lua pose le numéro dans un Span
--- de classe « szh-num-section » en tête du contenu : le lire comme du texte ferait de
--- « 6 Références » un titre inconnu.
+-- Texte d'un titre sans son numéro de section (Span « szh-num-section » posé en tête par
+-- szh-sections.lua) : « 6 Références » donne « Références ».
 local function texte_de_titre(h)
   local dedans = pandoc.List()
   for k, il in ipairs(h.content) do
@@ -646,9 +583,8 @@ local function est_annee(jeton)
   return nil
 end
 
--- Toutes les années d'un fragment, dans l'ordre, avec leur position : c'est elle qui
--- permet de lier chaque année d'un appel multiple — « (Sen, 2001, 2009) » désigne deux
--- références et doit donner deux liens.
+-- Toutes les années d'un fragment, dans l'ordre, avec leur position. La position permet
+-- de lier chaque année d'un appel multiple : « (Sen, 2001, 2009) » donne deux liens.
 local function annees_du_fragment(frag)
   local out = {}
   local pos = 1
@@ -671,8 +607,8 @@ local function annees_du_fragment(frag)
   return out
 end
 
--- Le fragment ne contient-il que des années, une amorce et un locateur ? C'est la marque
--- d'un appel narratif : « Capurso et al. (2025, p. 3) ».
+-- Vrai si le fragment ne contient que des années, une amorce et un locateur : c'est un
+-- appel narratif, « Capurso et al. (2025, p. 3) ».
 local function fragment_annees_seules(frag)
   local reste = frag
   reste = reste:gsub('%f[%w](%d%d%d%d)%a?%f[%W]', ' ')
@@ -724,25 +660,19 @@ local function noms_de_lappel(bloc)
   return noms
 end
 
--- Abréviations à point qui ne ferment pas la phrase, pour la lecture de la prose qui précède
--- un appel narratif (« Selon Capurso et al. (2025) », « Laut Capurso u. a. (2025) ») : le
--- point de « al. » est aussi un point de fin de phrase, et la queue prise avant la
--- parenthèse — coupée à la dernière frontière — s'arrêtait donc sur lui, vide. On neutralise
--- ici les points qui ne ferment rien (« et al. », « u. a. », « et coll. », une initiale de
--- prénom comme « J.-J. ») AVANT de couper à la frontière, plutôt que d'assouplir la
--- frontière elle-même : un vrai point de fin de phrase (« … la théorie. Bovey (2022) »)
--- continue de l'arrêter.
--- Motif puis remplacement : la même liste sert à neutraliser_abreviations_dauteur() (la
--- queue qu'on lit) et à debut_prose_narrative() plus bas (la position, en coordonnées de
--- `txt`, où cette queue commence — pour le libellé du constat, qui doit rester une
--- sous-chaîne littérale du document). Une seule liste, pour que les deux ne divergent
--- jamais : voir la mise en garde de tête sur ce risque précis.
+-- Abréviations dont le point ne ferme pas la phrase (« et al. », « u. a. », « et coll. »,
+-- initiale « J.-J. »). Pour lire les noms d'un appel narratif (« Selon Capurso et al.
+-- (2025) »), on coupe la prose à la dernière fin de phrase : ces points sont neutralisés
+-- d'abord, sinon la coupe tomberait sur « al. ». Un vrai point de fin de phrase arrête
+-- toujours la coupe (« … la théorie. Bovey (2022) »).
+-- Paires motif, remplacement. La même liste sert à neutraliser_abreviations_dauteur() et
+-- à debut_prose_narrative(), pour que les deux restent d'accord.
 local ABREVIATIONS_DAUTEUR = {
   { '%f[%a]et%s+al%.', 'et al' },
   { '%f[%a]et%s+coll%.', 'et coll' },
   { '%f[%a]u%.%s*a%.', 'u a' },
-  -- Initiale de prénom : une seule majuscule suivie d'un point, à une frontière de mot —
-  -- « J.-J. Dupont », jamais un mot de plusieurs lettres suivi d'un point.
+  -- Initiale de prénom : une seule majuscule suivie d'un point, en début de mot
+  -- (« J.-J. Dupont »).
   { '%f[%a](%u)%.', '%1' },
 }
 
@@ -751,15 +681,12 @@ local function neutraliser_abreviations_dauteur(t)
   return t
 end
 
--- Position, en coordonnées de `prefixe` (donc de `txt`, dont `prefixe` est un sous-texte
--- depuis le début), juste après la dernière frontière de phrase qui n'est pas un point
--- d'abréviation d'auteur. C'est le pendant de neutraliser_abreviations_dauteur() pour un
--- usage différent : celle-ci sert à lire les noms (sa copie neutralisée peut changer de
--- longueur — « u.a. » devient « u a », un caractère de plus — donc ses décalages ne se
--- reportent pas sur `txt`) ; celle-ci sert à découper le libellé du constat, qui DOIT rester
--- une sous-chaîne littérale de `txt` pour que la flèche « Vers l'article » du cockpit la
--- retrouve. Elle repère donc les mêmes motifs directement sur le texte original, sans jamais
--- le modifier ni recalculer de décalage.
+-- Position dans `prefixe` (le début de `txt`) juste après la dernière fin de phrase qui
+-- n'est pas un point d'abréviation d'auteur. Sert à découper le libellé du constat, qui
+-- doit rester une sous-chaîne exacte de `txt` : la flèche « Vers l'article » du cockpit le
+-- cherche tel quel dans le .md. La copie de neutraliser_abreviations_dauteur() change de
+-- longueur (« u.a. » → « u a ») ; cette fonction repère donc les mêmes motifs sur le texte
+-- d'origine, sans le modifier.
 local function debut_prose_narrative(prefixe)
   local protege = {}
   for _, m in ipairs(ABREVIATIONS_DAUTEUR) do
@@ -775,7 +702,7 @@ local function debut_prose_narrative(prefixe)
   for i = #prefixe, 1, -1 do
     local c = prefixe:byte(i)
     -- . ; : ! ? ( ) et l'octet sentinelle \1 (voir aplatir()) : les mêmes frontières que le
-    -- motif utilisé pour extraire la queue narrative.
+    -- motif qui extrait la prose d'un appel narratif dans relever().
     local frontiere = (c == 46 or c == 59 or c == 58 or c == 33 or c == 63
                         or c == 40 or c == 41 or c == 1)
     if frontiere and not protege[i] then return i + 1 end
@@ -783,17 +710,14 @@ local function debut_prose_narrative(prefixe)
   return 1
 end
 
--- Une parenthèse de prose allemande devant un millésime ressemble à un appel APA : tout nom
--- commun y est capitalisé, et noms_de_lappel() ne rogne qu'à gauche — il s'arrête au premier
--- mot capitalisé et en fait un « nom ». Aucune longueur ni lexique de noms communs ne sépare
--- alors « Werte » (un nom commun) de « Bovey » (un patronyme) : les deux sont un seul mot
--- capitalisé sans virgule devant le millésime. La virgule devant le millésime, elle, est la
--- forme APA et ne trompe pas : quand elle manque, seul l'appariement à la bibliographie tranche
--- — voir son usage dans relever(), branche des appels entre parenthèses.
+-- Vrai si le millésime suit une virgule (forme APA) ou « et al. », « u. a. », « et coll. ».
+-- En allemand, une parenthèse de prose devant une année ressemble à un appel, car les noms
+-- communs sont capitalisés : rien ne distingue « Werte » de « Bovey ». Sans virgule, seul
+-- l'appariement à la bibliographie décide (voir relever()).
 local function virgule_avant_millesime(tete)
   local t = trim(tete)
   if t:match(',%s*$') then return true end
-  -- « et al. », « u. a. », « et coll. » : noms_de_lappel() les change déjà en virgule.
+  -- noms_de_lappel() traite ces abréviations comme une virgule.
   if t:match('%f[%w]et%s+al%.?%s*$') then return true end
   if t:match('%f[%w]u%.%s?a%.%s*$') then return true end
   if t:match('%f[%w]et%s+coll%.?%s*$') then return true end
@@ -828,7 +752,7 @@ local function apparier(appel, fiches)
 
   local formes = variantes(appel.noms[1] or '')
   -- Passe stricte : le premier auteur de la référence, un de ses sigles, ou son en-tête
-  -- entière pour une raison sociale. C'est la règle APA — un appel ne nomme que le premier.
+  -- entière pour une raison sociale. En APA, un appel nomme le premier auteur.
   local stricts = {}
   for _, f in ipairs(eligibles) do
     for _, forme in ipairs(formes) do
@@ -841,9 +765,8 @@ local function apparier(appel, fiches)
   end
   local cands = stricts
   if #cands == 0 then
-    -- Passe large : n'importe quel co-auteur, et tous les noms cités, pas seulement le
-    -- premier. Rattrape les appels fautifs de la source sans fabriquer d'ambiguïté quand
-    -- la référence exacte existe.
+    -- Passe large, seulement si la stricte ne trouve rien : n'importe quel co-auteur, et
+    -- tous les noms cités. Rattrape les appels mal écrits dans la source.
     local toutes = {}
     for _, nom in ipairs(appel.noms) do
       for _, v in ipairs(variantes(nom)) do toutes[#toutes + 1] = v end
@@ -879,14 +802,9 @@ local function apparier(appel, fiches)
 end
 
 -- ------------------------------------------------- parenthèses d'une suite d'inlines
--- Texte plat d'une liste d'inlines, avec la carte des positions : pour chaque inline, son
--- décalage de départ. Les inlines qui ne sont ni Str ni Space donnent un octet sentinelle
--- \1, qu'aucun motif d'appel ne peut traverser : un appel à cheval sur de l'italique est
--- donc ignoré plutôt que mal découpé.
--- Assainissement à longueur d'octets constante. Il en faut un : pandoc, lecteur markdown
--- « smart » allumé, met une espace insécable après une abréviation, si bien que
--- « (1990, p. 202) » arrive avec un U+00A0 que les classes %s de Lua ne reconnaissent pas.
--- Remplacer par un nombre égal d'octets garde les décalages valides pour poser_lien.
+-- Remplace espaces et tirets Unicode par autant d'octets ASCII, pour garder les décalages
+-- valides. Le lecteur markdown « smart » de pandoc met une espace insécable après une
+-- abréviation (« p. 202 »), que %s de Lua ne reconnaît pas.
 local function assainir_iso(t)
   t = t:gsub('\194\160', '  ')                -- espace insécable -> 2 espaces
   t = t:gsub('\226\128\175', '   ')           -- espace fine insécable -> 3
@@ -897,6 +815,9 @@ local function assainir_iso(t)
   return t
 end
 
+-- Texte plat d'une liste d'inlines, et la position de départ de chaque inline. Les inlines
+-- qui ne sont ni Str ni Space donnent l'octet \1, qu'aucun motif d'appel ne traverse : un
+-- appel à cheval sur de l'italique est ignoré plutôt que mal découpé.
 local function aplatir(inlines)
   local morceaux, depart = {}, {}
   local n = 0
@@ -912,10 +833,8 @@ local function aplatir(inlines)
   return table.concat(morceaux), depart
 end
 
--- Remplace la plage [s,e] du texte plat par l'inline que rend `fabriquer`, en decoupant
--- les Str aux bornes. Les inlines qui ne sont ni Str ni Space donnent \1 dans le texte
--- plat, qu'aucun motif d'appel ne traverse : un appel a cheval sur de l'italique est donc
--- ignore plutot que mal decoupe.
+-- Remplace la plage [s,e] du texte plat par l'inline que rend `fabriquer`, en découpant
+-- les Str aux bornes.
 local function poser(inlines, depart, s, e, fabriquer)
   local sortie = pandoc.List()
   local contenu = pandoc.List()
@@ -942,7 +861,7 @@ local function poser(inlines, depart, s, e, fabriquer)
         sortie:insert(pandoc.Str(apres))
       end
     else
-      contenu:insert(il)                              -- Space a l'interieur de l'appel
+      contenu:insert(il)                              -- Space à l'intérieur de l'appel
     end
     if f >= e then vider() end
   end
@@ -950,9 +869,8 @@ local function poser(inlines, depart, s, e, fabriquer)
   return sortie
 end
 
--- id_ancre, s'il est fourni, pose un identifiant sur l'appel lui-même : c'est la cible que
--- la flèche retour de la bibliographie vise. Seule la première occurrence d'une référence
--- en reçoit un — voir le tri par position dans traiter_inlines() et marquer_liens_manuels().
+-- id_ancre, s'il est fourni, pose un identifiant sur l'appel : c'est la cible de la flèche
+-- retour de la bibliographie. Seule la première occurrence d'une référence en reçoit un.
 local function lien(cible, id_ancre)
   return function(contenu)
     return pandoc.Link(contenu, cible, '', pandoc.Attr(id_ancre or '', { 'szh-appel' }))
@@ -964,14 +882,9 @@ local function marque(classe)
 end
 
 -- --------------------------------------------- la bibliographie détachée, réinsérée
--- Même contrat que szh-tabelle-inclure.lua : le cwd est le dossier de l'article, les
--- chemins relatifs tombent donc juste, et un fichier manquant donne un bloc
--- d'avertissement visible dans le rendu — jamais un article amputé en silence.
--- Deux classes, et la seconde n'est pas un oubli : « szh-tabelle-manquante » est l'encadré
--- rouge que print.css donne déjà à « fichier référencé introuvable », et c'est exactement
--- ce cas-ci. Son nom parle de tableau parce qu'il n'y avait alors que des tableaux à
--- inclure ; « szh-biblio-manquante » est le nom juste, et il attend que print.css — tenu
--- par un autre chantier — joigne les deux sélecteurs sur la même règle.
+-- Comme szh-tabelle-inclure.lua : le dossier courant est celui de l'article, et un
+-- fichier manquant donne un encadré d'avertissement visible dans le rendu. Les deux
+-- classes ont le même style rouge (styles/partage-filtres.css).
 local function bloc_manquant(texte)
   return pandoc.Div(
     { pandoc.Para({ pandoc.Strong({ pandoc.Str('⚠ ' .. texte) }) }) },
@@ -979,22 +892,11 @@ local function bloc_manquant(texte)
   )
 end
 
--- Un fichier de bibliographie « vide au sens large » : depuis que l'import pose toujours
--- <slug>.biblio.md — même quand le Word n'a pas de bibliographie, voir
--- szh-biblio-detacher.lua —, sa seule présence ne dit plus s'il y a quelque chose à
--- imprimer. « Vide » n'est pas seulement zéro octet : rien, ou seulement des blancs —
--- espaces, tabulations, retours à la ligne, lignes vides répétées, et les blancs qu'on ne
--- voit pas, que ce dépôt pose partout par ses règles de typographie et qu'un fichier
--- « vidé à la main » en contiendra — insécable (U+00A0), espace fine insécable (U+202F),
--- BOM (U+FEFF). `%s` de Lua ne reconnaît que les blancs ASCII : les trois autres sont des
--- suites d'octets UTF-8 à retirer explicitement, sans quoi pandoc.read() leur ferait un
--- Para non vide — un cadre de bibliographie sans la moindre référence dedans.
---
--- ⚠ Ne pas confondre avec un fichier ABSENT (io.open a déjà échoué à ce moment-là, dans
--- resoudre_biblio ci-dessous) : c'est l'anomalie que « biblio-introuvable » signale
--- toujours. Un fichier présent mais vide est un état normal et silencieux — aucun
--- avertissement, rien à l'écran, exactement comme un article qui n'a jamais eu de
--- bibliographie.
+-- Vrai si le texte ne contient que des blancs, y compris l'insécable (U+00A0), l'espace
+-- fine insécable (U+202F) et le BOM (U+FEFF), que %s de Lua ne reconnaît pas. L'import
+-- crée toujours <slug>.biblio.md, même sans bibliographie (voir szh-biblio-detacher.lua).
+-- Un fichier vide n'imprime rien et ne déclenche aucun avertissement ; un fichier absent
+-- est signalé (« biblio-introuvable », dans resoudre_biblio()).
 local function est_vide(texte)
   local t = (texte or ''):gsub('[ \t\r\n\f\v]', '')
   t = t:gsub('\194\160', '')     -- U+00A0, espace insécable
@@ -1003,15 +905,12 @@ local function est_vide(texte)
   return t == ''
 end
 
--- Exposée après coup (SZH_CITATIONS est déjà construit plus haut) : test/js/biblio-vide.test.js
--- éprouve cette fonction directement, sur les mêmes blancs que ceux que la typographie
--- maison pose dans le texte — comparer à l'œil ne prouverait rien du résultat.
+-- Pour test/js/biblio-vide.test.js.
 SZH_CITATIONS.est_vide = est_vide
 
--- Rend (blocs, première entrée, dernière entrée) : la référence de bibliographie est
--- remplacée par le titre — posé ici, dans la langue de l'article — puis par les entrées du
--- fichier. Sans référence dans le document, les blocs sortent tels quels et la liste est
--- nil : c'est l'appelant qui décide alors du repli.
+-- Rend (blocs, première entrée, dernière entrée). Le bloc .szh-biblio est remplacé par le
+-- titre puis par les entrées du fichier. Sans ce bloc, les blocs sortent tels quels et les
+-- deux positions valent nil : l'appelant décide alors du repli.
 local function resoudre_biblio(doc, slug)
   local sortie = pandoc.List()
   local premiere, derniere = nil, nil
@@ -1037,16 +936,14 @@ local function resoudre_biblio(doc, slug)
           .. 'im Dokument. Importieren Sie den Artikel neu, oder entfernen Sie den Verweis '
           .. 'auf das Literaturverzeichnis aus dem Text.')
       elseif est_vide(contenu) then
-        -- Rien à imprimer, et rien à dire : le bloc marqueur part sans que rien ne le
-        -- remplace, exactement comme si l'article n'avait jamais eu de bibliographie.
+        -- Fichier vide : le bloc disparaît, sans avertissement.
       else
         local entrees = pandoc.read(contenu, 'markdown').blocks
         if #entrees > 0 then
           local titre = titre_bibliographie(doc.meta)
           if titre ~= '' then
-            -- Identifiant fixe et préfixé : le lecteur markdown en pose un sur les titres
-            -- du corps, pas sur celui-ci, qui n'est pas dans le texte. « szh- » le met hors
-            -- de portée d'un titre de section homonyme.
+            -- Identifiant fixe, préfixé « szh- » pour ne pas heurter celui qu'un titre de
+            -- section homonyme reçoit du lecteur markdown.
             sortie:insert(pandoc.Header(NIVEAU_BIB, inlines_du_titre(titre),
               pandoc.Attr('szh-bibliographie', {}, {})))
           end
@@ -1063,19 +960,16 @@ end
 -- ------------------------------------------------------------------------ le filtre
 local APERCU = (os.getenv('SZH_APERCU') or '') ~= ''
 
--- Lu une fois pour toute la compilation : lire_config_poste() rouvre le fichier à chaque
--- appel, et relever() est appelé par parenthèse, pas par appel de citation.
+-- Lu une fois : lire_config_poste() rouvre le fichier à chaque appel, et relever() est
+-- appelé pour chaque parenthèse.
 local LIENS_DESACTIVES = (function()
   local cfg = lire_config_poste()
   return cfg ~= nil and cfg.desactiverLiensReferences == true
 end)()
 
 function Pandoc(doc)
-  -- 1. la liste de références
-  --
-  -- Voie normale : l'import l'a détachée dans <slug>.biblio.md et a laissé une référence
-  -- « ::: {.szh-biblio src=…} » à sa place. On la résout ici — c'est le patron des
-  -- tableaux — et on pose le titre, que le texte ne porte plus.
+  -- 1. la liste de références : le bloc « ::: {.szh-biblio src=…} » est remplacé par le
+  -- titre et le contenu de <slug>.biblio.md.
   local slug = slug_article()
   local contexte = commun.contexte(doc.meta)
   LIVRE = contexte.produit == 'livre'
@@ -1083,12 +977,8 @@ function Pandoc(doc)
   local LANG_RETOUR = contexte.lang
   local blocs, premiere, derniere_liste = resoudre_biblio(doc, slug)
 
-  -- Repli, et nommé comme tel : un article importé avant que la bibliographie devienne un
-  -- fichier porte encore sa liste dans le corps. On la retrouve sous son titre, comparé
-  -- exactement au lexique — plus par préfixe, et plus d'heuristique qui balayait la
-  -- seconde moitié du document pour y deviner une liste. Ces deux paris coûtaient cher :
-  -- une section « Literaturhinweise für die Praxis » suivie de prose, et tout ce qui
-  -- suivait cessait d'être regardé pour les appels, sans le moindre signe.
+  -- Repli : un article dont la bibliographie n'a pas de fichier à part la porte dans le
+  -- corps. On la retrouve sous son titre (est_titre_bib), et un avertissement le signale.
   if not premiere then
     local idx_titre = nil
     for i, b in ipairs(blocs) do
@@ -1096,7 +986,7 @@ function Pandoc(doc)
     end
     if idx_titre then
       premiere, derniere_liste = idx_titre + 1, #blocs
-      -- constat() nomme déjà l'article : ne pas le répéter dans les champs.
+      -- constat() nomme déjà l'article.
       avertir('biblio-dans-le-corps', {},
         "La bibliographie de cet article est encore dans le texte : elle n’a pas de "
         .. "fichier à part, et l’export vers la plateforme partira sans liste de "
@@ -1147,23 +1037,21 @@ function Pandoc(doc)
     ancrages[id] = f
   end
 
-  -- 2. les appels, dans tout ce qui n'est pas la liste — avant elle, et après elle. La
-  -- liste n'est plus forcément le dernier bloc du document : une référence restée dans le
-  -- texte, une note de fin, une annexe peuvent la suivre, et leurs appels comptent.
+  -- 2. les appels, dans tout ce qui n'est pas la liste : avant elle et après elle (notes
+  -- de fin, annexes).
   local limite = premiere and (premiere - 1) or #blocs
   local reprise = (premiere and derniere_liste) and (derniere_liste + 1) or (#blocs + 1)
   local appels, orphelins, ambigus = 0, {}, {}
   local appelees = {}
-  -- Flèche retour : ancre_posee[id] est vrai dès que la première occurrence de l'appel de
-  -- cette référence a reçu un identifiant (« appel-<id> ») — la bibliographie n'y renvoie
-  -- qu'alors, jamais vers une ancre qui n'existe pas. libelle_par_ref[id] garde le texte
-  -- exact de cette première occurrence (« (Dupont, 2024) »), pour l'aria-label.
+  -- Flèche retour : ancre_posee[id] est vrai dès que la première occurrence d'un appel de
+  -- cette référence a reçu l'identifiant « appel-<id> ». libelle_par_ref[id] garde le
+  -- texte de cette occurrence (« (Dupont, 2024) ») pour l'aria-label.
   local ancre_posee = {}
   local libelle_par_ref = {}
 
-  -- Toutes les plages a lier sont relevees d'abord, puis posees de droite a gauche : les
-  -- decalages a gauche d'une pose restent valides, ce qui evite de rescanner et permet de
-  -- traiter plusieurs appels dans une meme parenthese.
+  -- Rend les plages à lier d'une parenthèse. Elles sont posées ensuite de droite à gauche :
+  -- les décalages à gauche d'une pose restent valides, et une parenthèse peut contenir
+  -- plusieurs appels.
   local function relever(txt, s, e, dedans)
     local plages = {}
     local frags, decalage = {}, 0
@@ -1172,42 +1060,35 @@ function Pandoc(doc)
       decalage = decalage + #frag + 1
     end
     local noms_precedents = nil
-    -- Début du libellé (coordonnées de txt) pour un appel NARRATIF, reconduit d'un fragment
-    -- à l'autre comme noms_precedents ci-dessus (« Capurso et al. (2025, 2026) ») ; nil pour
-    -- un appel entre parenthèses, où le libellé reste la parenthèse entière (voir plus bas).
+    -- Début du libellé dans txt pour un appel narratif, reconduit d'un fragment à l'autre
+    -- comme noms_precedents ; nil pour un appel entre parenthèses.
     local depart_narratif_precedent = nil
     for rang, fr in ipairs(frags) do
       local ans = annees_du_fragment(fr.texte)
       if #ans > 0 then
         local noms
         local depart_narratif = nil
-        -- Vrai seulement dans la branche des appels entre parenthèses, et seulement quand le
-        -- millésime n'y suit pas une virgule : c'est alors la bibliographie qui décide si la
-        -- parenthèse est un appel, pas la forme du nom rogné (voir virgule_avant_millesime).
+        -- Vrai pour un appel entre parenthèses sans virgule devant le millésime : seule la
+        -- bibliographie décide alors si c'est un appel (voir virgule_avant_millesime).
         local exige_appariement = false
         if rang > 1 and noms_precedents and fragment_annees_seules(fr.texte) then
           -- « (Weiß, 2016 ; 2023) », « (Schröttle et al., 2024a ; 2024b) » : le second
-          -- fragment ne porte qu'une année, l'auteur est celui du fragment précédent — et,
-          -- si ce précédent était narratif, le libellé reprend le même départ.
+          -- fragment ne porte qu'une année, l'auteur est celui du fragment précédent, et le
+          -- libellé reprend le même départ.
           noms = noms_precedents
           depart_narratif = depart_narratif_precedent
         elseif fragment_annees_seules(fr.texte) then
-          -- appel narratif : les noms sont dans la prose qui precede la parenthese. Les
-          -- abréviations d'auteur sont neutralisées avant la coupe, pas la frontière : voir
-          -- neutraliser_abreviations_dauteur(). Le libellé, lui, doit rester une sous-chaîne
-          -- littérale de txt — debut_prose_narrative() rend sa position SANS neutraliser la
-          -- chaîne, pour ne jamais avoir à reporter un décalage d'une copie plus courte.
+          -- Appel narratif : les noms sont dans la prose qui précède la parenthèse. Les noms
+          -- se lisent sur une copie neutralisée ; la position du libellé se calcule sur txt
+          -- (debut_prose_narrative).
           local prefixe = txt:sub(1, s - 1)
           local depart_phrase = debut_prose_narrative(prefixe)
           local queue = neutraliser_abreviations_dauteur(prefixe)
                           :match('([^%.;:!%?%(%)\1]*)$') or ''
           noms = noms_de_lappel(queue)
-          -- « Selon Lefebvre et al. (2019) » : le libellé ne doit pas porter l'amorce
-          -- (« Selon »/« Laut »…) — noms_de_lappel() l'a déjà rognée pour lire noms[1], mais
-          -- seulement dans sa copie. On retrouve ici la position du premier mot du nom
-          -- retenu par une recherche littérale dans txt, bornée à la prose qui précède la
-          -- parenthèse ; rien trouvé (nom vide, mot introuvable tel quel) laisse
-          -- depart_phrase — l'amorce reste alors dans le libellé, jamais une position fausse.
+          -- « Selon Lefebvre et al. (2019) » : le libellé commence au premier mot du nom,
+          -- sans l'amorce. Ce mot est cherché tel quel dans txt avant la parenthèse ;
+          -- introuvable, le libellé part de depart_phrase et garde l'amorce.
           depart_narratif = depart_phrase
           local premier_mot = noms[1] and noms[1]:match('^(%S+)')
           if premier_mot then
@@ -1232,39 +1113,29 @@ function Pandoc(doc)
             local cands = apparier({ noms = noms, annee = a.annee, suffixe = a.suffixe },
                                    fiches)
             -- Sans virgule devant le millésime, une parenthèse qui ne s'apparie à aucune
-            -- référence n'est pas comptée comme appel : ni bilan, ni constat, ni lien. Le
-            -- coût, assumé : un vrai appel écrit sans virgule et dont la référence manque
-            -- vraiment ne sera plus signalé. La perte est étroite — cette forme est déjà hors
-            -- norme APA — et elle achète l'absence de faux positifs sur toute la prose
-            -- allemande, où le nom rogné ne se distingue jamais d'un nom commun capitalisé.
+            -- référence n'est pas un appel : ni bilan, ni constat, ni lien. Conséquence : un
+            -- vrai appel sans virgule dont la référence manque n'est pas signalé. En échange,
+            -- la prose allemande ne produit pas de faux appels.
             if exige_appariement and #cands == 0 then goto continue end
             appels = appels + 1
-            -- Le libellé est ce que lit le rédacteur dans le constat, et ce que la flèche
-            -- « Vers l'article » du cockpit cherche mot pour mot dans le .md : un appel
-            -- entre parenthèses tient tout entier dans s..e, mais un appel narratif a son
-            -- nom AVANT la parenthèse (« Lefebvre et al. » n'est pas dans « (2019) ») —
-            -- depart_narratif, posé par debut_prose_narrative(), l'y ajoute sans jamais
-            -- inventer de texte : c'est toujours une plage de txt, telle quelle.
+            -- Libellé du constat, que la flèche « Vers l'article » du cockpit cherche tel
+            -- quel dans le .md : toujours une plage de txt. Un appel narratif l'étend vers
+            -- la gauche jusqu'au nom (depart_narratif).
             local libelle = normaliser(txt:sub(depart_narratif or s, e))
             local ds, de
             if #frags == 1 and #ans == 1 then
-              ds, de = s, e                                   -- toute la parenthese
+              ds, de = s, e                                   -- toute la parenthèse
             elseif #ans == 1 then
               ds, de = fr.debut, fr.debut + #fr.texte - 1      -- le fragment
             else
-              ds, de = fr.debut + a.s - 1, fr.debut + a.e - 1  -- l'annee seule
+              ds, de = fr.debut + a.s - 1, fr.debut + a.e - 1  -- l'année seule
             end
             if #cands == 1 then
               appelees[cands[1].id] = true
-              -- L'appariement compte quoi qu'il arrive (bilan, référence jamais appelée) ;
-              -- seul le Link disparaît quand le réglage est actif — l'ancre de la référence,
-              -- elle, est posée plus bas sans condition.
+              -- L'appariement compte toujours ; le réglage ne supprime que le lien.
               --
-              -- `faire` n'est pas fabriqué ici : savoir si cette occurrence est la première
-              -- de la référence exige de voir tout le paragraphe d'abord (deux motifs,
-              -- parenthèses puis crochets, balayés séparément plus bas — l'ordre de
-              -- découverte n'est pas l'ordre du texte). id_ref voyage donc dans la plage ;
-              -- traiter_inlines() décide et fabrique le lien une fois les deux motifs vus.
+              -- Le lien (`faire`) est fabriqué par traiter_inlines(), qui sait quelle
+              -- occurrence est la première une fois parenthèses et crochets balayés.
               if not LIENS_DESACTIVES then
                 plages[#plages + 1] = { s = ds, e = de, id_ref = cands[1].id, libelle = libelle }
               end
@@ -1293,10 +1164,9 @@ function Pandoc(doc)
     if #fiches == 0 then return inlines end
     local txt, depart = aplatir(inlines)
     local plages = {}
-    -- Parenthèses et crochets : les deux servent d'appel dans le corpus — « nach Salter &
-    -- Croce [2022] », « [Pettrich et al., 2025] ». Les crochets du markdown (lien, span,
-    -- appel de note) sont des inlines opaques dans le texte plat, hors d'atteinte de ce
-    -- balayage : seuls les crochets écrits au clavier arrivent ici.
+    -- Parenthèses et crochets servent d'appel : « nach Salter & Croce [2022] »,
+    -- « [Pettrich et al., 2025] ». Les crochets du markdown (lien, span, note) sont déjà
+    -- des inlines opaques : seuls les crochets tapés dans le texte arrivent ici.
     for _, motif in ipairs({ '%(([^%(%)\1]*)%)', '%[([^%[%]\1]*)%]' }) do
       local depuis = 1
       while true do
@@ -1309,11 +1179,8 @@ function Pandoc(doc)
       end
     end
     if #plages == 0 then return inlines end
-    -- Flèche retour : parmi les plages qui portent un id_ref (un appel apparié à une seule
-    -- référence), décider laquelle est la première dans l'ordre du texte, sur une copie
-    -- triée en position croissante — la seule qu'on puisse construire qu'une fois les deux
-    -- motifs (parenthèses, puis crochets) balayés. ancre_posee est partagé par tout le
-    -- document : la vraie première occurrence, tous paragraphes confondus, l'emporte.
+    -- Flèche retour : les plages appariées (id_ref) sont triées par position, et la
+    -- première occurrence de chaque référence dans le document reçoit l'ancre.
     local par_position = {}
     for _, p in ipairs(plages) do
       if p.id_ref then par_position[#par_position + 1] = p end
@@ -1341,11 +1208,8 @@ function Pandoc(doc)
     return courant
   end
 
-  -- Les liens déjà présents (posés à la main) sont respectés et comptés. Un lien écrit à la
-  -- main marche « quel que soit le réglage » (voir la note de tête) : le réglage qui coupe
-  -- la pose automatique ne le concerne pas, et la flèche retour n'a donc pas à s'en priver
-  -- non plus — si c'est la première occurrence de cette référence, il reçoit son ancre
-  -- exactement comme un appel posé automatiquement.
+  -- Les liens posés à la main sont gardés et comptés, quel que soit le réglage. S'il est la
+  -- première occurrence de sa référence, un tel lien reçoit l'ancre de la flèche retour.
   local function marquer_liens_manuels(inlines)
     for _, il in ipairs(inlines) do
       if il.t == 'Link' and il.target:sub(1, 5) == '#ref-' then
@@ -1366,10 +1230,9 @@ function Pandoc(doc)
     end
   end
 
-  -- On descend a la main plutot qu'avec pandoc.walk_block : le filtre Inlines de walk_block
-  -- visite aussi le contenu des liens, ce qui imbriquerait un lien dans un lien deja pose
-  -- a la main. Ici, seule la liste d'inlines de premier niveau d'un paragraphe est
-  -- traitee ; les Link y sont opaques (aplatir leur donne \1).
+  -- Parcours à la main plutôt que pandoc.walk_block, dont le filtre Inlines visite aussi le
+  -- contenu des liens et y imbriquerait un second lien. Seuls les inlines de premier
+  -- niveau d'un paragraphe sont traités ; les Link y sont opaques (\1).
   local traiter_blocs
   traiter_blocs = function(liste)
     local out = pandoc.List()
@@ -1377,8 +1240,7 @@ function Pandoc(doc)
       if b.t == 'Para' or b.t == 'Plain' then
         marquer_liens_manuels(b.content)
         b.content = traiter_inlines(b.content)
-        -- Une note de bas de page porte des blocs à l'intérieur d'un inline : 107 notes du
-        -- corpus contiennent un appel, il faut donc y descendre à la main.
+        -- Une note de bas de page contient des blocs, qui peuvent porter des appels.
         for _, il in ipairs(b.content) do
           if il.t == 'Note' then il.content = traiter_blocs(il.content) end
         end
@@ -1418,24 +1280,17 @@ function Pandoc(doc)
           i = i + 1
           if sortie[i] then dedans:insert(sortie[i]) end
         end
-        -- Flèche retour : seulement si une occurrence de l'appel a vraiment reçu une ancre
-        -- quelque part dans le corps (ancre_posee, renseigné par traiter_inlines() et
-        -- marquer_liens_manuels() plus haut, jamais autrement) — jamais un lien vers une
-        -- ancre absente. Rien n'est donc posé pour une référence jamais appelée, ni,
-        -- szh.desactiverLiensReferences actif, pour une référence dont le seul appel était
-        -- automatique : aucune ancre n'existe alors pour l'accueillir.
+        -- Flèche retour, seulement si un appel de la référence a reçu une ancre dans le
+        -- corps. Il n'y en a pas pour une référence jamais appelée, ni, réglage
+        -- desactiverLiensReferences actif, pour une référence appelée sans lien manuel.
         if ancre_posee[f.id] then
           for k = #dedans, 1, -1 do
             local b = dedans[k]
             if b.t == 'Plain' or b.t == 'Para' then
               local libelle = libelle_par_ref[f.id] or ''
-              -- Texte accessible explicite (pas une flèche nue) : un lecteur d'écran doit
-              -- entendre où ce lien mène, pas deviner une icône. Le contenu du lien reste
-              -- vide et l'icône un fond CSS posé par .szh-retour-appel (print.css) — même
-              -- recette que a.szh-orcid, pour la même raison (un <a> non vide casse le
-              -- lien PDF/UA sous WeasyPrint, anchors.py, règle 7.18.5). La cible commence
-              -- par « # » : la règle a[href^="#"] de print.css lui retire déjà la flèche
-              -- de lien sortant et le soulignement, sans rien à faire ici.
+              -- Lien vide à aria-label : le lecteur d'écran annonce sa destination, et
+              -- l'icône est un fond CSS (.szh-retour-appel, print.css). Comme a.szh-orcid :
+              -- un <a> non vide casse le lien PDF/UA sous WeasyPrint (règle 7.18.5).
               local texte_aria = (LANG_RETOUR == 'de')
                 and ('Zurück zum Zitatverweis ' .. libelle)
                 or ('Retour à l’appel de ' .. libelle)
@@ -1461,15 +1316,14 @@ function Pandoc(doc)
 
   -- Rapport : ce que le rédacteur doit finir à la main.
   local jamais = {}
-  -- Un article sans aucun appel est une documentation ou un agenda : sa « liste » est son
-  -- contenu, et prévenir pour chaque entrée n'aiderait personne.
+  -- Sans aucun appel (documentation, agenda), la liste est le contenu même : pas de
+  -- constat par entrée.
   if appels > 0 then
     for _, f in ipairs(fiches) do
       if not appelees[f.id] then jamais[#jamais + 1] = f.texte:sub(1, 70) end
     end
   end
-  -- Le bilan est un chiffre, pas une plainte : ton « info ». Le cockpit ne le montre que
-  -- s'il reste quelque chose à lier.
+  -- Bilan en ton « info ». Le cockpit ne le montre que s'il reste quelque chose à lier.
   local lies = appels - #orphelins - #ambigus
   constat('info', 'bilan',
     { 'references ' .. #fiches, 'appels ' .. appels, 'lies ' .. lies,
@@ -1489,10 +1343,8 @@ function Pandoc(doc)
       'Mehrdeutiger Zitatverweis, von Hand zu verknüpfen: ' .. a .. '.')
   end
   for _, j in ipairs(jamais) do
-    -- Le champ « reference » n'ajoute rien au texte source : le cockpit y cherche le passage
-    -- par recherche littérale, et un « … » qui n'existe nulle part dans le .md la rend
-    -- muette. La troncature seule ne gêne pas cette recherche ; l'ellipse la casse. Les
-    -- phrases fr/de, elles, gardent leur « … » — purement cosmétique, personne n'y cherche.
+    -- Le champ « reference » reste un extrait exact du .md, sans « … », car le cockpit le
+    -- cherche tel quel. Les phrases fr/de portent l'ellipse.
     avertir('reference-orpheline', { 'reference « ' .. j .. ' »' },
       'Référence jamais appelée : ' .. j .. '…',
       'Nie zitierter Eintrag: ' .. j .. '…')

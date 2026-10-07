@@ -1,18 +1,17 @@
--- Image appelée par le texte mais absente du disque : un cadre à sa place, qui la nomme.
+-- Remplace une image appelée par le texte mais absente du disque par un cadre qui la nomme.
 --
--- Le cadre est du texte réel (« Image introuvable : x.png »), jamais une image : il se lit,
--- se cherche et se balise comme un paragraphe. Une figure est remplacée en entier, légende
--- comprise ; une image en ligne, ou dans une grille, par un cadre en ligne. Les <img> du
--- HTML brut (tableaux réinjectés par szh-tabelle-inclure.lua) le sont aussi.
+-- Le cadre est du texte (« Image introuvable : x.png ») : il se lit, se cherche et se
+-- balise comme un paragraphe. Une figure est remplacée en entier, légende comprise ; une
+-- image en ligne ou dans une grille, par un cadre en ligne. Les <img> du HTML brut
+-- (tableaux insérés par szh-tabelle-inclure.lua) sont traités aussi.
 --
--- Le constat part sous rendu/image-manquante, le code que pandoc et WeasyPrint faisaient
--- remonter avant ce filtre : une fois l'image remplacée, eux n'en disent plus rien. C'est un
--- avertissement, la compilation continue ; l'export et l'archivage, eux, refusent
--- (lib/export-ojs.js).
+-- Le constat est un avertissement rendu/image-manquante : la compilation continue,
+-- l'export et l'archivage refusent (lib/export-ojs.js). Une fois l'image remplacée,
+-- pandoc et WeasyPrint n'en disent plus rien.
 --
--- Place dans la chaîne : après szh-metafichier.lua, dont le substitut existe, et après
--- szh-grille.lua, qui doit encore voir toutes les images d'une grille ; avant szh-figure.lua
--- et szh-numerotation.lua, pour qu'aucune figure vide ne soit construite ni numérotée.
+-- S'exécute après szh-metafichier.lua et szh-grille.lua (qui doit voir toutes les images
+-- d'une grille), avant szh-figure.lua et szh-numerotation.lua (aucune figure vide n'est
+-- construite ni numérotée).
 
 local commun
 do
@@ -33,8 +32,7 @@ end
 
 local CLASSE = 'szh-image-introuvable'
 
--- La fine insécable devant le deux-points est une décision de composition, comme le
--- « Source : » de szh-numerotation.lua : szh-typographie.lua est déjà passé.
+-- La fine insécable est posée ici : szh-typographie.lua est déjà passé.
 local LIBELLE = {
   fr = 'Image introuvable\u{202F}: ',
   de = 'Bild nicht gefunden: ',
@@ -52,8 +50,8 @@ local function existe(chemin)
   return false
 end
 
--- Une cible locale (ni URL, ni data:) qui ne s'ouvre pas, telle quelle ni décodée. Le
--- dossier courant est celui de l'unité : le Makefile y fait `cd` avant pandoc.
+-- Vrai pour une cible locale (ni URL, ni data:) qui ne s'ouvre pas, telle quelle ni
+-- décodée. Le dossier courant est celui de l'unité : le Makefile y fait `cd` avant pandoc.
 local function introuvable(src)
   if type(src) ~= 'string' or src == '' then return false end
   if src:match('^%a[%w+.-]*:') and not src:match('^%a:[/\\]') then return false end
@@ -87,8 +85,8 @@ local function texte_cadre(src)
   return libelle .. nom_de_fichier(src)
 end
 
--- Le libellé part en HTML brut : szh-cesure.lua prendrait sinon « Image », au milieu d'une
--- phrase, pour un nom propre, et cesserait de couper ce mot dans tout l'article.
+-- Le libellé part en HTML brut : szh-cesure.lua prendrait sinon « Image », en milieu de
+-- phrase, pour un nom propre, et ne couperait plus ce mot dans l'article.
 local function libelle_cadre(src)
   return { pandoc.RawInline('html', att(texte_cadre(src))) }
 end
@@ -155,7 +153,7 @@ local function brut(el)
   return el
 end
 
--- Les blocs d'abord : un parcours d'un seul tenant traiterait les Image avant les Figure
+-- Les blocs d'abord : en un seul parcours, les Image seraient traitées avant les Figure
 -- qui les contiennent, et la légende resterait seule.
 function Pandoc(doc)
   local contexte = commun.contexte(doc.meta)

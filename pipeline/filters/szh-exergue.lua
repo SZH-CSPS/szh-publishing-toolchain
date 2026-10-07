@@ -1,18 +1,14 @@
--- szh-exergue.lua — la mise en évidence (::: {.highlight}, alias .hervorhebung) est muette
--- pour un lecteur d'écran dans le HTML publié : c'est une exergue, elle RÉPÈTE un passage
--- du texte, et l'entendre deux fois n'apprend rien (décision de Robin, 23.09.2026).
+-- Rend la mise en évidence (::: {.highlight}, alias .hervorhebung) muette pour un lecteur
+-- d'écran dans le HTML publié : elle répète un passage du texte.
 --
--- aria-hidden="true" sur le bloc, et tabindex="-1" sur ses liens : un bloc masqué dont un
--- lien reste atteignable au clavier est un défaut d'accessibilité à lui seul. Le lien
--- n'est pas retiré : il se verrait dans le PDF, où il cesserait d'être bleu et souligné
--- (mesuré). Le lien lui-même existe déjà dans le passage que l'exergue reprend.
+-- aria-hidden="true" sur le bloc, et tabindex="-1" sur ses liens : un lien atteignable au
+-- clavier dans un bloc masqué est un défaut d'accessibilité. Le lien n'est pas retiré, car
+-- il perdrait sa couleur et son soulignement dans le PDF.
 --
--- Le PDF n'en est pas changé : WeasyPrint ignore aria-hidden (mesuré sous 70, avec
--- role="presentation" et le contenu généré ::before), et l'exergue y reste lue — accepté.
+-- WeasyPrint ignore aria-hidden : dans le PDF, l'exergue reste lue.
 --
--- Absent de la chaîne de l'aperçu, volontairement : l'aperçu sert à RELIRE son article, et
--- une rédactrice aveugle doit y entendre l'exergue qu'elle a posée — même raison que
--- l'encadré de szh-apercu-lecteur-ecran.lua, qui n'est pas aria-hidden non plus.
+-- Absent de la chaîne de l'aperçu : la personne qui relit son article avec un lecteur
+-- d'écran doit y entendre l'exergue.
 
 local CLASSES = { highlight = true, hervorhebung = true }
 

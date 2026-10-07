@@ -1,49 +1,27 @@
--- Livre seulement : la ligne des auteur·e·s d'un chapitre, juste sous son titre.
+-- Livre seulement : pose la ligne des auteur·e·s d'un chapitre juste sous son titre, par
+-- exemple « De Barbara Fontana-Lana, Florence Nater et Elodie Winkler ».
 --
--- Un ouvrage collectif donne ses auteur·e·s chapitre par chapitre — c'est même ce qui le
--- distingue d'une monographie, où ils sont sur la couverture et nulle part ailleurs.
--- Dans les livres FALC publiés, la ligne se lit « De Barbara Fontana-Lana, Florence Nater
--- et Elodie Winkler », en corps de texte allégé, entre le titre du chapitre et le premier
--- bloc.
+-- Un gabarit pandoc ne peut écrire qu'avant ou après `$body$`, pas entre le titre et le
+-- premier bloc : d'où un filtre, comme szh-auteurs.lua pour les articles. szh-auteurs.lua
+-- compose le bloc de clôture d'un article (portrait, fonction, affiliation, ORCID) et ne
+-- tourne pas sur un chapitre ; ce filtre n'écrit qu'une ligne de noms.
 --
--- Pourquoi un filtre et pas le gabarit. Un gabarit pandoc ne sait rien intercaler : il
--- écrit ce qui suit `$body$`, donc la ligne se retrouverait avant le titre du chapitre ou
--- après tout le chapitre, jamais entre les deux. C'est le même constat qui a fait sortir
--- le bloc auteurs de templates/szh-article.html vers szh-auteurs.lua ; même raison, même
--- remède, et le voisin vaut d'être lu.
+-- Le titre du chapitre est posé avant par szh-livre-titre.lua ; le sous-titre, après, par
+-- szh-livre-sous-titre.lua.
 --
--- Ce filtre n'est pas szh-auteurs.lua, et ne le remplace pas :
---   * szh-auteurs.lua compose le bloc de clôture d'un article — portrait, fonction,
---     affiliation, ORCID —, placé avant la bibliographie ;
---   * celui-ci n'écrit qu'une ligne de noms, en tête de chapitre, sans portrait.
--- Un chapitre ne reçoit que cette ligne : szh-auteurs.lua n'est pas dans FILTRES_CHAPITRE
--- (pipeline/profils/livre.mk) et ne tourne donc jamais sur un chapitre — le bloc détaillé
--- de clôture reste propre aux articles de la revue.
---
--- Le titre du chapitre, lui, est posé plus haut dans la chaîne par szh-livre-titre.lua,
--- depuis la même fiche ; son sous-titre par szh-livre-sous-titre.lua, après ce filtre.
---
--- Ce qui décide, et rien d'autre : la clé `ouvrage` de buch.yaml.
+-- La clé `ouvrage` de buch.yaml décide :
 --   * `collectif`   -> la ligne est écrite depuis `author` du <slug>.meta.yaml du chapitre ;
---   * `monographie` -> aucune ligne, quoi que porte la fiche du chapitre. Les auteur·e·s
---     d'une monographie sont ceux du livre ; les répéter à chaque chapitre serait faux.
--- Une valeur absente vaut `monographie` : c'est le cas le plus courant, et le silence est
--- le repli le moins dommageable — une ligne d'auteurs en trop se voit, une ligne manquante
--- se corrige en une clé.
+--   * `monographie` -> aucune ligne : les auteur·e·s sont ceux du livre.
+-- Une valeur absente vaut `monographie`.
 --
--- ⚠ La clé s'appelle `ouvrage` et non `type`, et ce n'est pas une préférence. `type` est
---   déjà la rubrique éditoriale d'un article dans les fiches de la revue (`article`,
---   `editorial`, `interview`…). Pandoc fusionne les fichiers de métadonnées et garde le
---   dernier à clé égale : la fiche du chapitre passant après buch.yaml, un chapitre importé
---   de Word aurait effacé « collectif » par « article », et l'ouvrage aurait silencieusement
---   perdu ses auteur·e·s de chapitre.
+-- La clé s'appelle `ouvrage` et non `type` : `type` est la rubrique éditoriale dans les
+-- fiches (`article`, `editorial`…). Pandoc garde la dernière valeur d'une clé fusionnée, et
+-- la fiche du chapitre, lue après buch.yaml, écraserait « collectif ».
 --
--- Place dans la chaîne : après szh-sections.lua, pour que le titre de chapitre porte déjà
--- son numéro et que la ligne se pose sous le titre fini ; avant szh-citations.lua, comme
--- son voisin.
+-- S'exécute après szh-sections.lua (le titre porte déjà son numéro) et avant
+-- szh-citations.lua.
 
--- Module commun (contexte) : un chargement raté arrête la compilation, ce filtre ne
--- pouvant plus dire dans quelle langue il compose.
+-- Module commun. Sans lui le filtre ne peut pas travailler : la compilation s'arrête.
 local commun
 do
   local function dossier_ce_fichier()
@@ -63,14 +41,14 @@ end
 
 local texte = commun.texte
 
--- Échappement HTML : ce filtre écrit du RawBlock, le gabarit ne le fait plus pour nous.
--- Une esperluette dans un nom composé produirait sans cela un document mal formé.
+-- Échappement HTML : le filtre écrit du RawBlock. Une esperluette non échappée rendrait le
+-- document mal formé.
 local function ech(v)
   return (texte(v):gsub('&', '&amp;'):gsub('<', '&lt;'):gsub('>', '&gt;'))
 end
 
--- « Prénom Nom » quand la fiche les distingue, sinon la chaîne libre. Même règle que
--- szh-auteurs.lua : une fiche ancienne peut n'avoir qu'un champ.
+-- « Prénom Nom » quand la fiche les distingue, sinon la chaîne libre (une fiche ancienne
+-- peut n'avoir qu'un champ). Même règle que szh-auteurs.lua.
 local function nom_affiche(a)
   local nom, prenom = texte(a.nom), texte(a.prenom)
   if nom ~= '' and prenom ~= '' then return prenom .. ' ' .. nom end
@@ -79,12 +57,9 @@ local function nom_affiche(a)
   return texte(a)
 end
 
--- La conjonction avant le dernier nom, dans la langue du livre. L'italien et le romanche
--- ne sont pas ici parce qu'aucun livre ne les a demandés ; le repli français est visible,
--- pas silencieux — un « et » dans un livre allemand se remarque à la relecture.
+-- Conjonction avant le dernier nom, selon la langue du livre ; repli en français.
 local CONJONCTION = { fr = ' et ', de = ' und ', it = ' e ' }
--- L'amorce de la ligne. L'allemand n'en met pas : « Barbara Fontana-Lana, … » se suffit,
--- là où le français dit « De … ». Relevé sur les livres des deux collections.
+-- Début de la ligne. L'allemand n'en met pas : « Barbara Fontana-Lana, … ».
 local AMORCE = { fr = 'De ', de = '', it = 'Di ' }
 
 local function langue_de(meta)
@@ -92,13 +67,13 @@ local function langue_de(meta)
 end
 
 local function ligne_auteurs(meta)
-  -- `author` seul, jamais `auteurs` : cette clé est celle de buch.yaml (les auteur·e·s du
-  -- LIVRE), fusionnée en premier dans les métadonnées de chaque chapitre — la lire ici
-  -- ferait hériter à un chapitre sans auteur·e·s ceux de l'ouvrage entier.
+  -- `author` seul : `auteurs` est la clé de buch.yaml (les auteur·e·s du livre), fusionnée
+  -- dans les métadonnées de chaque chapitre ; la lire donnerait à un chapitre sans
+  -- auteur·e·s ceux de l'ouvrage.
   local gens = meta and meta.author
   if type(gens) ~= 'table' then return nil end
-  -- Une fiche à un seul auteur peut arriver en map nue plutôt qu'en liste d'une map :
-  -- la reconnaître à ses clés, et non au type pandoc, qui varie d'une version à l'autre.
+  -- Une fiche à un seul auteur peut arriver en map nue plutôt qu'en liste : on la
+  -- reconnaît à ses clés, le type pandoc variant selon la version.
   if gens.nom ~= nil or gens.prenom ~= nil then gens = { gens } end
   if #gens == 0 then return nil end
   local noms = {}
@@ -118,12 +93,9 @@ local function ligne_auteurs(meta)
   return (AMORCE[lang] or AMORCE.fr) .. liste
 end
 
--- Un bloc auteurs déjà posé par l'import (style Word « Auhors » et ses variantes, voir
--- docx-styles-corps.py) : un Div `.szh-auteurs` venu tel quel du .md, avant même que ce
--- filtre s'exécute. Le reconnaître évite le doublon d'un chapitre collectif dont le Word
--- portait AUSSI cette ligne — la fiche du chapitre (<slug>.meta.yaml) ne dit rien de ce cas
--- et l'écrirait sinon une seconde fois. Le bloc de l'import gagne : c'est le texte réel du
--- chapitre, la fiche peut être restée un gabarit vide.
+-- Vrai si le bloc est un Div `.szh-auteurs` déjà posé par l'import Word (style « Auhors »
+-- et ses variantes, voir docx-styles-corps.py). Ce bloc, texte réel du chapitre, est alors
+-- gardé et la ligne n'est pas écrite une seconde fois depuis la fiche.
 local function deja_bloc_auteurs(b)
   return b ~= nil and b.t == 'Div' and b.classes ~= nil and b.classes:includes('szh-auteurs')
 end
@@ -135,16 +107,14 @@ function Pandoc(doc)
   local ligne = ligne_auteurs(doc.meta)
   if not ligne then return doc end
 
-  -- Sous le premier titre du document, qui est le titre du chapitre. Un chapitre qui
-  -- n'ouvrirait pas par un titre — cela arrive à une pièce liminaire mal rangée — ne
-  -- reçoit rien plutôt que de voir la ligne atterrir au hasard.
+  -- Sous le premier titre, qui est celui du chapitre. Sans titre, rien n'est posé.
   local i = nil
   for rang, b in ipairs(doc.blocks) do
     if b.t == 'Header' then i = rang; break end
   end
   if not i then return doc end
 
-  -- Maquette normal : `auteurs-chapitre` du bloc `mise-en-page:` (commun.mise_en_page) ;
+  -- Maquette normale : `auteurs-chapitre` du bloc `mise-en-page:` (commun.mise_en_page).
   -- « dessus » place la ligne avant le titre dans le DOM, pour que l'ordre de lecture suive
   -- l'ordre visuel. Le FALC la garde dessous.
   local mep = commun.mise_en_page(doc.meta)

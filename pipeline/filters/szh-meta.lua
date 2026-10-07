@@ -1,28 +1,25 @@
--- Import : retire du corps les blocs déjà partis dans <slug>.meta.yaml, d'après les
+-- Import : retire du corps les blocs déjà repris dans <slug>.meta.yaml, d'après les
 -- instructions « LETTRE<TAB>valeur » écrites par docx-meta.py dans SZH_META :
---   P<TAB>texte  paragraphe à retirer (file de consommation : une ligne ne retire
---                qu'une occurrence, la première rencontrée) ;
---   G<TAB>n      n paragraphes-image de tête (logo licence CC), retirés seulement
---                tant qu'on est dans la zone de tête, jamais une figure du corps ;
---   T<TAB>k      k-ième tableau de premier niveau = tableau des auteurs. docx-tables.py
---                lit la même liste et saute les mêmes indices, ce qui garde les deux
---                numérotations alignées sans toucher à szh-tabelle-reference.lua.
---   FG<TAB>k<TAB>…  k-ième tableau = une mise en page d'images (pronto-lire.py,
---                29.09.2026). docx-tables.py le saute comme un T ; ici il n'est PAS retiré
---                mais REMPLACÉ, à sa place, par un bloc `::: {.szh-grille}` qui porte ses
---                images — une rangée du tableau, un paragraphe d'images — et tout ce que ses
---                cellules portaient d'autre, à la suite : rien de ce tableau ne disparaît.
---                szh-legendes.lua, juste après, y pose légende, texte alternatif et crédits
---                (champs de la ligne FG) et la disposition déduite des rangées. L'attribut
---                `szh-tableau` = k fait le lien, et szh-legendes.lua l'ôte.
--- Doit tourner avant szh-legendes et szh-titres : un bloc consommé ne doit être ni
--- légendé ni promu. Sans SZH_META, ou fichier vide, le document est inchangé.
--- Les paragraphes stylés Title/Subtitle/Author/Abstract n'ont pas de ligne P : pandoc
--- les mappe lui-même en métadonnées, ils ne sont jamais des blocs du corps.
+--   P<TAB>texte  paragraphe à retirer ; une ligne retire une seule occurrence, la
+--                première rencontrée ;
+--   G<TAB>n      n paragraphes-image de tête (logo de licence CC), retirés seulement
+--                dans la zone de tête ;
+--   T<TAB>k      k-ième tableau de premier niveau = tableau des auteurs, retiré.
+--                docx-tables.py saute les mêmes indices : les deux numérotations restent
+--                alignées ;
+--   FG<TAB>k<TAB>…  k-ième tableau = une mise en page d'images (écrit par pronto-lire.py).
+--                docx-tables.py le saute comme un T. Ici, il est remplacé à sa place par
+--                un bloc `::: {.szh-grille}` : un paragraphe d'images par rangée, puis le
+--                reste du contenu des cellules. szh-legendes.lua y pose ensuite légende,
+--                alt, crédits et disposition, et retire l'attribut de lien `szh-tableau` = k.
+-- S'exécute avant szh-legendes.lua et szh-titres.lua : un bloc retiré n'est ni légendé ni
+-- promu en titre. Sans SZH_META, ou avec un fichier vide, le document est inchangé.
+-- Les paragraphes stylés Title/Subtitle/Author/Abstract n'ont pas de ligne P : pandoc les
+-- met lui-même dans les métadonnées.
 
 local utils = pandoc.utils
 
--- Espaces et tirets spéciaux normalisés, espaces compactés. À garder identique à
+-- Normalise espaces et tirets spéciaux, et compacte les espaces. Même règle que
 -- docx-meta.py, docx-titres.py et szh-titres.lua.
 local function normaliser(t)
   t = t:gsub('\194\160', ' '):gsub('\226\128\175', ' '):gsub('\226\128\137', ' ')
@@ -78,12 +75,10 @@ local function rangees_du_tableau(tbl)
   return toutes
 end
 
--- Un tableau de mise en page d'images (ligne FG) -> le bloc de groupe qui le remplace. Une
--- rangée du tableau donne un paragraphe de ses images, dans l'ordre des cellules ; tout bloc
--- de cellule qui n'est pas qu'une image (texte, tableau imbriqué) suit, tel quel, après les
--- images. pronto-lire.py n'écrit FG que pour un tableau sans texte, mais pandoc et le
--- lecteur du gabarit ne voient pas forcément le même Word : ce qui ne rentre pas dans la
--- grille est gardé, jamais jeté.
+-- Remplace un tableau de mise en page d'images (ligne FG) par un bloc de grille : un
+-- paragraphe d'images par rangée, dans l'ordre des cellules, puis les autres blocs des
+-- cellules (texte, tableau imbriqué) tels quels. pronto-lire.py n'écrit FG que pour un
+-- tableau sans texte, mais pandoc peut lire le Word autrement : rien n'est jeté.
 local function grille_depuis_tableau(tbl, k)
   local contenu, autres = pandoc.Blocks({}), pandoc.Blocks({})
   for _, rangee in ipairs(rangees_du_tableau(tbl)) do
@@ -115,11 +110,9 @@ local function grille_depuis_tableau(tbl, k)
   return pandoc.Div(contenu, pandoc.Attr('', { 'szh-grille' }, { ['szh-tableau'] = tostring(k) }))
 end
 
--- Les images que ce filtre retire EXPRÈS (logo de licence de tête, ligne G) sont notées,
--- une par ligne, dans le fichier $SZH_RETRAITS quand import-docx.sh le fournit : le filet de
--- sécurité de fin d'import (docx-controle-import.py) compare les images du Word à celles de
--- l'article, et une image ôtée volontairement ne doit pas lui paraître perdue — ni surtout
--- être remise dans le texte.
+-- Note dans $SZH_RETRAITS (si import-docx.sh le fournit) les images retirées exprès (logo
+-- de licence, ligne G), une par ligne. docx-controle-import.py, qui compare les images du
+-- Word à celles de l'article, ne les compte alors pas comme perdues.
 local function noter_retrait(b)
   local chemin = os.getenv('SZH_RETRAITS')
   if not chemin or chemin == '' then return end
@@ -150,7 +143,7 @@ function Pandoc(doc)
   local sortie = pandoc.List()
   local retires_p, retires_t, retires_g, grilles = 0, 0, 0, 0
   local ordinal = 0                       -- tableaux de premier niveau (ordre du doc)
-  local tete = true                       -- encore dans la zone de tête consommée ?
+  local tete = true                       -- encore dans la zone de tête ?
   for _, b in ipairs(doc.blocks) do
     local garder = true
     if b.t == 'Table' then
@@ -177,8 +170,8 @@ function Pandoc(doc)
         tete = false                      -- le vrai corps a commencé
       end
     elseif b.t == 'Header' then
-      -- L'en-tête de section du tableau des auteurs (« Autrices et auteurs ») est
-      -- consigné en ligne P par docx-meta.py : apparié ici aussi sur les Header.
+      -- Le titre de section du tableau des auteurs (« Autrices et auteurs ») a aussi une
+      -- ligne P.
       local clef = normaliser(utils.stringify(b))
       if clef ~= '' and instr.p[clef] and instr.p[clef] > 0 then
         instr.p[clef] = instr.p[clef] - 1
@@ -192,8 +185,8 @@ function Pandoc(doc)
     if garder then sortie:insert(b) end
   end
   doc.blocks = sortie
-  -- Une ligne P sans correspondance n'est pas une erreur (ligne Keywords stylée
-  -- Abstract, déjà mappée en métadonnées par pandoc) : on le signale sans échouer.
+  -- Une ligne P sans correspondance n'est pas une erreur (par exemple une ligne Keywords
+  -- stylée Abstract, déjà en métadonnées) : elle est seulement comptée dans le message.
   local restants = 0
   for _, n in pairs(instr.p) do restants = restants + n end
   io.stderr:write(string.format(

@@ -1,40 +1,24 @@
--- Calcule les variables de template de la maquette (couverture et en-tête courant) à
--- partir des clés d'ausgabe.yaml et de <slug>.meta.yaml : étiquette de dossier, nom et
--- ISSN de la revue, ligne « Vol. X · Nᵒ N/année », résumés, licence, titre du bloc auteurs,
--- et par auteur `orcid-url` et `photo-rang`. Aucune clé n'est inventée côté fichiers.
--- Le titre du dossier (ausgabe.yaml `title`) est écrasé dans Meta par le `title` de
--- l'article, pandoc gardant le dernier fichier à clé égale : il est donc relu dans
--- ausgabe.yaml via la variable d'environnement SZH_AUSGABE, posée par le Makefile.
+-- Calcule les variables de gabarit de la couverture et de l'en-tête courant, à partir
+-- d'ausgabe.yaml et de <slug>.meta.yaml : étiquette de dossier, nom et ISSN de la revue,
+-- ligne « Vol. X · Nᵒ N/année », résumés, licence, titre du bloc auteurs, et par auteur
+-- `orcid-url`, `initiales` et `photo-rang`.
 --
--- L'année de la ligne « N/année » vient de `date:` si elle y est, sinon du nom du dossier
--- du numéro (« 2027-03 ») : `date:` est la date de publication, vide jusqu'à la parution,
--- et une couverture sans année serait pire qu'une année reprise du dossier.
+-- Pandoc fusionne les métadonnées en gardant le dernier fichier : le `title` de l'article
+-- écrase celui du dossier. Le titre du dossier est donc relu dans le fichier que nomme
+-- SZH_AUSGABE (posée par le Makefile).
 --
--- Licence : `licence:` de <slug>.meta.yaml, jeton fermé. Absente ou illisible, c'est
--- CC-BY 4.0, la licence de la revue — une fiche d'avant ce champ sort donc exactement
--- comme avant. « droits-reserves » n'a pas d'adresse : la couverture imprime alors la
--- mention sans lien, et aucune URL n'est inventée.
---
--- Langue de composition : celle de l'article (`lang:` de <slug>.meta.yaml) prime sur le
--- jeton de revue et sur le `lang:` du numéro. Un article allemand d'un numéro français se
--- compose donc en allemand — césure, libellés « Abbildung », /Lang du PDF, lecteur
--- d'écran. Fiche sans `lang:` : repli sur la langue du numéro, et un avertissement qui
--- nomme l'article.
---
--- Et rien ne s'imprime dans une autre langue que celle-là : title, subtitle et resume
--- vides dans la langue de l'article arrêtent la compilation au lieu de laisser passer le
--- texte français sous `lang="de"`. Même règle pour la marque « TO BE TRANSLATED », qui
--- tient la place d'un mot-clé non traduit et deviendrait une puce de la couverture.
+-- Langue de composition : celle de l'article (`lang:` de <slug>.meta.yaml), sinon celle du
+-- numéro avec un avertissement. Title, subtitle et resume s'impriment dans cette langue
+-- seulement : s'ils n'y sont remplis que dans une autre langue, la compilation s'arrête.
+-- Elle s'arrête aussi sur la marque « TO BE TRANSLATED ».
 
 local utils = pandoc.utils
 
--- Module commun (slug_article, contexte) : un chargement raté arrête la compilation, ce
--- filtre ne pouvant plus dire de langue ni de slug fiables sans lui.
+-- Module commun. Sans lui le filtre ne peut pas travailler : la compilation s'arrête.
 local commun
 do
-  -- debug.getinfo, pas PANDOC_SCRIPT_FILE : ce dernier nomme le script reçu par pandoc en
-  -- ligne de commande, pas celui-ci quand un autre le charge par dofile — voir
-  -- szh-commun.lua.
+  -- debug.getinfo donne le chemin de ce fichier ; PANDOC_SCRIPT_FILE donnerait celui du
+  -- script passé à pandoc, qui peut être un autre.
   local function dossier_ce_fichier()
     local source = debug.getinfo(1, 'S').source
     if source:sub(1, 1) == '@' then source = source:sub(2) end
@@ -55,16 +39,14 @@ local function S(v)
   return (utils.stringify(v):gsub('^%s+', ''):gsub('%s+$', ''))
 end
 
--- Lecture hors pandoc d'ausgabe.yaml (titre du dossier) et de la fiche (licence) : la fusion
--- de pandoc ne dit pas de quel fichier une clé vient.
+-- Lecture directe d'un fichier YAML : la fusion de pandoc ne dit pas de quel fichier une
+-- clé vient.
 local parse_scalar = commun.parse_scalar
 local lire_cle = commun.lire_cle
 
--- Année portée par la couverture. `date:` d'ausgabe.yaml est la date de publication du
--- numéro : elle reste vide jusqu'à la parution, alors que la couverture doit porter son
--- année dès le premier PDF. Repli sur le nom du dossier du numéro, qui suit la convention
--- « 2027-03 » — SZH_AUSGABE pointe l'ausgabe.yaml de ce dossier. Une date complète saisie
--- passe devant : c'est elle qui fait foi.
+-- Année de la couverture : celle de `date:` si elle est saisie, sinon celle du nom du
+-- dossier du numéro (« 2027-03 »). `date:` est la date de publication, vide jusqu'à la
+-- parution, alors que la couverture porte son année dès le premier PDF.
 local function annee_numero(date_val)
   local annee = date_val:match('%d%d%d%d')
   if annee then return annee end
@@ -74,17 +56,15 @@ local function annee_numero(date_val)
   return nom:match('^(%d%d%d%d)%-%d') or ''
 end
 
--- ─── Tri alphabétique des mots-clés (A8) ─────────────────────────────────────
--- table.sort nu trie par octet : en UTF-8, une lettre accentuée occupe deux octets dont
--- le premier (0xC3 ou 0xC5) est plus grand que celui de toute lettre ASCII — « École »
--- partirait après « Zurich », « Ökonomie » après « Zürich ». Le français et l'allemand
--- rangent au contraire une lettre accentuée avec sa lettre de base (ordre du
--- dictionnaire, pas celui de l'annuaire téléphonique allemand qui déplierait ö en oe).
--- PLIAGE_ACCENTS couvre les diacritiques des deux langues, casse déjà abaissée par string.lower
--- (qui ne touche que l'ASCII, une majuscule accentuée n'en étant pas un octet) : chaque
--- séquence UTF-8 à 2 octets (0xC3 ou 0xC5 en tête) est remplacée par sa lettre nue. Pas
--- de dépendance nouvelle : une table suffit, aucune bibliothèque de collation n'existe
--- dans ce projet.
+-- ─── Tri alphabétique des mots-clés ──────────────────────────────────────────
+-- table.sort compare des octets : en UTF-8, une lettre accentuée commence par 0xC3 ou
+-- 0xC5, plus grand que toute lettre ASCII, et « École » se rangerait après « Zurich ».
+-- Le tri range donc chaque lettre accentuée avec sa lettre de base (ordre du
+-- dictionnaire, ö avec o). PLIAGE_ACCENTS remplace chaque séquence UTF-8 à deux octets
+-- par sa lettre nue, minuscules et majuscules, car string.lower ne touche que l'ASCII.
+-- Sur certains pandoc Windows natifs, string.lower altère aussi les octets non ASCII
+-- (page de code active) et le pliage ne reconnaît plus rien ; les tests le détectent et
+-- sautent les cas concernés.
 local PLIAGE_ACCENTS = {
   ['\195\128']='a', ['\195\160']='a', ['\195\130']='a', ['\195\162']='a',
   ['\195\132']='a', ['\195\164']='a',
@@ -100,9 +80,9 @@ local PLIAGE_ACCENTS = {
   ['\195\159']='ss',
 }
 
--- Clé de tri d'un mot-clé : casse abaissée puis diacritiques pliés sur leur lettre de
--- base. Deux mots-clés à clé égale (casse ou accent près) gardent un ordre déterministe
--- via la chaîne d'origine, sinon table.sort échouerait (« invalid order function »).
+-- Clé de tri d'un mot-clé : casse abaissée, diacritiques pliés. À clé égale, motcle_avant
+-- départage par la chaîne d'origine, sans quoi table.sort peut échouer (« invalid order
+-- function »).
 local function cle_tri_motcle(s)
   return (s:lower():gsub('[\195\197][\128-\191]', PLIAGE_ACCENTS))
 end
@@ -113,33 +93,23 @@ local function motcle_avant(a, b)
   return a < b
 end
 
--- ─── Qualificatif de PROVENANCE du thésaurus edudoc, masqué à l'AFFICHAGE (16.09.2026) ────
--- Un descripteur edudoc porte parfois un qualificatif final entre parenthèses qui ne dit rien
--- du terme, seulement d'où il vient dans le thésaurus : « Barrierefreiheit (szh) »,
--- « inclusion (CSPS) », « plan d'études (na) ». La saisie passe désormais par une liste
--- fermée qui insère la forme canonique d'edudoc, qualificatif compris, dans le .meta.yaml —
--- et ce qualificatif-là ne doit jamais s'imprimer, ni sur le PDF ni sur le HTML (les deux
--- sortent de ce même gabarit). Le CSV Edudoc, lui, garde la forme canonique complète : rien
--- ici n'y touche, le masquage n'a lieu qu'à l'affichage, jamais dans le .meta.yaml.
+-- ─── Qualificatif de provenance du thésaurus edudoc ─────────────────────────
+-- Un descripteur edudoc porte parfois un qualificatif final qui dit seulement d'où il vient
+-- dans le thésaurus : « Barrierefreiheit (szh) », « plan d'études (na) ». Le .meta.yaml et
+-- le CSV Edudoc gardent cette forme complète ; le PDF et le HTML l'impriment sans le
+-- qualificatif.
 --
--- Liste fermée, partagée avec vscodium-extension/szh-cockpit/lib/mots-cles-edudoc.js
--- (QUALIFICATIFS_PROVENANCE, sansQualificatifDeProvenance) : le PDF sort de ce filtre-ci, la
--- page publique d'ojs.szh.ch de ce module JS-là — les deux doivent masquer exactement les
--- mêmes jetons, sous peine d'afficher deux choses différentes sans que personne ne s'en
--- aperçoive. test/js/mots-cles-grille.test.js lit les deux fichiers et échoue si l'une des
--- deux listes bouge sans l'autre.
+-- Même liste que QUALIFICATIFS_PROVENANCE de lib/mots-cles-edudoc.js, qui fait le même
+-- travail pour la page OJS ; test/js/mots-cles-provenance.test.js vérifie que les deux
+-- restent identiques.
 --
--- Seuls ces cinq jetons, comparés en entier et insensibles à la casse (ASCII seul, donc pas
--- concerné par le défaut de string.lower() sur pandoc Windows natif documenté plus haut pour
--- PLIAGE_ACCENTS) : tout autre contenu de parenthèse est un SENS et reste intact —
--- « diagnostic (résultat) » et « diagnostic (processus) » sont deux concepts différents,
--- « procédure d'évaluation standardisée (PES) » porte son acronyme officiel.
+-- Seuls ces cinq jetons sont retirés, comparés en entier et sans tenir compte de la casse.
+-- Toute autre parenthèse porte du sens et reste : « diagnostic (processus) »,
+-- « procédure d'évaluation standardisée (PES) ».
 local QUALIFICATIFS_PROVENANCE = { na = true, ce = true, szh = true, csps = true, spc = true }
 
--- Un libellé privé de son qualificatif de provenance, s'il en porte un. Le contenu de la
--- parenthèse finale doit être EXACTEMENT l'un des cinq jetons ci-dessus, jamais une recherche
--- à l'intérieur : un libellé sans parenthèse finale, ou dont la parenthèse porte autre chose,
--- ressort inchangé.
+-- Rend le libellé sans son qualificatif de provenance final. Un libellé dont la parenthèse
+-- finale n'est pas exactement l'un des cinq jetons ressort inchangé.
 local function sans_qualificatif_provenance(texte)
   local contenu = texte:match('%(([^()]*)%)%s*$')
   if contenu then
@@ -151,16 +121,11 @@ local function sans_qualificatif_provenance(texte)
   return texte
 end
 
--- DOI calculé de l'article, lu dans le fichier dérivé dois-calcules.yaml que le cockpit
--- dépose à côté d'ausgabe.yaml (repéré par SZH_AUSGABE, comme annee_numero). Le calcul
--- lui-même vit dans le cockpit — le rang de l'article parmi les porteurs du numéro,
--- lib/articles.js, un seul endroit — et le pipeline ne fait que lire la valeur déposée :
--- un second calcul ici finirait par diverger du premier. Lecture hors pandoc, ligne à
--- ligne, la clé comparée en texte et non passée à lire_cle : un slug porte des tirets,
--- qui sont des quantificateurs dans un motif Lua. Fichier absent ou slug absent -> '' —
--- les dépôts montés à la main et les tests n'ont pas ce fichier, et un article sans DOI
--- n'y a pas de ligne : la couverture sort alors sans bandeau, comme avant, jamais en
--- échec.
+-- DOI de l'article, lu dans dois-calcules.yaml, que le cockpit dépose à côté
+-- d'ausgabe.yaml. Le DOI se calcule dans le cockpit seul (lib/articles.js) ; le filtre lit
+-- la valeur. La clé se compare en texte et ne passe pas par lire_cle : un slug porte des
+-- tirets, qui sont des quantificateurs dans un motif Lua. Fichier ou ligne absents : '',
+-- et la couverture sort sans bandeau DOI.
 local function doi_calcule_du_numero(slug)
   if slug == '' then return '' end
   local ausgabe = os.getenv('SZH_AUSGABE') or ''
@@ -178,8 +143,8 @@ local function doi_calcule_du_numero(slug)
   return valeur
 end
 
--- Nom et ISSN de la revue. Accepte le jeton canonique (zeitschrift/revue) et le nom complet
--- de l'ancien ausgabe.yaml. Valeur inconnue -> champ libre, sans ISSN.
+-- Nom et ISSN de la revue. `revue:` peut être le jeton (zeitschrift, revue) ou le nom
+-- complet. Valeur inconnue : reprise telle quelle, sans ISSN.
 local function derive_revue(revue_val, produit)
   if produit == 'zeitschrift' then
     return 'Schweizerische Zeitschrift für Heilpädagogik', '2813-4907'
@@ -189,7 +154,7 @@ local function derive_revue(revue_val, produit)
   return revue_val, ''
 end
 
--- Libellés localisés des types hors dossier, repris de LIBELLES_TYPES de l'extension.
+-- Libellés des types hors dossier, les mêmes que LIBELLES_TYPES du cockpit.
 local LIBELLES = {
   ['varia']         = { fr = 'Varia',         de = 'Varia',         it = 'Varia' },
   ['documentation'] = { fr = 'Documentation', de = 'Dokumentation', it = 'Documentazione' },
@@ -199,28 +164,19 @@ local TYPES_DOSSIER = { article = true, editorial = true, interview = true }
 
 local LABELS_RESUME = { de = 'Zusammenfassung', fr = 'Résumé', it = 'Riassunto' }
 
--- U+00A0, l'espace insécable. Même écriture que dans szh-typographie.lua.
+-- U+00A0, l'espace insécable.
 local NBSP = '\194\160'
--- U+2011, le trait d'union insécable — voir initiales_prenom() ci-dessous.
+-- U+2011, le trait d'union insécable.
 local TIRET_INSEC = '\226\128\145'
 
--- Initiales d'un prénom, pour la ligne d'auteur·e·s de la COUVERTURE seulement
--- (08.09.2026) : « Jérôme » -> « J. », « Jean-Baptiste » -> « J.-B. », « Marie Christine »
--- -> « M. C. ». Le bloc « À propos des auteur·e·s », lui, garde le prénom entier — c'est
--- là qu'on présente les personnes, la couverture ne fait que les créditer.
--- Le séparateur d'un prénom composé est CONSERVÉ dans sa nature, mais dans sa forme
--- INSÉCABLE : trait d'union insécable (U+2011) pour un prénom à trait d'union, espace
--- insécable pour deux prénoms séparés d'une espace. « J.-B. » est une abréviation, pas un
--- mot composé, et ne se coupe jamais : avec un trait d'union ordinaire, la couverture à dix
--- auteur·e·s sortait « Rossier, J.- » en fin de ligne et « B. » au début de la suivante
--- (mesuré le 08.09.2026 — la coupure à un trait d'union relève de UAX #14, aucun réglage
--- `hyphens` ne l'empêche). Les faces livrées portent toutes U+2011, c'est contrôlé par
--- test/polices-check.py.
--- Le NOM, lui, garde son trait d'union ordinaire : « Cudré-Mauroux » est un nom composé, et
--- la coupure à son trait d'union est la seule que le français permette dans un nom propre.
--- ⚠ Découpage en caractères et non en octets : « Élodie » commence sur deux octets, et
--- prenom:sub(1, 1) rendrait la moitié d'un É. utf8.offset donne la frontière du deuxième
--- caractère, quelle que soit la lettre — et rend #s+1 quand il n'y en a qu'un.
+-- Initiales d'un prénom, pour la ligne d'auteurs de la couverture : « Jérôme » -> « J. »,
+-- « Jean-Baptiste » -> « J.-B. », « Marie Christine » -> « M. C. ». Le bloc « À propos »
+-- garde le prénom entier.
+-- Le séparateur devient insécable (U+2011 ou espace insécable) : avec un trait d'union
+-- ordinaire, le navigateur peut couper « J.- » / « B. » en fin de ligne (règle UAX #14,
+-- qu'aucun réglage `hyphens` n'empêche). test/polices-check.py vérifie que les polices
+-- livrées portent U+2011. Le nom garde son trait d'union ordinaire.
+-- Le découpage se fait en caractères : « Élodie » commence sur deux octets.
 local function initiales_prenom(prenom)
   local sortie = {}
   local i = 1
@@ -240,22 +196,17 @@ local function initiales_prenom(prenom)
   return table.concat(sortie)
 end
 
--- Abréviation de « numéro » devant le rang du numéro, dans la langue de composition
--- (08.09.2026) : « Vol. 17 · Nᵒ02/2027 » en français, « Nr. 02/2027 » en allemand. Sans
--- elle, la ligne se lisait « Vol. 17 · 02/2027 », où le 02 pouvait passer pour un mois.
--- Langue hors des trois : pas d'abréviation inventée, la ligne sort comme avant.
+-- Abréviation de « numéro » devant le rang du numéro : « Vol. 17 · Nᵒ02/2027 » en
+-- français, « Jg. 17 · Nr. 02/2027 » en allemand. Langue hors des trois : pas
+-- d'abréviation.
 --
--- `sup` — le « o » de l'abréviation française est un o EN EXPOSANT, et non le signe degré.
--- Aucune des faces livrées ne porte U+1D52 (le o modificateur), et le seul o en exposant
--- qu'elles portent, U+00BA, ne se distingue pas de « ° » à l'œil (mesuré le 08.09.2026,
--- rendus comparés à 9 et 22 px). C'est donc un vrai <sup>, ce qui oblige à composer la
--- ligne en INLINES : pandoc échappe le contenu d'une MetaString, il rend celui d'une
--- MetaInlines. print.css lui rend sa casse — les deux boîtes qui portent cette ligne sont
--- en capitales, et un « O » capital en exposant n'est pas l'abréviation.
+-- `sup` : le « o » français est un vrai <sup>. Les polices livrées n'ont pas U+1D52, et
+-- U+00BA ne se distingue pas du signe degré. La ligne se compose donc en inlines (pandoc
+-- échappe une MetaString). Les boîtes qui la portent sont en capitales : print.css rend sa
+-- casse à l'exposant.
 --
--- `espace` — rien en français : « Nᵒ02/2027 », demandé le 08.09.2026. L'allemand et
--- l'italien gardent l'insécable, leur abréviation finissant par un point : « Nr.02 » se
--- lirait comme un nombre décimal.
+-- `espace` : aucune en français. L'allemand et l'italien gardent l'insécable, car
+-- « Nr.02 » se lirait comme un nombre décimal.
 local ABREV_NUMERO = {
   fr = { texte = 'N',   sup = 'o', espace = ''   },
   de = { texte = 'Nr.',            espace = NBSP },
@@ -263,24 +214,21 @@ local ABREV_NUMERO = {
 }
 local ORDRE_LANGUES = { 'de', 'fr', 'it' }
 
--- Abréviation de « volume » devant le millésime de la couverture, dans la langue de
--- composition. En allemand, le millésime d'une revue est un *Jahrgang* : « Vol. » y est un
--- anglicisme qu'aucune revue germanophone n'imprime. Langue hors des trois : repli sur « Vol. ».
+-- Abréviation de « volume » sur la couverture. En allemand, le volume d'une revue est un
+-- *Jahrgang* (« Jg. »). Langue hors des trois : « Vol. ».
 local ABREV_VOLUME = {
   fr = 'Vol. ',
   de = 'Jg. ',
   it = 'Vol. ',
 }
 
--- Bloc des auteur·e·s : titre localisé. Un seul libellé, quel que soit le nombre de
--- personnes — l'accord en nombre d'avant obligeait à deux formules par langue pour un
--- titre que personne ne lit comme une phrase.
+-- Titre du bloc des auteurs, le même quel que soit leur nombre.
 local TITRES_AUTEURS = { fr = 'Autrices et auteurs', de = 'Autor:innen',
                          it = 'Autrici e autori' }
 
--- Licences d'article : miroir de LICENCES_ARTICLE de lib/yaml.js, gardé par
--- test/js/licence.test.js. `nom` est le sigle imprimé, le même dans les trois langues ;
--- une entrée sans `url` n'a pas de lien, et n'en recevra pas.
+-- Licences d'article : même liste que LICENCES_ARTICLE de lib/yaml.js, vérifiée par
+-- test/js/licence.test.js. `nom` est le sigle imprimé ; une entrée sans `url` s'imprime
+-- sans lien. Licence absente ou inconnue : LICENCE_DEFAUT.
 local LICENCE_DEFAUT = 'cc-by-4.0'
 local LICENCES = {
   ['cc-by-4.0']       = { nom = 'CC-BY 4.0',       url = 'https://creativecommons.org/licenses/by/4.0/' },
@@ -292,9 +240,8 @@ local LICENCES = {
   ['droits-reserves'] = { nom = '',                url = '' },
 }
 
--- Mention de licence de la couverture, localisée. Le sigle est inséré tel quel dans la
--- phrase Creative Commons ; « droits réservés » n'est pas une licence Creative Commons et
--- a donc sa propre phrase, sans sigle et sans lien.
+-- Mention de licence de la couverture. « Droits réservés » a sa propre phrase, sans sigle
+-- ni lien.
 local MENTION_CC = {
   de = 'Dieser Artikel steht unter der Lizenz Creative Commons %s',
   fr = 'Cet article est sous licence Creative Commons %s',
@@ -306,10 +253,9 @@ local MENTION_RESERVE = {
   it = 'Tutti i diritti riservati',
 }
 
--- Mention et adresse de licence de l'article. Le jeton est lu dans sa fiche, hors pandoc,
--- comme la langue : la fusion de pandoc ne dirait pas de quel fichier la clé vient, et
--- une licence posée dans ausgabe.yaml s'appliquerait à tout le numéro sans qu'on l'ait
--- décidé. Rend la mention puis l'adresse, celle-ci vide quand il n'y en a pas.
+-- Rend la mention de licence de l'article, puis son adresse ('' sans lien). Le jeton se
+-- lit dans la fiche de l'article seule : une `licence:` posée dans ausgabe.yaml ne doit
+-- pas s'appliquer à tout le numéro.
 local function licence_article(slug, lang)
   local cle = ''
   if slug ~= '' then cle = lire_cle(slug .. '.meta.yaml', 'licence'):lower() end
@@ -320,33 +266,22 @@ local function licence_article(slug, lang)
   return string.format(MENTION_CC[lang] or MENTION_CC.fr, entree.nom), entree.url
 end
 
--- Réglage « condenser l'en-tête » (ausgabe.yaml). Depuis le 09.09.2026, la clé ABSENTE
--- vaut « compact » — c'est le nouveau défaut demandé par le responsable de la revue, câblé
--- dans Meta() plus bas. Ce normalisateur-ci ne s'applique, lui, qu'à une clé PRÉSENTE : il
--- existe parce que pandoc ne peut pas juger seul avec `$if(entete-condensee)$` — pour lui,
--- toute chaîne non vide est vraie, donc un `entete-condensee: "false"` — le sérialiseur du
--- cockpit cite ses valeurs — activerait l'option au lieu de la couper. Seule une liste
--- fermée de valeurs vraies est reconnue, tout le reste vaut « pas condensé ».
+-- Valeur d'une clé booléenne présente (par exemple `entete-condensee`). Pour
+-- `$if(...)$`, toute chaîne non vide est vraie, et le cockpit écrit ses valeurs entre
+-- guillemets : `"false"` serait vrai. Seule la liste VRAIS vaut vrai.
 local VRAIS = { ['true'] = true, ['1'] = true, ['oui'] = true, ['ja'] = true,
                 ['yes'] = true, ['si'] = true }
 local function est_vrai(v)
   if v == nil then return false end
-  -- Un booléen YAML arrive en booléen Lua nu : le tester en premier, l'indexer (v.t)
-  -- lèverait une erreur.
+  -- Un booléen YAML arrive en booléen Lua, que S() ne sait pas lire.
   if type(v) == 'boolean' then return v end
   return VRAIS[S(v):lower()] == true
 end
 
 -- ─── Messages destinés au rédacteur ─────────────────────────────────────────
--- Le panneau de compilation est lu par des rédacteurs, pas par des développeurs : chaque
--- message nomme l'article, le champ, la langue attendue et le geste qui corrige. Deux
--- langues, celles du cockpit ; l'allemand en orthographe suisse.
---
--- Les deux langues partent sur la même ligne, l'allemande introduite par « [de] », et le
--- cockpit jette celle qu'il n'affiche pas. Ce filtre n'a donc plus de langue à choisir :
--- il n'écrivait qu'une langue, celle du numéro, et le cockpit devait reconnaître ses
--- phrases françaises et allemandes pour pouvoir les redire dans la sienne. Une
--- reformulation cassait la remontée, sans un mot.
+-- Chaque message nomme l'article, le champ, la langue attendue et ce qu'il faut faire pour
+-- corriger. Le français et l'allemand (orthographe suisse) partent sur la même ligne,
+-- l'allemand après « [de] » ; le cockpit affiche celle de son interface.
 local LA_LANGUE = {
   fr = { fr = 'le français', de = "l’allemand", it = "l’italien" },
   de = { fr = 'Französisch', de = 'Deutsch',    it = 'Italienisch' },
@@ -399,38 +334,30 @@ local MESSAGES = {
   },
 }
 
--- Une ligne de constat, dans le format que le cockpit lit déjà pour l'import :
+-- Format d'une ligne de message, lu par le cockpit :
 --
 --   [meta-<ton>] <code> | <champ> | … | <phrase fr> | [de] <Satz de>
 --
--- Le préfixe porte le ton — « blocage » quand la compilation s'arrête, « avertissement »
--- quand elle continue — et le deuxième champ un code stable. L'interface s'ancre sur ces
--- deux-là ; la prose n'est qu'un repli d'affichage, et se reformule sans rien casser.
--- « meta » est la famille : les métadonnées et la langue de l'article, telles que la vue
--- des contrôles les nomme déjà.
---
+-- Le ton vaut « blocage » (la compilation s'arrête) ou « avertissement ». Le cockpit se
+-- fie au ton et au code ; les phrases peuvent se reformuler sans rien casser.
 -- Les champs sont nommés (« article « … » », « champ « title » », « langue « de » »,
--- « motcle 3 ») : le cockpit y prend les substitutions de sa propre phrase, sans avoir à
--- compter des positions. Aucun ne contient de « | ».
+-- « motcle 3 ») pour que le cockpit les retrouve sans compter les positions. Aucun ne
+-- contient de « | ».
 local function chp_article(slug) return 'article « ' .. slug .. ' »' end
 local function chp_langue(l)     return 'langue « ' .. l .. ' »' end
 local function chp_champ(cle)    return 'champ « ' .. cle .. ' »' end
 local function chp_motcle(rang)  return 'motcle ' .. rang end
 
--- Arrêt de la compilation, par l'émetteur commun (szh-commun.lua) : os.exit(1) rend un code
--- non nul et n'écrit aucun fichier de sortie.
+-- Écrit le message et arrête la compilation sans fichier de sortie (szh-commun.lua).
 local function bloquer(code, champs, fr, de) commun.bloquer('meta', code, champs, fr, de) end
 
--- Champ localisé, dans la langue de l'article et dans elle seule. L'ancien repli
--- « première langue non vide » imprimait le titre français sous `lang="de"`, sans un mot
--- et au mépris de PDF/UA. Trois cas :
+-- Valeur d'un champ localisé dans la langue de l'article, et dans elle seule (un texte
+-- d'une autre langue sous ce `lang` fausserait la lecture d'écran) :
 --   rempli dans la langue de l'article        -> la valeur ;
---   vide partout et champ facultatif          -> '' (le champ n'existe pas, c'est permis) ;
+--   vide partout et champ facultatif          -> '' ;
 --   rempli dans une autre langue seulement,
---   ou champ obligatoire                      -> arrêt, message nommant le geste.
--- Facultatifs : subtitle et resume, qu'un éditorial ou une brève n'ont pas toujours.
--- Obligatoire : title, un article sans titre n'étant pas publiable — l'export OJS le
--- refuse déjà.
+--   ou champ obligatoire vide                 -> arrêt de la compilation.
+-- title est obligatoire ; subtitle et resume sont facultatifs.
 local function champ_localise(map, lang, cle, obligatoire, slug)
   local valeur, ailleurs = '', false
   if map ~= nil then
@@ -453,8 +380,8 @@ local function est_marque(texte)
   return (texte:gsub('^%s+', ''):gsub('%s+$', '')):upper() == MARQUE
 end
 
--- La marque tient la place d'un mot-clé non traduit : utile en atelier, désastreuse
--- imprimée. szh-maquette ne la connaissait pas et la recopiait en puce de couverture.
+-- Arrête la compilation si la marque « TO BE TRANSLATED », qui tient la place d'un texte
+-- non traduit, reste dans un mot-clé, un titre, un sous-titre ou un résumé.
 local function verifier_marque(meta, slug)
   local km = meta.keywords
   if km ~= nil then
@@ -483,8 +410,8 @@ local function verifier_marque(meta, slug)
 end
 
 function Meta(meta)
-  -- Langue de l'article et produit, posés par szh-contexte.lua. Filtre lancé seul : le
-  -- calcul se fait ici, avec ses messages (fiche sans langue, langue inconnue).
+  -- Langue de l'article et produit, posés par szh-contexte.lua, ou calculés ici si le
+  -- filtre tourne seul.
   local contexte = commun.contexte(meta, true)
   local lang = contexte.lang
   local nom, issn = derive_revue(S(meta.revue), contexte.produit)
@@ -495,20 +422,17 @@ function Meta(meta)
   local type_art = S(meta.type)
   local dossier = lire_cle(os.getenv('SZH_AUSGABE'), 'title')
 
-  -- Étiquette de dossier.
   local etiquette
   if TYPES_DOSSIER[type_art] then
     etiquette = dossier
   elseif LIBELLES[type_art] then
     etiquette = LIBELLES[type_art][lang] or LIBELLES[type_art].fr
   else
-    etiquette = dossier   -- type absent/inconnu : dégradation propre
+    etiquette = dossier   -- type absent ou inconnu
   end
 
-  -- Ligne « Vol. X · Nᵒ N/année » (parties manquantes omises), composée en inlines : voir
-  -- ABREV_NUMERO ci-dessus pour le pourquoi de l'exposant. L'abréviation ne se pose que
-  -- devant un RANG de numéro : une ligne réduite à l'année (`numero:` vide) reste l'année
-  -- nue, « Nᵒ2027 » ne voulant rien dire.
+  -- Ligne « Vol. X · Nᵒ N/année », sans les parties manquantes (voir ABREV_NUMERO). Sans
+  -- `numero:`, la ligne porte l'année seule, sans abréviation.
   local volume = S(meta.volume)
   local numero = S(meta.numero)
   local annee = annee_numero(S(meta.date))
@@ -535,7 +459,7 @@ function Meta(meta)
     for _, el in ipairs(droite) do table.insert(vol_ligne, el) end
   end
 
-  -- Résumés (de/fr/it présents), langue de composition en premier.
+  -- Résumés présents, celui de la langue de composition en premier.
   local resumes = {}
   local vus = {}
   local function ajouter(l)
@@ -548,28 +472,18 @@ function Meta(meta)
     local mots = {}
     local km = meta.keywords
     if km ~= nil and km[l] ~= nil then
-      -- A8 : ordre alphabétique, propre à cette langue — l'ordre de saisie (souvent celui
-      -- de la langue source de la traduction) ne doit pas se voir à l'impression, et rien
-      -- n'oblige les deux langues à s'aligner entre elles.
+      -- Mots-clés triés par ordre alphabétique, chaque langue pour elle-même.
       local textes = {}
       local vus_motcles = {}
       for _, mot in ipairs(km[l]) do
-        -- Masquage AVANT le tri : c'est la forme AFFICHÉE qui doit être triée, jamais la
-        -- forme brute d'edudoc encore porteuse de son qualificatif de provenance — sinon
-        -- « prévention (na) » se rangerait après « Zoothérapie » au lieu de sa place réelle.
+        -- Le qualificatif se retire avant le tri : c'est la forme affichée qui se trie.
         local brut = S(mot)
         local affiche = sans_qualificatif_provenance(brut)
-        -- Un mot-clé qui n'était PAS vide au départ mais que le masquage réduit à rien —
-        -- « (na) » tapé seul, aucun descripteur du thésaurus n'a cette forme mais la saisie
-        -- manuelle reste ouverte — n'a plus rien à imprimer : il disparaît plutôt que de
-        -- poser une puce vide sur la couverture. Un vrai champ vide saisi tel quel, lui,
-        -- continue de traverser comme avant (voir le test « un mot-clé vide ne fait pas
-        -- planter le tri ») : seul le passage de « non vide » à « vide » déclenche l'écart.
+        -- Un mot-clé que le retrait du qualificatif vide (« (na) » seul) disparaît. Un
+        -- mot-clé déjà vide passe tel quel.
         if not (brut ~= '' and affiche == '') then
-          -- Dédoublonnage APRÈS le masquage, sur la clé de tri (casse et accents pliés,
-          -- déjà calculée pour le tri qui suit) : un article portant « prévention » et
-          -- « prévention (na) » ne doit imprimer ce mot-clé qu'une seule fois. Le premier
-          -- rencontré fait foi.
+          -- Dédoublonnage sur la clé de tri, après le retrait : « prévention » et
+          -- « prévention (na) » ne s'impriment qu'une fois. Le premier rencontré reste.
           local cle = cle_tri_motcle(affiche)
           if not vus_motcles[cle] then
             vus_motcles[cle] = true
@@ -603,35 +517,26 @@ function Meta(meta)
   meta['resumes']          = pandoc.MetaList(resumes)
   local licence_texte, licence_url = licence_article(slug, lang)
   meta['licence-texte']    = pandoc.MetaString(licence_texte)
-  -- Clé remise à nil quand il n'y a pas d'adresse : le gabarit teste `$if(licence-url)$`
-  -- et imprime alors la mention sans lien ni flèche, plutôt qu'une URL inventée.
+  -- Sans adresse, la clé reste absente : le gabarit imprime la mention sans lien.
   meta['licence-url']      = licence_url ~= '' and pandoc.MetaString(licence_url) or nil
-  -- Défaut « compact » depuis le 09.09.2026 (décision du responsable de la revue) : la clé
-  -- ABSENTE doit désormais valoir vrai — une clé PRÉSENTE reste respectée telle quelle, un
-  -- `entete-condensee: false` explicite continuant à donner la hauteur fixe. D'où la
-  -- condition sur `nil` AVANT d'appeler est_vrai, et non l'inverse : passer par est_vrai en
-  -- premier confondrait « rien n'a été demandé » (compact, le nouveau défaut) et « on a
-  -- explicitement décoché » (hauteur fixe) — les deux retomberaient sur nil, indistinguables
-  -- pour `$if(entete-condensee)$`.
+  -- En-tête condensé par défaut : une clé absente vaut vrai, une clé présente est lue par
+  -- est_vrai. Le test sur nil vient en premier, sinon une clé absente vaudrait faux.
   if meta['entete-condensee'] == nil then
     meta['entete-condensee'] = true
   else
     meta['entete-condensee'] = est_vrai(meta['entete-condensee']) or nil
   end
 
-  -- Bandeau DOI de la couverture ($if(doi)$ du template). Le meta.yaml ne porte plus de
-  -- `doi:` que lorsqu'il a été défini à la main dans le cockpit (l'échappatoire « Définir
-  -- manuellement le DOI ») : ce doi-là est déjà dans meta et gagne naturellement. Sinon,
-  -- le DOI courant se lit dans le fichier dérivé du cockpit — voir doi_calcule_du_numero.
-  -- Rien de trouvé : pas de bandeau, et jamais un blocage.
+  -- Bandeau DOI de la couverture. Un `doi:` du .meta.yaml (DOI défini à la main dans le
+  -- cockpit) l'emporte ; sinon le DOI vient de doi_calcule_du_numero. Sans DOI, pas de
+  -- bandeau.
   if S(meta.doi) == '' then
     local doi_depose = doi_calcule_du_numero(slug)
     if doi_depose ~= '' then meta['doi'] = pandoc.MetaString(doi_depose) end
   end
 
-  -- Métadonnées de document tirées du meta.yaml : <title> et <meta> HTML, /Title,
-  -- /Author et /Lang du PDF (requis par PDF/UA). `pagetitle` évite l'avertissement
-  -- pandoc « nonempty <title> » et le repli sur le slug.
+  -- Métadonnées du document : <title> et <meta> HTML, /Title, /Author et /Lang du PDF
+  -- (requis par PDF/UA). Sans `pagetitle`, pandoc avertit et prend le slug pour titre.
   meta['pagetitle'] = pandoc.MetaString(titre)
   meta['lang'] = pandoc.MetaString(lang)
   meta['description'] = pandoc.MetaString(
@@ -648,12 +553,11 @@ function Meta(meta)
         nm = n
         if p ~= '' then nm = (n ~= '' and (n .. ', ' .. p) or p) end
 
-        -- Variables dérivées par auteur pour le bloc « À propos » : les templates
-        -- pandoc ne manipulent pas les chaînes, on mute donc la MetaMap de l'auteur,
-        -- relue par le template via $author.…$.
-        -- ORCID : identifiant nu (0000-0002-…) ou URL complète -> URL canonique
-        -- https://orcid.org/<ID>, X final en majuscule. URL sans identifiant
-        -- reconnaissable : reprise telle quelle ; autre valeur : pas de lien.
+        -- Les gabarits pandoc ne transforment pas les chaînes : les valeurs dérivées
+        -- s'ajoutent à la MetaMap de l'auteur, lue par le gabarit via $author.…$.
+        -- ORCID : identifiant nu ou URL -> https://orcid.org/<ID>, X final en majuscule.
+        -- URL sans identifiant reconnaissable : reprise telle quelle ; autre valeur : pas
+        -- de lien.
         local orcid = S(a.orcid)
         if orcid ~= '' then
           local id = orcid:match('(%d%d%d%d%-%d%d%d%d%-%d%d%d%d%-%d%d%d[%dxX])')
@@ -663,16 +567,13 @@ function Meta(meta)
             a['orcid-url'] = pandoc.MetaString(orcid)
           end
         end
-        -- Initiales du prénom, pour la couverture — voir initiales_prenom() plus haut.
-        -- Clé absente quand il n'y a pas de prénom : le gabarit teste `$if(…)$` et
-        -- n'imprime alors que le nom, comme avant.
+        -- Sans prénom, la clé reste absente et le gabarit n'imprime que le nom.
         if p ~= '' then
           local init = initiales_prenom(p)
           if init ~= '' then a['initiales'] = pandoc.MetaString(init) end
         end
         -- Rang du portrait : il nomme la règle CSS que le gabarit écrit pour cette
-        -- photo. Aucun texte alternatif n'est fabriqué ici, et le portrait n'est pas
-        -- un <img> — pourquoi, c'est écrit dans print.css § 8.
+        -- photo. Le portrait est un fond CSS et non un <img> (voir print.css).
         if S(a.photo) ~= '' then
           rang_photo = rang_photo + 1
           a['photo-rang'] = pandoc.MetaString(tostring(rang_photo))
@@ -684,7 +585,6 @@ function Meta(meta)
     end
   end
   meta['auteurs-noms'] = pandoc.MetaList(noms)
-  -- Titre du bloc auteurs, localisé.
   if #noms > 0 then
     meta['auteurs-titre'] = pandoc.MetaString(TITRES_AUTEURS[lang] or TITRES_AUTEURS.fr)
   end

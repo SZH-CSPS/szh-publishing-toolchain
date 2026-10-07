@@ -1,52 +1,34 @@
--- Resserre les listes : un item dont le contenu est un seul paragraphe le perd.
+-- Resserre les listes : un item dont le contenu est un seul paragraphe perd ce paragraphe.
 --
--- Le défaut qu'il corrige, et il est sévère. Markdown distingue les listes serrées (items
--- collés) des listes lâches (une ligne vide entre les items). Pandoc rend les premières en
--- `<li>texte</li>` et les secondes en `<li><p>texte</p></li>`. WeasyPrint 69 balise alors
--- le paragraphe en <P> directement sous le <LI>, sans le <LBody> que PDF/UA-1 exige :
+-- Pandoc rend une liste lâche (ligne vide entre les items) en `<li><p>texte</p></li>`.
+-- WeasyPrint balise alors le <P> directement sous le <LI>, sans le <LBody> que PDF/UA-1
+-- exige :
 --
 --   ISO 14289-1 7.2-20 — « LI element may contain only Lbl and LBody elements »
 --
--- Une liste serrée passe la vérification PDF/UA (veraPDF) ; la même liste lâche échoue.
--- En maquette FALC, où la matière est presque entièrement composée en listes, l'écart
--- touche la quasi-totalité du texte, non un cas isolé.
+-- veraPDF refuse donc une liste lâche, et la vérification `verifier-ua` bloque l'export du
+-- numéro ou du livre. Aucun balisage HTML ni propriété CSS ne demande un <LBody> : seule
+-- la structure de l'arbre pandoc décide. Le filtre tourne pour la revue et pour le livre
+-- (les livres FALC sont presque entièrement en listes).
 --
--- ⚠ Ce défaut vaut aussi pour la revue, et il y dort. Aucun article du banc n'a de liste
---   lâche ; le jour où une rédaction en écrit une, la porte `verifier-ua` refuse l'export
---   du numéro entier, sans que personne comprenne pourquoi. Ce filtre est donc branché des
---   deux côtés.
+-- L'espace entre les items vient du CSS, sur le <li> (`li { margin-bottom }` dans print.css
+-- et les chartes de livre) : le rendu ne change pas.
 --
--- Ce qu'on ne peut pas faire à la place : il n'existe aucun balisage HTML ni aucune
--- propriété CSS qui demande un <LBody>. C'est WeasyPrint qui décide, d'après la structure
--- qu'on lui donne. La seule prise est donc en amont, sur l'arbre pandoc.
---
--- Ce que cela coûte, et pourquoi ce n'est presque rien : une liste lâche s'affiche avec de
--- l'air entre ses items, et cet air venait de la marge du <p>. Il se remet en CSS, sur le
--- <li> — c'est déjà ce que font print.css et les chartes de livre (`li { margin-bottom }`).
--- L'écart visuel est nul.
---
--- ⚠ Deux formes d'item à plusieurs blocs, et elles ne se traitent pas pareil :
---   * « texte + sous-liste » : passe la porte telle quelle. WeasyPrint met le texte dans un
---     LBody et la sous-liste avec. On n'y touche pas.
---   * « deux paragraphes » : échoue. Les deux <p> deviennent deux enfants directs du <LI>.
---     Ceux-là sont fusionnés en un seul bloc, les paragraphes séparés par un saut de ligne.
---     C'est un changement de structure, assumé : dans un item de liste, deux paragraphes se
---     lisent comme deux lignes — et c'est littéralement la règle FALC, une phrase par ligne.
---     L'alternative serait un livre que la porte PDF/UA refuse d'exporter, pour toujours.
---   Un item qui mêle les deux formes n'est pas touché : il est rare, et le fusionner
---   collerait une liste à un paragraphe.
+-- Deux formes d'item à plusieurs blocs :
+--   * « texte + sous-liste » : WeasyPrint met les deux dans un LBody, la sous-liste reste.
+--   * « deux paragraphes » : les deux <p> seraient enfants directs du <LI>. Ils sont
+--     fusionnés en un seul bloc, séparés par un saut de ligne : dans un item de liste, deux
+--     paragraphes se lisent comme deux lignes (la règle FALC, une phrase par ligne).
+--   Les paragraphes de tête sont fusionnés ; ce qui suit (sous-liste, tableau) reste en
+--   place.
 
--- Les paragraphes de tête d'un item, fusionnés en un seul bloc en ligne. Le reste — une
--- sous-liste, un tableau — est laissé où il est : c'est une forme que WeasyPrint balise
--- correctement, et la fusionner collerait une liste à un paragraphe.
--- Un saut est-il déjà posé en fin de contenu ? Sert à ne pas en ajouter un second.
+-- Vrai si le contenu finit déjà par un saut.
 local function finit_par_saut(inlines)
   local dernier = inlines[#inlines]
   return dernier ~= nil and (dernier.t == 'LineBreak' or dernier.t == 'SoftBreak')
 end
 
--- Les sauts qui traînent en fin d'item : ils ouvriraient une ligne vide sous le dernier
--- mot, et la puce suivante s'en trouverait repoussée d'un interligne.
+-- Retire les sauts de fin d'item : ils ajouteraient une ligne vide sous le dernier mot.
 local function elaguer_sauts_finaux(inlines)
   while finit_par_saut(inlines) do inlines:remove(#inlines) end
   return inlines
@@ -55,7 +37,7 @@ end
 local function resserrer_items(items)
   local sortie = {}
   for i, blocs in ipairs(items) do
-    -- Combien de Para au début de l'item ?
+    -- Nombre de Para au début de l'item.
     local n = 0
     while blocs[n + 1] and blocs[n + 1].t == 'Para' do n = n + 1 end
 
@@ -64,14 +46,9 @@ local function resserrer_items(items)
     else
       local contenu = pandoc.Inlines({})
       for j = 1, n do
-        -- Deux paragraphes d'un même item se lisent comme deux lignes — et c'est
-        -- littéralement la règle FALC, une phrase par ligne.
-        --
-        -- ⚠ Sauf si le paragraphe précédent finit déjà par un saut. L'import Word pose un
-        --   `\` en fin de chaque ligne FALC : en ajouter un second doublerait l'interligne
-        --   de l'item, et deux <br> ne se signalent nulle part — HTML valide, PDF conforme,
-        --   seul le nombre de pages trahit. szh-sauts-uniques.lua tient la même règle pour
-        --   le reste du document ; ici, la fusion recrée le cas et doit s'en garder seule.
+        -- L'import Word pose un `\` en fin de chaque ligne FALC : on n'ajoute pas de second
+        -- saut, qui doublerait l'interligne sans rien signaler. szh-sauts-uniques.lua tient
+        -- la même règle pour le reste du document.
         if j > 1 and not finit_par_saut(contenu) then contenu:insert(pandoc.LineBreak()) end
         contenu:extend(blocs[j].content)
       end
@@ -88,11 +65,11 @@ function BulletList(l)
   return l
 end
 
--- Une liste qui reprend à « 7. » : WeasyPrint ignore l'attribut start de <ol> et imprime
--- « 1. ». La liste passe dans une boîte qui porte son rang de départ, lu en counter-reset
--- par partage-filtres.css (.szh-liste-rang). Quand la liste atteint 10, data-deux-chiffres
--- donne le rang du premier item à deux chiffres, que print.css décale comme le 10e item
--- d'une liste qui part de 1.
+-- Liste qui commence à « 7. » : WeasyPrint ignore l'attribut start de <ol>. La liste passe
+-- dans une boîte qui porte son rang de départ, lu en counter-reset par
+-- partage-filtres.css (.szh-liste-rang). Si la liste atteint 10, data-deux-chiffres donne
+-- le rang du premier item à deux chiffres, que print.css décale comme le 10e item d'une
+-- liste qui part de 1.
 function OrderedList(l)
   l.content = resserrer_items(l.content)
   local debut = l.listAttributes and l.listAttributes.start or l.start or 1
@@ -104,5 +81,4 @@ function OrderedList(l)
   return pandoc.Div({ l }, pandoc.Attr('', { 'szh-liste-rang' }, attrs))
 end
 
--- Les listes de définitions ont la même structure de balisage (<DL>/<DT>/<DD>) et une autre
--- règle : elles ne sont pas concernées par 7.2-20, on n'y touche pas.
+-- Les listes de définitions (<DL>/<DT>/<DD>) ne sont pas concernées par 7.2-20.

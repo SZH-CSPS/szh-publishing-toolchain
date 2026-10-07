@@ -1,12 +1,10 @@
--- Contexte de composition, posé une fois en tête de chaque chaîne (pipeline/filtres.mk) :
+-- Pose le contexte de composition en tête de chaque chaîne (pipeline/filtres.mk) :
 -- meta.lang (deux lettres), meta['szh-produit'] (revue, zeitschrift ou livre) et
 -- meta['szh-unite'] (article ou chapitre). Les filtres suivants le relisent par
--- commun.contexte() au lieu de refaire chacun leur cascade ; le calcul lui-même est
--- calculer_contexte() de szh-commun.lua.
+-- commun.contexte() ; le calcul est calculer_contexte() de szh-commun.lua.
 --
--- Une fiche sans langue est signalée et une langue inconnue bloque, comme le faisait
--- szh-maquette.lua, seulement là où il tournait : la compilation d'un article. L'aperçu ne
--- doit pas s'arrêter sur une fiche mal remplie, et un chapitre n'a pas ces messages.
+-- Une fiche sans langue est signalée et une langue inconnue bloque, seulement à la
+-- compilation d'un article : l'aperçu ne s'arrête pas sur une fiche mal remplie.
 
 local commun
 do
