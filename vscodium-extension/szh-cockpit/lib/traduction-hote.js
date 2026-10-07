@@ -27,8 +27,8 @@ const suggestionTraduction = require('./suggestion-traduction');
 const indexTextes = require('./index-textes');
 
 // ---- Rappels vers l'hôte ----------------------------------------------------------
-// Posés une seule fois dans extension.js. Les valeurs par défaut ne servent qu'à ne pas
-// planter un test qui require ce module seul.
+// Posés par extension.js. Les valeurs par défaut permettent de charger ce module seul
+// dans un test.
 let ctx = {
   ouvrirArticle: async () => {},
   slugDepuisChemin: () => null,
@@ -52,16 +52,12 @@ function repondrePanneau(panneau, message) {
 
 // ---- « Envoyer pour traduction » : lien szh:// et e-mail -------------------------
 // Le bouton fabrique un lien szh://traduction/<produit>/<numero>[/<article>]
-// (lib/liens.js) qui ouvre le bon numéro sur le suivi de traduction, et le met dans le
-// presse-papiers comme dans un brouillon d'e-mail. Le lien ne porte pas de chemin :
-// c'est le lanceur qui retrouve le dossier sur le poste.
+// (lib/liens.js) qui ouvre le numéro sur le suivi de traduction, et le met dans le
+// presse-papiers et dans un brouillon d'e-mail. Le lanceur retrouve le dossier sur le poste.
 
-// Le brouillon, et le seul chemin : un `mailto:` en texte brut. Le corps d'un mailto
-// n'accepte pas de HTML, le lien szh:// y arrive donc inerte — c'est le prix du retrait du
-// composant COM d'Outlook, qui ne parlait qu'à l'ancien client. D'où deux compensations :
-// le lien est seul sur sa ligne dans le corps, sélectionnable d'un double-clic, et le
-// texte dit au destinataire quoi en faire. L'adresse n'est pas encodée : sa forme est
-// vérifiée par adresseMailTraduction, qui n'en laisse passer aucun caractère réservé.
+// Le brouillon est un `mailto:` en texte brut, où le lien szh:// n'est pas cliquable : il
+// est donc seul sur sa ligne, sélectionnable d'un double-clic, et le texte dit quoi en
+// faire. L'adresse n'est pas encodée : adresseMailTraduction refuse tout caractère réservé.
 // Les gabarits de mail-templates/ (lib/courriel.js) nomment la revue et le sens de la traduction.
 
 function ouvrirBrouillonMail(brouillon) {
@@ -80,9 +76,8 @@ async function envoyerPourTraduction(fournisseur, cible) {
     produit = normaliserRevue(ausgabe.revue);
     id = String(ausgabe.id || '');
   } catch (e) { produit = ''; }
-  // Le lien porte l'id, pas le nom du dossier (depuis le 23.09.2026) : un numéro sans `id:`
-  // (créé avant cette date, jamais rouvert dans le cockpit depuis) n'a encore aucun lien
-  // valable -- le cockpit le pose à l'ouverture (voir ailleurs), pas ici.
+  // Le lien porte l'id du numéro. Un numéro sans `id:` n'a pas de lien valable ; le cockpit
+  // pose l'id à l'ouverture du numéro.
   const lien = construireLienTraduction(produit, id, slug);
   if (lien === '') {
     vscode.window.showWarningMessage(T('trad.lien.impossible'));
@@ -96,21 +91,21 @@ async function envoyerPourTraduction(fournisseur, cible) {
     await ouvrirBrouillonMail(brouillon);
     vscode.window.setStatusBarMessage(T('trad.lien.copie', [lien]), 8000);
   } catch (e) {
-    // Aucun client de messagerie, ou refus de l'hôte : le lien est déjà au presse-papiers,
-    // et le bouton laisse une seconde chance au brouillon.
+    // Pas de client de messagerie, ou refus de l'hôte : le lien est au presse-papiers, et un
+    // bouton permet de réessayer le brouillon.
     const bouton = T('trad.lien.mail');
     const choix = await vscode.window.showInformationMessage(T('trad.lien.copie.seul', [lien]), bouton);
-    // Second échec : rien à ajouter, la notification a déjà dit l'essentiel. Mais il faut
-    // l'attendre et l'avaler, sans quoi c'est un rejet non capturé de l'hôte d'extensions.
+    // Un second échec est attendu et ignoré, pour éviter un rejet non capturé dans l'hôte
+    // d'extensions.
     if (choix === bouton) {
       try { await ouvrirBrouillonMail(brouillon); } catch (err) { /* déjà signalé */ }
     }
   }
 }
 
-// Atterrissage d'un lien reçu : le lanceur a déposé une intention à usage unique,
-// consommée ici une fois l'arbre prêt ; celle qui vise une autre revue est laissée à une
-// autre fenêtre. Ne lève pas : un lien ne doit pas bloquer l'ouverture.
+// Lien reçu : le lanceur a déposé une intention à usage unique, consommée ici une fois
+// l'arbre prêt. Une intention qui vise une autre revue est laissée à sa fenêtre. Ne lève
+// pas, pour ne pas bloquer l'ouverture.
 async function honorerIntention(fournisseur, rafraichirTout) {
   try {
     const racine = fournisseur.racine;
@@ -156,17 +151,17 @@ function textesTraduction() {
     courtTraduction: T('trad.court.traduction'), courtRelecture: T('trad.court.relecture'),
     courtFinalise: T('trad.court.finalise'), toutTip: T('trad.tout.tip'),
     rien: T('trad.rien'), aucuneModif: T('form.rien'), enregistre: T('trad.enregistre'),
-    // `commentaire` et son aide sont resolus a l'assemblage de la page
-    // (%%SZH:cle%% dans media/traduction.html) : ils ne passent pas par cette table.
+    // `commentaire` et son aide sont résolus à l'assemblage de la page
+    // (%%SZH:cle%% dans media/traduction.html).
     commentaire: T('trad.commentaire'),
     deepl: T('trad.deepl'), deeplTip: T('trad.deepl.tooltip'),
     envoyer: T('trad.envoyer'), envoyerTip: T('trad.envoyer.tooltip'),
     motCle: T('trad.motcle'), motCleSansEquiv: T('trad.motcle.sansequivalent'),
     motsClesAide: T('trad.motscles.aide'),
-    // Placeholder d'un mot-clé vide : la même clé que la fiche des métadonnées, jamais
-    // la sentinelle anglaise écrite dans le YAML.
+    // Texte indicatif d'un mot-clé vide, le même que sur la fiche des métadonnées (et non
+    // la marque écrite dans le YAML).
     motCleATraduire: T('mc.aTraduire'),
-    // Vérificateur de traduction : l'infobulle de la pastille, la même que sur les fiches.
+    // Infobulle de la pastille du vérificateur de traduction, la même que sur les fiches.
     suggPastille: T('sugg.pastille')
   };
 }
@@ -230,8 +225,7 @@ function envoyerValeursTraduction(panneau, fournisseur, slug, focus) {
     commentaire: etat.suivi.commentaire,
     statuts: STATUTS.map((s) => ({ valeur: s, libelle: T('trad.statut.' + s) })),
     focus: focus || null,
-    // Le vérificateur de traduction : lu à chaque envoi, donc pris en compte dès le
-    // prochain rendu des cartes (changement d'article, rechargement).
+    // Réglage du vérificateur de traduction, relu à chaque envoi.
     verifTrad: lireVerifTraduction()
   });
   traductionModifiee = false;                      // les cartes viennent d'être reconstruites
@@ -241,9 +235,8 @@ function envoyerValeursTraduction(panneau, fournisseur, slug, focus) {
   noterLectureCoedition(panneau, fournisseur.racine, ctx.cheminTraduction(fournisseur.racine, slug));
 }
 
-// Le panneau suit ce qui vient d'être écrit ailleurs — sauf s'il porte une saisie non
-// enregistrée : le re-rendu la jetterait sans un mot, et remettrait son témoin de
-// modification à zéro. On le dit alors, et l'utilisateur tranche.
+// Le panneau reprend ce qui vient d'être écrit ailleurs. S'il porte une saisie non
+// enregistrée, le re-rendu la perdrait : on demande alors à l'utilisateur.
 function rafraichirPanneauTraduction(fournisseur) {
   if (!panneauTraduction || !slugTraduction || !fournisseur.racine) { return; }
   if (fournisseur.listerArticles().indexOf(slugTraduction) === -1) { return; }
@@ -251,11 +244,10 @@ function rafraichirPanneauTraduction(fournisseur) {
   envoyerValeursTraduction(panneauTraduction, fournisseur, slugTraduction, null);
 }
 
-// Enregistre ce que renvoie le panneau ; les textes passent par ecrireCartesArticles,
-// qui relit la fiche et n'écrase donc pas une modification enregistrée ailleurs.
-// metaChangee, dans le retour, pilote la recompilation de l'aperçu.
-// `panneau` : le bail de co-édition sur les deux fichiers écrits ici — la fiche et le
-// sidecar du suivi.
+// Enregistre ce que renvoie le panneau. Les textes passent par ecrireCartesArticles, qui
+// relit la fiche et garde les modifications faites ailleurs. metaChangee, dans le retour,
+// décide de la recompilation de l'aperçu.
+// `panneau` : le bail de co-édition sur la fiche et sur le fichier de suivi.
 function enregistrerTraduction(fournisseur, msg, panneau) {
   const racine = fournisseur.racine;
   const slug = String((msg && msg.slug) || '');
@@ -270,18 +262,18 @@ function enregistrerTraduction(fournisseur, msg, panneau) {
   let metaChangee = false;
   for (const groupe of (Array.isArray(msg.groupes) ? msg.groupes : [])) {
     const langue = String((groupe && groupe.langue) || '');
-    // Pas la langue du numéro : ce panneau ne touche pas au texte source.
+    // Langue du numéro exclue : ce panneau ne touche pas au texte source.
     if (LANGUES_META.indexOf(langue) === -1 || langue === source) { continue; }
     const s = statutValide(groupe.statut);
     for (const brut of (Array.isArray(groupe.champs) ? groupe.champs : [])) {
       const champ = String((brut && brut.champ) || '');
       if (CHAMPS_TRADUISIBLES.indexOf(champ) === -1) { continue; }
-      // Sur chaque clé du groupe : le sidecar reste lisible sans notion de groupe.
+      // Écrit sur chaque clé du groupe : le fichier de suivi ignore les groupes.
       if (s) { statuts[cleChamp(champ, langue)] = s; }
       const avant = texteChamp(meta, champ, langue);
       let valeur;
       if (champ === 'keywords') {
-        // alignerMotsCles tient la place des cases vides, ici du côté qui écrit.
+        // alignerMotsCles marque les cases vides pour garder les positions.
         valeur = alignerMotsCles(brut.paires, listeChamp(meta, 'keywords', source).length);
       } else {
         valeur = valeurChamp(champ, brut.texte);
@@ -291,16 +283,15 @@ function enregistrerTraduction(fournisseur, msg, panneau) {
       if (texteChamp(meta, champ, langue) !== avant) { metaChangee = true; }
     }
   }
-  // Requis ici et non en tête : lib/metadonnees-hote.js requiert déjà ce module.
+  // Requis ici et non en tête, pour éviter un cycle : lib/metadonnees-hote.js requiert ce module.
   const { ecrireCartesArticles, messageCartes } = require('./metadonnees-hote');
   const res = ecrireCartesArticles(fournisseur, { [slug]: meta }, [slug], panneau);
   const refusCartes = messageCartes(res);
   if (refusCartes) { return { ok: false, message: refusCartes, recharger: res.recharger }; }
   const commentaire = String(msg.commentaire === undefined || msg.commentaire === null ? '' : msg.commentaire)
     .replace(/\r\n?/g, '\n').slice(0, 4000);
-  // Le sidecar du suivi a son propre bail : c'est un autre fichier, et la fiche vient
-  // d'être écrite — s'arrêter ici laisserait les deux désaccordés, mais écrire par-dessus
-  // la saisie de quelqu'un d'autre serait pire, et le message dit lequel des deux manque.
+  // Le fichier de suivi a son propre bail. S'il est tenu ailleurs, la fiche reste écrite
+  // seule, et le message dit lequel des deux fichiers manque.
   const refusSuivi = ecrireSousMain(panneau, racine, ctx.cheminTraduction(racine, slug), () => {
     try {
       ctx.ecrireSuiviTraduction(racine, slug, {
@@ -315,9 +306,9 @@ function enregistrerTraduction(fournisseur, msg, panneau) {
   return { ok: true, metaChangee: metaChangee };
 }
 
-// Le traducteur web accepte le texte dans le fragment de l'URL,
-// https://www.deepl.com/translator#<source>/<cible>/<texte>, ouverte par le navigateur.
-// Sans clé d'API, le retour se fait au copier-coller.
+// Le traducteur web de DeepL lit le texte dans le fragment de l'URL :
+// https://www.deepl.com/translator#<source>/<cible>/<texte>. Le résultat revient par
+// copier-coller.
 const LONGUEUR_MAX_DEEPL = 4000;                   // au-delà, les navigateurs tronquent
 
 function ouvrirDeepl(panneau, msg) {
@@ -356,7 +347,6 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
     // Une erreur de compilation est déjà signalée par ouvrirArticle.
     ctx.ouvrirArticle(fournisseur, slug, { sansTexte: true }).catch(() => { /* déjà signalé */ });
   };
-  // L'état du module reste la garde : rafraichirPanneauTraduction le lit aussi.
   const garde = { lire: () => etat().panneau, poser: (p) => poser({ panneau: p }) };
   if (revelerPanneau({ viewType: 'szhTraduction', garde: garde })) {
     const ouvert = etat().panneau;
@@ -379,12 +369,12 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
   }
   poser({ slug: vise.slug, modifiee: false, rechargement: null });
   let focusInitial = vise.cle;
-  // Les gestionnaires ne sont appelés qu'une fois cette fonction finie.
+  // Les gestionnaires ne sont appelés qu'après la fin de cette fonction.
   const { panneau } = panneauUnique({
     viewType: 'szhTraduction', titre: T('trad.titre.un', [vise.slug]), garde: garde,
     // Saisie longue : la webview garde son état masquée, plutôt que de repartir à vide.
     retenir: true,
-    // Mode « Trad » : l'état du mode, et le clic détourné — voir repondreModeTrad.
+    // Mode « Trad » : voir repondreModeTrad.
     modeTrad: (panneau, msg) => repondreModeTrad(panneau, msg),
     html: (nonce) => htmlTraduction(nonce),
     surPret: (msg, p) => {
@@ -442,7 +432,7 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
     if (rafraichirTout) { rafraichirTout(); }
     // Un enregistrement automatique ne renvoie rien : le re-rendu perdrait le curseur.
     if (!msg.auto) { envoyerValeursTraduction(panneau, fournisseur, etat().slug, null); }
-    // La fiche est une dépendance de compilation ; jamais en pleine frappe.
+    // La fiche est lue par la compilation : on ne recompile pas pendant la frappe.
     if (res.metaChangee && !msg.auto) { montrerApercu(etat().slug); }
   }
   montrerApercu(vise.slug);
@@ -450,28 +440,22 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
 
 // ---- Mode « Trad » : l'index des libellés, et les panneaux qui détournent -------
 //
-// Allumé, le mode change le sens du clic dans les panneaux : au lieu de faire ce que le
-// bouton fait d'habitude, un clic ouvre le formulaire de suggestion sur le texte cliqué.
-// L'hôte n'y tient que deux rôles — dire si le mode est allumé et fournir l'index qui
-// retrouve la clé d'un texte, puis recevoir le clic détourné.
+// Mode allumé, un clic dans un panneau ouvre le formulaire de suggestion sur le texte
+// cliqué, au lieu de l'action habituelle. L'hôte dit si le mode est allumé, fournit l'index
+// qui retrouve la clé d'un texte, puis reçoit le clic détourné.
 //
-// ⚠ L'INDEX NE PART QUE SI LE MODE EST ALLUMÉ : c'est la table entière des libellés de la
-//   langue courante, quelques dizaines de kilo-octets, et éteint il n'y a rien à chercher.
-//   C'est donc la page qui demande (media/_commun.js, au premier « pret »), et l'hôte qui
-//   répond.
+// L'index (toute la table des libellés de la langue, quelques dizaines de Ko) n'est envoyé
+// que si le mode est allumé, à la demande de la page (media/_commun.js, au premier « pret »).
 //
-// ⚠ LE FORMULAIRE DE SUGGESTION NE BRANCHE PAS repondreModeTrad, et c'est le premier garde-fou
-//   du mode, pas un oubli : c'est lui que le mode ouvre. Il ne reçoit jamais l'index, et la page
-//   le redit de son côté (SZH.modeTradJamais). L'Accueil, lui, le branche, mais sa barre
-//   d'onglets et son onglet Paramètres, où l'on éteint le mode, gardent leurs clics
-//   (data-trad-exempt, media/_commun.js).
+// Le formulaire de suggestion ne branche pas repondreModeTrad, puisque c'est lui que le mode
+// ouvre ; la page le refuse aussi (SZH.modeTradJamais). Dans l'Accueil, la barre d'onglets
+// et l'onglet Paramètres, où l'on éteint le mode, gardent leurs clics (data-trad-exempt).
 const panneauxTrad = new Set();
 let indexTradCache = null;
 let indexTradLangue = '';
 
-// L'index de la langue courante, construit une fois et gardé : le refaire à chaque
-// ouverture de panneau parcourrait pour rien plus de mille libellés. Il se refait si la
-// langue du cockpit change.
+// L'index de la langue courante, gardé en mémoire (plus de mille libellés) et reconstruit
+// si la langue du cockpit change.
 function indexTradCourant() {
   const langue = langueCockpit();
   if (!indexTradCache || indexTradLangue !== langue) {
@@ -481,8 +465,8 @@ function indexTradCourant() {
   return indexTradCache;
 }
 
-// Ce que le bandeau du mode dit dans chaque panneau : ce qu'un clic va faire, et comment
-// sortir. La page ne connaît pas la langue de l'interface, elle reçoit des mots tout faits.
+// Textes du bandeau du mode : ce que fait un clic, et comment sortir. Résolus ici, la page
+// ne connaissant pas la langue de l'interface.
 function textesModeTrad() {
   return { bandeau: T('trad.mode.bandeau'), eteindre: T('trad.mode.eteindre') };
 }
@@ -493,14 +477,13 @@ function etatModeTrad() {
     : { type: MSG.MODE_TRAD, actif: false };
 }
 
-// Branché en tête du gestionnaire de messages de chaque panneau qui peut détourner ses
-// clics. Rend vrai quand il a traité le message : l'appelant s'arrête alors là.
+// Appelé en tête du gestionnaire de messages des panneaux qui détournent leurs clics. Rend
+// vrai quand il a traité le message.
 function repondreModeTrad(panneau, msg) {
   if (!msg) { return false; }
-  // La demande voyage avec le « pret » de la page : un message de plus à l'ouverture
-  // n'apprendrait rien de neuf. Une page qui ne le porte pas ne reçoit jamais l'index —
-  // c'est le cas des réglages et du formulaire de suggestion. On rend FAUX : ce « pret »
-  // reste celui de la page, qui a ses valeurs à envoyer.
+  // La demande d'index arrive avec le « pret » de la page ; une page qui ne la porte pas
+  // (réglages, formulaire de suggestion) ne reçoit pas l'index. On rend faux : le « pret »
+  // doit encore être traité par la page appelante.
   if (msg.type === MSG.PRET) {
     if (msg.modeTrad) {
       panneauxTrad.add(panneau);
@@ -527,9 +510,8 @@ function repondreModeTrad(panneau, msg) {
   return false;
 }
 
-// Combien de suggestions sur les textes de l'outil attendent d'être relues, sur ce poste.
-// Recompté à chaque envoi de valeurs au formulaire de réglages, jamais gardé : le dossier
-// se vide à la main, entre deux ouvertures du panneau.
+// Nombre de suggestions sur les textes de l'outil en attente sur ce poste. Recompté à
+// chaque envoi, car le dossier se vide à la main.
 function compterSuggestionsInterface() {
   try {
     return suggestionTraduction.compterSuggestionsInterface(
@@ -537,9 +519,8 @@ function compterSuggestionsInterface() {
   } catch (e) { return 0; }              // pas de dossier, ou illisible : rien en attente
 }
 
-// Le mode vient de changer : les panneaux ouverts doivent le savoir tout de suite. Sans
-// cela, l'éteindre depuis un panneau laisserait les autres bloqués jusqu'à leur
-// réouverture — exactement le piège que les garde-fous doivent empêcher.
+// Le mode vient de changer : on prévient tous les panneaux ouverts, sans quoi les autres
+// resteraient en mode « Trad » jusqu'à leur réouverture.
 function diffuserModeTrad() {
   const etat = etatModeTrad();
   for (const panneau of Array.from(panneauxTrad)) {
@@ -551,16 +532,12 @@ function diffuserModeTrad() {
 // ---- Suggestion de traduction (webview) ------------------------------------------
 //
 // Ouvert par la pastille d'un champ traduisible, quand le vérificateur de traduction est
-// actif (réglage du poste, lib/archivage.js#lireVerifTraduction). Il ne modifie RIEN : la
-// proposition part dans le dossier traduction/ du numéro, à côté de articles/, et le texte
-// publié reste ce qu'il était. Le panneau « Traductions », lui, écrit dans la fiche — les
-// deux gestes cohabitent sans se gêner, et il ne faut pas les confondre.
+// actif (réglage du poste, lib/archivage.js#lireVerifTraduction). La proposition est écrite
+// dans le dossier traduction/ du numéro ; le texte publié ne change pas. (Le panneau
+// « Traductions », lui, écrit dans la fiche.)
 //
-// À côté (ViewColumn.Beside) et non en pleine page : on propose une traduction en regardant
-// le formulaire d'où l'on vient.
-//
-// Un seul panneau à la fois : une seconde pastille le recharge sur son champ plutôt que
-// d'ouvrir un second onglet où la première proposition serait oubliée.
+// Ouvert à côté (ViewColumn.Beside), pour garder le formulaire d'origine sous les yeux. Un
+// seul panneau à la fois : une seconde pastille le recharge sur son champ.
 
 let viseSuggestion = null;       // { slug, champ, langue, actuel } — ce que la pastille visait
 
@@ -569,8 +546,8 @@ function textesSuggestion() {
     article: T('sugg.article'), champ: T('sugg.champ'), langue: T('sugg.langue'),
     actuelVide: T('sugg.actuel.vide'), rien: T('sugg.rien'),
     supprimerQuoi: T('sugg.supprimer.quoi'),
-    // La seconde cible : un libellé de l'outil, cliqué dans le mode « Trad ». Ni article,
-    // ni champ — la clé du libellé, et de quoi dire qu'on ne l'a pas retrouvée.
+    // Seconde cible : un libellé de l'outil, cliqué en mode « Trad ». On garde sa clé, et
+    // de quoi dire qu'elle n'a pas été retrouvée.
     cible: T('sugg.cible'), cibleInterface: T('sugg.cible.interface'),
     cle: T('sugg.cle'), cleInconnue: T('sugg.cle.inconnue'),
     cleInconnueAide: T('sugg.cle.inconnue.aide'), clePlusieurs: T('sugg.cle.plusieurs')
@@ -585,35 +562,30 @@ function htmlSuggestion(nonce) {
   });
 }
 
-// Les intitulés lisibles du champ et de la langue : la webview ne connaît pas la langue de
-// l'interface, elle reçoit des mots tout faits.
+// Intitulés du champ et de la langue, résolus ici : la webview ne connaît pas la langue de
+// l'interface.
 function libellesSuggestion(champ, langue) {
   return { champ: T('sugg.champ.' + champ), langue: T('meta.langue.' + langue) };
 }
 
 function envoyerValeursSuggestion(panneau) {
   if (!viseSuggestion) { return; }
-  // Un libellé de l'outil n'a ni champ ni langue d'article : seule la langue de l'interface
-  // a un intitulé à donner.
+  // Pour un libellé de l'outil, seule la langue de l'interface a un intitulé.
   const libelles = viseSuggestion.cible === suggestionTraduction.CIBLE_INTERFACE
     ? { langue: T('meta.langue.' + viseSuggestion.langue) }
     : libellesSuggestion(viseSuggestion.champ, viseSuggestion.langue);
   repondrePanneau(panneau, Object.assign({ type: MSG.VALEURS, libelles: libelles }, viseSuggestion));
 }
 
-// Écrit la proposition. Le numéro n'est pas verrouillé pour autant qu'il soit gelé ou
-// archivé : une suggestion ne touche à aucun fichier publié, et c'est justement sur un
-// numéro figé qu'on relit. Un dossier réellement en lecture seule le dira par l'erreur
-// d'écriture, plutôt que par un refus posé d'avance.
-// Une suggestion sur un libellé de l'outil ne concerne aucun numéro : elle se range sur le
-// poste, dans %LOCALAPPDATA%\SZH\suggestions-interface. Ni produit, ni numéro, ni article,
-// ni champ — la clé du libellé, les candidates qu'on avait proposées, et la langue.
+// Écrit la proposition, même sur un numéro gelé ou archivé : une suggestion ne touche à
+// aucun fichier publié. Un dossier en lecture seule le dira par l'erreur d'écriture.
+// Une suggestion sur un libellé de l'outil se range sur le poste, dans
+// %LOCALAPPDATA%\SZH\suggestions-interface, avec la clé, les clés candidates et la langue.
 function enregistrerSuggestionInterface(msg) {
   return suggestionTraduction.ecrireSuggestionInterface(
     suggestionTraduction.dossierSuggestionsInterface(), {
       auteur: moiCoedition().utilisateur,
-      // La clé retenue vient de la page : elle a pu être choisie parmi plusieurs
-      // candidates, ou n'exister du tout — le formulaire s'ouvre quand même.
+      // La clé retenue vient de la page : choisie parmi plusieurs candidates, ou absente.
       cle: msg.cle,
       cles: viseSuggestion.cles,
       langue: viseSuggestion.langue,
@@ -639,11 +611,10 @@ function enregistrerSuggestion(fournisseur, panneau, msg) {
     article: viseSuggestion.slug,
     champ: viseSuggestion.champ,
     langue: viseSuggestion.langue,
-    // Le texte d'avant est celui que la pastille a capté, et non celui que la fiche porte
-    // maintenant : c'est de celui-là que la proposition parle.
+    // Le texte d'avant est celui que la pastille a capté, sur lequel porte la proposition.
     actuel: viseSuggestion.actuel,
-    // Le geste vient de la page : « supprimer » dit que ce texte ne devrait pas exister.
-    // Tout ce qui n'est pas ce mot vaut « remplacer » (suggestion-traduction.js#normaliserGeste).
+    // « supprimer » : ce texte ne devrait pas exister. Toute autre valeur vaut « remplacer »
+    // (suggestion-traduction.js#normaliserGeste).
     geste: msg.geste,
     propose: msg.propose,
     commentaire: msg.commentaire
@@ -651,8 +622,7 @@ function enregistrerSuggestion(fournisseur, panneau, msg) {
   rendreCompteSuggestion(panneau, res);
 }
 
-// Ce que la page apprend d'une écriture, quelle qu'ait été la cible : le refus, ou le nom
-// du fichier écrit.
+// Réponse à la page après une écriture : le refus, ou le nom du fichier écrit.
 function rendreCompteSuggestion(panneau, res) {
   if (!res.ok) {
     repondrePanneau(panneau, {
@@ -663,8 +633,7 @@ function rendreCompteSuggestion(panneau, res) {
   }
   repondrePanneau(panneau, { type: MSG.ENREGISTRE, message: T('sugg.enregistree', [res.nom]) });
   vscode.window.setStatusBarMessage(T('sugg.enregistree', [res.nom]), 4000);
-  // Le panneau montre que c'est fait, puis s'efface : laisser un formulaire enregistré
-  // ouvert invite à l'enregistrer une seconde fois.
+  // Le panneau confirme puis se ferme, pour éviter un second enregistrement.
   setTimeout(() => { try { panneau.dispose(); } catch (e) { /* déjà fermé */ } }, 1200);
 }
 
@@ -673,8 +642,8 @@ function ouvrirSuggestionTraduction(fournisseur, msg) {
   if (!fournisseur.racine || !msg) { return; }
   const champ = String(msg.champ || '');
   const langue = String(msg.langue || '');
-  // Le champ et la langue viennent d'une webview : seuls les quatre champs traduisibles de
-  // la fiche et les langues qu'elle connaît ont un sens ici.
+  // Champ et langue viennent d'une webview : seuls les champs traduisibles et les langues
+  // connues sont acceptés.
   if (!suggestionTraduction.champValide(champ) || !suggestionTraduction.langueValide(langue)) {
     vscode.window.showWarningMessage(T('sugg.err.champ'));
     return;
@@ -689,11 +658,9 @@ function ouvrirSuggestionTraduction(fournisseur, msg) {
 // Le clic détourné par le mode « Trad » : un texte lu à l'écran, et les clés que la page a
 // cru reconnaître.
 //
-// Les clés viennent d'une webview : on ne garde que celles que la table de la langue
-// courante porte vraiment. Si rien ne reste, on refait la recherche ici — le formulaire doit
-// s'ouvrir dans tous les cas, sur le texte littéral s'il le faut : une suggestion sur un
-// texte non identifié vaut mieux que rien, et c'est justement là qu'un mainteneur veut
-// regarder.
+// Les clés viennent d'une webview : on ne garde que celles de la table de la langue
+// courante. Si aucune ne reste, on refait la recherche ici. Le formulaire s'ouvre dans tous
+// les cas, au besoin sur le texte seul.
 function ouvrirSuggestionInterface(msg) {
   if (!msg) { return; }
   const texte = String(msg.texte === undefined || msg.texte === null ? '' : msg.texte);
@@ -709,9 +676,8 @@ function ouvrirSuggestionInterface(msg) {
   montrerPanneauSuggestion(null, T('sugg.titre.interface'));
 }
 
-// Le panneau lui-même, un seul pour les deux cibles : une seconde demande le recharge sur
-// son nouveau texte plutôt que d'ouvrir un second onglet où la première proposition serait
-// oubliée.
+// Le panneau, un seul pour les deux cibles : une seconde demande le recharge sur son
+// nouveau texte.
 function montrerPanneauSuggestion(fournisseur, titre) {
   // Sans modeTrad : c'est lui que le mode ouvre (voir repondreModeTrad).
   const { panneau, nouveau } = panneauUnique({

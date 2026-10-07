@@ -1,39 +1,23 @@
 // Feuille de vérification des métadonnées : une page A4 par article, à imprimer et à
-// relire à côté de sa source (le Word de l'auteur·e, son courriel). Module pur — ni
-// vscode, ni écriture de fichier : il reçoit ce que lib/metadonnees-hote.js a lu du
-// disque, et rend le HTML autonome. L'hôte l'écrit et l'ouvre (extension.js).
+// relire à côté de la source (le Word de l'auteur·e, son courriel). Module pur : il reçoit
+// ce que lib/metadonnees-hote.js a lu et rend un HTML autonome, que l'hôte écrit et ouvre.
 //
-// ---- Ce que cette feuille vise, et ce qu'elle ne vise pas -------------------------
-// La chaîne refuse DÉJÀ de compiler un champ vide dans la langue de l'article, une
-// marque de traduction restée en place, un DOI mal formé ou en double. Rappeler ces
-// contrôles ici gaspillerait l'attention du relecteur sur ce que la machine tient seule.
-// La feuille sert à ce que la machine ne peut pas voir : l'EXACTITUDE. Est-ce bien
-// l'adresse de cette personne, son affiliation, le titre qu'elle a écrit.
+// La feuille sert à vérifier l'exactitude (la bonne adresse, la bonne affiliation, le
+// titre écrit par l'auteur·e). Les champs vides, marques de traduction et DOI invalides
+// sont déjà refusés par la compilation.
 //
-// ---- Deux régimes typographiques ---------------------------------------------------
-// Augmenter l'interlettrage aide la lecture caractère par caractère et NUIT à la lecture
-// par mots : c'est le même mécanisme vu des deux côtés. La feuille sépare donc les deux
-// familles de champs. Titre, sous-titre, résumé : proportionnel, lus comme du texte.
-// Courriel, ORCID, DOI, ROR : chasse fixe, espacés, découpés en groupes — la pratique de
-// l'IBAN et des posologies. La chasse fixe fait le travail que l'espacement ne fait pas :
-// elle sépare 0 de O, 1 de l et I, rn de m.
+// Deux régimes typographiques. Titre, sous-titre et résumé sont en police proportionnelle,
+// lus comme du texte. Courriel, ORCID, DOI et ROR sont en chasse fixe, découpés en groupes
+// espacés, comme un IBAN : la chasse fixe distingue 0 de O, 1 de l et I, rn de m.
 //
-// ---- Le découpage n'invente rien ---------------------------------------------------
-// Les séparateurs affichés entre les groupes (@ . - /) sont les caractères RÉELS de la
-// valeur, jamais des ajouts : le relecteur peut lire la feuille comme la chaîne. Seul
-// l'identifiant ROR, qui n'a aucun séparateur, reçoit un blanc purement visuel.
+// Les séparateurs affichés entre les groupes (@ . - /) sont ceux de la valeur. Seul le
+// ROR, qui n'en a pas, reçoit un blanc purement visuel.
 //
-// ---- Un champ vide s'imprime -------------------------------------------------------
-// L'erreur classique d'une fiche de contrôle est qu'un champ absent ressemble à un champ
-// inexistant : personne ne relève ce qu'il ne voit pas. Chaque champ figure donc
-// toujours, dans l'ordre du formulaire, et le vide porte la marque LEER — un mot, pas un
-// tiret, parce qu'un tiret se lit comme une valeur.
+// Chaque champ figure, dans l'ordre du formulaire ; un champ vide porte la marque LEER (un
+// mot, car un tiret se lirait comme une valeur).
 //
-// ---- Ce qui est pré-rendu ici, et ce que le gabarit échappe -----------------------
-// ⚠ Les clés en `...Html` sortent d'ici DÉJÀ échappées : le gabarit les pose telles
-// quelles, SANS le filtre |e, qui les afficherait en clair. Toutes les autres valeurs du
-// modèle sont du texte brut, et le gabarit DOIT leur poser |e. La règle se lit au nom de
-// la clé, et c'est pour ça que les noms sont ainsi.
+// Les clés en `...Html` sortent d'ici déjà échappées : le gabarit les pose sans |e. Toutes
+// les autres valeurs du modèle sont du texte brut, que le gabarit échappe par |e.
 'use strict';
 
 const crypto = require('crypto');
@@ -41,8 +25,7 @@ const gabarits = require('./gabarits');
 
 const LANGUES_FEUILLE = ['fr', 'de', 'it'];
 
-// La marque du vide. Un seul mot, le même dans les deux langues de la maison, en
-// capitales : il doit se repérer en survolant la page, pas se lire.
+// Marque d'un champ vide, la même en fr et en de, en capitales pour se repérer d'un coup d'œil.
 const MARQUE_VIDE = 'LEER';
 
 function echapper(texte) {
@@ -51,9 +34,8 @@ function echapper(texte) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-// Une valeur de texte : échappée, et rien de plus. Ce qui s'imprime est ce qui est dans
-// le fichier — pas la version passée à la typographie maison, sans quoi le relecteur
-// validerait une chaîne qui n'existe nulle part.
+// Une valeur de texte, seulement échappée : la feuille montre ce qui est dans le fichier,
+// sans la typographie maison.
 function baliserTexte(valeur) {
   const texte = String(valeur === undefined || valeur === null ? '' : valeur);
   return { html: echapper(texte), vide: texte === '' };
@@ -61,14 +43,14 @@ function baliserTexte(valeur) {
 
 // ---- Découpage des identifiants ----------------------------------------------------
 // Rend une liste de pièces : { groupe } pour un morceau à lire, { sep } pour un
-// séparateur réel de la valeur. `visuel: true` sur une pièce dit que le blanc qui la
-// précède n'existe pas dans la valeur — seul le ROR est dans ce cas.
+// séparateur de la valeur. `visuel: true` : le blanc qui précède la pièce n'est pas dans
+// la valeur (ROR seulement).
 
 function piecesCourriel(valeur) {
   const at = valeur.lastIndexOf('@');
   if (at === -1) { return [{ groupe: valeur }]; }
   const pieces = [{ groupe: valeur.slice(0, at) }, { sep: '@' }];
-  // Le domaine se relit étiquette par étiquette : c'est là que « .ch » devient « .hc ».
+  // Le domaine se découpe à chaque point, là où se glissent les inversions (« .hc »).
   const domaine = valeur.slice(at + 1).split('.');
   for (let i = 0; i < domaine.length; i++) {
     if (i > 0) { pieces.push({ sep: '.' }); }
@@ -77,18 +59,14 @@ function piecesCourriel(valeur) {
   return pieces;
 }
 
-// L'adresse en tête d'un ORCID ou d'un ROR n'est pas relue : elle est identique sur
-// toutes les fiches, et elle mangeait assez de largeur pour casser l'identifiant sur deux
-// lignes — exactement ce qu'un identifiant ne doit pas faire. Elle est donc retirée de
-// l'affichage, et la légende de la page le dit. C'est le seul endroit où la feuille
-// montre autre chose que la valeur stockée.
+// Retire l'adresse en tête d'un ORCID ou d'un ROR, identique partout : l'identifiant tient
+// ainsi sur une ligne. La légende de la page le signale.
 function sansPrefixe(valeur, hote) {
   const m = new RegExp('^https?://(?:www\\.)?' + hote + '/(.*)$', 'i').exec(valeur);
   return m ? m[1] : valeur;
 }
 
 function piecesOrcid(valeur) {
-  // Un ORCID porte déjà son découpage par quatre : on ne fait que l'espacer.
   const morceaux = sansPrefixe(valeur, 'orcid\\.org').split('-');
   const pieces = [];
   for (let i = 0; i < morceaux.length; i++) {
@@ -107,8 +85,7 @@ function piecesDoi(valeur) {
 function piecesRor(valeur) {
   const identifiant = sansPrefixe(valeur, 'ror\\.org');
   const pieces = [];
-  // Neuf caractères sans le moindre séparateur : le seul cas où l'on pose un blanc qui
-  // n'existe pas dans la valeur (d'où `visuel`). Par trois, comme un numéro de téléphone.
+  // Neuf caractères sans séparateur : groupes de trois, séparés par un blanc visuel.
   for (let i = 0; i < identifiant.length; i += 3) {
     pieces.push({ groupe: identifiant.slice(i, i + 3), visuel: i > 0 });
   }
@@ -136,10 +113,8 @@ function baliserIdentifiant(valeur, genre) {
 }
 
 // ---- Empreinte ---------------------------------------------------------------------
-// Une feuille relue et signée ne vaut que pour l'état dont elle sort. Sans repère, une
-// modification postérieure la périme en silence. Six caractères suffisent à vérifier
-// qu'une feuille signée correspond encore à la fiche : on les recalcule et on compare.
-// Ce n'est pas une signature — juste un repère, et il ne prétend pas à plus.
+// Six caractères imprimés sur la feuille, calculés sur la fiche : en les recalculant, on
+// voit si une feuille signée correspond encore à la fiche. Un repère, pas une signature.
 
 function serialiserStable(v) {
   if (v === null || v === undefined) { return 'null'; }
@@ -161,37 +136,30 @@ function libelleDe(table, valeur) {
   return (table && table[valeur]) || valeur;
 }
 
-// Une rangée de champ : le libellé, la valeur balisée. `genre` bascule le régime
-// typographique ; absent, c'est du texte.
+// Une rangée de champ : libellé et valeur balisée. Avec `genre`, la valeur est un
+// identifiant ; sans, du texte.
 function rangee(libelle, valeur, genre) {
   const b = genre ? baliserIdentifiant(valeur, genre) : baliserTexte(valeur);
   return { libelle: libelle, valeurHtml: b.html, vide: b.vide, identifiant: !!genre };
 }
 
-// Une ligne du tableau : un ou deux champs, et une seule case à cocher. `seule` dit au
-// gabarit qu'il n'y a qu'un champ, donc que la valeur prend toute la largeur — le moteur
-// de gabarits ne sait pas compter, c'est donc ici que ça se décide.
+// Une ligne du tableau : un ou deux champs, une case à cocher. `seule` (un seul champ, sur
+// toute la largeur) est calculé ici, car le gabarit ne sait pas compter.
 function ligne(champs) {
   return { champs: champs, seule: champs.length === 1 };
 }
 
-// Les champs traduisibles s'empilent, une langue par ligne, sur toute la largeur : un
-// titre ou un résumé se lit comme du texte, et deux colonnes étroites le hachaient en
-// replis. La langue est nommée sur chaque ligne, l'intitulé du champ une seule fois —
-// d'où `debutChamp`, qui dit au gabarit où commence un nouveau champ (et donc où poser
-// son filet). La troisième langue n'apparaît que si elle porte quelque chose : elle n'est
-// activée que par exception.
-//
-// Les mots-clés font exception et restent en colonnes (rangeesMotsCles) : ce sont des
-// rangées APPARIÉES, et c'est l'appariement qui se vérifie.
+// Les champs traduisibles s'empilent, une langue par ligne, sur toute la largeur. La
+// langue est nommée à chaque ligne, l'intitulé du champ une seule fois ; `debutChamp`
+// marque le début d'un champ, où le gabarit pose un filet. Les mots-clés restent en
+// colonnes (rangeesMotsCles).
 function rangeesMultilingues(libelle, map, langues, libellesLangues, pleineLargeur) {
   return langues.map((l, i) => {
     const b = baliserTexte((map || {})[l]);
     const nomLangue = libellesLangues[l] || l;
     return {
-      // En pleine largeur, chaque langue est un bloc à elle seule : son étiquette porte
-      // donc le champ ET la langue (« Résumé — français »). En ligne, l'intitulé du champ
-      // ne s'écrit que sur la première langue, la colonne de langue disant le reste.
+      // En pleine largeur, chaque langue est un bloc dont l'étiquette porte le champ et la
+      // langue (« Résumé — français »). Sinon, l'intitulé ne s'écrit qu'à la première langue.
       libelle: pleineLargeur ? libelle : (i === 0 ? libelle : ''),
       debutChamp: i === 0,
       langue: l, langueLibelle: nomLangue,
@@ -201,9 +169,8 @@ function rangeesMultilingues(libelle, map, langues, libellesLangues, pleineLarge
   });
 }
 
-// Les mots-clés sont des RANGÉES appariées d'une langue à l'autre : le mot-clé n° 2 en
-// français est la traduction du n° 2 en allemand. Les présenter en deux listes
-// indépendantes casserait l'appariement, qui est précisément ce qui se vérifie.
+// Les mots-clés se correspondent par position d'une langue à l'autre (le n° 2 en français
+// traduit le n° 2 en allemand) : une rangée par position, une colonne par langue.
 function rangeesMotsCles(map, langues) {
   const listes = {};
   let n = 0;
@@ -224,35 +191,29 @@ function rangeesMotsCles(map, langues) {
   return rangees;
 }
 
-// Construit la fiche d'UN article. `libelles` porte les tables de l'hôte (types, licences,
-// langues) et les intitulés de l'interface : ce module ne connaît aucune langue.
+// Construit la fiche d'un article. `libelles` et `textes` viennent de l'hôte (types,
+// licences, langues, intitulés) : ce module ne connaît aucune langue.
 function construireFiche(article, options, index, total) {
   const v = article.valeurs || {};
   const lib = options.libelles || {};
   const txt = options.textes || {};
-  // Les langues montrées : les deux de la maison, plus l'italien seulement s'il porte
-  // quelque chose. Une colonne vide sur douze pages coûte de la place pour rien.
+  // fr et de toujours, l'italien seulement s'il porte quelque chose.
   const langues = LANGUES_FEUILLE.filter((l) => {
     if (l !== 'it') { return true; }
     if ((v.title || {})[l] || (v.subtitle || {})[l] || (v.resume || {})[l]) { return true; }
     return Array.isArray((v.keywords || {})[l]) && (v.keywords || {})[l].length > 0;
   });
-  // Le DOI affiché est celui de la fiche ; à défaut, celui que la chaîne a calculé. La
-  // note dit lequel des deux, parce qu'un DOI saisi à la main n'engage pas la chaîne.
+  // Le DOI de la fiche, sinon celui que la chaîne a calculé ; la note dit lequel.
   const doi = v.doi || article.doiCalcule || '';
   const rDoi = rangee(txt.doi || 'DOI', doi, 'doi');
   rDoi.note = v.doi ? (txt.doiManuel || '') : (txt.doiCalcule || '');
-  // Deux champs par ligne, et une case par LIGNE : la page doit tenir en A4, et le
-  // relecteur coche une fois qu'il a vu les deux. Les identifiants gardent leur ligne
-  // — ce sont eux qui se lisent lentement.
+  // Deux champs et une case par ligne, pour tenir en A4. Le courriel a sa ligne à lui.
   const identification = [
     ligne([rangee(txt.type || 'Type', libelleDe(lib.types, v.type)),
       rangee(txt.langue || 'Langue', libelleDe(lib.langues, v.lang))]),
     ligne([rangee(txt.licence || 'Licence', libelleDe(lib.licences, v.licence)), rDoi])
   ];
-  // Un seul titre pour toute la section, et un filet entre les fiches : numéroter chaque
-  // auteur·e et répéter son nom en titre redisait ce que les champs disent déjà juste en
-  // dessous.
+  // Pas de titre par auteur·e : un filet sépare les fiches.
   const auteurs = (v.author || []).map((a) => ({
     lignes: [
       ligne([rangee(txt.prenom || 'Prénom', a.prenom), rangee(txt.nom || 'Nom', a.nom)]),
@@ -267,10 +228,8 @@ function construireFiche(article, options, index, total) {
   const textes = []
     .concat(rangeesMultilingues(txt.titre || 'Titre', v.title, langues, nomsLangues))
     .concat(rangeesMultilingues(txt.sousTitre || 'Sous-titre', v.subtitle, langues, nomsLangues))
-    // Le résumé passe en PLEINE LARGEUR : étiquette sur sa propre ligne, texte dessous,
-    // depuis le bord de la colonne des intitulés. C'est le seul champ assez long pour que
-    // les 46 mm mangés par les colonnes d'intitulé et de langue coûtent des lignes de
-    // repli — un titre, lui, tient sur une ligne et gagne à rester aligné avec le reste.
+    // Le résumé, seul champ long, passe en pleine largeur : étiquette sur sa ligne, texte
+    // dessous, sans les 46 mm des colonnes d'intitulé et de langue.
     .concat(rangeesMultilingues(txt.resume || 'Résumé', v.resume, langues, nomsLangues, true));
   return {
     slug: article.slug, index: index, total: total,
@@ -282,8 +241,8 @@ function construireFiche(article, options, index, total) {
   };
 }
 
-// Le modèle complet passé au gabarit. `horodatage` est injecté plutôt que lu ici : un
-// module pur ne lit pas l'heure, et un test doit pouvoir figer la feuille entière.
+// Le modèle complet passé au gabarit. `horodatage` est fourni par l'appelant, pour qu'un
+// test puisse figer la feuille entière.
 function construireModele(articles, options) {
   const o = options || {};
   const liste = articles || [];
@@ -297,11 +256,9 @@ function construireModele(articles, options) {
   };
 }
 
-// Rend le HTML autonome. Le gabarit porte la mise en page, les intitulés et la légende —
-// il se retouche sans toucher à ce fichier. Ce module ne lui fournit que des valeurs.
-// Le moteur rend une table de blocs : la page entière tient dans `contenu`, comme les
-// exports du secrétariat. Un gabarit qui perdrait son bloc rendrait une page vide, et
-// c'est ce que dit l'erreur plutôt que d'écrire un fichier muet.
+// Rend le HTML autonome. La mise en page, les intitulés et la légende sont dans le gabarit.
+// La page entière est le bloc `contenu`, comme pour les exports du secrétariat ; sans ce
+// bloc, on lève une erreur plutôt que d'écrire une page vide.
 function rendre(source, modele) {
   const blocs = gabarits.compiler(source, 'verification-meta.twig').rendre(modele);
   if (typeof blocs.contenu !== 'string') {

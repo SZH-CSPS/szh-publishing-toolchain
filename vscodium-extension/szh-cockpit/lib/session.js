@@ -1,63 +1,49 @@
-// L'état de session du cockpit : ce qu'une fenêtre VSCodium retient tant qu'elle tourne,
-// et qui n'a sa place dans aucun fichier du numéro. Module pur (pas de require('vscode')) :
-// une poignée de variables et leurs accesseurs, rien d'autre.
+// État de session du cockpit : ce qu'une fenêtre VSCodium retient tant qu'elle tourne, et
+// qui n'appartient à aucun fichier du numéro. Module pur : des variables et leurs accesseurs.
 //
-// Pourquoi ce module. Le découpage d'extension.js sépare le cycle de vie du numéro
-// (verrou, archivage), l'aperçu commutable HTML/PDF et l'import guidé en autant de
-// fichiers de lib/ — mais plusieurs de ces zones lisent ou écrivent la même variable :
-// un numéro qu'on archive doit fermer l'aperçu en cours (apercuCourantUri), et les deux
-// gestionnaires de tâches globaux posés dans activate() (onDidStartTask,
-// onDidEndTaskProcess) doivent voir le buildEnCours qu'une compilation d'import a posé.
-// Sans un point commun, chaque module extrait aurait fini par garder sa propre copie de
-// ces drapeaux, désynchronisée du reste. `reinitialiser()` remet tout à son état de
-// départ ; les tests l'appellent quand ils ont besoin de rejouer un scénario à froid
-// (aucun harnais actuel n'active l'extension deux fois dans le même processus, mais un
-// module qui expose son état doit pouvoir se remettre à zéro).
+// Ces variables sont lues ou écrites par plusieurs zones de lib/ (par exemple, archiver un
+// numéro ferme l'aperçu en cours, et les gestionnaires de tâches d'activate() voient le
+// buildEnCours posé par l'import). Les garder ici évite des copies désynchronisées.
+// reinitialiser() remet tout à l'état de départ, pour les tests.
 'use strict';
 
 // ---- Profil du dossier ouvert -----------------------------------------------------
-// Le profil détecté par lib/profil.js (numéro de revue ou livre) : lu par profilCourant()
-// et tout ce qui en découle (dossierUnites, cheminConfig, cleOrdre…), dans extension.js
-// comme dans les modules qui en reçoivent le résultat par callback.
+// Le profil détecté par lib/profil.js (numéro de revue ou livre), lu par profilCourant().
 let profilOuvrage = null;
 
 // ---- Cycle de vie du numéro --------------------------------------------------------
-// etatNumero vient d'ausgabe.yaml (etatRevue, lib/yaml.js) ; verrouApplique et
-// racineVerrou évitent de réécrire settings.json à chaque rafraîchissement ;
-// divergenceSignalee tient l'avertissement de version à un coup par fenêtre.
+// etatNumero vient d'ausgabe.yaml (etatRevue, lib/yaml.js). verrouApplique et racineVerrou
+// évitent de réécrire settings.json à chaque rafraîchissement. divergenceSignalee limite
+// l'avertissement de version à une fois par fenêtre.
 let etatNumero = { verrouillee: false, archivee: false, versionToolkit: '' };
 let verrouApplique = null;
 let racineVerrou = null;
 let divergenceSignalee = false;
 
-// ---- Co-édition : qui nous sommes pour les autres postes --------------------------
+// ---- Co-édition : notre identité pour les autres postes ---------------------------
 let identiteCoedition = null;
 
-// ---- Compilation et import : un seul chemin, une seule garde, deux déclencheurs ---
-// buildEnCours et importEnCours protègent le même verrou logique (jamais deux
-// compilations à la fois) depuis des points d'entrée différents — le clic sur un
-// article, l'enregistrement d'une fiche, l'import guidé, les tâches lancées hors du
-// cockpit (Ctrl+S). tachesSuiviesEnVol compte les tâches suivies par les gestionnaires
-// globaux d'activate(), pour que Ctrl+S et une commande du cockpit restent cohérents.
+// ---- Compilation et import --------------------------------------------------------
+// buildEnCours et importEnCours empêchent deux compilations simultanées, quel que soit le
+// déclencheur (clic sur un article, fiche enregistrée, import, Ctrl+S).
+// tachesSuiviesEnVol compte les tâches suivies par les gestionnaires d'activate().
 let buildEnCours = false;
 let importEnCours = false;
 let tachesSuiviesEnVol = 0;
 
 // ---- Aperçu commutable HTML / PDF --------------------------------------------------
-// L'article actuellement montré en colonne 2 (HTML ou PDF), et le panneau webview de
-// l'aperçu HTML quand ce mode est actif. profilRevue est la clé `profil:` d'ausgabe.yaml
-// (ce qu'un numéro produit), à ne pas confondre avec profilOuvrage ci-dessus (numéro ou
-// livre) — deux notions dont le voisinage de nom est malheureux, gardé tel quel : le
-// second est un contrat exporté que les tests lisent.
+// L'article montré en colonne 2 (HTML ou PDF) et le panneau de l'aperçu HTML.
+// profilRevue est la clé `profil:` d'ausgabe.yaml (ce que le numéro produit) ; à ne pas
+// confondre avec profilOuvrage (numéro ou livre).
 let apercuCourantUri = null;
 let apercuCourantSlug = null;
 let panneauApercuHtml = null;
 let apercuHtmlMtime = 0;
 let profilRevue = 'article';
 
-// Défilement synchronisé éditeur <-> aperçu : la garde anti-boucle (l'extension révèle
-// elle-même une ligne, l'événement de visibilité qui en découle doit être ignoré) et les
-// trois minuteurs qui regroupent les rafales de scroll/curseur.
+// Défilement synchronisé éditeur <-> aperçu. defilementProgrammatiqueHote fait ignorer
+// l'événement que provoque une ligne révélée par l'extension elle-même ; les minuteurs
+// regroupent les rafales de défilement et de curseur.
 let defilementProgrammatiqueHote = false;
 let minuteurHoteVersApercu = null;
 let minuteurHoteRelache = null;

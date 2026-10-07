@@ -1,18 +1,14 @@
 // Passe tout le dossier d'un numéro verrouillé en lecture seule.
 //
-// Le seul mécanisme offert par VS Code est `files.readonlyInclude`, et le seul endroit qui
-// fasse voyager le verrou avec le dossier (OneDrive, archivage, autre poste) est
-// <revue>/.vscode/settings.json, unique fichier technique toléré dans une revue et masqué
-// par files.exclude. Trois clés y sont écrites : `files.readonlyInclude` sur « ** »,
-// `files.readonlyExclude` sur « .vscode/** », et `triggerTaskOnSave.tasks` vidé pour qu'un
-// enregistrement fait par une extension tierce ne relance pas `make all`.
+// Le verrou s'écrit dans <revue>/.vscode/settings.json, qui voyage avec le dossier
+// (OneDrive, archivage, autre poste) et que files.exclude masque. Trois clés :
+// `files.readonlyInclude` sur « ** », `files.readonlyExclude` sur « .vscode/** », et
+// `triggerTaskOnSave.tasks` vidé pour qu'un enregistrement par une autre extension ne
+// relance pas `make all`.
 //
-// ⚠ Deux pièges vérifiés. `readonlyInclude: {'**': true}` couvre aussi
-// .vscode/settings.json, et l'API de configuration de VS Code écrit à travers son service
-// de fichiers, qui refuse une ressource en lecture seule : sans `readonlyExclude` et sans
-// l'écriture par fs faite ici, le verrou verrouillerait son propre interrupteur. Et
-// `getConfiguration().update(clé, undefined)` matérialise le fichier, semant un
-// settings.json vide dans chaque dossier de revue simplement visité.
+// L'écriture passe par fs, pas par l'API de configuration de VS Code : celle-ci refuse
+// d'écrire un fichier en lecture seule, et `update(clé, undefined)` crée un settings.json
+// vide dans chaque dossier visité. readonlyExclude garde .vscode/ modifiable.
 'use strict';
 
 const fs = require('fs');
@@ -26,17 +22,15 @@ function cheminsVerrou(racine) {
 }
 
 // settings.json est du JSONC : VS Code y tolère les commentaires `//` et `/* */`, et une
-// virgule traînante avant `}`/`]`. Retire les uns et les autres hors des chaînes — un
-// commentaire ou une virgule dans une valeur de réglage ne doit pas être touché — pour
-// rendre le texte exploitable par JSON.parse.
+// virgule finale avant `}`/`]`. Retire les deux hors des chaînes, pour JSON.parse.
 function retirerJsonc(texte) {
   return String(texte)
     .replace(/"(?:[^"\\]|\\.)*"|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (m) => (m.charAt(0) === '"' ? m : ''))
     .replace(/,(\s*[}\]])/g, '$1');
 }
 
-// Réglages du disque, ou null si le fichier n'est pas du JSON(C) exploitable, auquel cas
-// l'appelant s'arrête sans rien écraser.
+// Réglages lus sur le disque, ou null si le JSONC est illisible : l'appelant s'arrête alors
+// sans rien écraser.
 function lireReglages(fichier) {
   if (!fs.existsSync(fichier)) { return {}; }
   try {
@@ -47,8 +41,8 @@ function lireReglages(fichier) {
   } catch (e) { return null; }
 }
 
-// Renvoie null si tout va bien, sinon le message d'erreur. Ne lève pas : un échec ici ne
-// doit pas laisser un archivage à moitié fait.
+// -> null si tout va bien, sinon le message d'erreur. Ne lève pas, pour ne pas laisser un
+// archivage à moitié fait.
 function appliquerVerrou(racine, verrouillee) {
   if (!racine) { return null; }
   const c = cheminsVerrou(racine);
@@ -64,14 +58,14 @@ function appliquerVerrou(racine, verrouillee) {
     if (!present) { return null; }                 // rien à retirer, rien à créer
     for (const cle of CLES_VERROU) { delete valeurs[cle]; }
     if (Object.keys(valeurs).length === 0) {
-      // Plus rien à nous ni à personne : le dossier retrouve son état épuré.
+      // Plus aucun réglage : on retire le fichier, et .vscode/ s'il est vide.
       try { fs.unlinkSync(c.fichier); } catch (e) { return String((e && e.message) || e); }
-      try { fs.rmdirSync(c.dossier); } catch (e) { /* pas vide : très bien */ }
+      try { fs.rmdirSync(c.dossier); } catch (e) { /* pas vide : on le garde */ }
       return null;
     }
   }
 
-  // Écriture atomique, préfixe « ~$ » ignoré par la synchro OneDrive puis rename.
+  // Écriture atomique : fichier « ~$… », que OneDrive ne synchronise pas, puis rename.
   const tmp = path.join(c.dossier, '~$settings.json');
   try {
     fs.mkdirSync(c.dossier, { recursive: true });
@@ -86,10 +80,8 @@ function appliquerVerrou(racine, verrouillee) {
 
 function verrouPose(racine) {
   const valeurs = lireReglages(cheminsVerrou(racine).fichier);
-  // Fichier illisible (JSON cassé, synchro interrompue) : `lireReglages` rend null, à
-  // distinguer du fichier absent (`{}`, un numéro qui n'a jamais été verrouillé). Dans le
-  // doute, mieux vaut se supposer verrouillé qu'affirmer à tort le contraire — la lecture
-  // seule protégerait alors moins qu'annoncé, en silence.
+  // Fichier illisible (null, à distinguer du fichier absent qui donne {}) : on suppose le
+  // numéro verrouillé, plutôt que d'annoncer à tort qu'il ne l'est pas.
   if (valeurs === null) { return true; }
   const inc = valeurs['files.readonlyInclude'];
   return !!(inc && inc['**'] === true);

@@ -17,22 +17,17 @@ function lireAttributsHtml(source) {
 // ---- Images dans les cellules ----
 //
 // L'import Word (pipeline/docx-tables.py) pose <img src="media/…" alt="…" width="…"> dans
-// une cellule — une photo d'auteur·e dans un bloc de présentation, typiquement. Le src est
-// relatif au dossier de l'ARTICLE, pas à tables/ : szh-tabelle-inclure.lua réinjecte le
-// fichier dans l'article, avec ce dossier pour répertoire courant. Il n'est donc jamais
-// réécrit ici.
+// une cellule (par exemple une photo d'auteur·e). Le src est relatif au dossier de
+// l'article, car szh-tabelle-inclure.lua insère le tableau dans l'article ; il est gardé
+// tel quel.
 //
-// L'image traverse le modèle sous la forme d'une balise canonique, dans le contenu de la
-// cellule : src d'abord, alt ensuite S'IL EXISTE — un alt absent et un alt vide ne sont
-// pas le même état —, puis les autres attributs dans l'ordre du fichier. Seuls les
-// gestionnaires d'événements (on*) et un src en javascript:/vbscript: sont retirés.
-// Idempotent, comme le reste de canoniserInline : un tableau relu puis réécrit sans
-// changement garde ses images à l'octet près.
+// Dans le modèle, l'image est une balise canonique dans le contenu de la cellule : src,
+// puis alt s'il existe (alt absent et alt vide sont deux états), puis les autres attributs
+// dans l'ordre du fichier. Les gestionnaires on* et un src javascript:/vbscript: sont
+// retirés. Idempotent : un tableau relu puis réécrit garde ses images à l'octet près.
 //
-// Image décorative : alt="" ET role="presentation". Un alt vide seul ne dit rien — l'import
-// l'écrit pour toute image dont le Word n'avait pas de description —, c'est le rôle qui
-// porte la décision, comme le choix « Image purement décorative » du gestionnaire des
-// médias.
+// Image décorative : alt="" et role="presentation". L'import écrit alt="" pour toute image
+// sans description : c'est le rôle qui marque le choix « Image purement décorative ».
 function srcImageSur(src) { return !/^\s*(?:javascript|vbscript)\s*:/i.test(String(src || '')); }
 
 // '<img …>' -> { attr: valeur décodée }, dans l'ordre du fichier.
@@ -44,8 +39,8 @@ function lireImage(balise) {
   return attrs;
 }
 
-// { attr: valeur } -> balise canonique. Un nom d'attribut hors de la forme usuelle est
-// jeté plutôt que recopié : il ne sortirait pas intact de lireAttributsHtml au tour suivant.
+// { attr: valeur } -> balise canonique. Un nom d'attribut de forme inhabituelle est jeté :
+// il ne sortirait pas intact de lireAttributsHtml au tour suivant.
 function baliseImage(attrs) {
   const a = attrs || {};
   const src = srcImageSur(a.src) ? String(a.src === undefined ? '' : a.src) : '';
@@ -63,8 +58,8 @@ function estDecorative(attrs) {
   return /^(presentation|none)$/i.test(String((attrs && attrs.role) || '').trim());
 }
 
-// Ni texte alternatif, ni décision « décorative » : l'image serait muette pour un lecteur
-// d'écran sans que personne l'ait voulu. Même règle que la pastille de media/table-editor.js.
+// Vrai si l'image n'a ni texte alternatif ni rôle décoratif. Même règle que la pastille de
+// media/table-editor.js.
 function imageSansAlternative(attrs) {
   return !estDecorative(attrs) && String((attrs && attrs.alt) || '').trim() === '';
 }
@@ -124,10 +119,9 @@ function extraireCellules(interieur) {
           rowspan: Math.max(1, parseInt(courant.attrs.rowspan, 10) || 1),
           th: th,
           scope: th ? (sc === 'row' ? 'row' : (sc === 'col' ? 'col' : '')) : '',
-          // Titre de section (rangée fusionnée pleine largeur dans le corps) : le
-          // scope="rowgroup" du fichier est le marqueur. Un th de gauche fusionné le
-          // porte aussi — reappliquerEntetes ne retient le drapeau que sur une rangée
-          // d'une seule cellule pleine largeur, l'autre cas retombe sur enteteColonnes.
+          // Titre de section : marqué par scope="rowgroup" dans le fichier. Un th de
+          // gauche fusionné le porte aussi ; reappliquerEntetes ne garde le drapeau que
+          // pour un vrai titre de section.
           section: th && String(sc || '').toLowerCase() === 'rowgroup',
           align: enumOu((courant.attrs['data-align'] || '').toLowerCase(), ['left', 'center', 'right'], 'left')
         });
@@ -147,10 +141,9 @@ function vrai(v) { return v === true || v === 1 || v === '1' || v === 'oui' || v
 const FONDS = ['aucun', 'negatif', 'couleur', 'gris'];   // data-*-fond
 const ZEBRES = ['aucun', 'paires', 'impaires'];          // data-zebre-*
 
-// Préréglages de mise en forme : chacun pose tout l'habillage du tableau d'un coup, sans
-// toucher aux comptes d'en-tête, qui décrivent la structure et non l'apparence. Les
-// boutons radio se construisent depuis ce tableau, dans cet ordre : pour en retirer un,
-// supprimer son entrée ici et son libellé `table.preset.<clé>` dans lib/i18n.js.
+// Préréglages de mise en forme : chacun pose tout l'habillage du tableau, sans toucher aux
+// comptes d'en-tête (la structure). Les boutons radio suivent ce tableau ; chaque entrée a
+// son libellé `table.preset.<clé>` dans lib/i18n.js.
 const PRESETS_TABLE = {
   academique: {
     ecGras: true, ecFond: 'aucun', elGras: true, elFond: 'aucun',
@@ -280,13 +273,11 @@ function compacterGrille(g) {
   return finaliserModele({ attrs: g.attrs, lignes: lignes });
 }
 
-// Réaligne th et scope sur les comptes data-entete-lignes et data-entete-colonnes, seule
-// source de vérité : en-tête si l'origine est dans les lignes du haut (scope=col) ou les
-// colonnes de gauche (scope=row), le haut l'emportant au coin.
-// S'y ajoutent les titres de section (en-têtes intermédiaires, RGAA/WCAG H43) : le
-// drapeau `section` d'une cellule n'est retenu que si la rangée est une cellule pleine
-// largeur sous le thead — partout ailleurs il est effacé (une fusion cassée par une
-// insertion de colonne redevient une rangée ordinaire, sans th fantôme).
+// Réaligne th et scope sur les comptes data-entete-lignes et data-entete-colonnes : une
+// cellule est en-tête si son origine est dans les rangées du haut (scope=col) ou les
+// colonnes de gauche (scope=row) ; au coin, le haut l'emporte.
+// Titres de section (en-têtes intermédiaires, WCAG H43) : le drapeau `section` n'est gardé
+// que hors du thead et des colonnes d'en-tête de gauche ; ailleurs il est effacé.
 function reappliquerEntetes(modele) {
   const occ = matriceOccupation(modele.lignes);
   const eL = modele.attrs.enteteLignes, eC = modele.attrs.enteteColonnes;
@@ -306,16 +297,15 @@ function reappliquerEntetes(modele) {
   return modele;
 }
 
-// Légende du tableau, soit son <caption> : même convention que le contenu d'une cellule.
-// Assainie ici, passage obligé de tous les chemins, donc aucune injection venue de la
-// webview ne passe. Chaîne vide veut dire pas de <caption> du tout.
+// Légende du tableau (<caption>), assainie comme le contenu d'une cellule. Tous les
+// chemins passent par ici, y compris ce qui vient de la webview. Vide : pas de <caption>.
 function normaliserLegende(v) {
   return canoniserInline(String(v === undefined || v === null ? '' : v).replace(/[\r\n]+/g, ' '));
 }
 
-// Texte alternatif, copyright, source et note : quatre attributs data-* sur <table>, du texte pur
-// dans le modèle, dont une valeur vide veut dire attribut absent. Le pipeline n'écrit
-// jamais dans ces fichiers : le numéro et les crédits sont ajoutés au rendu, en mémoire.
+// Texte alternatif, copyright, source et note : quatre attributs data-* sur <table>, en
+// texte pur ; vide = attribut absent. Le numéro et les crédits sont ajoutés en mémoire à
+// la compilation, sans réécrire ces fichiers.
 const LONGUEUR_MAX_META = 1000;
 
 function normaliserTexteAttribut(v) {
@@ -323,11 +313,9 @@ function normaliserTexteAttribut(v) {
     .replace(/[\r\n\t]+/g, ' ').trim().slice(0, LONGUEUR_MAX_META);
 }
 
-// Entités d'un attribut HTML -> texte. Références numériques comprises (décimales
-// « &#233; » et hexadécimales « &#xE9; », x/X indifféremment) — ce qu'un tableau collé
-// depuis Excel ou Word porte quand son encodage a tourné. &amp; en dernier, sinon un
-// « &quot; » littéral, écrit « &amp;quot; », serait décodé deux fois — même raison pour
-// les références numériques : « &amp;#233; » ne doit pas devenir « é ».
+// Entités d'un attribut HTML -> texte, références numériques comprises (« &#233; »,
+// « &#xE9; »), fréquentes dans un collage d'Excel ou de Word. &amp; se décode en dernier,
+// sinon « &amp;quot; » ou « &amp;#233; » seraient décodés deux fois.
 function decoderEntites(s) {
   return String(s === undefined || s === null ? '' : s)
     .replace(/&quot;/g, '"').replace(/&apos;/g, '\'').replace(/&#0*39;/g, '\'')
@@ -342,10 +330,9 @@ function echapAttribut(s) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// Normalise bornes et énumérations sans toucher à la structure. Les styles vivent au
-// niveau du tableau : en-têtes de lignes (el, colonnes de gauche), en-têtes de colonnes
-// (ec, rangées du haut), total, bordures, zébrage. Par cellule, seuls l'alignement et la
-// mise en forme du contenu.
+// Normalise bornes et énumérations sans toucher à la structure. Styles au niveau du
+// tableau : en-têtes de lignes (el, colonnes de gauche), en-têtes de colonnes (ec, rangées
+// du haut), total, bordures, zébrage. Par cellule : alignement et mise en forme du contenu.
 function normaliserModele(modele) {
   const a = (modele && modele.attrs) || {};
   const lignesEntree = (modele && modele.lignes) || [];
@@ -385,17 +372,15 @@ function normaliserModele(modele) {
   }));
   if (lignes.length === 0) { lignes.push({ cellules: [{ contenu: '', colspan: 1, rowspan: 1, th: false, scope: '', section: false, align: 'left' }] }); }
 
-  // Les styles d'en-têtes de lignes (el) servent aussi aux titres de section —
-  // print.css les style par th[scope^="row"], qui couvre "rowgroup". On ne les éteint
-  // donc que s'il n'y a ni colonne d'en-tête ni titre de section.
+  // Les styles d'en-têtes de lignes (el) servent aussi aux titres de section (print.css
+  // vise th[scope^="row"], qui couvre "rowgroup") : on ne les éteint que s'il n'y a ni
+  // colonne d'en-tête ni titre de section.
   const aSection = lignes.some((lg) => lg.cellules.some((c) => !!c.section));
   if (attrs.enteteColonnes === 0 && !aSection) { attrs.elGras = false; attrs.elFond = 'aucun'; }   // el = colonnes de gauche
 
-  // ⚠ Aucune fusion de l'en-tête ne doit dépasser dans le corps : les navigateurs bornent
-  // un rowspan à sa section, si bien qu'un <thead> qui tronque une fusion décale la
-  // rangée suivante d'une colonne. On réduit donc le compte d'en-tête jusqu'à ce
-  // qu'aucune fusion ne dépasse, quitte à tomber à zéro ; l'en-tête se repose ensuite
-  // d'un clic dans l'éditeur. Le contrôle est ici, passage obligé de tous les chemins.
+  // Une fusion de l'en-tête ne doit pas dépasser dans le corps : les navigateurs bornent un
+  // rowspan à sa section, et la rangée suivante serait décalée d'une colonne. On réduit le
+  // compte d'en-tête jusqu'à ce qu'aucune fusion ne dépasse, au besoin jusqu'à zéro.
   while (attrs.enteteLignes > 0 && fusionFranchitEntete(lignes, attrs.enteteLignes)) {
     attrs.enteteLignes--;
   }
@@ -448,8 +433,7 @@ function analyserTable(html) {
     const fin = s.toLowerCase().indexOf('</table>', debut);
     corps = fin === -1 ? s.slice(debut) : s.slice(debut, fin);
   } else { corps = s; }
-  // La légende est lue avant le retrait du <caption> : c'est elle que le pipeline
-  // numérote et affiche, et l'import Word en pose déjà une.
+  // La légende est lue avant le retrait du <caption>.
   const mCaption = corps.match(/<caption\b[^>]*>([\s\S]*?)<\/caption>/i);
   corps = corps
     .replace(/<\/?(thead|tbody|tfoot)\b[^>]*>/gi, '')
@@ -540,11 +524,9 @@ function serialiserTable(modele) {
   // Forme à garder identique à celle de pipeline/docx-tables.py, qui écrit le même
   // balisage à l'import.
   const idTh = (li, c0) => 'szh-th-r' + li + 'c' + c0;
-  // Titres de section, partiels admis : chaque cellule marquée (hors thead, hors
-  // colonnes d'en-tête de gauche — revérifié ici, le sérialiseur ne reçoit que
-  // normaliserModele) couvre les colonnes de sa fusion. Leur seule présence rend le
-  // tableau complexe : le lien « cette cellule dépend de ce titre-là » n'est
-  // exprimable que par headers=.
+  // Titres de section, éventuellement partiels : chaque cellule marquée (hors thead et
+  // colonnes d'en-tête de gauche) couvre les colonnes de sa fusion. Leur présence rend le
+  // tableau complexe : le lien entre une cellule et son titre passe par headers=.
   const sections = [];
   m.lignes.forEach((lg, r) => {
     if (r < eL) { return; }
@@ -558,8 +540,8 @@ function serialiserTable(modele) {
   let ouv = '<table class="' + a.classe + '"';
   if (eL > 0) { ouv += ' data-entete-lignes="' + eL + '"'; }
   if (eC > 0) { ouv += ' data-entete-colonnes="' + eC + '"'; }
-  // Accessibilité et crédits, au format arrêté avec le pipeline, émis seulement s'ils
-  // portent une valeur. Pas de alt="" ici, un tableau décoratif n'existant pas.
+  // Accessibilité et crédits, au format lu par le pipeline, émis seulement s'ils portent
+  // une valeur. Un tableau n'est jamais décoratif : pas de alt="".
   if (a.alt !== '') { ouv += ' data-alt="' + echapAttribut(a.alt) + '"'; }
   if (a.copyright !== '') { ouv += ' data-copyright="' + echapAttribut(a.copyright) + '"'; }
   if (a.source !== '') { ouv += ' data-source="' + echapAttribut(a.source) + '"'; }
@@ -597,8 +579,8 @@ function serialiserTable(modele) {
         const estColonne = r < eL;   // rangée du haut : en-tête de colonne, scope col
         if (complexe) {
           t += ' id="' + idTh(r, c0) + '"';
-          // Titre de section : scope="rowgroup" (il couvre les rangées qui suivent) —
-          // c'est aussi le marqueur que analyserTable relit pour l'aller-retour.
+          // Titre de section : scope="rowgroup" (il couvre les rangées qui suivent), relu
+          // par analyserTable.
           const sc = cell.section ? 'rowgroup'
             : (estColonne ? (cell.colspan > 1 ? 'colgroup' : 'col')
                           : (cell.rowspan > 1 ? 'rowgroup' : 'row'));
@@ -834,12 +816,11 @@ function tableauDepuisTsv(texte) {
 
 // ---- Presse-papiers HTML d'Excel ou de Word -> modèle ----
 //
-// Troisième entrée du modèle, après analyserTable et tableauDepuisTsv. La lecture du
-// presse-papiers, elle, est impérative et reste dans lib/formatting.js.
+// Troisième entrée du modèle, après analyserTable et tableauDepuisTsv. Le presse-papiers
+// est lu par lib/formatting.js.
 //
-// vscode.env.clipboard.readText() ne rend que du TSV, où les cellules fusionnées
-// n'existent pas ; seule la variante HTML du presse-papiers Windows porte colspan et
-// rowspan.
+// vscode.env.clipboard.readText() ne rend que du TSV, sans fusions ; seule la variante
+// HTML du presse-papiers Windows porte colspan et rowspan.
 
 const ATTRS_CELLULE = ['colspan', 'rowspan', 'scope', 'data-align', 'id', 'headers'];
 
@@ -857,11 +838,9 @@ function attributsRetenus(attrs, cles) {
   return t;
 }
 
-// CF_HTML -> fragment HTML. Les décalages annoncés par l'en-tête CF_HTML sont des
-// positions en octets, inutilisables sur une chaîne JS déjà décodée : on se fie aux
-// marqueurs <!--StartFragment--> et <!--EndFragment-->, présents chez Word comme chez
-// Excel. Excel les place à l'intérieur du <table>, si bien que le fragment n'a pas de
-// balise <table> — sans conséquence, analyserTable tolérant un corps de tableau nu.
+// CF_HTML -> fragment HTML. Les décalages de l'en-tête CF_HTML sont en octets, inutiles
+// sur une chaîne JS décodée : on se fie aux marqueurs <!--StartFragment--> et
+// <!--EndFragment-->. Excel les place dans le <table> ; analyserTable accepte ce corps nu.
 function fragmentCfHtml(brut) {
   const s = String(brut === undefined || brut === null ? '' : brut)
     .replace(/\0/g, '')                              // la donnée CF_HTML se termine par un NUL
@@ -878,18 +857,15 @@ function fragmentCfHtml(brut) {
   return s;
 }
 
-// HTML d'Excel ou de Word -> HTML de tableau minimal, digeste pour analyserTable. On jette
-// les blocs sans contenu de tableau (îlots XML, conditionnels, <style>), on traduit les
-// frontières de paragraphe en <br> pour que deux paragraphes d'une cellule ne se collent
-// pas, puis on filtre balise par balise en gardant le texte. Sur du HTML canonique, ce
-// nettoyage ne retire rien de signifiant, d'où son emploi aussi pour le collage dans
-// l'éditeur de tableau.
+// HTML d'Excel ou de Word -> HTML de tableau minimal pour analyserTable : blocs sans
+// contenu de tableau jetés (îlots XML, conditionnels, <style>), fins de paragraphe
+// changées en <br>, puis filtrage balise par balise en gardant le texte. Sans effet sur
+// du HTML canonique, ce nettoyage sert aussi au collage dans l'éditeur de tableau.
 function nettoyerHtmlBureautique(html) {
   let s = String(html === undefined || html === null ? '' : html);
   s = s.replace(/<!--[\s\S]*?-->/g, '');                          // commentaires (dont les îlots mso)
-  // Conditionnels révélés : contenu jeté avec le bloc. Ils ne portent que des rustines de
-  // mise en page, et Excel y range une rangée fantôme qui ajouterait une ligne vide à
-  // chaque collage.
+  // Conditionnels révélés : jetés avec leur contenu. Excel y range une rangée fantôme qui
+  // ajouterait une ligne vide.
   s = s.replace(/<!\[if\b[^\]]*\]>[\s\S]*?<!\[endif\]\s*>/gi, '');
   s = s.replace(/<!\[if\b[^\]]*\]>/gi, '').replace(/<!\[endif\]\s*>/gi, '');   // marqueur orphelin
   s = s.replace(/<\?[\s\S]*?\?>/g, '');                           // <?xml:namespace … ?>
@@ -905,9 +881,8 @@ function nettoyerHtmlBureautique(html) {
     if (!tete) { continue; }                                      // <! … > résiduel : jeté
     const nom = tete[2].toLowerCase();
     if (nom.indexOf(':') !== -1) { continue; }                    // <o:p>, <w:sdt>, <v:shape>
-    // Une image copiée d'une cellule de l'éditeur (src relatif à l'article, media/…)
-    // traverse le collage. Celle de Word ou d'Excel pointe un fichier temporaire du poste
-    // (file:///…/clip_image001.png) qui n'existera plus demain : jetée, comme avant.
+    // Une image copiée depuis l'éditeur (src media/…) est gardée. Celle de Word ou d'Excel
+    // pointe un fichier temporaire (file:///…/clip_image001.png) : elle est jetée.
     if (nom === 'img' && tete[1] !== '/') {
       const im = lireImage(m[0]);
       const src = String(im.src || '');
@@ -920,8 +895,7 @@ function nettoyerHtmlBureautique(html) {
     if (tete[1] === '/') { out += '</' + nom + '>'; continue; }
     if (nom === 'td' || nom === 'th' || nom === 'table') {
       const attrs = lireAttributsHtml(m[0].slice(tete[0].length).replace(/\/?>$/, ''));
-      // Sur <table>, class et data-* portent tout le style du HTML canonique et doivent
-      // traverser le nettoyage intacts.
+      // Sur <table>, class et data-* portent le style du HTML canonique : gardés intacts.
       const cles = (nom === 'table')
         ? Object.keys(attrs).filter((c) => c === 'class' || c.indexOf('data-') === 0)
         : ATTRS_CELLULE;
@@ -934,10 +908,9 @@ function nettoyerHtmlBureautique(html) {
   return out;
 }
 
-// Word et Excel émettent des retours à la ligne, des indentations et des &nbsp; de mise en
-// page : on ramène tout à des espaces simples et on retire les <br> de bord, pour qu'une
-// cellule vide le soit vraiment. Une espace insécable voulue y perd, mais la typographie
-// fine est posée à la compilation.
+// Ramène retours à la ligne, indentations et &nbsp; de Word et d'Excel à des espaces
+// simples, et retire les <br> de bord : une cellule vide l'est vraiment. Les espaces fines
+// sont posées à la compilation.
 function nettoyerContenuCellule(contenu) {
   let s = String(contenu === undefined || contenu === null ? '' : contenu)
     .replace(/&nbsp;|&#0*160;|&#x0*a0;/gi, ' ')
@@ -961,11 +934,9 @@ function ligneToutGras(cellules) {
   return vuTexte;
 }
 
-// Hauteur de l'en-tête déduite d'une première rangée toute en gras. Elle ne vaut pas
-// toujours 1 : pour un en-tête à deux niveaux, Word émet une cellule à rowspan=2 à côté
-// d'un groupe à colspan=2 qui se subdivise à la rangée suivante. La hauteur est donc le
-// plus grand rowspan de la rangée 0, et la retenir évite qu'un <thead> d'une seule rangée
-// tronque la fusion et décale la rangée suivante.
+// Hauteur de l'en-tête quand la première rangée est toute en gras : le plus grand rowspan
+// de cette rangée. Un en-tête à deux niveaux de Word a une cellule à rowspan=2 ; un
+// <thead> d'une seule rangée tronquerait la fusion.
 function hauteurEnteteGras(lignes) {
   let h = 1;
   for (const cell of lignes[0].cellules) { h = Math.max(h, Math.max(1, parseInt(cell.rowspan, 10) || 1)); }
@@ -981,10 +952,10 @@ function fusionFranchitEntete(lignes, n) {
   return false;
 }
 
-// Presse-papiers HTML, brut ou fragment, -> modèle avec ses fusions ; null si la chaîne ne
-// contient aucune cellule, l'appelant se repliant alors sur le TSV. Sans <th> ni compte
-// d'en-tête, les rangées de tête sont promues si la première est toute en gras — Excel,
-// qui met son gras dans une classe CSS, donne donc un tableau sans en-tête.
+// Presse-papiers HTML, brut ou fragment, -> modèle avec ses fusions ; null s'il n'y a
+// aucune cellule (l'appelant passe alors au TSV). Sans <th>, la première rangée devient
+// en-tête si elle est toute en gras. Excel met son gras dans une classe CSS : ses tableaux
+// arrivent sans en-tête.
 function tableauDepuisHtmlBureautique(html) {
   const propre = nettoyerHtmlBureautique(fragmentCfHtml(html));
   if (!/<t[dh]\b/i.test(propre)) { return null; }
@@ -996,8 +967,8 @@ function tableauDepuisHtmlBureautique(html) {
     const hauteur = hauteurEnteteGras(m.lignes);
     let n = Math.min(hauteur, 2);
     if (hauteur >= m.lignes.length) { n = 1; }
-    // Si une fusion dépasse encore, aucun <thead> : mieux vaut un tableau sans en-tête
-    // qu'une grille tronquée par le navigateur.
+    // Si une fusion dépasse encore, pas de <thead> : une grille tronquée par le navigateur
+    // serait pire.
     if (fusionFranchitEntete(m.lignes, n)) { n = 0; }
     m.attrs.enteteLignes = n;
   }
@@ -1049,8 +1020,8 @@ function appliquerOperationTable(nom, modeleBrut, args) {
   if (nom === 'deplacerLigne') { return deplacerLigne(modele, n(a.de), n(a.vers)); }
   if (nom === 'deplacerColonne') { return deplacerColonne(modele, n(a.de), n(a.vers)); }
   if (nom === 'coller') {
-    // Le HTML du presse-papiers de la webview est aussi sale que le CF_HTML et porte les
-    // mêmes fusions : même nettoyage, avec repli sur le TSV.
+    // Le HTML collé dans la webview reçoit le même nettoyage que le CF_HTML, avec repli
+    // sur le TSV.
     const src = (a.html ? tableauDepuisHtmlBureautique(String(a.html)) : null) || tableauDepuisTsv(a.texte);
     return collerDans(modele, n(a.ancreR), n(a.ancreC), src);
   }
@@ -1083,13 +1054,11 @@ function appliquerOperationTable(nom, modeleBrut, args) {
     else { modele.attrs.enteteLignes = 0; modele.attrs.enteteColonnes = 0; }
     return finaliserModele(modele);
   }
-  // Titre de section (en-tête intermédiaire), partiel admis : la plage visée
-  // [cMin..cMax] de la rangée r devient une cellule — fusionnée d'abord si besoin,
-  // avec les gardes de fusionner() ; une cellule déjà fusionnée (ou seule) n'est pas
-  // étendue — marquée section (th scope="rowgroup" au fichier). Elle couvre les
-  // colonnes de sa fusion, pour les rangées qui suivent. cMin/cMax absents : toute la
-  // rangée (rétrocompat). La désactivation ne retire que le rôle des cellules
-  // touchées : la fusion reste, c'est un choix de mise en page.
+  // Titre de section (en-tête intermédiaire), éventuellement partiel : la plage
+  // [cMin..cMax] de la rangée r est fusionnée si besoin (gardes de fusionner()), puis
+  // marquée section (th scope="rowgroup"). Elle couvre ses colonnes pour les rangées qui
+  // suivent. Sans cMin/cMax : toute la rangée. La désactivation retire le rôle et garde la
+  // fusion.
   if (nom === 'section') {
     const r = n(a.r);
     if (!modele.lignes[r]) { return finaliserModele(modele); }
@@ -1103,8 +1072,8 @@ function appliquerOperationTable(nom, modeleBrut, args) {
       });
       return finaliserModele(modele);
     }
-    // fusionner() sur une plage égale à une cellule existante est un no-op ; sur une
-    // plage qui chevauche une fusion voisine, il refuse — mêmes gardes qu'au menu.
+    // fusionner() ne fait rien sur une plage égale à une cellule, et refuse une plage qui
+    // chevauche une fusion voisine.
     const m = fusionner(modele, r, cMin, r, cMax);
     if (m.erreur) { return m; }
     const occ2 = matriceOccupation(m.lignes);
@@ -1121,19 +1090,16 @@ function appliquerOperationTable(nom, modeleBrut, args) {
     return finaliserModele(modele);
   }
   if (nom === 'preset') {
-    // Un préréglage pose tous les styles d'un coup, donc un seul pas d'annulation : un
-    // réglage par champ en empilerait une dizaine.
+    // Un préréglage pose tous les styles d'un coup : un seul pas d'annulation.
     const p = PRESETS_TABLE[String(a.nom || '')];
     if (p) {
-      // Ne jamais toucher aux comptes d'en-tête : ils décrivent la structure, pas
-      // l'habillage.
+      // Les comptes d'en-tête (la structure) restent tels quels.
       Object.keys(p).forEach((champ) => { modele.attrs[champ] = p[champ]; });
     }
     return finaliserModele(modele);
   }
-  // La légende, le texte alternatif, le copyright, la source et la note n'ont pas d'opération :
-  // saisis dans la webview, ils voyagent avec le modèle et sont assainis par
-  // normaliserModele, sans re-rendu de la grille.
+  // Légende, texte alternatif, copyright, source et note n'ont pas d'opération : ils
+  // voyagent avec le modèle et sont assainis par normaliserModele.
   //
   // Réglages du tableau : bordures et zébrage. Un seul champ par appel.
   if (nom === 'reglage') {
@@ -1145,8 +1111,7 @@ function appliquerOperationTable(nom, modeleBrut, args) {
   }
   // ---- Images d'une cellule ----
   // li, ci : indices modèle de la cellule ; n : rang de l'image dans la cellule. Le fichier
-  // d'image, lui, est choisi et copié par l'hôte (lib/table-images.js) : l'opération ne
-  // reçoit que le src relatif à l'article qu'il a écrit.
+  // est copié par l'hôte (lib/table-images.js) ; l'opération reçoit son src.
   if (nom === 'imageInserer' || nom === 'imageRemplacer' || nom === 'imageAlt') {
     const lg = modele.lignes[n(a.li)];
     const cell = lg && lg.cellules[n(a.ci)];
@@ -1154,8 +1119,7 @@ function appliquerOperationTable(nom, modeleBrut, args) {
     if (nom === 'imageInserer') {
       const src = String(a.src || '');
       if (src === '' || !srcImageSur(src)) { return finaliserModele(modele); }
-      // alt="" et pas de rôle : ni décrite ni décorative, donc signalée tant que la
-      // saisie, ouverte aussitôt par la webview, n'a pas tranché.
+      // alt="" sans rôle : signalée jusqu'à la saisie, que la webview ouvre aussitôt.
       const balise = baliseImage({ src: src, alt: '' });
       cell.contenu = cell.contenu === '' ? balise : cell.contenu + '<br>' + balise;
       return finaliserModele(modele);
@@ -1176,8 +1140,7 @@ function appliquerOperationTable(nom, modeleBrut, args) {
     } else {
       if (estDecorative(attrs)) { delete attrs.role; }
       const texte = normaliserTexteAttribut(a.alt);
-      // Décrite sans texte : l'alt reste dans l'état où il était (vide ou absent) — la
-      // pastille continue de le signaler.
+      // Décrite sans texte : l'alt reste vide ou absent, et la pastille le signale.
       if (texte !== '' || attrs.alt !== undefined) { attrs.alt = texte; }
     }
     cell.contenu = cell.contenu.slice(0, img.debut) + baliseImage(attrs) + cell.contenu.slice(img.fin);
@@ -1186,9 +1149,8 @@ function appliquerOperationTable(nom, modeleBrut, args) {
   return finaliserModele(modele);
 }
 
-// Ce que la webview affiche d'une image : son src (relatif à l'article), son texte
-// alternatif, son rôle, et le verdict de la pastille — calculé ici, une seule fois, pour
-// que la grille et le fichier ne divergent jamais.
+// Ce que la webview affiche d'une image : src, texte alternatif, rôle, et le verdict de la
+// pastille, calculé ici pour que la grille et le fichier concordent.
 function imagesPourAffichage(contenu) {
   return imagesDuContenu(contenu).map((im) => ({
     src: String(im.attrs.src || ''),

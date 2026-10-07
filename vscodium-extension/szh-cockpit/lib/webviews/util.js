@@ -1,7 +1,6 @@
-// Assemble les webviews à partir des fichiers statiques media/<base>.{html,css,js} :
-// libellés i18n (%%SZH:cle%% -> TP(cle, profil)), remplacements de gabarit, puis sortie en un
-// document autonome à CSP stricte. Les données utilisateur passent par postMessage et
-// n'entrent jamais dans le gabarit.
+// Assemble une webview à partir de media/<base>.{html,css,js} : libellés i18n
+// (%%SZH:cle%% -> TP(cle, profil)), remplacements, puis un document autonome à CSP stricte.
+// Les données de l'utilisateur passent par postMessage, pas par le gabarit.
 'use strict';
 
 const fs = require('fs');
@@ -12,17 +11,14 @@ const profils = require('../profil');
 const MEDIA = path.join(__dirname, '..', '..', 'media');
 const RE_I18N = /%%SZH:([A-Za-z0-9_.]+)%%/g;
 
-// Le texte du <title> n'est jamais du HTML : un titre d'article, d'archive ou de dossier
-// contenant « < » ou « & » ne doit pas pouvoir ouvrir une balise dans le document.
+// Le <title> est échappé : un titre qui contient « < » ou « & » ne doit pas ouvrir de balise.
 function echapperHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// Les remplacements posés dans le <script> sont du JSON (ex. __TXT__ : la table des
-// libellés) : un texte saisi par un rédacteur qui contiendrait littéralement
-// « </script> » ne doit jamais pouvoir refermer la balise avant la fin du JSON — le
-// navigateur reconnaît la fermeture au flux de caractères, pas à la syntaxe JS. `<`
-// est un « < » valide dans une chaîne JSON, invisible pour le parseur HTML.
+// Les remplacements posés dans le <script> sont du JSON (par exemple __TXT__). Le
+// navigateur ferme la balise dès qu'il lit « </script> », même dans une chaîne : « < »
+// s'écrit donc \u003c, valide en JSON et invisible pour le parseur HTML.
 function echapperPourScript(s) {
   return String(s).replace(/</g, '\\u003c');
 }
@@ -31,7 +27,7 @@ function echapperPourScript(s) {
 // `cssPartage` et `jsPartage`, les fragments de media/ à poser avant ceux de la page,
 // `profil` pour les variantes de libellés (le profil du dossier ouvert par défaut), et
 // `remplacements`, une map { marqueur: valeur } appliquée au HTML et au JS par split/join
-// — String.replace interpréterait les séquences « $& » d'une valeur.
+// (String.replace interpréterait « $& » dans une valeur).
 function construireHtml(base, nonce, opts) {
   opts = opts || {};
   let corps = fs.readFileSync(path.join(MEDIA, base + '.html'), 'utf8');
@@ -40,8 +36,8 @@ function construireHtml(base, nonce, opts) {
   });
   partagees.push(fs.readFileSync(path.join(MEDIA, base + '.css'), 'utf8'));
   const css = partagees.join('\n');
-  // Socle commun, fragments partagés, puis script de la page : un seul <script>, donc un
-  // seul nonce, et `SZH` est défini avant la première ligne du webview.
+  // _commun.js, fragments partagés, puis script de la page, dans un seul <script> à nonce :
+  // `SZH` est défini avant le script de la page.
   const morceaux = ['_commun.js'].concat(opts.jsPartage || []).concat([base + '.js'])
     .map((nom) => fs.readFileSync(path.join(MEDIA, nom), 'utf8').replace(/\n+$/, ''));
   let js = morceaux.join('\n\n');

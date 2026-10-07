@@ -1,16 +1,15 @@
-// Maintien en vie de la distro WSL du pipeline, pour que les compilations ne paient
-// pas un démarrage à froid.
+// Garde la distro WSL allumée tant qu'une revue est ouverte, pour éviter un démarrage à
+// froid à chaque compilation.
 'use strict';
 
 const fs = require('fs');
 const { spawn } = require('child_process');
 const { cheminSysteme } = require('./poste');
 
-// Les compilations sont des `wsl.exe` éphémères : entre deux enregistrements la VM
-// s'éteint (vmIdleTimeout) et la suivante repart à froid. Tant qu'une revue est ouverte,
-// un processus dormant occupe la distro sans rien consommer et empêche l'extinction.
+// Chaque compilation est un `wsl.exe` de courte durée : entre deux, la VM s'éteindrait
+// (vmIdleTimeout). Un processus `sleep` occupe la distro sans rien consommer.
 
-// ⚠ Doit correspondre à la distro de vscodium-user/tasks.json et szh-common.ps1.
+// Même nom que dans vscodium-user/tasks.json et szh-common.ps1.
 const DISTRO = 'SZH-Publishing';
 
 let dormeurWsl = null;
@@ -29,8 +28,8 @@ function demarrerDormeurWsl() {
       { windowsHide: true, stdio: 'ignore' });
   } catch (e) { return; }                          // wsl introuvable : poste non préparé
   dormeurWsl = proc;
-  // Distro absente ou wsl en erreur : silencieux, l'activation ne doit pas être
-  // bloquée ; on retentera au prochain changement de contexte.
+  // Distro absente ou wsl en erreur : on se tait pour ne pas bloquer l'activation, et on
+  // réessaie au prochain changement de contexte.
   proc.on('error', () => { if (dormeurWsl === proc) { dormeurWsl = null; } });
   proc.on('exit', () => { if (dormeurWsl === proc) { dormeurWsl = null; } });
 }
@@ -42,9 +41,8 @@ function arreterDormeurWsl() {
   try { proc.kill(); } catch (e) { /* déjà mort */ }
 }
 
-// Force le démarrage de la distro et résout quand elle répond, pour que l'activation
-// affiche l'attente au lieu de la subir à la première compilation. Ne rejette pas : au
-// pire on résout au bout de `timeoutMs` plutôt que de bloquer l'activation.
+// Démarre la distro et résout quand elle répond, pour que l'attente se voie à l'activation
+// plutôt qu'à la première compilation. Ne rejette pas ; résout au plus tard après `timeoutMs`.
 function reveillerWsl(timeoutMs) {
   const limite = timeoutMs || 60000;
   return new Promise((resolve) => {

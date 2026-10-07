@@ -1,9 +1,6 @@
-// La fabrique des panneaux webview du cockpit : un seul panneau par viewType et par clé,
-// révélé s'il existe déjà, oublié à sa fermeture, et un seul gestionnaire de messages qui
-// passe d'abord le mode « Trad », puis la poignée de main PRET, puis le reste.
-//
-// Ce qui reste à l'appelant : ce qu'il fait d'un panneau déjà ouvert (renvoyer ses valeurs,
-// le focaliser…), ce qui précède la création (fermer les aperçus), et ses messages.
+// Crée les panneaux webview du cockpit : un seul par viewType et par clé, révélé s'il
+// existe déjà, oublié à sa fermeture. Les messages reçus passent d'abord par le mode
+// « Trad », puis par la poignée de main PRET, puis par le gestionnaire de l'appelant.
 'use strict';
 
 const crypto = require('crypto');

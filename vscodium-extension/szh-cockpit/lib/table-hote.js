@@ -26,8 +26,8 @@ const {
 } = require('./table-model');
 
 // ---- Rappels vers l'hôte ----------------------------------------------------------
-// Posés une seule fois, dans extension.js. Les valeurs par défaut ne servent qu'à ne pas
-// planter un test qui require ce module seul.
+// Posés par extension.js. Les valeurs par défaut permettent de charger ce module seul
+// dans un test.
 let ctx = {
   lireCouleurAccent: () => '',
   ouvrirArticle: async () => {},
@@ -43,14 +43,13 @@ function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
 // Le dossier des unités de texte du profil actif (lib/profil.js#courant).
 function dossierUnites() { return profils.courant().unites.dossier; }
 
-// Un tableau est un <table class="szh-tableau"> autonome dans
-// articles/<slug>/tables/table-NN.html : style porté par des attributs data-* sur <table>
-// et <tr>, en-têtes par <th scope>, inline simple dans les cellules. Parseur et
-// sérialiseur, purs, dans lib/table-model.js.
+// Un tableau est un <table class="szh-tableau"> seul dans
+// articles/<slug>/tables/table-NN.html : style en attributs data-* sur <table> et <tr>,
+// en-têtes en <th scope>, mise en forme simple dans les cellules (voir lib/table-model.js).
 
 
-// Teintes lues dans out/.szh-accent.css, écrit par accent-css.py, et jamais recalculées :
-// l'éditeur doit montrer les hex que WeasyPrint appliquera.
+// Teintes lues dans out/.szh-accent.css (écrit par accent-css.py) plutôt que recalculées :
+// l'éditeur montre les couleurs exactes du PDF.
 function lireTeintesAccent(racine) {
   const jetons = { clair: null, fonce: null, filet: null };
   try {
@@ -110,18 +109,18 @@ function textesTable() {
   ];
   const o = {};
   for (const c of cles) { o[c.slice('table.'.length)] = T(c); }
-  // La saisie du texte alternatif d'une image de cellule parle comme le gestionnaire des
-  // médias : mêmes clés, gardées sous leur nom entier (« img.role.deco »…).
+  // Libellés de la saisie du texte alternatif, partagés avec le gestionnaire des médias
+  // (clés gardées sous leur nom entier, « img.role.deco »…).
   for (const c of ['img.role.titre', 'img.role.decrit', 'img.role.deco', 'img.alt', 'img.alt.indice']) { o[c] = T(c); }
   return o;
 }
 
-// Le contenu du tableau n'est pas injecté dans le HTML : le modèle arrive par
-// postMessage et la grille est construite en DOM, sans innerHTML.
+// Le modèle du tableau arrive par postMessage ; la grille est construite en DOM, sans
+// innerHTML.
 function htmlEditeurTable(nonce) {
   // media/table-editor.{html,css,js} ; les libellés arrivent par postMessage.
   // img-src data: : les aperçus des images de cellule arrivent en data: (lib/table-images.js),
-  // comme partout dans le cockpit — la webview n'a aucune racine locale autorisée.
+  // la webview n'ayant aucune racine locale autorisée.
   return construireHtml('table-editor', nonce, {
     cssPartage: ['_design.css'], jsPartage: ['_messages.js'], titre: T('table.titre', ['']),
     csp: "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'"
@@ -130,9 +129,8 @@ function htmlEditeurTable(nonce) {
 
 let panneauxTable = new Map();   // fsPath -> WebviewPanel (un éditeur par fichier)
 
-// Rappel donné à lib/cycle-vie.js (fermerFormulairesEcriture) : lui seul connaît la forme
-// de ses clés (un chemin de fichier, ici, pas un slug). `slug` absent ou `racine` absente
-// -> tout fermer (verrouillage du numéro).
+// Rappel pour lib/cycle-vie.js (fermerFormulairesEcriture). Les clés sont ici des chemins
+// de fichier. Sans `slug` ou sans `racine`, tout se ferme (verrouillage du numéro).
 function fermerPanneauxTableDe(racine, slug) {
   const tout = !racine || !slug;
   const dossier = tout ? null : path.join(racine, dossierUnites(), slug) + path.sep;
@@ -143,19 +141,17 @@ function fermerPanneauxTableDe(racine, slug) {
   }
 }
 
-// Le tableau que vise un bouton de constat (lib/constats.js, lieu « table ») : il arrive
-// en { slug, focus }, focus nommant le fichier (table-02.html) — ou rien, quand veraPDF n'a
-// dit que des numéros de page. Le seul tableau de l'article s'ouvre alors directement ;
-// plusieurs, on demande lequel ; aucun, l'article s'ouvre à la place, où le rédacteur voit
-// au moins de quoi il retourne. -> un item { cheminAsset, slug } ou null.
+// Le tableau visé par le bouton d'un constat (lib/constats.js, lieu « table »), reçu en
+// { slug, focus } où focus nomme le fichier (table-02.html). Sans focus (veraPDF ne donne
+// parfois que des numéros de page) : un seul tableau s'ouvre directement, plusieurs font
+// poser la question, aucun ouvre l'article. -> { cheminAsset, slug } ou null.
 async function tableDuConstat(fournisseur, item) {
   const slug = String((item && item.slug) || '');
   if (slug === '' || !new Set(fournisseur.listerArticles()).has(slug)) { return null; }
   const tables = fournisseur._tablesArticle(slug);
   const dossier = path.join(fournisseur.racine, dossierUnites(), slug, 'tables');
-  // « table-02.html|portrait.jpeg » : le tableau, puis l'image qu'il faut y décrire
-  // (constatsPourControles). L'éditeur lit item.focusImage pour amener cette image à
-  // l'écran ; sans elle, il s'ouvre comme d'habitude.
+  // « table-02.html|portrait.jpeg » : le tableau, puis l'image à y décrire
+  // (constatsPourControles), transmise à l'éditeur dans item.focusImage.
   const [focusTable, focusImage] = String((item && item.focus) || '').split('|');
   const focus = path.basename(focusTable || '');
   const vise = focus === '' ? null : tables.find((n) => n.toLowerCase() === focus.toLowerCase());
@@ -188,8 +184,7 @@ function blocTableAutour(lignes, ligne) {
 }
 
 // Sans élément de l'arbre (palette, panneau Édition) : le tableau dont la référence entoure
-// le curseur de l'éditeur actif, ou null. Le src se lit par retirerTable, seul lecteur de
-// cette référence, appliqué au bloc seul.
+// le curseur de l'éditeur actif, ou null. Le src se lit par retirerTable.
 async function tableSousCurseur(fournisseur) {
   const ed = vscode.window.activeTextEditor;
   if (!ed || !ed.document || !ed.selection) { return null; }
@@ -201,10 +196,9 @@ async function tableSousCurseur(fournisseur) {
   return nom ? tableDuConstat(fournisseur, { slug: rel[0], focus: nom }) : null;
 }
 
-// `item.focusImage` (facultatif) : le NOM DE FICHIER d'une image de cellule
-// (« origf-massie-fig-01.jpeg », un chemin est ramené à son nom). L'éditeur sélectionne la
-// cellule qui la contient, l'amène à l'écran et, si l'image n'a ni texte alternatif ni rôle
-// décoratif, ouvre aussitôt sa saisie (media/table-editor.js, focaliserImage).
+// `item.focusImage` (facultatif) : le nom de fichier d'une image de cellule (un chemin
+// est ramené à son nom). L'éditeur sélectionne sa cellule et, si l'image n'a ni texte
+// alternatif ni rôle décoratif, ouvre sa saisie (focaliserImage, media/table-editor.js).
 async function ouvrirEditeurTable(fournisseur, item) {
   if (!fournisseur.racine) { return; }
   if (!item) {
@@ -221,22 +215,22 @@ async function ouvrirEditeurTable(fournisseur, item) {
   const slugArticle = item.slug || session.apercuCourantSlug();
   // Les images des cellules sont relatives au dossier de l'article, pas à tables/.
   const dossierArticle = tableImages.dossierArticleDeTable(chemin);
-  // L'article que l'enregistrement recompile : celui du dossier qui contient le tableau
-  // (<unités>/<slug>/tables/), jamais l'aperçu courant, qui peut montrer un autre article.
+  // L'article à recompiler est celui du dossier du tableau (<unités>/<slug>/tables/) :
+  // l'aperçu courant peut montrer un autre article.
   const slugCompile = (() => {
     const s = item.slug ? String(item.slug) : path.basename(dossierArticle);
     return new Set(fournisseur.listerArticles()).has(s) ? s : null;
   })();
   // L'éditeur a besoin de largeur ; « Voir dans l'aperçu » le rouvre à la demande.
   await fermerTousLesApercus();
-  // Les gestionnaires ne sont appelés qu'une fois cette fonction finie : ils peuvent lire
-  // les fonctions déclarées plus bas. panneauxTable reste la garde, lue ailleurs dans ce fichier.
+  // Les gestionnaires ne sont appelés qu'après la fin de cette fonction : ils peuvent
+  // utiliser les fonctions déclarées plus bas.
   let focusEnAttente = focusImage;   // servi au premier chargement seulement
   const { panneau, nouveau } = panneauUnique({
     viewType: 'szhEditeurTable', cle: chemin, titre: T('table.titre', [nom]), garde: panneauxTable,
     // Saisie longue : la webview garde son état masquée, plutôt que de repartir à vide.
     retenir: true,
-    // Mode « Trad » : l'état du mode, et le clic détourné — voir repondreModeTrad.
+    // Mode « Trad » : voir repondreModeTrad.
     modeTrad: (panneau, msg) => ctx.repondreModeTrad(panneau, msg),
     html: htmlEditeurTable,
     surPret: () => traiterPret(),
@@ -267,9 +261,9 @@ async function ouvrirEditeurTable(fournisseur, item) {
     });
     focusEnAttente = '';
   };
-  // « Insérer une image… » / « Remplacer l'image… » : le sélecteur de fichier, puis la copie
-  // dans media/ (nom libre, conversion CMJN — comme fmtFigure). La réponse ne porte que le
-  // src et son aperçu : l'opération part de la webview, pour entrer dans son historique.
+  // « Insérer une image… » / « Remplacer l'image… » : sélecteur de fichier, puis copie dans
+  // media/. La réponse ne porte que le src et son aperçu : la webview applique l'opération
+  // elle-même, pour qu'elle entre dans son historique d'annulation.
   const choisirImage = async (msg) => {
     const filtres = {};
     filtres[T('fmt.figure.filtre')] = ['png', 'jpg', 'jpeg', 'gif', 'svg'];
@@ -311,10 +305,10 @@ async function ouvrirEditeurTable(fournisseur, item) {
       accent: ctx.lireCouleurAccent(fournisseur.racine), teintes: lireTeintesAccent(fournisseur.racine),
       presets: PRESETS_ORDRE });
   };
-  // -> null quand le tableau est écrit, sinon { code, message } : le bail de co-édition
-  //    tenu par un autre poste, une saisie périmée, ou l'échec de l'écriture elle-même.
-  // Un tableau écrit à l'identique (l'enregistrement automatique repart à chaque sortie de
-  // champ) ne recompile rien : seul un fichier qui a changé relance la compilation.
+  // -> null quand le tableau est écrit, sinon { code, message } : bail de co-édition tenu
+  //    par un autre poste, saisie périmée, ou échec d'écriture.
+  // Seul un fichier qui a changé relance la compilation : l'enregistrement automatique
+  // repart à chaque sortie de champ.
   const enregistrer = (modele, auto) => {
     let change = false;
     const refus = ecrireSousMain(panneau, fournisseur.racine, chemin, () => {
@@ -351,9 +345,8 @@ async function ouvrirEditeurTable(fournisseur, item) {
       return;
     }
     if (msg.type === MSG.APERCU_OUVRIR) {
-      // Cherche dans le .md la ligne de la référence ::: {.szh-tabelle src="…"}. Le
-      // tableau inclus étant un bloc HTML brut, sans position source, la webview peut
-      // n'avoir rien à surligner.
+      // Cherche dans le .md la ligne de la référence ::: {.szh-tabelle src="…"}. Le tableau
+      // inclus est du HTML brut sans position source : il peut n'y avoir rien à surligner.
       if (!slugArticle) { return; }
       ouvrirApercuHtml(fournisseur, slugArticle);
       const md = path.join(fournisseur.racine, dossierUnites(), slugArticle, slugArticle + '.md');
@@ -408,8 +401,8 @@ async function ouvrirEditeurTable(fournisseur, item) {
   }
 }
 
-// Le panneau de l'éditeur ouvert sur ce fichier, ou undefined : l'hôte ferme celui d'un
-// tableau qu'il supprime.
+// Le panneau de l'éditeur ouvert sur ce fichier, ou undefined (pour fermer celui d'un
+// tableau supprimé).
 function panneauTableOuvert(chemin) { return panneauxTable.get(chemin); }
 
 module.exports = {

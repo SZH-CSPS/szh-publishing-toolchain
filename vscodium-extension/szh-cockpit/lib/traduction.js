@@ -1,14 +1,12 @@
-// Suivi de traduction : modèle pur qui lit et écrit le sidecar
-// articles/<slug>/<slug>.traduction.yaml et dérive les lignes « à traduire » de la fiche
-// <slug>.meta.yaml.
+// Suivi de traduction (module pur) : lit et écrit articles/<slug>/<slug>.traduction.yaml,
+// et tire de la fiche <slug>.meta.yaml les lignes à traduire.
 //
-// Deux fichiers à ne pas confondre. Le .meta.yaml porte les textes, source et
-// traductions, et il est publié : pandoc et l'export OJS le lisent. Le .traduction.yaml
-// ne porte que l'état de l'atelier, un statut par champ traduisible et un commentaire
-// libre ; il n'est ni publié ni exporté, le Makefile l'ignore, et il part avec l'article.
+// Le .meta.yaml porte les textes, source et traductions ; pandoc et l'export OJS le lisent.
+// Le .traduction.yaml ne porte que l'état du travail : un statut par champ traduisible et
+// un commentaire libre. Il n'est ni publié ni exporté, mais suit l'article.
 //
-// Le sidecar est régénéré à chaque enregistrement, statuts par défaut omis et clés
-// inconnues restituées telles quelles :
+// Le fichier est réécrit à chaque enregistrement, sans les statuts par défaut, en gardant
+// les clés inconnues :
 //
 //   statuts:
 //     title.de: pret-traduction
@@ -18,12 +16,11 @@
 
 const { LANGUES_META, decouperValeurYaml } = require('./yaml');
 
-// Les champs de la fiche qui existent par langue. Le corps de l'article n'en fait pas
-// partie : sa traduction vit dans l'autre revue, pas dans ce dossier.
+// Les champs de la fiche qui existent par langue. Le corps de l'article se traduit dans
+// l'autre revue.
 const CHAMPS_TRADUISIBLES = ['title', 'subtitle', 'resume', 'keywords'];
 
-// Du moins au plus avancé : l'ordre sert à calculer l'état d'un article, celui du moins
-// avancé de ses champs.
+// Du moins au plus avancé. L'état d'un article est celui de son champ le moins avancé.
 const STATUTS = ['pas-pret', 'pret-traduction', 'pret-relecture', 'finalise'];
 const STATUT_DEFAUT = 'pas-pret';
 
@@ -38,9 +35,8 @@ function statutValide(valeur) {
   return STATUTS.indexOf(v) !== -1 ? v : null;
 }
 
-// -> { statuts:{ 'title.de': 'finalise' }, commentaire, _inconnues }. Une clé ou une
-// valeur non reconnue est ignorée dans les statuts, restituée telle quelle au premier
-// niveau.
+// -> { statuts:{ 'title.de': 'finalise' }, commentaire, _inconnues }. Sous `statuts`, une
+// clé ou une valeur inconnue est ignorée ; au premier niveau, elle est gardée telle quelle.
 function analyserTraduction(texte) {
   const valeurs = { statuts: {}, commentaire: '', _inconnues: [] };
   if (!texte) { return valeurs; }
@@ -94,15 +90,13 @@ function analyserTraduction(texte) {
   return valeurs;
 }
 
-// serialiserTraduction(valeurs) -> YAML, ou chaîne vide s'il n'y a rien à retenir :
-// l'appelant n'a alors pas de fichier à créer.
+// -> YAML, ou '' s'il n'y a rien à retenir (pas de fichier à créer).
 function serialiserTraduction(valeurs) {
   const v = valeurs || {};
   const statuts = v.statuts || {};
   const lignes = [];
   const sous = [];
-  // Ordre canonique, langue puis champ, indépendant de l'ordre d'arrivée des clés :
-  // deux enregistrements du même état produisent le même fichier.
+  // Ordre fixe, langue puis champ : un même état donne toujours le même fichier.
   for (const langue of LANGUES_META) {
     for (const champ of CHAMPS_TRADUISIBLES) {
       const cle = cleChamp(champ, langue);
@@ -138,10 +132,9 @@ function listeChamp(meta, champ, langue) {
     .filter(function (x) { return x !== ''; });
 }
 
-// « diagnostic » ↔ « Diagnose » : le seul lien entre les deux listes est la position, et
-// un trou suffirait à les décaler, serialiserMeta omettant les chaînes vides. Un mot-clé
-// pas encore traduit s'écrit donc avec cette marque plutôt que vide : la place est tenue
-// et le manque reste visible dans le fichier. Les formulaires l'affichent comme une case
+// Les mots-clés de deux langues se correspondent par leur position (« diagnostic » ↔
+// « Diagnose »). serialiserMeta omettant les chaînes vides, un mot-clé pas encore traduit
+// s'écrit avec cette marque pour tenir sa place. Les formulaires l'affichent comme une case
 // vide.
 const MARQUE_A_TRADUIRE = 'TO BE TRANSLATED';
 
@@ -163,9 +156,9 @@ function pairesMotsCles(meta, source, langue) {
   return paires;
 }
 
-// La liste à écrire dans la fiche : chaque case vide qui a un vis-à-vis reçoit la marque,
-// pour que les positions restent face à face. Si rien n'est traduit, la clé de langue
-// reste absente ; les cases vides au-delà de la liste d'en face sont retirées.
+// La liste à écrire dans la fiche : chaque case vide qui a un vis-à-vis reçoit la marque.
+// Si rien n'est traduit, la liste est vide ; les cases vides au-delà de la liste d'en face
+// sont retirées.
 function alignerMotsCles(liste, nAutre) {
   const propres = (Array.isArray(liste) ? liste : [])
     .map((x) => String(x === undefined || x === null ? '' : x).replace(/[\r\n]+/g, ' ').trim())
@@ -179,8 +172,7 @@ function alignerMotsCles(liste, nAutre) {
 }
 
 // Valeur à ranger dans la fiche : tableau pour les mots-clés, chaîne sinon. Le nettoyage
-// fin reste celui de nettoyerCarte côté hôte, un seul assainisseur pour les deux
-// formulaires.
+// complet est fait par nettoyerCarte, côté hôte.
 function valeurChamp(champ, texte) {
   const t = String(texte === undefined || texte === null ? '' : texte);
   if (champ === 'keywords') {
@@ -189,9 +181,8 @@ function valeurChamp(champ, texte) {
   return t.trim();
 }
 
-// Langues cibles : toutes sauf celle du numéro. Le français et l'allemand sont toujours
-// de la partie, une revue existant dans chacun ; l'italien n'apparaît que si l'article en
-// porte déjà.
+// Langues cibles : toutes sauf celle du numéro. Le français et l'allemand y sont
+// toujours ; l'italien seulement si l'article a déjà un champ en italien.
 function languesCibles(meta, source) {
   return LANGUES_META.filter(function (l) {
     if (l === source) { return false; }
@@ -200,8 +191,8 @@ function languesCibles(meta, source) {
   });
 }
 
-// Une ligne par champ et langue cible. Un champ vide des deux côtés est absent : des
-// champs fantômes fausseraient le compteur de l'arbre.
+// Une ligne par champ et langue cible. Un champ vide des deux côtés est omis, pour ne pas
+// fausser le compteur de l'arbre.
 function lignesTraduction(meta, statuts, source) {
   const st = statuts || {};
   const lignes = [];
@@ -218,8 +209,7 @@ function lignesTraduction(meta, statuts, source) {
         statut: statutValide(st[cle]) || STATUT_DEFAUT
       };
       if (champ === 'keywords') {
-        // « traduit » veut dire que chaque mot-clé a son équivalent, pas que la liste est
-        // non vide ; une case portant la marque compte comme vide.
+        // Rempli quand chaque mot-clé a son équivalent ; une case marquée compte comme vide.
         ligne.paires = pairesMotsCles(meta, source, langue);
         ligne.remplies = ligne.paires.filter(function (p) { return p.cible !== ''; }).length;
         ligne.total = ligne.paires.length;
@@ -231,9 +221,8 @@ function lignesTraduction(meta, statuts, source) {
   return lignes;
 }
 
-// Le titre et le sous-titre forment une seule unité éditoriale : ils partagent une carte
-// et un état, écrit dans le sidecar sur chacune de leurs clés pour ne pas changer le
-// format, et relu comme le moins avancé des deux.
+// Titre et sous-titre partagent une carte et un état. L'état est écrit sur chacune des deux
+// clés du fichier de suivi, et relu comme le moins avancé des deux.
 const GROUPES_TRADUCTION = [
   { cle: 'titre', champs: ['title', 'subtitle'] },
   { cle: 'resume', champs: ['resume'] },

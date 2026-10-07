@@ -1,11 +1,11 @@
-// Les services en ligne (Shlink, OJS) vus de la chaîne de fabrication : l'adresse et les deux
-// clés, copiées en mémoire par l'Accueil (lib/accueil-reglages-hote.js), et les variables
-// d'environnement que lib/moteur.js pose sur chaque appel à la WSL. wsl.exe ne transmet une
-// variable que si WSLENV la nomme, avec /u pour un passage Windows vers WSL seulement.
-// Module pur : ni vscode, ni disque, et une clé n'en sort que dans un env, jamais dans un texte.
+// Adresse et clés des services en ligne (Shlink, OJS), posées en mémoire par l'Accueil
+// (lib/accueil-reglages-hote.js), et variables d'environnement que lib/moteur.js passe à
+// chaque appel à la WSL. wsl.exe ne transmet une variable que si WSLENV la nomme ; /u la
+// limite au sens Windows vers WSL.
+// Module pur, sans vscode ni disque. Une clé n'en sort que dans un environnement de processus.
 'use strict';
 
-// Ordre de WSLENV : celui-ci.
+// Dans l'ordre où les noms s'ajoutent à WSLENV.
 const VARIABLES = Object.freeze([
   ['url', 'SZH_SHLINK_URL'], ['shlinkCle', 'SZH_SHLINK_CLE'], ['ojsCle', 'SZH_OJS_CLE']
 ]);
@@ -19,8 +19,8 @@ function poser(nouvelles) {
   };
 }
 
-// Les variables réglées seulement : une variable vide se transmettrait comme une chaîne
-// vide, et un filtre qui teste sa présence s'y tromperait.
+// Les variables réglées seulement. Une variable vide arriverait comme chaîne vide, et un
+// filtre qui teste sa présence la croirait posée.
 function variables() {
   const sortie = {};
   for (const [cle, nom] of VARIABLES) { if (valeurs[cle]) { sortie[nom] = valeurs[cle]; } }
@@ -50,8 +50,8 @@ function environnement(base) {
   return plus ? Object.assign({}, base || {}, plus) : null;
 }
 
-// Une tâche déclarée dans tasks.json part sans ces variables : on les ajoute à l'env de son
-// exécution (fusionné à celui du parent) avant de la lancer. Sans effet si rien n'est réglé.
+// Ajoute les variables à l'environnement d'une tâche de tasks.json, qui ne les reçoit pas
+// d'elle-même. Sans effet si rien n'est réglé.
 function dansTache(tache) {
   try {
     const ex = tache && tache.execution;
@@ -62,7 +62,7 @@ function dansTache(tache) {
   } catch (e) { /* tâche non modifiable : elle part telle quelle */ }
 }
 
-// Pour un journal : les noms posés, jamais les valeurs.
+// Pour un journal : les noms posés, sans les valeurs.
 function description() {
   const noms = Object.keys(variables());
   return noms.length ? 'variables WSL posées : ' + noms.join(', ') : 'aucune variable WSL posée';

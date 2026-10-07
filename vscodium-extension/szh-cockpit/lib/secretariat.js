@@ -1,19 +1,13 @@
 // Les quatre exports du secrétariat : newsletter (local), edudoc et caractères (OAI-PMH),
-// métadonnées (comparaison local/OJS). Module pur, sans `require('vscode')` — appelé par
-// outils/secretariat-cli.js, la seule porte d'entrée en ligne de commande.
+// métadonnées (comparaison local/OJS). Module pur, appelé par outils/secretariat-cli.js.
 //
-// Tout ce qui touche l'OAI-PMH (client https, parseur XML générique, garde
-// SZH_RESEAU_INTERDIT) vient de lib/oai-pmh.js ; ce fichier n'ajoute que ce qui est propre
-// à l'export du secrétariat — les enregistrements oai_dc complets (titre, résumé,
-// mots-clés, source, galleys), que lib/auteurs-ojs.js n'extrait pas (il ne lit que les
-// noms d'auteur·e·s, en marcxml). lib/export-ojs.js fournit le calcul du DOI et la table
-// des rubriques ; lib/articles.js l'ordre des articles et le rang du DOI ; lib/yaml.js la
-// lecture des fiches. Rien de tout cela n'est réécrit ici.
+// L'OAI-PMH (client https, parseur XML, garde SZH_RESEAU_INTERDIT) vient de lib/oai-pmh.js.
+// Ce fichier lit en plus les enregistrements oai_dc complets (titre, résumé, mots-clés,
+// source, galleys). Il s'appuie sur lib/export-ojs.js (DOI, rubriques), lib/articles.js
+// (ordre, rang du DOI) et lib/yaml.js (fiches).
 //
-// Chaque export passe par un gabarit Twig (lib/gabarits.js), lu directement dans
-// export-templates/ de l'extension — jamais copié sur le poste. Un gabarit se modifie dans
-// le dépôt, part dans le VSIX, arrive par la mise à jour normale ; une copie locale figerait
-// une version périmée qu'aucune mise à jour ne rattraperait.
+// Chaque export passe par un gabarit Twig (lib/gabarits.js), lu dans export-templates/ de
+// l'extension, sans copie sur le poste : un gabarit modifié arrive avec la mise à jour.
 'use strict';
 
 const fs = require('fs');
@@ -27,8 +21,7 @@ const articlesLib = require('./articles');     // ordre, rang du DOI, sans-DOI
 const exportOjs = require('./export-ojs');     // doiCalcule, typeSansDoi, RUBRIQUES_DEFAUT, configOjs
 const adresses = require('./ojs-adresses');   // base d'OJS et chemins fixés par l'export OJS
 const { urlJournal } = adresses;
-// lireCacheMotsCles, indexerThesaurus, apparierDescripteurs : thésaurus edudoc (mots-clés
-// MARC 690) pour la commande « edudoc » — voir la section dédiée plus bas.
+// Thésaurus edudoc (mots-clés MARC 690) pour la commande « edudoc ».
 const motsClesEdudoc = require('./mots-cles-edudoc');
 const { TL, TEXTES_COCKPIT } = require('./i18n');
 const { numeroAffiche, LIBELLES_PRODUITS } = require('./accueil-page');
@@ -37,8 +30,7 @@ const { numeroAffiche, LIBELLES_PRODUITS } = require('./accueil-page');
 
 function txt(v) { return String(v === undefined || v === null ? '' : v).trim(); }
 
-// La langue des textes : celle de l'interface, reçue par --langue ; à défaut le français,
-// que le lanceur WinForms attend.
+// La langue des textes : celle de l'interface, reçue par --langue ; à défaut le français.
 function langueDe(o) {
   const l = String((o && o.langue) || '').trim().toLowerCase();
   return TEXTES_COCKPIT[l] ? l : 'fr';
@@ -55,9 +47,8 @@ function compter(langue, cle, n, args) {
 function nomRevue(revue) { return LIBELLES_PRODUITS[revue] || LIBELLES_PRODUITS.revue; }
 function nomDossierNumero(racine) { return numeroAffiche(path.basename(String(racine || ''))); }
 
-// Deux chiffres, comme les DOI et les clés de numéro les portent partout ailleurs dans le
-// cockpit (doiCalcule, lib/export-ojs.js). Recopié plutôt qu'importé : la fonction de
-// lib/export-ojs.js n'est pas exportée, et ce module n'a pas le droit d'y toucher.
+// Deux chiffres, comme dans les DOI et les clés de numéro. Copie de la fonction privée de
+// lib/export-ojs.js.
 function deuxChiffres(valeur) {
   const chiffres = String(valeur === undefined || valeur === null ? '' : valeur).replace(/\D+/g, '');
   if (chiffres === '') { return ''; }
@@ -69,9 +60,8 @@ function formaterDateIso(d) {
   return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate());
 }
 
-// « Prénom Nom, Prénom Nom et Prénom Nom » (fr) / « … und … » (de) — signature d'un
-// article, dans les deux styles utilisés par la maison (newsletter et Edudoc emploient la
-// même forme). `auteurs` : tableau d'objets portant au moins prenom/nom.
+// Signature d'un article : « Prénom Nom, Prénom Nom et Prénom Nom » (fr), « … und … »
+// (de), pour la newsletter et Edudoc. `auteurs` : objets portant au moins prenom/nom.
 function formerSignature(auteurs, locale) {
   const noms = (Array.isArray(auteurs) ? auteurs : [])
     .map((a) => (txt(a && a.prenom) + ' ' + txt(a && a.nom)).trim())
@@ -82,9 +72,8 @@ function formerSignature(auteurs, locale) {
   return noms.slice(0, -1).join(', ') + jonction + noms[noms.length - 1];
 }
 
-// Titre affiché : le titre de la langue demandée, suivi du sous-titre s'il existe,
-// séparés par « . » — règle posée pour la newsletter, réutilisée partout où un titre
-// complet est affiché en une ligne.
+// Titre complet en une ligne : le titre dans la langue demandée, puis « . » et le
+// sous-titre s'il existe.
 function combinerTitre(titreParLangue, sousTitreParLangue, langue) {
   const t = txt((titreParLangue || {})[langue]);
   if (t === '') { return ''; }
@@ -92,8 +81,8 @@ function combinerTitre(titreParLangue, sousTitreParLangue, langue) {
   return s !== '' ? t + '. ' + s : t;
 }
 
-// Un auteur de fiche (7 champs, lib/yaml.js CHAMPS_AUTEUR) enrichi des deux formes
-// assemblées dont les gabarits ont besoin.
+// Un auteur de fiche (CHAMPS_AUTEUR de lib/yaml.js), avec les deux formes de nom dont les
+// gabarits ont besoin.
 function auteurComplet(a) {
   const prenom = txt(a && a.prenom);
   const nom = txt(a && a.nom);
@@ -105,11 +94,10 @@ function auteurComplet(a) {
   };
 }
 
-// Les articles que le disque porte : un dossier articles/<slug>/ contenant <slug>.md, ou —
-// depuis que la Documentation est une arborescence Kirby, sans .md — dont la fiche porte
-// `type: documentation`. Recopie de la fonction privée (non exportée) listerSlugs de
-// lib/export-ojs.js — ce module n'a pas le droit de modifier ce fichier pour l'exporter ;
-// les deux copies doivent donc rester identiques.
+// Les articles du numéro : les dossiers articles/<slug>/ qui contiennent <slug>.md, ou
+// dont la fiche porte `type: documentation` (la Documentation, arborescence Kirby, n'a
+// pas de .md). Copie de la fonction privée listerSlugs de lib/export-ojs.js : les deux
+// doivent rester identiques.
 function listerSlugsLocaux(racine) {
   const dossier = path.join(racine, 'articles');
   let entrees = [];
@@ -130,13 +118,11 @@ function listerSlugsLocaux(racine) {
 
 // ---- Dossier des gabarits --------------------------------------------------------------
 
-// LA source des gabarits — livrés avec l'extension, jamais recopiés ailleurs. `--gabarits`
-// (secretariat-cli.js) peut la remplacer, pour la mise au point ou les tests ; en usage
-// normal c'est toujours ce dossier qui est lu.
+// Le dossier des gabarits livrés avec l'extension. `--gabarits` (secretariat-cli.js) le
+// remplace pour la mise au point et les tests.
 function dossierGabaritsSource() { return path.join(__dirname, '..', 'export-templates'); }
 
-// Les dix gabarits attendus dans dossierGabaritsSource() — utile aux tests, qui vérifient
-// qu'aucun ne manque, sans les nommer une seconde fois en dur.
+// Les gabarits attendus dans dossierGabaritsSource(), vérifiés par les tests.
 const NOMS_GABARITS_DEFAUT = [
   'newsletter-intro.twig', 'newsletter-editorial.twig', 'newsletter-dossier-thematique.twig', 'newsletter-varia.twig',
   'newsletter-tribune-libre.twig', 'newsletter-documentation.twig', 'newsletter-auteurs.twig',
@@ -151,18 +137,16 @@ function chargerGabarit(dossier, nomFichier, langue) {
   return gabaritsMoteur.compiler(source, nomFichier);
 }
 
-// Un CSV suisse : BOM UTF-8 en tête, fins de ligne CRLF. Le gabarit, lui, écrit son texte
-// en \n comme n'importe quel fichier — c'est ce point de passage unique qui le rend
-// ouvrable proprement dans l'Excel d'un poste Windows.
+// CSV pour l'Excel d'un poste Windows : BOM UTF-8 et fins de ligne CRLF. Le gabarit écrit
+// en \n ; la conversion se fait ici.
 function versCsvFinal(texte) {
   return '\uFEFF' + String(texte || '').replace(/\r\n/g, '\n').replace(/\n/g, '\r\n');
 }
 
 // ---- Lecture d'un numéro local (ausgabe.yaml + fiches) --------------------------------
 //
-// Même règle de rang/DOI que lib/export-ojs.js (collecter()), rejouée ici avec les mêmes
-// briques (doiCalcule, typeSansDoi, ordonnerArticles, rangDoi) : un DOI annoncé par la
-// newsletter doit être celui que l'export OJS déposera pour de bon.
+// Même règle de rang et de DOI que collecter() de lib/export-ojs.js, avec les mêmes
+// fonctions : le DOI annoncé par la newsletter est celui que l'export OJS déposera.
 
 function collecterNumeroLocal(racine, emettre, langueTextes) {
   const emit = typeof emettre === 'function' ? emettre : () => {};
@@ -174,13 +158,10 @@ function collecterNumeroLocal(racine, emettre, langueTextes) {
 
   const locale = yaml.langueDefaut(valeurs);
   const autreLocale = locale === 'de' ? 'fr' : 'de';
-  // L'année du numéro : celle de `date:` si elle y est, sinon celle du nom du dossier
-  // (« 2027-03 » -> « 2027 »). `date:` est la date de PUBLICATION, vide jusqu'à la
-  // parution — et une newsletter se prépare justement avant, donc `date:` y est presque
-  // toujours vide. Sans ce repli, l'année manque, le DOI ne se calcule plus (doiCalcule
-  // rend '' sans année) et l'article sort sans lien. Même règle, pour les mêmes raisons,
-  // dans lib/metadonnees-hote.js (anneeNumero) et lib/yaml.js (titreNumero) — toute future
-  // correction de cette règle doit toucher les trois endroits à la fois.
+  // L'année du numéro : celle de `date:`, sinon celle du nom du dossier (« 2027-03 » ->
+  // « 2027 »). `date:` est la date de parution, encore vide quand on prépare la
+  // newsletter ; sans année, doiCalcule rend ''. Même règle dans lib/metadonnees-hote.js
+  // (anneeNumero) et lib/yaml.js (titreNumero) : les trois vont ensemble.
   let annee = (String(valeurs.date || '').match(/\d{4}/) || [''])[0];
   if (annee === '') {
     annee = (String(path.basename(racine)).match(/^(\d{4})-\d/) || ['', ''])[1];
@@ -262,9 +243,8 @@ function collecterNumeroLocal(racine, emettre, langueTextes) {
       titreFr: titreParLangue.fr, titreDe: titreParLangue.de,
       // Page du numéro sur OJS, à l'adresse que l'export OJS lui fixe ('' si calcul impossible).
       url: adresses.urlNumero(locale, adresses.cheminNumero(annee, numeroTxt)),
-      // Le libellé affiché (rapports, messages) : « R2027-03 | Titre » — même fonction que
-      // le cockpit lui-même (lib/yaml.js), avec le même repli d'année ; pas de chaîne
-      // reconstruite à la main ici.
+      // Le libellé affiché (rapports, messages) : « R2027-03 | Titre », par la fonction de
+      // lib/yaml.js.
       libelle: yaml.titreNumero(racine)
     },
     articles: articles
@@ -273,8 +253,8 @@ function collecterNumeroLocal(racine, emettre, langueTextes) {
 
 // ---- newsletter : l'introduction, cinq .txt (un par rubrique) et auteurs.csv ---------------------------
 
-// L'ordre de la newsletter, le même pour les deux revues ; le préfixe numérique le garde à
-// l'ouverture du dossier. L'introduction (0-intro.txt) est écrite avant les rubriques.
+// L'ordre de la newsletter, le même pour les deux revues ; le préfixe numérique le garde
+// dans le dossier. L'introduction (0-intro.txt) vient avant les rubriques.
 const FICHIER_INTRO = '0-intro.txt';
 const SECTIONS_NEWSLETTER = [
   { cle: 'ED', fichier: '1-editorial.txt', gabarit: 'newsletter-editorial.twig' },
@@ -284,8 +264,8 @@ const SECTIONS_NEWSLETTER = [
   { cle: 'DC', fichier: '5-documentation.txt', gabarit: 'newsletter-documentation.twig' }
 ];
 
-// Une ligne par auteur·e du numéro, triée par ordre des articles puis alphabétique du nom
-// dans l'article — l'ordre que Mailchimp doit suivre pour recouper avec les signatures.
+// Une ligne par auteur·e du numéro, dans l'ordre des articles puis par nom : le même ordre
+// que les signatures dans Mailchimp.
 function construireAuteursNewsletter(articles) {
   const lignes = [];
   for (const article of articles) {
@@ -316,8 +296,8 @@ async function commandeNewsletter(opts) {
   const titresRubriques = {};
   for (const r of exportOjs.configOjs().rubriques) { titresRubriques[r.cle] = txt((r.titre || {})[L]) || txt((r.titre || {}).fr); }
 
-  // Total connu d'avance : l'introduction, les cinq rubriques, plus auteurs.csv — qu'un
-  // fichier soit produit ou sauté (rubrique vide), c'est un pas de progression franchi.
+  // Total de progression : l'introduction, les cinq rubriques et auteurs.csv. Une rubrique
+  // vide sautée compte aussi comme un pas.
   const totalNewsletter = SECTIONS_NEWSLETTER.length + 2;
   let faitNewsletter = 0;
 
@@ -380,23 +360,20 @@ async function commandeNewsletter(opts) {
 
 // ---- Moisson OAI-PMH (oai_dc), spécifique au secrétariat ------------------------------
 //
-// lib/auteurs-ojs.js moissonne aussi l'OAI, mais en marcxml et pour les seuls noms
-// d'auteur·e·s (extraireRecords/extraireRecordsMarc). Le secrétariat a besoin de
-// l'enregistrement oai_dc complet — titre, résumé, mots-clés, source, galleys — qu'aucune
-// des deux fonctions de lib/auteurs-ojs.js ne rend : sa boucle de pagination est donc
-// réécrite ici, avec les mêmes briques génériques que moissonner() (erreurOai,
-// extraireResumptionToken, recupererAvecRepli, garde anti-boucle sur le resumptionToken).
+// lib/auteurs-ojs.js moissonne l'OAI en marcxml, pour les seuls noms d'auteur·e·s. Le
+// secrétariat a besoin de l'enregistrement oai_dc complet : la pagination est donc refaite
+// ici, avec les mêmes fonctions (erreurOai, extraireResumptionToken, recupererAvecRepli) et
+// la même garde contre un resumptionToken qui boucle.
 
 const BASES_OAI = {
   revue: urlJournal('fr') + '/oai',
   zeitschrift: urlJournal('de') + '/oai'
 };
-// ~350 notices par revue sur l'instance (voir lib/auteurs-ojs.js) ; large marge.
+// Environ 350 notices par revue sur l'instance ; large marge.
 const PAGES_MAX_OAI_DC = 200;
 
-// Les balises répétées d'un fragment XML, dans l'ordre du document, avec leur xml:lang le
-// cas échéant — dc:title, dc:subject, dc:description, dc:creator, dc:identifier,
-// dc:source, dc:relation, dc:format s'extraient tous de la même façon.
+// Les balises répétées d'un fragment XML (dc:title, dc:subject, dc:creator…), dans
+// l'ordre du document, avec leur xml:lang s'il y en a un.
 function extraireBalisesRepetees(xmlFragment, balise) {
   const echappee = balise.replace(':', '\\:');
   const re = new RegExp('<' + echappee + '((?:\\s[^>]*)?)(?:/>|>([\\s\\S]*?)<\\/' + echappee + '>)', 'g');
@@ -415,9 +392,9 @@ function extraireBlocsRecord(xml) {
   return blocs;
 }
 
-// dc:source, tolérant : « …; Bd. 16 Nr. 03 (2023): Titre ; 27-32 » (de) ou
+// dc:source : « …; Bd. 16 Nr. 03 (2023): Titre ; 27-32 » (de) ou
 // « …; Vol. 16 No 03 (2023): Titre; 27-32 » (fr). L'année et les pages manquent parfois
-// (numéros récents) : rien n'est supposé, tout ce qui ne matche pas reste vide.
+// (numéros récents) : ce qui n'est pas reconnu reste vide.
 function analyserSourceOjs(texte) {
   const s = String(texte || '');
   const m = s.match(/(?:Bd\.|Vol\.)\s*(\d+)\s*,?\s*(?:Nr\.|No\.?)\s*(\d+)\s*(?:\((\d{4})\))?\s*:\s*(.*)$/);
@@ -432,9 +409,8 @@ function analyserSourceOjs(texte) {
   return { volume: m[1], numero: m[2], annee: m[3] || '', titre: reste, pages: pages };
 }
 
-// Un enregistrement OAI (oai_dc) décodé en article riche. `revueCle` ('revue'|'zeitschrift')
-// vient de l'endpoint interrogé : les deux revues partagent le même serveur, seule l'URL
-// distingue le jeu de résultats.
+// Un enregistrement oai_dc décodé en article. `revueCle` ('revue'|'zeitschrift') vient de
+// l'adresse interrogée : les deux revues sont sur le même serveur.
 function decoderRecordOai(corpsRecord, revueCle) {
   const mHeader = corpsRecord.match(/<header(?:\s[^>]*)?>([\s\S]*?)<\/header>/);
   const header = mHeader ? mHeader[1] : corpsRecord.match(/<header(?:\s[^>]*)?\/>/) ? '' : corpsRecord;
@@ -489,8 +465,8 @@ function decoderRecordOai(corpsRecord, revueCle) {
     if (parsed && !source) { source = parsed; }
   }
 
-  // Galleys : dc:relation et dc:format répétés dans le même ordre (voir l'en-tête du
-  // fichier). Un mime-type absent ou inattendu n'écrase jamais un format déjà trouvé.
+  // Galleys : dc:relation et dc:format se répètent dans le même ordre. Un type MIME absent
+  // ou inattendu n'écrase pas un format déjà trouvé.
   const galleys = { pdf: '', html: '', docx: '' };
   relations.forEach((url, i) => {
     const fmt = String(formats[i] || '').toLowerCase();
@@ -501,9 +477,8 @@ function decoderRecordOai(corpsRecord, revueCle) {
 
   const auteurs = creatorsBruts.map((c) => auteursOjs.normaliserCreator(c)).filter((a) => a);
 
-  // Le DOI de la maison porte tout : lettre de revue, année, numéro, rang — c'est la
-  // source de vérité pour grouper les articles en numéros (voir l'en-tête « Les données »
-  // du mandat). dc:source ne sert plus alors qu'au volume et aux pages.
+  // Le DOI de la maison porte la revue, l'année, le numéro et le rang : il sert à grouper
+  // les articles en numéros. dc:source ne sert alors qu'au volume et aux pages.
   const mDoi = doi.match(/^10\.57161\/([rz])(\d{4})-(\d{2})-(\d{2})$/);
   let annee = (source && source.annee) || '';
   let numero = source ? deuxChiffres(source.numero) : '';
@@ -531,14 +506,12 @@ function decoderRecordOai(corpsRecord, revueCle) {
   };
 }
 
-// Pagination OAI-PMH pour un `verb=ListRecords&metadataPrefix=oai_dc` — même garde
-// anti-boucle (jeton déjà vu, plafond de pages) que moissonner() de lib/auteurs-ojs.js.
+// Pagination OAI-PMH de `verb=ListRecords&metadataPrefix=oai_dc`, avec la même garde
+// contre les boucles (jeton déjà vu, plafond de pages) que moissonner() de lib/auteurs-ojs.js.
 //
-// `depuisAnnee` (AAAA ou null) : ojs.szh.ch honore `&from=AAAA-MM-JJ` sur ListRecords
-// (vérifié en direct le 15.09.2026 ; granularité annoncée YYYY-MM-DDThh:mm:ssZ,
-// earliestDatestamp 2022-12-22). Il n'est posé que sur cette PREMIÈRE requête : la norme
-// OAI-PMH veut qu'une page suivante ne porte QUE le resumptionToken (il encode déjà toute
-// la requête d'origine côté serveur) — le lui répéter fait rejeter la requête.
+// `depuisAnnee` (AAAA ou null) devient `&from=AAAA-01-01` sur la première requête
+// seulement : selon la norme OAI-PMH, les pages suivantes ne portent que le
+// resumptionToken, et le serveur rejette une requête qui répète `from`.
 async function moissonnerOaiDc(recuperer, base, emettre, depuisAnnee, langue, revue) {
   const emit = typeof emettre === 'function' ? emettre : () => {};
   const L = langueDe({ langue });
@@ -548,8 +521,8 @@ async function moissonnerOaiDc(recuperer, base, emettre, depuisAnnee, langue, re
     (depuisAnnee ? '&from=' + depuisAnnee + '-01-01' : '');
   const tokensVus = new Set();
   for (let page = 0; page < PAGES_MAX_OAI_DC; page++) {
-    // L'étape AVANT la requête : c'est pendant les ~4,6 s d'attente réseau, pas après, que
-    // l'utilisateur a besoin de voir que ça vit (mesuré en vrai le 15.09.2026).
+    // L'étape est annoncée avant la requête, pour que l'attente réseau (plusieurs
+    // secondes) se voie.
     emit({ t: 'etape', texte: dire(L, 'ojs.page', [page + 1]) });
     let xml;
     try { xml = await recuperer(url); }
@@ -561,8 +534,7 @@ async function moissonnerOaiDc(recuperer, base, emettre, depuisAnnee, langue, re
     }
     for (const bloc of extraireBlocsRecord(xml)) { blocs.push(bloc); }
     emit({ t: 'etape', texte: compter(L, 'ojs.articles', blocs.length) });
-    // total: 0 = inconnu — ojs.szh.ch n'envoie pas completeListSize sur resumptionToken
-    // (constaté le 15.09.2026, seul expirationDate y figure) : rien à rapporter `fait` à.
+    // total: 0 = inconnu : ojs.szh.ch n'envoie pas completeListSize avec le resumptionToken.
     emit({ t: 'progres', fait: page + 1, total: 0 });
     const token = oaiPmh.extraireResumptionToken(xml);
     if (token === '') { return blocs; }
@@ -573,9 +545,8 @@ async function moissonnerOaiDc(recuperer, base, emettre, depuisAnnee, langue, re
   throw new Error(dire(L, 'ojs.pages', [site, PAGES_MAX_OAI_DC]));
 }
 
-// Regroupe des articles décodés en numéros, par clé "<année>-<numéro>" — d'abord par DOI,
-// à défaut par dc:source (voir decoderRecordOai). Un article sans l'un ni l'autre est
-// signalé et écarté : il n'y a rien à en faire de fiable.
+// Regroupe des articles décodés en numéros, par clé "<année>-<numéro>" tirée du DOI, sinon
+// de dc:source. Un article sans l'un ni l'autre est signalé et écarté.
 function grouperNumeros(articles, emettre, langue) {
   const emit = typeof emettre === 'function' ? emettre : () => {};
   const L = langueDe({ langue });
@@ -606,10 +577,9 @@ function grouperNumeros(articles, emettre, langue) {
 
 // ---- Cache C:\...\<f.json> des numéros moissonnés (--cache) ---------------------------
 //
-// Un fichier séparé par exécution, choisi par l'appelant (--cache) : plusieurs revues
-// peuvent y coexister, chacune sous ses propres clés — une même clé "<année>-<numéro>"
-// existe potentiellement dans les deux revues (numéros parallèles fr/de), avec des
-// articles différents : la clé porte donc une LISTE de numéros, pas un numéro seul.
+// Fichier choisi par l'appelant (--cache), où les deux revues coexistent. Une même clé
+// "<année>-<numéro>" existe dans les deux revues (numéros parallèles fr/de) : chaque clé
+// porte donc une liste de numéros.
 
 function lireCacheNumeros(chemin) {
   try {
@@ -635,9 +605,8 @@ async function commandeNumerosOjs(opts) {
   if (!o.cheminCache) { throw new Error(dire(L, 'option.requise', ['--cache'])); }
   const recuperer = o.recuperer || oaiPmh.recupererAvecRepli;
 
-  // null = moisson complète, comportement inchangé (voir moissonnerOaiDc). Sinon l'année
-  // demandée, telle quelle : elle part dans l'URL (&from=<anneePlancher>-01-01) ET sert au
-  // filtre ci-dessous à écarter ce qu'elle a ramené de trop ancien.
+  // null = moisson complète. Sinon l'année demandée : elle part dans l'URL
+  // (&from=<anneePlancher>-01-01) et sert au filtre ci-dessous.
   const anneePlancher = o.depuisAnnee ? String(o.depuisAnnee) : null;
   if (anneePlancher !== null && !/^\d{4}$/.test(anneePlancher)) {
     throw new Error(dire(L, 'option.annee', [anneePlancher]));
@@ -649,14 +618,9 @@ async function commandeNumerosOjs(opts) {
   const articles = blocs.map((c) => decoderRecordOai(c, revue)).filter((a) => a && !a.supprime);
   const numerosMap = grouperNumeros(articles, emit, L);
 
-  // `from` filtre le DATESTAMP (dernière modification), pas la date de parution : un numéro
-  // plus ancien que anneePlancher peut donc quand même traverser le filtre si un seul de ses
-  // articles a été retouché après le <anneePlancher>-01-01 demandé — incomplet par
-  // construction, ses autres articles (non modifiés depuis) restant hors de la fenêtre.
-  // Constaté en vrai le 15.09.2026 : from=2026-01-01 sur la revue ramène r2025-04 avec
-  // 1 article sur 9 (un article de 2025 retouché en 2026). Coché tel quel par l'utilisateur,
-  // ce numéro produirait un export amputé sans rien dire : on l'écarte donc entièrement
-  // plutôt que de le laisser paraître complet.
+  // `from` filtre sur la date de dernière modification, pas sur la parution : un numéro
+  // plus ancien arrive avec ses seuls articles retouchés depuis (par exemple 1 article sur
+  // 9). Il serait exporté incomplet : on l'écarte entièrement.
   if (anneePlancher) {
     for (const cle of Object.keys(numerosMap)) {
       if (parseInt(numerosMap[cle].annee, 10) < parseInt(anneePlancher, 10)) {
@@ -667,12 +631,9 @@ async function commandeNumerosOjs(opts) {
   }
 
   const cache = lireCacheNumeros(o.cheminCache);
-  // Ne remplace que les numéros de LA revue moissonnée ; l'autre revue, déjà en cache,
-  // reste intacte — numeros-ojs est appelé une fois par revue. Pas de fusion incrémentale
-  // non plus entre deux moissons de la même revue, même avec --depuis-annee : remonter d'une
-  // année se fait en relançant avec --depuis-annee diminué de 1, qui ramène de lui-même un
-  // SUR-ensemble complet (from=2026-01-01 ne perd aucun article des numéros 2026, vérifié en
-  // vrai) — fusionner ferait cohabiter des numéros venus de deux fenêtres différentes.
+  // Remplace les numéros de la revue moissonnée et garde l'autre revue (numeros-ojs est
+  // appelé une fois par revue). Deux moissons de la même revue ne fusionnent pas : pour
+  // remonter d'une année, on relance avec --depuis-annee diminué de 1.
   for (const cle of Object.keys(cache.numeros)) {
     cache.numeros[cle] = cache.numeros[cle].filter((n) => n.revue !== revue);
     if (cache.numeros[cle].length === 0) { delete cache.numeros[cle]; }
@@ -696,8 +657,7 @@ async function commandeNumerosOjs(opts) {
 
 // ---- edudoc : CSV, entièrement d'après l'OAI ------------------------------------------
 //
-// Colonnes reprises de tmp/export et secretariat/OJS_Export_Edudoc.py (create_excel,
-// populate_excel_list) : voir le gabarit edudoc.twig pour le détail champ par champ.
+// Le détail des colonnes, champ par champ, est dans le gabarit edudoc.twig.
 
 const REVUES_EDUDOC = {
   revue: { id: '207536', titre: 'Revue suisse de pédagogie spécialisée', langueMarc: 'fre' },
@@ -718,17 +678,13 @@ function selectionnerNumeros(cache, cles, emettre, langue) {
 
 // ---- Mots-clés edudoc (MARC 690) : joints par DOI depuis les numéros locaux -----------
 //
-// Décision de Robin : la source des mots-clés edudoc est le .meta.yaml de l'article dans le
-// numéro local, jamais l'OAI (mesuré : l'OAI ne porte pas un meilleur appariement, et le
-// local est la vérité éditoriale, disponible avant publication). On réutilise donc
-// collecterNumeroLocal — déjà écrit pour commandeMetadonnees — plutôt que de relire les
-// fiches à sa façon, et on joint par DOI, exactement la clé de comparerArticle/comparerNumero.
+// Les mots-clés edudoc viennent du .meta.yaml de l'article dans le numéro local, disponible
+// avant publication. Les fiches sont lues par collecterNumeroLocal et jointes par DOI, comme
+// dans comparerArticle/comparerNumero.
 
-// Les articles de un ou plusieurs numéros locaux, mis à plat et indexés par DOI. Deux
-// racines ne sont pas censées porter le même DOI (double dépôt du même numéro, numéro et
-// son archive...) mais si ça arrive c'est une erreur de manipulation, pas un cas normal —
-// mieux vaut le dire que l'écraser en silence. Tranché : le DERNIER rencontré gagne (ordre
-// des --numero sur la ligne de commande), comportement inchangé, juste rendu visible.
+// Les articles d'un ou plusieurs numéros locaux, indexés par DOI. Un DOI présent dans deux
+// racines (numéro et son archive, par exemple) est signalé ; le dernier rencontré, dans
+// l'ordre des --numero, l'emporte.
 function indexerArticlesLocauxParDoi(racines, emettre, langue) {
   const emit = typeof emettre === 'function' ? emettre : () => {};
   const L = langueDe({ langue });
@@ -775,23 +731,17 @@ async function commandeEdudoc(opts) {
   const numeros = selectionnerNumeros(cache, o.cles, emit, L);
   if (numeros.length === 0) { throw new Error(dire(L, 'aucun.trouve')); }
 
-  // Mots-clés 690 : seulement si --numero (racines locales) a été fourni au moins une fois —
-  // sans lui, aucun article local à joindre par DOI, le CSV sort exactement comme avant
-  // (aucune colonne 690). L'index du thésaurus se construit UNE SEULE FOIS pour tout
-  // l'export, jamais par article : c'est lui qui coûte (lecture du cache moissonné), pas
-  // l'appariement. `opts.motsClesConnus` permet aux tests d'injecter le thésaurus plutôt
-  // que de lire C:\ProgramData, comme `opts.recuperer` l'évite déjà pour le réseau ailleurs
-  // dans ce fichier.
+  // Mots-clés 690 : seulement avec au moins un --numero ; sans numéro local, le CSV n'a pas
+  // de colonne 690. L'index du thésaurus (lecture du cache moissonné, coûteuse) se construit
+  // une fois pour tout l'export. `opts.motsClesConnus` permet aux tests d'injecter le
+  // thésaurus au lieu de lire C:\ProgramData.
   const racinesLocales = (Array.isArray(o.racinesNumeros) ? o.racinesNumeros : []).filter(Boolean);
   let articlesLocauxParDoi = {};
   let indexThesaurus = null;
   let totalDescripteurs = 0;
-  // Dédoublonnée sur la forme pliée (casse, accents, apostrophes — plierDescripteur de
-  // lib/mots-cles-edudoc.js) : un même terme saisi par plusieurs articles (« différenciation »,
-  // « compétences »...) ne doit compter, ni s'afficher, qu'une fois. Sans cela, sur un export
-  // de plusieurs numéros, les 20 places affichées se feraient manger par la répétition d'un
-  // seul terme — un bilan que Robin ne pourrait plus lire pour savoir quoi demander à edudoc.
-  // Première graphie rencontrée gardée, comme partout ailleurs dans ces deux modules.
+  // Dédoublonnée sur la forme pliée (casse, accents, apostrophes : plierDescripteur de
+  // lib/mots-cles-edudoc.js), pour qu'un terme répété n'occupe pas les 20 places affichées.
+  // La première graphie rencontrée est gardée.
   const motsClesNonReconnus = [];
   const motsClesNonReconnusVus = new Set();
   if (racinesLocales.length > 0) {
@@ -806,8 +756,7 @@ async function commandeEdudoc(opts) {
     }
   }
 
-  // Total connu d'avance : un numéro résolu du cache = un pas de progression, qu'il porte
-  // beaucoup ou peu d'articles — c'est le numéro qui est l'unité de travail ici.
+  // Progression : un pas par numéro lu dans le cache.
   const totalEdudoc = numeros.length;
   const lignes = [];
   for (let i = 0; i < numeros.length; i++) {
@@ -844,11 +793,9 @@ async function commandeEdudoc(opts) {
   for (let i = 1; i <= maxAuteurs; i++) { enTetesAuteurs.push('7001_a-' + i); }
   for (const l of lignes) { while (l.auteursInverses.length < maxAuteurs) { l.auteursInverses.push(''); } }
 
-  // 690__a-N / 690__b-N (allemand / français) : même façon de faire que les auteur·e·s
-  // ci-dessus — l'hôte calcule le maximum rencontré sur tout l'export et complète à droite,
-  // le gabarit ne fait que dérouler (le moteur de gabarits ne sait pas faire d'arithmétique).
-  // Groupe placé à la fin, après les colonnes d'auteur·e·s, comme le veut la convention du
-  // fichier pour les groupes de largeur variable.
+  // 690__a-N / 690__b-N (allemand / français), comme pour les auteur·e·s : le nombre de
+  // colonnes est le maximum de l'export, calculé ici car le gabarit ne sait pas compter.
+  // Groupe placé à la fin, après les colonnes d'auteur·e·s.
   const maxDescripteurs = lignes.reduce((m, l) => Math.max(m, l.descripteurs.length), 0);
   const enTetesDescripteurs = [];
   for (let i = 1; i <= maxDescripteurs; i++) { enTetesDescripteurs.push('690__a-' + i); enTetesDescripteurs.push('690__b-' + i); }
@@ -864,9 +811,8 @@ async function commandeEdudoc(opts) {
   fs.writeFileSync(chemin, versCsvFinal(blocs.contenu || ''));
   emit({ t: 'fichier', chemin: chemin, nom: 'edudoc.csv' });
 
-  // Bilan chiffré des mots-clés : Robin a choisi de n'exporter QUE les descripteurs du
-  // thésaurus, jamais une forme tapée à la main — il doit voir ce qui reste sur le quai
-  // plutôt que de le découvrir chez la bibliothécaire.
+  // Bilan des mots-clés : seuls les descripteurs du thésaurus sont exportés ; le bilan
+  // montre ceux qui restent hors du CSV.
   if (indexThesaurus) {
     emit({ t: 'etape', texte: compter(L, 'edudoc.descripteurs', totalDescripteurs) });
     if (motsClesNonReconnus.length > 0) {
@@ -908,9 +854,7 @@ async function commandeCaracteres(opts) {
   const numeros = selectionnerNumeros(cache, o.cles, emit, L);
   if (numeros.length === 0) { throw new Error(dire(L, 'aucun.trouve')); }
 
-  // Total connu d'avance, tous numéros confondus : seuls les articles qui portent une
-  // galley HTML seront effectivement téléchargés — un article sans galley n'entre jamais
-  // dans le compte (il n'est jamais tenté).
+  // Total de progression, tous numéros confondus : les articles qui ont une galley HTML.
   const totalCaracteres = numeros.reduce((n, numero) => n + numero.articles.filter((a) => a.galleys.html).length, 0);
   let faitCaracteres = 0;
 
@@ -962,8 +906,7 @@ function comparerListes(localListe, oaiListe) {
   return { concorde: manqueLocal.length === 0 && manqueOai.length === 0, manqueLocal: manqueLocal, manqueOai: manqueOai };
 }
 
-// Auteurs : « Nom, Prénom » en minuscules, comparés en ENSEMBLE et en ORDRE — l'ordre des
-// auteurs est éditorial, il compte autant que leur présence.
+// Auteurs : « Nom, Prénom » en minuscules, comparés dans l'ordre, qui est éditorial.
 function comparerAuteurs(localAuteurs, oaiAuteurs) {
   const cle = (a) => (txt(a && a.nom) + ', ' + txt(a && a.prenom)).toLowerCase();
   const nomsLocal = (localAuteurs || []).map(cle);
@@ -973,10 +916,8 @@ function comparerAuteurs(localAuteurs, oaiAuteurs) {
   return { memeEnsemble: memeEnsemble, memeOrdre: memeOrdre, local: nomsLocal, oai: nomsOai };
 }
 
-// ⚠ L'OAI moissonné ici est en oai_dc (voir « Les données » du mandat) : ce format ne
-// porte pas l'affiliation des auteur·e·s (seul marcxml le ferait, cf. lib/auteurs-ojs.js).
-// La comparaison des affiliations demandée par le mandat n'est donc PAS vérifiable par ce
-// chemin — le rapport le dit explicitement plutôt que de laisser croire à une concordance.
+// oai_dc ne porte pas l'affiliation des auteur·e·s : elle n'est pas comparée, et le
+// rapport le dit.
 const NOTE_AFFILIATION_NON_VERIFIABLE = "affiliations : non vérifiable — l'OAI oai_dc ne porte pas l'affiliation des auteur·e·s (seul marcxml le ferait)";
 
 function comparerArticle(artLocal, articlesOaiParDoi) {
@@ -1062,8 +1003,7 @@ async function commandeMetadonnees(opts) {
   fs.writeFileSync(chemin, blocs.contenu || '', 'utf8');
   emit({ t: 'fichier', chemin: chemin, nom: 'metadonnees.txt' });
 
-  // Le bilan ne compte que les numéros trouvés en ligne : pour les autres, l'avertissement
-  // a déjà tout dit, et un « tout concorde » serait faux.
+  // Le bilan ne compte que les numéros trouvés en ligne ; les autres ont leur avertissement.
   const compares = rapports.filter((r) => r.trouveDansOai);
   if (!compares.length) { return { ok: true, texte: '' }; }
   const aRevoir = compares.reduce((n, r) => n + r.articles.filter((a) => a.statut === 'divergent' || a.statut === 'absentOai').length

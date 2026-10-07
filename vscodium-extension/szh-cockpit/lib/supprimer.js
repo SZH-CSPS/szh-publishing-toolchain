@@ -1,37 +1,21 @@
-// Supprimer un arbre de fichiers qui vit sur OneDrive.
+// Supprime un arbre de fichiers synchronisé par OneDrive. Module pur (fs, sans vscode).
 //
-// Fonctions pures au sens du cockpit : du `fs`, pas de `vscode`. Le module existe pour une
-// seule raison, mesurée le 12.09.2026 sur le poste de Robin en tentant d'archiver le numéro
-// 2027-03.
-//
-// CE QUI S'EST PASSÉ. `out/` refusait de disparaître : EPERM, « Permission denied », sur le
-// DOSSIER et non sur un fichier. Le cockpit a insisté dix secondes, a renoncé, a annulé
-// l'archivage entier et a conseillé de fermer l'aperçu PDF — qui n'y était pour rien.
-//
-// LA CAUSE. Le dossier portait les attributs `ReadOnly` et `ReparsePoint` : OneDrive les
-// pose sur ses dossiers marque-place (« fichiers à la demande »). `fs.rmSync(…, { force:
-// true })` retire bien l'attribut en lecture seule d'un FICHIER, jamais celui d'un DOSSIER
-// — et Windows refuse alors de le supprimer. Vérifié à la main : la suppression échouait
-// sur « accès refusé », l'attribut retiré elle passait.
-//
-// D'où la règle de ce module : sur un refus, on retire `ReadOnly` de tout l'arbre, puis on
-// réessaie. Et on réessaie plusieurs fois, parce que la synchronisation, elle, ne se retire
-// pas — elle passe.
+// OneDrive pose les attributs ReadOnly et ReparsePoint sur ses dossiers « à la demande ».
+// fs.rmSync(…, { force: true }) retire la lecture seule d'un fichier, pas d'un dossier, et
+// Windows refuse alors la suppression (EPERM). Sur un refus, on retire donc ReadOnly de
+// tout l'arbre, puis on réessaie plusieurs fois le temps que la synchronisation passe.
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
 
-// Les codes qui s'arrangent avec le temps ou avec un attribut retiré. Les autres — chemin
-// introuvable, disque plein — ne s'arrangeront pas : ils ressortent tout de suite.
+// Codes qui peuvent passer avec le temps ou un attribut retiré. Les autres (chemin
+// introuvable, disque plein) sont rendus tout de suite.
 const VERROUS_PASSAGERS = new Set(['EPERM', 'EACCES', 'EBUSY', 'ENOTEMPTY']);
 
-// Retire l'attribut « lecture seule » d'un arbre entier. Sur Windows, un chmod en écriture
-// est ce que Node traduit par le retrait de cet attribut ; ailleurs, c'est un chmod, et il
-// est sans effet néfaste sur un dossier de travail.
-//
-// Ne lève jamais : ce n'est qu'une préparation, et un fichier qui résiste ici se dira de
-// toute façon à la suppression, avec son vrai message.
+// Retire l'attribut « lecture seule » d'un arbre entier : sous Windows, Node traduit un
+// chmod en écriture par le retrait de cet attribut. Ne lève pas : un fichier qui résiste
+// échouera à la suppression, avec son vrai message.
 function retirerLectureSeule(chemin) {
   let entrees = [];
   try { entrees = fs.readdirSync(chemin, { withFileTypes: true }); } catch (e) { entrees = []; }
@@ -43,9 +27,8 @@ function retirerLectureSeule(chemin) {
   try { fs.chmodSync(chemin, 0o777); } catch (x) { /* idem */ }
 }
 
-// -> null quand le chemin est parti (ou n'existait déjà plus), sinon le message du dernier
-// échec, prêt à être montré. `surReprise` est appelée avant chaque attente, pour que dix
-// secondes de patience ne passent pas pour un blocage.
+// -> null quand le chemin n'existe plus, sinon le message du dernier échec. `surReprise`
+// est appelée avant chaque attente, pour que l'attente se voie.
 async function supprimerArbre(chemin, options) {
   const o = options || {};
   const attentes = o.attentes || [200, 500, 1000, 2000, 2000, 2000, 2000];
@@ -58,7 +41,7 @@ async function supprimerArbre(chemin, options) {
       if (essai >= attentes.length || !VERROUS_PASSAGERS.has(e.code)) {
         return String((e && e.message) || e);
       }
-      // Au premier refus seulement : l'attribut se retire une fois, il ne revient pas.
+      // Au premier refus seulement : l'attribut retiré ne revient pas.
       if (essai === 0) { retirerLectureSeule(chemin); }
       if (o.surReprise) { o.surReprise(path.basename(chemin), essai); }
       await dormir(attentes[essai]);

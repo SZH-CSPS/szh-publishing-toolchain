@@ -1,38 +1,24 @@
 // Suggestions de traduction : le dossier traduction/ d'un numéro, un fichier JSON par
 // proposition, et la lecture qui les rend.
 //
-// Ce que ce module garde, et ce qu'il ne fait pas. Une suggestion est une PROPOSITION :
-// elle dit qu'un titre, un sous-titre, un résumé ou une liste de mots-clés gagnerait à
-// être dit autrement, et pourquoi. Elle ne touche jamais au texte publié — celui-ci vit
-// dans articles/<slug>/<slug>.meta.yaml et n'est édité que par le formulaire des fiches et
-// par le panneau « Traductions ». Quelqu'un lira ces fichiers plus tard et tranchera ;
-// d'ici là, rien n'a bougé. C'est toute la différence avec lib/traduction.js, qui, lui,
-// écrit dans la fiche.
+// Une suggestion propose de formuler autrement un titre, un sous-titre, un résumé ou des
+// mots-clés, avec une raison. Elle ne modifie pas le texte publié (articles/<slug>/
+// <slug>.meta.yaml, écrit par les fiches et par lib/traduction.js) : quelqu'un la relira.
 //
-// DEUX CIBLES depuis le mode « Trad ». Une suggestion vise soit un champ d'ARTICLE (le
-// geste d'origine, rangé dans traduction/ du numéro), soit un libellé de l'OUTIL lui-même
-// (rangé sur le poste, %LOCALAPPDATA%\SZH\suggestions-interface). Même format, même
-// mécanique, deux dossiers : un libellé de bouton n'appartient à aucun numéro.
+// Deux cibles, même format : un champ d'article (dans traduction/ du numéro), ou un libellé
+// de l'outil cliqué en mode « Trad » (sur le poste, %LOCALAPPDATA%\SZH\suggestions-interface).
 //
-// ⚠ Le dossier est FRÈRE de articles/, jamais dedans. Les deux recensements d'articles du
-//   dépôt listent les sous-dossiers de <racine>/articles (FournisseurRevue._sousDossiersAvecMd
-//   dans extension.js, listerSlugs dans lib/export-ojs.js) : un dossier « traduction »
-//   placé là serait examiné comme un article — il n'y survivrait que parce qu'il ne porte
-//   pas de traduction.md, ce qui est une chance, pas une règle. À la racine du numéro,
-//   aucun recensement ne le regarde : le Makefile compile articles/, l'export OJS lit
-//   articles/, et l'arbre du cockpit n'affiche que les sections de son profil.
+// traduction/ est à la racine du numéro, à côté de articles/ : les recensements d'articles
+// (_sousDossiersAvecMd dans extension.js, listerSlugs dans lib/export-ojs.js) parcourent
+// les sous-dossiers de articles/ et le prendraient pour un article.
 //
-// ⚠ Un fichier PAR suggestion, jamais un fichier commun. Ces dossiers sont synchronisés
-//   par OneDrive : deux personnes qui écriraient tour à tour le même fichier
-//   produiraient une « copie en conflit », et l'une des deux suggestions serait perdue de
-//   vue. Des fichiers distincts se synchronisent sans jamais se rencontrer.
+// Un fichier par suggestion : OneDrive synchronise ces dossiers, et un fichier commun écrit
+// par deux personnes produirait une copie en conflit.
 //
-// Le nom porte la date, l'article, le champ et la langue —
-// 20260914-103012-mon-article-title-de.json — pour qu'un dossier se lise sans ouvrir
-// aucun fichier. Le suffixe -2, -3 lève l'égalité de la seconde.
+// Le nom porte la date, l'article, le champ et la langue
+// (20260914-103012-mon-article-title-de.json), suivi de -2, -3 si la seconde est déjà prise.
 //
-// Module pur : ni vscode, ni réglage d'éditeur. L'auteur·e de la suggestion lui est passé
-// par l'appelant, qui seul connaît le réglage szh.nomUtilisateur.
+// Module pur. Le nom de l'auteur·e est passé par l'appelant (réglage szh.nomUtilisateur).
 'use strict';
 
 const fs = require('fs');
@@ -43,26 +29,19 @@ const { ecrireAtomique, LANGUES_META } = require('./yaml');
 const { CHAMPS_TRADUISIBLES } = require('./traduction');
 const { racineUtilisateur } = require('./poste');
 
-// Le dossier, à la racine du numéro. Voir l'avertissement de tête : frère de articles/.
+// Le dossier, à la racine du numéro (voir l'en-tête).
 const DOSSIER_SUGGESTIONS = 'traduction';
 const LISEZ_MOI = 'LISEZ-MOI.txt';
 
-// La version du format, écrite dans chaque fichier : un relecteur de 2030 doit pouvoir
-// dire à quelle grammaire il a affaire sans la deviner.
+// Version du format, écrite dans chaque fichier.
 const SCHEMA = 'szh-suggestion-traduction/1';
 
-// Le GESTE d'une suggestion. « remplacer » dit « ce texte gagnerait à être dit ainsi » ;
-// « supprimer » dit « ce texte ne devrait pas exister » — ce qu'une proposition de
-// remplacement ne sait pas exprimer : proposer le vide est ambigu, on ne saurait pas si
-// c'est un oubli.
+// Le geste d'une suggestion : « remplacer » (ce texte serait mieux ainsi) ou « supprimer »
+// (ce texte ne devrait pas exister ; un remplacement vide serait ambigu).
 //
-// ⚠ RÈGLE DU CHAMP AJOUTÉ, et c'est pourquoi le schéma reste /1 : `geste` est apparu
-//   APRÈS les premiers fichiers. Un fichier écrit avant lui n'en porte pas, et il se lit
-//   comme « remplacer » — c'était son seul geste possible. normaliserGeste est le seul
-//   endroit où cette règle est écrite, et listerSuggestions y passe comme
-//   construireSuggestion. Tout champ qu'on ajouterait ensuite doit suivre la même
-//   discipline : une valeur par défaut qui redonne le comportement d'avant, et le numéro
-//   de schéma ne bouge que le jour où un fichier ancien deviendrait ILLISIBLE.
+// Un fichier sans `geste` se lit « remplacer » (normaliserGeste). Un champ ajouté au format
+// reçoit ainsi une valeur par défaut, et le schéma reste /1 tant qu'un ancien fichier
+// reste lisible.
 const GESTE_REMPLACER = 'remplacer';
 const GESTE_SUPPRIMER = 'supprimer';
 
@@ -71,15 +50,9 @@ function normaliserGeste(valeur) {
     ? GESTE_SUPPRIMER : GESTE_REMPLACER;
 }
 
-// La CIBLE d'une suggestion. « article » vise un champ traduisible d'un article — le geste
-// d'origine, celui des pastilles. « interface » vise un libellé de l'outil lui-même, cliqué
-// dans le mode « Trad » : elle ne concerne aucun numéro, ne porte ni produit, ni numéro, ni
-// article, ni champ, et se range ailleurs (voir dossierSuggestionsInterface).
-//
-// ⚠ MÊME RÈGLE DU CHAMP AJOUTÉ que `geste`, et c'est pourquoi le schéma reste /1 : `cible`
-//   est apparu APRÈS les premiers fichiers. Un fichier écrit avant lui n'en porte pas, et
-//   il se lit « article » — c'était sa seule cible possible. normaliserCible est le seul
-//   endroit où cette règle est écrite.
+// La cible d'une suggestion : « article » (un champ traduisible, depuis une pastille) ou
+// « interface » (un libellé de l'outil, cliqué en mode « Trad », rangé dans
+// dossierSuggestionsInterface). Un fichier sans `cible` se lit « article » (normaliserCible).
 const CIBLE_ARTICLE = 'article';
 const CIBLE_INTERFACE = 'interface';
 
@@ -88,10 +61,8 @@ function normaliserCible(valeur) {
     ? CIBLE_INTERFACE : CIBLE_ARTICLE;
 }
 
-// Le mode d'emploi laissé à qui tombe sur ce dossier, en français puis en allemand — même
-// forme que celui de .szh-avant-reimport (pipeline/reimporter.py) : le texte français,
-// puis une seconde moitié ouverte par « [de] ». Écrit en CRLF, comme lui : ces fichiers
-// s'ouvrent dans le Bloc-notes de Windows.
+// Le LISEZ-MOI du dossier : français, puis allemand après « [de] », comme celui de
+// .szh-avant-reimport (pipeline/reimporter.py). En CRLF, pour le Bloc-notes de Windows.
 const TEXTE_LISEZ_MOI = [
   'Ce dossier contient des SUGGESTIONS de traduction.',
   '',
@@ -130,13 +101,10 @@ function dossierSuggestions(racine) {
   return path.join(String(racine || ''), DOSSIER_SUGGESTIONS);
 }
 
-// ---- Les suggestions sur les textes de l'OUTIL ------------------------------------
+// ---- Les suggestions sur les textes de l'outil ------------------------------------
 //
-// Une suggestion d'interface ne concerne aucun numéro : la ranger dans le traduction/ d'un
-// numéro la rendrait introuvable — elle partirait à l'archivage avec un numéro qui n'a rien
-// à voir, et la même remarque, faite depuis deux numéros, s'éparpillerait. Elle vit donc sur
-// le POSTE, dans %LOCALAPPDATA%\SZH\suggestions-interface. Un fichier JSON par suggestion,
-// pour la même raison que pour les autres.
+// Une suggestion d'interface ne concerne aucun numéro : elle est rangée sur le poste, dans
+// %LOCALAPPDATA%\SZH\suggestions-interface, un fichier JSON par suggestion.
 const DOSSIER_INTERFACE = 'suggestions-interface';
 
 function dossierSuggestionsInterface(base) {
@@ -145,8 +113,7 @@ function dossierSuggestionsInterface(base) {
   return path.join(b, 'SZH', DOSSIER_INTERFACE);
 }
 
-// Le mode d'emploi du dossier de l'outil. Celui des numéros parle de meta.yaml et n'aurait
-// aucun sens ici ; même forme, français puis « [de] », CRLF pour le Bloc-notes.
+// Le LISEZ-MOI du dossier de l'outil, même forme que celui des numéros.
 const TEXTE_LISEZ_MOI_INTERFACE = [
   'Ce dossier contient des SUGGESTIONS sur les TEXTES DE L’OUTIL lui-même :',
   'les libellés des boutons, des formulaires et des messages du cockpit.',
@@ -175,9 +142,7 @@ const TEXTE_LISEZ_MOI_INTERFACE = [
 // Deux chiffres, pour l'horodatage et pour le fuseau.
 function p2(n) { return String(n).padStart(2, '0'); }
 
-// ISO 8601 AVEC fuseau, et en heure locale : « 2026-09-14T10:30:12+02:00 ». Un horodatage
-// nu se relirait à une heure près selon le lecteur, et un Z forcerait chacun à convertir
-// mentalement l'heure de la rédaction.
+// ISO 8601 en heure locale, avec le fuseau : « 2026-09-14T10:30:12+02:00 ».
 function horodatageIso(date) {
   const d = date instanceof Date ? date : new Date();
   const dec = -d.getTimezoneOffset();
@@ -187,17 +152,15 @@ function horodatageIso(date) {
     (dec >= 0 ? '+' : '-') + p2(Math.floor(abs / 60)) + ':' + p2(abs % 60);
 }
 
-// <AAAAMMJJ-HHMMSS>, la souche du nom de fichier. Heure locale, comme ci-dessus : c'est
-// l'heure que la personne avait sous les yeux.
+// <AAAAMMJJ-HHMMSS>, le début du nom de fichier, en heure locale.
 function horodatageNom(date) {
   const d = date instanceof Date ? date : new Date();
   return String(d.getFullYear()) + p2(d.getMonth() + 1) + p2(d.getDate()) +
     '-' + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds());
 }
 
-// Un nom de fichier ne doit jamais pouvoir sortir du dossier ni porter un caractère que
-// Windows refuse : le slug vient du disque, mais le champ et la langue viennent d'un
-// message de webview.
+// Morceau de nom de fichier sûr : ni sortie du dossier, ni caractère refusé par Windows.
+// Le champ et la langue viennent d'un message de webview.
 function jeton(valeur) {
   return String(valeur === undefined || valeur === null ? '' : valeur)
     .replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'x';
@@ -207,10 +170,8 @@ function texteNet(valeur) {
   return String(valeur === undefined || valeur === null ? '' : valeur).replace(/\r\n?/g, '\n');
 }
 
-// Le mode d'emploi n'est posé QU'À LA CRÉATION, et jamais réécrit : quelqu'un a pu
-// l'annoter, ou le traduire dans une troisième langue, et une réécriture à chaque
-// suggestion effacerait cela sans rien dire. Son échec n'est jamais fatal — le mode
-// d'emploi n'est pas la suggestion.
+// Le LISEZ-MOI est écrit à la création du dossier seulement, pour garder les annotations
+// qu'on y aurait ajoutées. Un échec d'écriture est ignoré.
 function poserLisezMoi(dossier, texte) {
   const chemin = path.join(dossier, LISEZ_MOI);
   try {
@@ -220,9 +181,8 @@ function poserLisezMoi(dossier, texte) {
   } catch (e) { return false; }
 }
 
-// Le premier nom libre de la souche donnée. Le suffixe lève l'égalité de la seconde : deux
-// suggestions sur le même champ dans la même seconde — un clic, une correction, un second
-// clic — ne doivent pas s'écraser.
+// Le premier nom libre pour ce début de nom : -2, -3… départagent deux suggestions sur le
+// même champ dans la même seconde.
 function nomLibre(dossier, souche) {
   let nom = souche + '.json';
   let n = 1;
@@ -233,8 +193,8 @@ function nomLibre(dossier, souche) {
   return nom;
 }
 
-// Qui propose : ce que l'appelant sait (le réglage szh.nomUtilisateur), sinon le compte
-// Windows. Même repli que l'identité de co-édition (lib/coedition.js).
+// L'auteur·e : le réglage szh.nomUtilisateur passé par l'appelant, sinon le compte Windows
+// (comme lib/coedition.js).
 function auteurSuggestion(nomRegle) {
   let nom = String(nomRegle === undefined || nomRegle === null ? '' : nomRegle).trim();
   if (nom === '') {
@@ -244,8 +204,7 @@ function auteurSuggestion(nomRegle) {
   return nom === '' ? 'inconnu' : nom.slice(0, 80);
 }
 
-// La suggestion telle qu'elle est écrite. L'ordre des clés est celui du format : un
-// fichier se lit de haut en bas sans sauter.
+// La suggestion telle qu'elle est écrite, les clés dans l'ordre du format.
 function construireSuggestion(infos, date) {
   const i = infos || {};
   const geste = normaliserGeste(i.geste);
@@ -261,22 +220,14 @@ function construireSuggestion(infos, date) {
     langue: String(i.langue || ''),
     geste: geste,
     actuel: texteNet(i.actuel),
-    // Une suppression ne propose AUCUN texte, et le fichier doit le montrer : laisser
-    // passer ce que le formulaire avait dans sa zone de saisie donnerait à relire une
-    // proposition de remplacement là où personne n'en a fait.
+    // Une suppression ne porte pas de texte proposé, même si la zone de saisie en avait un.
     propose: geste === GESTE_SUPPRIMER ? '' : texteNet(i.propose),
     commentaire: texteNet(i.commentaire)
   };
 }
 
-// Une suggestion identique au texte actuel ET sans commentaire ne dit rien : elle n'a pas
-// à devenir un fichier que quelqu'un ouvrira pour n'y rien trouver. Le refus est rendu à
-// l'appelant, qui l'affiche ; ce module n'a pas de voix.
-//
-// ⚠ Une SUPPRESSION n'a jamais de texte proposé : la comparer au texte actuel la
-//   déclarerait vide de sens et la refuserait sans commentaire, alors qu'elle porte à elle
-//   seule tout son propos — ce texte ne devrait pas exister. Le geste se lit donc avant la
-//   comparaison, et non après.
+// Vrai pour un remplacement identique au texte actuel et sans commentaire : il n'y a rien
+// à écrire. Une suppression n'est jamais vide, d'où le test du geste en premier.
 function estVide(suggestion) {
   if (normaliserGeste(suggestion.geste) === GESTE_SUPPRIMER) { return false; }
   return suggestion.propose.trim() === suggestion.actuel.trim() &&
@@ -303,10 +254,8 @@ function ecrireSuggestion(racine, infos, date) {
   }
 }
 
-// La suggestion d'interface telle qu'elle est écrite. Ni produit, ni numéro, ni article,
-// ni champ : rien de tout cela n'existe ici. À la place, la CLÉ du libellé quand elle a été
-// retrouvée (sinon null), et les candidates quand le texte en avait plusieurs — les garder
-// dit au relecteur ce que l'outil avait proposé, et pourquoi telle clé a été retenue.
+// La suggestion d'interface telle qu'elle est écrite : la clé du libellé si elle a été
+// retrouvée (sinon null), et les clés candidates quand le texte en avait plusieurs.
 function construireSuggestionInterface(infos, date) {
   const i = infos || {};
   const geste = normaliserGeste(i.geste);
@@ -317,8 +266,7 @@ function construireSuggestionInterface(infos, date) {
     horodatage: horodatageIso(date),
     auteur: auteurSuggestion(i.auteur),
     cible: CIBLE_INTERFACE,
-    // Null et non '' : « aucune clé retrouvée » n'est pas « clé vide ». Le formulaire
-    // s'ouvre quand même dans ce cas, et c'est justement celui qu'un mainteneur veut voir.
+    // null et non '' : aucune clé n'a été retrouvée.
     cle: cle === '' ? null : cle,
     cles: cles,
     langue: String(i.langue || ''),
@@ -331,8 +279,7 @@ function construireSuggestionInterface(infos, date) {
 
 // Écrit une suggestion d'interface dans le dossier du poste. Même mécanique que
 // ecrireSuggestion, et mêmes retours : { ok, chemin, nom, suggestion } ou { ok: false, raison }.
-// Le nom porte la clé quand il y en a une, « sans-cle » sinon : un dossier se lit sans
-// ouvrir un seul fichier, et les textes non identifiés s'y repèrent d'un coup d'oeil.
+// Le nom porte la clé, ou « sans-cle » si le texte n'a pas été identifié.
 function ecrireSuggestionInterface(dossier, infos, date) {
   const suggestion = construireSuggestionInterface(infos, date);
   if (estVide(suggestion)) { return { ok: false, raison: 'vide' }; }
@@ -350,10 +297,9 @@ function ecrireSuggestionInterface(dossier, infos, date) {
   }
 }
 
-// Le tri : la plus récente d'abord. À horodatage égal — la même seconde — c'est le nom qui
-// tranche, et le suffixe -2 vient donc avant le nom nu, dans l'ordre où ils ont été
-// écrits. Comparé sans l'extension, sans quoi « …-de.json » passerait avant « …-de-2.json »
-// (« . » est au-dessus de « - »).
+// La plus récente d'abord. Dans la même seconde, le nom départage (le suffixe -2 avant le
+// nom nu). Comparé sans l'extension : « . » se trie après « - », et « …-de.json »
+// passerait avant « …-de-2.json ».
 function comparerSuggestions(a, b) {
   if (a.horodatage !== b.horodatage) { return a.horodatage < b.horodatage ? 1 : -1; }
   const na = a.fichier.replace(/\.json$/i, '');
@@ -364,14 +310,11 @@ function comparerSuggestions(a, b) {
 
 // Les suggestions d'un numéro, de la plus récente à la plus ancienne.
 //
-// Rien ne l'appelle encore, et c'est voulu : sans lecture, on écrirait un format que rien
-// ne saurait relire, et une faute de structure passerait des mois sans se voir. C'est elle
-// que test/js/suggestion-traduction.test.js exerce.
+// Seuls les tests l'appellent pour l'instant (test/js/suggestion-traduction.test.js) :
+// elle garantit que le format écrit se relit.
 //
-// Un fichier illisible — tronqué par une synchronisation en cours, ouvert et mal
-// réenregistré à la main, ou simplement étranger — est SAUTÉ, jamais levé : une seule
-// mauvaise pièce ne doit pas emporter la lecture de tout le dossier. Le LISEZ-MOI n'est
-// pas un .json, il ne se présente donc jamais ici.
+// Un fichier illisible (synchronisation en cours, retouche manuelle, fichier étranger) est
+// sauté, pour ne pas bloquer la lecture du dossier.
 function listerSuggestions(racine) {
   const dossier = dossierSuggestions(racine);
   let noms = [];
@@ -390,14 +333,14 @@ function listerSuggestions(racine) {
       schema: String(valeurs.schema || ''),
       horodatage: String(valeurs.horodatage || ''),
       auteur: String(valeurs.auteur || ''),
-      // Le champ ajouté : absent d'un fichier ancien, il se relit « article ».
+      // Absent d'un fichier ancien : « article ».
       cible: normaliserCible(valeurs.cible),
       produit: String(valeurs.produit || ''),
       numero: String(valeurs.numero || ''),
       article: String(valeurs.article || ''),
       champ: String(valeurs.champ || ''),
       langue: String(valeurs.langue || ''),
-      // Le champ ajouté : absent d'un fichier ancien, il se relit « remplacer ».
+      // Absent d'un fichier ancien : « remplacer ».
       geste: normaliserGeste(valeurs.geste),
       actuel: texteNet(valeurs.actuel),
       propose: texteNet(valeurs.propose),
@@ -407,9 +350,8 @@ function listerSuggestions(racine) {
   return sorties.sort(comparerSuggestions);
 }
 
-// Les suggestions d'interface du poste, de la plus récente à la plus ancienne. Mêmes
-// tolérances que ci-dessus : pas de dossier, pas de suggestion ; un fichier illisible est
-// sauté, jamais levé.
+// Les suggestions d'interface du poste, de la plus récente à la plus ancienne. Un dossier
+// absent donne une liste vide, un fichier illisible est sauté.
 function listerSuggestionsInterface(dossier) {
   let noms = [];
   try { noms = fs.readdirSync(dossier); }
@@ -441,14 +383,14 @@ function listerSuggestionsInterface(dossier) {
   return sorties.sort(comparerSuggestions);
 }
 
-// Combien en attente. Compté sur les fichiers relus et non sur le contenu du dossier : le
-// LISEZ-MOI et une copie en conflit du synchroniseur ne sont pas des suggestions.
+// Nombre de suggestions en attente, compté sur les fichiers lisibles : le LISEZ-MOI et
+// les copies en conflit ne comptent pas.
 function compterSuggestionsInterface(dossier) {
   return listerSuggestionsInterface(dossier).length;
 }
 
-// Garde-fous de l'hôte : le champ et la langue viennent d'un message de webview, et seuls
-// ceux que la fiche connaît ont un sens ici.
+// Pour l'hôte : le champ et la langue viennent d'une webview ; seuls ceux de la fiche sont
+// acceptés.
 function champValide(champ) {
   return CHAMPS_TRADUISIBLES.indexOf(String(champ || '')) !== -1;
 }

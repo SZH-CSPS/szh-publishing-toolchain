@@ -1,15 +1,13 @@
 // Liens « vscodium://szh-csps.szh-cockpit/<vue>/<produit>/<id>[/<article>] » reçus par
-// l'éditeur. Le chemin se relit comme le lien szh:// de même suite, par la même grammaire
-// (lib/liens.js). Si l'id est celui du dossier ouvert, cette fenêtre sert la vue ; sinon le
-// lien part au lanceur, seul à retrouver un numéro par son id, et dont Start-SzhCodium
-// garde les secrets transmis par WSLENV.
+// l'éditeur. Le chemin se lit comme un lien szh:// (lib/liens.js). Si l'id est celui du
+// dossier ouvert, cette fenêtre ouvre la vue ; sinon le lien part au lanceur, qui sait
+// retrouver un numéro par son id et lance VSCodium avec les secrets passés par WSLENV.
 'use strict';
 
 const liens = require('./liens');
 const archivage = require('./archivage');
 
-// La racine ouverte, son id, et l'ouverture d'une vue dans cette fenêtre, posés par
-// extension.js.
+// Posés par extension.js.
 let ctx = {
   racine: () => '',
   idDossier: () => '',
@@ -18,14 +16,14 @@ let ctx = {
 };
 function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
 
-// -> le lien szh:// de même suite, ou '' : ni requête ni fragment, que la grammaire n'a pas.
+// -> le lien szh:// équivalent, ou '' si l'URI porte une requête ou un fragment.
 function versLienSzh(uri) {
   if (!uri || uri.query || uri.fragment) { return ''; }
   const suite = String(uri.path || '').replace(/^\/+/, '');
   return suite === '' ? '' : liens.SCHEMA + '://' + suite;
 }
 
-// Le lien reconstruit depuis son analyse : seul il part au lanceur, jamais le texte reçu.
+// Le lien reconstruit depuis son analyse : c'est lui qui part au lanceur, pas le texte reçu.
 function lienCanonique(analyse) {
   return analyse.vue === liens.VUE_TRADUCTION
     ? liens.construireLienTraduction(analyse.produit, analyse.id, analyse.article)
@@ -33,7 +31,7 @@ function lienCanonique(analyse) {
 }
 
 // -> 'vue', 'lanceur' ou 'refuse'. Ne lève pas : un lien venu d'une page web ou d'un
-// e-mail est une donnée non fiable, et un mauvais lien ne doit rien ouvrir.
+// e-mail n'est pas fiable, et un lien invalide n'ouvre rien.
 async function traiterUri(uri) {
   try {
     const analyse = liens.analyserLien(versLienSzh(uri));
@@ -53,11 +51,11 @@ async function traiterUri(uri) {
   } catch (e) { return 'refuse'; }
 }
 
-// Un refus se dit à l'utilisateur : un lien cliqué sans effet passerait pour une panne.
+// Un refus est signalé : un lien cliqué sans effet passerait pour une panne.
 const gestionnaire = {
   handleUri: async (uri) => {
     const verdict = await traiterUri(uri);
-    if (verdict === 'refuse') { try { ctx.signalerRefus(); } catch (e) { /* jamais bloquant */ } }
+    if (verdict === 'refuse') { try { ctx.signalerRefus(); } catch (e) { /* sans effet */ } }
     return verdict;
   }
 };

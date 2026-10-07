@@ -40,8 +40,8 @@ const { ouvrirAvecSysteme } = require('./ouvrir-systeme');
 const { cibleTraduction } = require('./traduction-hote');
 
 // ---- Rappels vers l'hôte ----------------------------------------------------------
-// Posés une seule fois par extension.js. Les valeurs par défaut ne servent qu'à ne pas
-// planter un test qui require ce module seul.
+// Posés par extension.js. Les valeurs par défaut permettent de charger ce module seul
+// dans un test.
 let ctx = {
   // Le mode « Changer l'ordre » : { racine, slugs } pendant qu'on réordonne, null sinon.
   ordreEnCours: () => null,
@@ -60,7 +60,7 @@ let ctx = {
   contexteConstats: () => ({}),
   ecrireClesAusgabe: () => 'lib/vue-articles-hote.js non configuré',
   lireCouleurAccent: () => '',
-  // Mode « Trad » : l'état du mode, et le clic détourné, sans relais par l'hôte.
+  // Mode « Trad » : voir repondreModeTrad.
   repondreModeTrad: require('./traduction-hote').repondreModeTrad
 };
 
@@ -80,26 +80,22 @@ function repondrePanneau(panneau, message) {
 
 // ---- Vue « Articles » -----------------------------------------------------------
 //
-// La vue qui monte un numéro : l'ordre des articles, l'avancement de chacun, et les
-// métadonnées du numéro au même endroit, parce qu'on les regarde ensemble. Elle a sa page
-// (media/articles.*) parce qu'elle porte un formulaire, mais rien n'y est recopié : ses
-// cartes et sa barre sont celles des autres vues d'ensemble (SZH.listeCartes,
-// SZH.barreBoutons) et son formulaire du numéro est celui de la page « Méta-données du
-// numéro » (SZH.formulaireNumero).
+// La vue qui monte un numéro : l'ordre des articles, l'avancement de chacun et les
+// métadonnées du numéro. Sa page (media/articles.*) réutilise les cartes et la barre des
+// autres vues d'ensemble (SZH.listeCartes, SZH.barreBoutons) et le formulaire de la page
+// « Méta-données du numéro » (SZH.formulaireNumero).
 
 function textesArticles() {
   const livre = profilCourant().cle === 'livre';
   // Un livre monte le formulaire de buch.yaml (SZH.formulaireLivre) à la place de celui du
   // numéro ; tout le reste de la table est commun.
   const texte = Object.assign(livre ? metadonneesHote.textesLivre() : textesNumero(), {
-    // « Ouvrir l'article » et non « Ouvrir » : sur cette vue, la carte EST un article, et
-    // le bouton se lit aussi bien dans la barre de titre que dans le pied. `vue.ouvrir`
-    // reste « Ouvrir » pour « Traductions » et « Word en attente », où la carte est un bloc
-    // de traduction ou un fichier.
+    // « Ouvrir l'article » ici ; `vue.ouvrir` (« Ouvrir ») sert aux vues « Traductions » et
+    // « Word en attente ».
     ouvrir: T('art.ouvrir'),
     ouvrirTip: T('art.ouvrir.tip'),
-    // `listeVide` et non `rien` : `rien` est déjà « Aucune modification » dans la table du
-    // formulaire du numéro, que cette table étend.
+    // `listeVide` : `rien` est déjà pris (« Aucune modification ») dans la table du
+    // formulaire du numéro, que celle-ci étend.
     listeVide: T('art.vue.rien'),
     // Le titre compact de l'encadré des tâches, sur chaque carte.
     tachesEntete: T('art.taches.entete'),
@@ -110,21 +106,17 @@ function textesArticles() {
     tachesEnregistrer: T('form.enregistrer'),
     tachesEnregistrees: T('art.taches.enregistrees'),
     tachesFermer: T('art.taches.fermer'),
-    // Les deux titres des groupes de constats, dans l'encadré « À faire » de la carte :
-    // ce qui mérite un regard, puis ce qui arrêtera la publication.
+    // Les deux groupes de constats de l'encadré « À faire » : à regarder, puis bloquants.
     constatsAttention: T('art.constats.attention'),
     constatsDanger: T('art.constats.danger'),
-    // Le bouton qui replie l'aperçu des métadonnées d'une carte — réduit au chevron seul
-    // (media/articles.js, basculeApercu) : ces deux libellés ne s'affichent donc plus,
-    // ils vivent dans son infobulle et son aria-label. Le titre de la carte porte le même
-    // geste, en second bouton, et partage le même état.
+    // Le chevron qui replie l'aperçu des métadonnées (basculeApercu, media/articles.js) :
+    // ces libellés servent d'infobulle et d'aria-label. Le titre de la carte fait de même.
     metaVoir: T('art.meta.voir'),
     metaCacher: T('art.meta.cacher'),
     revues: { revue: T('meta.revue.revue'), zeitschrift: T('meta.revue.zeitschrift') }
   });
-  // La case « pas de DOI » : le seul texte que la page écrit elle-même, et seulement là où
-  // l'unité reçoit un DOI. Les intitulés et les valeurs de l'aperçu, eux, arrivent tout
-  // faits dans chaque ligne — c'est l'hôte qui sait dire une licence ou une rubrique.
+  // La case « pas de DOI », seul texte que la page écrit elle-même. Les intitulés et
+  // valeurs de l'aperçu arrivent tout faits dans chaque ligne.
   if (profilCourant().capacites.doi) {
     Object.assign(texte, { doiCase: T('art.doi.case'), doiCaseTip: T('art.doi.case.tip') });
   }
@@ -152,22 +144,12 @@ function htmlArticles(nonce) {
   });
 }
 
-// Plus aucune pastille dans le pied d'une carte d'article — ni compteur d'images, ni
-// avancement des tâches.
-//
-// Le compteur d'images redisait en abrégé ce que l'encadré « À faire » écrit déjà en
-// toutes lettres : « ⚠ 1 image(s) » dans le pied, juste sous « 1 image(s) apportent une
-// information et n'ont pas de texte alternatif ». Le même reproche montré deux fois se
-// compte deux fois à la lecture, et l'abrégé ne disait pas ce qui manquait. Ce qui manque
-// se lit donc dans les constats (constatsCarte), et l'avancement des tâches dans
-// l'entête « À faire » (resumeTachesLigne), à côté des cases qu'il résume.
-//
-// Rien n'est perdu au passage : le nombre total d'images n'était un reproche que par
-// accident, quand il portait le ton « attention » d'un manque décrit en dessous.
+// Le pied d'une carte ne porte pas de pastille : les défauts des images sont dans les
+// constats (constatsCarte), l'avancement des tâches dans l'entête « À faire »
+// (resumeTachesLigne).
 
 // Le résumé de l'avancement des tâches d'une carte, pour l'entête « À faire » :
-// -> { texte, toutes } ou null quand la revue ne définit aucune tâche — l'entête ne
-// montre alors pas de compteur, il n'y a rien à compter.
+// -> { texte, toutes }, ou null si la revue ne définit aucune tâche (pas de compteur).
 function resumeTachesLigne(avance) {
   if (!avance || avance.total === 0) { return null; }
   return {
@@ -178,14 +160,9 @@ function resumeTachesLigne(avance) {
 
 // ---- L'aperçu des métadonnées, sur la carte --------------------------------------
 //
-// Non éditable, et c'est tout l'intérêt : on regarde une carte d'article vingt fois pour
-// une fois qu'on la corrige, et un formulaire ouvert est un formulaire où l'on efface par
-// mégarde. Les deux boutons du pied mènent aux formulaires qui, eux, écrivent.
-//
-// « Le plus compact possible mais lisible » : une ligne par champ, un badge de langue au
-// lieu d'un intitulé répété, et les textes longs coupés. Ce qui est coupé est décidé ici et
-// non deviné : le résumé et les mots-clés sont les deux seuls champs dont la longueur n'a
-// pas de limite, et les seuls vraiment tronqués.
+// En lecture seule, pour éviter les effacements par mégarde ; les boutons du pied ouvrent
+// les formulaires. Une ligne par champ, un badge de langue, et le résumé et les mots-clés
+// (seuls champs sans limite de longueur) coupés.
 const APERCU_COURT = 90;      // titre, sous-titre : un titre de la revue tient là-dedans
 const APERCU_LONG = 130;      // résumé, mots-clés : de quoi reconnaître, pas de quoi relire
 
@@ -194,13 +171,9 @@ function couperApercu(texte, limite) {
   return t.length <= limite ? t : t.slice(0, limite - 1).replace(/\s+\S*$/, '') + '…';
 }
 
-// Une ligne « un intitulé, une valeur par langue ». Seules les langues où quelque chose est
-// écrit paraissent : un article monolingue ne montre pas deux lignes vides.
-//
-// `langues` restreint la ligne à ce qui doit se lire — la seule langue de l'article quand
-// « Cacher les traductions » est en service. Une restriction d'AFFICHAGE, et rien d'autre :
-// les textes des autres langues sont toujours là, dans la fiche, et l'article s'exporte
-// avec eux.
+// Une ligne « un intitulé, une valeur par langue », pour les seules langues remplies.
+// `langues` restreint l'affichage (la langue de l'article quand « Cacher les traductions »
+// est actif) ; la fiche n'est pas modifiée.
 function ligneApercuLangues(libelle, map, limite, langues) {
   const valeurs = [];
   for (const l of (langues || LANGUES_META)) {
@@ -210,8 +183,7 @@ function ligneApercuLangues(libelle, map, limite, langues) {
   return { libelle: libelle, valeurs: valeurs };
 }
 
-// Les mots-clés : une ligne par langue, la liste mise à plat. Le séparateur est celui des
-// listes du cockpit.
+// Les mots-clés : une ligne par langue, avec le séparateur des listes du cockpit.
 function ligneApercuMotsCles(meta, langues) {
   const plat = {};
   for (const l of LANGUES_META) {
@@ -221,9 +193,9 @@ function ligneApercuMotsCles(meta, langues) {
   return ligneApercuLangues(T('trad.champ.keywords'), plat, APERCU_LONG, langues);
 }
 
-// Les auteur·e·s : l'identité d'abord, puis ce qui la situe, puis en badges ce que la fiche
-// porte déjà — l'ORCID, l'adresse, la photo. Les valeurs elles-mêmes ne sont pas affichées :
-// une adresse d'auteur·e n'a rien à faire dans un aperçu qui reste ouvert à l'écran.
+// Les auteur·e·s : le nom, puis ce qui situe la personne, puis des badges pour ce que la
+// fiche porte (ORCID, adresse, photo). Les valeurs ne s'affichent pas : une adresse n'a
+// pas sa place dans un aperçu ouvert à l'écran.
 function ligneApercuAuteurs(meta) {
   const valeurs = [];
   for (const a of (meta.author || [])) {
@@ -235,8 +207,7 @@ function ligneApercuAuteurs(meta) {
     if (String(a.photo || '').trim() !== '') { marques.push(T('art.apercu.photo')); }
     valeurs.push({
       marque: '',
-      // Le prénom et le nom font UN nom, séparés d'une espace ; ce qui situe la personne
-      // vient après, derrière le point médian des listes du cockpit.
+      // « Prénom Nom », puis ce qui situe la personne après le point médian.
       texte: couperApercu([identite.join(' ')].concat(situe).filter((x) => x !== '').join(' · '),
         APERCU_LONG),
       marques: marques
@@ -245,8 +216,8 @@ function ligneApercuAuteurs(meta) {
   return { libelle: T('fiches.auteurs'), valeurs: valeurs };
 }
 
-// Le nom court de la licence : « CC-BY 4.0 ». La table de lib/yaml.js le porte déjà, sauf
-// pour « droits réservés », qui n'a pas de nom imprimable — d'où la seule exception.
+// Le nom court de la licence (« CC-BY 4.0 »), tiré de lib/yaml.js, sauf pour « droits
+// réservés », qui n'en a pas.
 function nomCourtLicence(valeur) {
   const cle = normaliserLicence(valeur) || LICENCE_DEFAUT;
   if (cle === 'droits-reserves') { return T('art.apercu.licence.reservee'); }
@@ -254,10 +225,8 @@ function nomCourtLicence(valeur) {
   return '';
 }
 
-// Année du numéro : celle de la date de publication si elle y est, sinon celle du nom du
-// dossier (« 2027-03 »). Même repli que le titre de la vue : la date est vide jusqu'à la
-// parution, et sans ce repli le DOI d'un numéro en préparation serait incalculable tout du
-// long — c'est-à-dire pendant tout le temps où il sert.
+// Année du numéro : celle de la date de publication, sinon celle du nom du dossier
+// (« 2027-03 »). La date reste vide jusqu'à la parution, et le DOI a besoin de l'année.
 function anneeNumero(racine, valeurs) {
   const annee = (String((valeurs || {}).date || '').match(/\d{4}/) || [''])[0];
   if (annee !== '') { return annee; }
@@ -266,22 +235,18 @@ function anneeNumero(racine, valeurs) {
 
 // La ligne DOI de l'aperçu, et ce qu'il faut dire à côté. -> { ligne, constats }
 //
-// Le DOI est un calcul : le rang de l'article parmi ceux qui en portent un, compté à partir
-// de zéro, d'où l'éditorial en « 00 ». Rien ne le stocke — sauf l'échappatoire : un doi
-// resté sur la fiche y a été défini à la main (case « Définir manuellement le DOI » du
-// formulaire des métadonnées), et c'est lui qui part vers OJS à la place du calculé.
-// La carte affiche ce qui part : le manuel quand il existe, étiqueté « manuel » pour que
-// la provenance se voie d'un coup d'œil, le calculé sinon, étiqueté « calculé » comme
-// avant. La divergence entre les deux reste un constat : elle ne se devine pas.
-// FORME_DOI (motif + exemple par revue) vient de l'import de tête de lib/export-ojs
-// (doiCalcule et consorts) : pas de second require ici.
+// Le DOI se calcule : rang de l'article parmi ceux qui en reçoivent un, à partir de zéro
+// (l'éditorial est « 00 »). Un doi écrit sur la fiche a été défini à la main (« Définir
+// manuellement le DOI ») et part vers OJS à la place du calculé.
+// La carte affiche celui qui part, étiqueté « manuel » ou « calculé ». Une divergence entre
+// les deux devient un constat. FORME_DOI vient de lib/export-ojs.js.
 
 function apercuDoi(locale, annee, numeroRevue, rang, doiFiche, voulu) {
   const fiche = String(doiFiche || '').trim();
   const constats = [];
   if (rang === -1) {
-    // Un DOI manuel sur un article qui n'en reçoit pas : rien ne part, la ligne dit
-    // « aucun » — c'est ce qui part — et le constat dit le doi resté sur la fiche.
+    // DOI manuel sur un article qui n'en reçoit pas : la ligne dit « aucun », et un
+    // constat signale le doi resté sur la fiche.
     if (fiche !== '') { constats.push({ ton: 'attention', texte: T('art.doi.fiche.inutile', [fiche]) }); }
     return {
       ligne: { marque: '', texte: T(voulu ? 'art.doi.aucun.voulu' : 'art.doi.aucun.rubrique') },
@@ -290,12 +255,9 @@ function apercuDoi(locale, annee, numeroRevue, rang, doiFiche, voulu) {
   }
   const calcule = doiCalcule(locale, annee, numeroRevue, rang);
   if (fiche !== '') {
-    // Le manuel s'affiche tel quel, calculable ou non — incalculable n'étouffe rien, le
-    // manuel partira dès que le numéro sera complet. La divergence ne se dit que quand il
-    // y a deux valeurs à comparer — et c'est alors seulement qu'il faut départager les deux
-    // causes, miroir exact de la logique de l'export (voir FORME_DOI, export-ojs.js ~152) :
-    // une forme étrangère à la revue n'a jamais pu être déposée telle quelle, une forme de
-    // la maison a pu l'être pour de bon.
+    // Le DOI manuel s'affiche tel quel. La divergence ne se signale que s'il y a deux
+    // valeurs, avec la même distinction que l'export (FORME_DOI, lib/export-ojs.js) : une
+    // forme étrangère à la revue n'a pas pu être déposée, une forme de la maison a pu l'être.
     if (calcule !== '' && fiche !== calcule) {
       const forme = FORME_DOI[locale];
       constats.push({ ton: 'attention', texte: (forme && !forme.motif.test(fiche))
@@ -313,9 +275,8 @@ function apercuDoi(locale, annee, numeroRevue, rang, doiFiche, voulu) {
            constats: constats };
 }
 
-// Ce que les images de l'article disent sans qu'on ouvre leur gestionnaire. La lecture est
-// la sienne — lireAttributsImage, celle de lib/references.js, et la liste de fichiers de
-// media/ — ce qui laisse dehors les photos des autrices et auteurs, rangées dans portraits/.
+// L'état des images de l'article, lu comme le gestionnaire des médias (lireAttributsImage
+// de lib/references.js, fichiers de media/). Les portraits (portraits/) n'en font pas partie.
 function resumeImagesArticle(fournisseur, slug) {
   const md = path.join(fournisseur.racine, dossierUnites(), slug, slug + '.md');
   let texte = '';
@@ -327,21 +288,13 @@ function resumeImagesArticle(fournisseur, slug) {
   }));
 }
 
-// Ce que la carte doit signaler, en toutes lettres et dans son encadré « À faire » —
-// jamais dans une infobulle : les images incomplètes, puis l'état des références relevé à
-// la dernière compilation.
+// Les constats de l'encadré « À faire » de la carte : images incomplètes, puis état des
+// références à la dernière compilation. Le ton vient de lib/constats.js, comme dans la
+// liste « À corriger ».
 //
-// Le ton ne se décide plus ici : il vient de lib/constats.js, comme dans la liste
-// « À corriger ». Ces constats-là forçaient tous « attention », et une image muette
-// paraissait donc bénigne sur la carte au moment même où elle arrêtait l'export deux
-// écrans plus loin.
-//
-// La carte résume, la liste détaille : ici un constat par FAMILLE de défaut avec son
-// compte entre parenthèses, là-bas un constat par image et par appel, chacun avec son
-// bouton. Les deux partagent l'intitulé — « Figure sans texte alternatif » — pour qu'on
-// reconnaisse le même défaut d'un écran à l'autre. Et aucun bouton sur ces constats-ci :
-// le pied de la carte porte déjà « Éditer les médias » et « Éditer les métadonnées », qui
-// mènent exactement là où ces défauts se corrigent.
+// La carte résume (un constat par famille de défaut, avec son compte) ; la liste détaille
+// (un constat par image ou par appel). L'intitulé est le même des deux côtés. Pas de
+// bouton ici : ceux du pied de carte mènent aux formulaires où l'on corrige.
 function constatsCarte(images, citations, contexte) {
   const constats = [];
   const langue = langueCockpit();
@@ -355,9 +308,8 @@ function constatsCarte(images, citations, contexte) {
   ajouter('image-sans-legende', images.sansLegende);
   const c = citations || null;
   if (c) {
-    // Les trois codes de citations sont ceux de la chaîne : même table, même intitulé, même
-    // ton que dans la liste — seul le compte remplace l'appel fautif, qu'une carte n'a pas
-    // à énumérer.
+    // Les codes de citations de la chaîne, avec l'intitulé et le ton de la liste ; le compte
+    // remplace l'énumération des appels.
     for (const code of ['appel-sans-reference', 'appel-ambigu', 'reference-orpheline']) {
       if (c[code] > 0) {
         const brut = { source: 'citations', code: code, slug: '', champs: {}, args: [] };
@@ -369,20 +321,16 @@ function constatsCarte(images, citations, contexte) {
   return constats;
 }
 
-// L'aperçu complet d'un article : neuf lignes, dans l'ordre où on les lit — ce que
-// l'article est, ce qu'il dit, qui l'a écrit, sous quelles conditions il paraît.
+// L'aperçu complet d'un article : neuf lignes, dans l'ordre de lecture (ce qu'est
+// l'article, ce qu'il dit, qui l'a écrit, ses conditions de parution).
 //
-// `langueSeule` — le code de la langue de l'article, ou '' — réduit les quatre lignes
-// bilingues (titre, sous-titre, résumé, mots-clés) à cette seule langue : c'est le bouton
-// « Cacher les traductions » de la vue. Les cinq autres lignes n'ont pas de langue et ne
-// bougent pas. Rien n'est perdu ni modifié : l'autre langue est toujours dans la fiche, et
-// le bouton la remontre.
+// `langueSeule` (code de la langue de l'article, ou '') réduit les quatre lignes bilingues
+// à cette langue : c'est le bouton « Cacher les traductions ».
 function apercuArticle(meta, langue, doi, langueSeule) {
   const type = String(meta.type || '').trim();
   const langueArticle = normaliserLangueArticle(meta.lang);
   const vide = T('art.apercu.vide');
-  // Une langue hors des trois de la revue, ou aucune, ne restreint rien : mieux vaut
-  // montrer les quatre lignes en entier que les vider en silence.
+  // Une langue inconnue, ou aucune, ne restreint rien.
   const langues = LANGUES_META.indexOf(langueSeule) !== -1 ? [langueSeule] : LANGUES_META;
   const seule = (libelle, texte) => ({
     libelle: libelle,
@@ -404,24 +352,20 @@ function apercuArticle(meta, langue, doi, langueSeule) {
   };
 }
 
-// Le bandeau d'une unité dans le mode « Changer l'ordre » (vue ARTICLES comme vue CHAPITRES) :
-// son titre au rang à venir, et ses deux flèches. `titre` est celui de la fiche, jamais le
-// libellé numéroté — « 02 » y figure déjà.
+// Le bandeau d'une unité dans le mode « Changer l'ordre » (articles ou chapitres) : son
+// titre au rang à venir, et ses deux flèches. `titre` est celui de la fiche, sans numéro.
 function bandeauOrdre(slug, index, slugs, titre) {
   const nom = titre || slug;
   return {
     cle: slug,
-    // Rang à venir, et non le préfixe du dossier : c'est ce mode-ci qui va l'écrire
-    // (« Terminer »), les flèches doivent donc annoncer la même chose que le titre.
+    // Le rang à venir, que « Terminer » écrira, et non le préfixe actuel du dossier.
     titre: libelleArticle(prefixeOrdre(index), slug, titre),
     ouvrir: false,
     actions: [],
     constats: [],
     taches: [],
-    // Le rang visé vient de prefixeOrdre(), la même fonction que le DOI et
-    // l'arborescence : le redire ici à la main finirait par diverger. Un bouton en
-    // bord de liste reçoit le générique en aria-label lui aussi — il n'annonce jamais
-    // un rang qui n'existe pas.
+    // Le rang visé vient de prefixeOrdre(), comme pour le DOI et l'arbre. En bord de
+    // liste, le bouton reçoit l'aria-label générique.
     ordre: {
       monter: {
         desactive: index === 0,
@@ -439,11 +383,9 @@ function bandeauOrdre(slug, index, slugs, titre) {
   };
 }
 
-// L'aperçu d'une carte de chapitre : cinq lignes lues dans <slug>.meta.yaml — titre,
-// sous-titre, auteurs, résumé, et si le chapitre est hors sommaire. Ni DOI, ni type, ni
-// licence, ni mots-clés : un chapitre n'a rien de tout cela (il n'hérite de rien du livre).
-// Un livre est écrit dans une langue : les lignes bilingues se réduisent à celle du livre,
-// sauf quand la fiche ne l'a pas écrite — mieux vaut montrer ce qui existe que du vide.
+// L'aperçu d'une carte de chapitre : cinq lignes de <slug>.meta.yaml (titre, sous-titre,
+// auteurs, résumé, hors sommaire). Les lignes bilingues se réduisent à la langue du livre,
+// sauf si la fiche n'a rien dans cette langue.
 function apercuChapitre(meta, langueLivre) {
   const langues = (map) => {
     const m = map || {};
@@ -463,18 +405,17 @@ function apercuChapitre(meta, langueLivre) {
   };
 }
 
-// La vue CHAPITRES : les mêmes cartes que la vue ARTICLES (SZH.listeCartes), sans rien de ce
-// qu'un livre n'a pas — ni DOI et ses rangs, ni tâches de revue, ni traductions, ni
-// ausgabe.yaml. L'ordre est celui d'ordre-chapitres (buch.yaml, via listerArticles), le
-// titre celui de la fiche : le .md ne le porte plus. Les trois boutons de la barre sont
-// ceux du livre entier ; le formulaire du livre est monté en tête par la page.
+// La vue CHAPITRES : les cartes de la vue ARTICLES (SZH.listeCartes), sans DOI, tâches ni
+// traductions. L'ordre vient d'ordre-chapitres (buch.yaml, via listerArticles), le titre de
+// la fiche. Les trois boutons de la barre portent sur le livre entier ; la page monte le
+// formulaire du livre en tête.
 function chargeChapitres(fournisseur) {
   const racine = fournisseur.racine;
   const langue = langueRevue(racine);
   const interface_ = langueCockpit();
   const vue = vueArticlesConfig(lireConfigPoste());
-  // Le mode « Changer l'ordre » de la vue ARTICLES vaut pour les chapitres : rien n'est écrit
-  // avant « Terminer », qui renomme les dossiers et écrit ordre-chapitres dans buch.yaml.
+  // Mode « Changer l'ordre » : rien n'est écrit avant « Terminer », qui renomme les dossiers
+  // et écrit ordre-chapitres dans buch.yaml.
   const enOrdre = ctx.ordreEnCours(racine);
   const slugs = enOrdre || fournisseur.listerArticles();
   const lignes = slugs.map((slug, index) => {
@@ -486,7 +427,7 @@ function chargeChapitres(fournisseur) {
       titre: libelleArticle(prefixeDossier(slug), slug, titre),
       ouvrir: false,
       apercu: apercuChapitre(meta, langue),
-      // La compilation d'un chapitre refuse de partir sans titre : la carte le dit.
+      // Sans titre, la compilation du chapitre est refusée : la carte le signale.
       constats: titre === '' ? [{ ton: 'danger', texte: T('art.sansfiche') }] : [],
       actions: [
         { id: 'metadonnees', libelle: T('art.meta.editer'), icone: 'info',
@@ -502,18 +443,18 @@ function chargeChapitres(fournisseur) {
     titre: T('chap.vue.titre'),
     livre: true,
     boutons: (enOrdre ? [
-      // Dans le mode, la barre ne propose plus que d'en sortir, comme la vue ARTICLES.
+      // Dans le mode, la barre ne propose que d'en sortir.
       { id: 'ordre-terminer', groupe: 'action', libelle: T('art.ordre.terminer'), icone: 'ok',
         principal: true, tip: T('art.ordre.terminer.tip') },
       { id: 'ordre-annuler', groupe: 'action', libelle: T('art.ordre.annuler'), icone: 'fermer',
         tip: T('art.ordre.annuler.tip') }
     ] : [
-      // Seul interrupteur qui garde un sens pour un livre : replier l'aperçu des cartes.
+      // Pour un livre, seul l'interrupteur « replier l'aperçu » a un sens.
       { id: 'cacher-meta', groupe: 'filtre', actif: !vue.cacherMeta,
         icone: vue.cacherMeta ? 'oeil-ferme' : 'oeil',
         libelle: T('art.meta.bouton'),
         tip: T(vue.cacherMeta ? 'art.meta.voir.tip' : 'art.meta.cacher.tip') },
-      // Les trois gestes du livre entier. Le clic sur un chapitre, lui, ne compile que lui.
+      // Les trois actions sur le livre entier ; un clic sur un chapitre ne compile que lui.
       { id: 'livre-compiler', groupe: 'action', libelle: T('chap.bouton.compiler'), icone: 'ok',
         principal: true, tip: T('chap.bouton.compiler.tip') },
       { id: 'livre-pdf', groupe: 'action', libelle: T('chap.bouton.pdf'), icone: 'fleche',
@@ -545,28 +486,22 @@ function boutonsFinNumero() {
   return boutons;
 }
 
-// Une carte par article, dans l'ordre du numéro : son nom, son slug, l'aperçu complet de
-// ses métadonnées, ses tâches cochables, et ce qui lui manque. Tout se lit sans rien
-// ouvrir ; les boutons du pied mènent aux formulaires qui écrivent, et sont les seuls à
-// écrire. Le classement, lui, ne vit plus ici : voir le mode « Changer l'ordre » plus bas,
-// où la carte se réduit à un bandeau porté par ses seules flèches.
+// Une carte par article, dans l'ordre du numéro : nom, aperçu des métadonnées, tâches
+// cochables et constats. Les boutons du pied ouvrent les formulaires, seuls à écrire. Dans
+// le mode « Changer l'ordre », la carte se réduit à un bandeau à flèches.
 function chargeArticles(fournisseur) {
   const racine = fournisseur.racine;
   const langue = langueRevue(racine);
   const interface_ = langueCockpit();
-  // Les cartes tirent leur ton de la même table que la liste « À corriger » : il faut donc
-  // le même contexte, celui qui dit si la validation PDF/UA tourne sur ce poste.
+  // Même contexte que la liste « À corriger » pour le ton des constats (validation PDF/UA
+  // active ou non sur ce poste).
   const contexte = ctx.contexteConstats();
-  // La configuration du poste, lue une fois : elle porte les intitulés des tâches ET les
-  // deux interrupteurs d'affichage de la vue.
+  // La configuration du poste : intitulés des tâches et interrupteurs d'affichage.
   const configPoste = lireConfigPoste();
-  // Ce que les interrupteurs cachent n'est pas envoyé du tout — pas envoyé puis masqué en
-  // CSS : une carte sans tâches et sans traductions est vraiment plus courte, et le message
-  // qui la porte aussi.
+  // Ce que les interrupteurs cachent n'est pas envoyé (plutôt que masqué en CSS).
   const vue = vueArticlesConfig(configPoste);
   const taches = ctx.tachesDuNumero(racine);
-  // Dans le mode « Changer l'ordre », l'ordre affiché est celui qu'on est en train de
-  // composer : rien n'a encore été écrit, ni dans ausgabe.yaml ni sur le disque.
+  // Dans le mode « Changer l'ordre », l'ordre affiché est celui en cours, encore en mémoire.
   const enOrdre = ctx.ordreEnCours(racine);
   const slugs = enOrdre || fournisseur.listerArticles();
   let valeurs = {};
@@ -575,25 +510,20 @@ function chargeArticles(fournisseur) {
   const locale = langueDefaut(valeurs);
   const annee = anneeNumero(racine, valeurs);
   const numeroRevue = String(valeurs.numero || '').trim();
-  // Les fiches sont lues une fois : elles servent au titre, à l'aperçu, et au verdict
-  // « cette rubrique ne reçoit pas de DOI » qui décide de l'ordre.
+  // Fiches lues une fois : titre, aperçu, et rubriques sans DOI (qui décident de l'ordre).
   const metas = {};
   const types = {};
   for (const slug of slugs) {
     metas[slug] = ctx.lireMetaArticle(racine, slug);
     types[slug] = metas[slug].type;
   }
-  // Deux jeux, et la nuance compte pour la case : `voulus` est ce que la rédaction a
-  // coché, `sansDoi` y ajoute les rubriques qui n'en reçoivent jamais. Une case cochée par
-  // la rubrique se montre verrouillée, puisque la décocher ne changerait rien.
+  // `voulus` : les articles cochés « pas de DOI » ; `sansDoi` y ajoute ceux dont la
+  // rubrique n'en reçoit pas. Une case cochée par la rubrique est verrouillée.
   const voulus = new Set(ctx.slugsSansDoiVoulu(racine));
   const sansDoi = ctx.articlesSansDoi(racine, slugs, { types: types, voulus: [...voulus] });
   const citations = citationsParArticle(ctx.constatsCourants(racine));
-  // Le DOI EFFECTIF de chaque article — sa fiche si elle n'est pas vide, sinon le calculé,
-  // exactement ce que collecter() envoie à l'export (lib/export-ojs.js) — calculé pour tous
-  // les articles avant la boucle qui construit les cartes : un doublon se voit des DEUX
-  // côtés, et le second article de la paire n'a pas encore sa carte quand le premier
-  // construit la sienne.
+  // Le DOI effectif de chaque article (celui de la fiche, sinon le calculé, comme collecter()
+  // de lib/export-ojs.js), calculé avant les cartes pour signaler un doublon des deux côtés.
   const effectifs = {};
   for (const slug of slugs) {
     const fiche = String((metas[slug] && metas[slug].doi) || '').trim();
@@ -610,11 +540,8 @@ function chargeArticles(fournisseur) {
   const lignes = slugs.map((slug, index) => {
     const meta = metas[slug];
     const titre = titreFiche(meta, langue);
-    // Le mode « Changer l'ordre » réduit la carte à un bandeau : rien à lire, rien à cocher,
-    // rien à ouvrir — seulement à classer. On ne calcule donc ni l'aperçu, ni le DOI, ni les
-    // constats : ce que la webview ne reçoit pas ne peut pas réapparaître par accident
-    // (media/articles.js, decorerBandeauOrdre). Le nom qui nomme la destination des deux
-    // flèches est le titre de la fiche, jamais le libellé numéroté — « 02 » y figure déjà.
+    // Mode « Changer l'ordre » : la carte n'est qu'un bandeau (decorerBandeauOrdre,
+    // media/articles.js), sans aperçu, DOI ni constats.
     if (enOrdre) { return bandeauOrdre(slug, index, slugs, titre); }
     const faites = ctx.lireTachesArticle(racine, slug).faites;
     const avance = resumeTaches(taches, faites);
@@ -625,64 +552,43 @@ function chargeArticles(fournisseur) {
     // Un DOI qui désigne aussi un autre article : les deux cartes le disent, chacune
     // nommant l'autre.
     const autresMemeDoi = (parDoiEffectif[effectifs[slug]] || []).filter((s) => s !== slug);
-    // Bloquant, et c'est l'export qui le dit : deux articles au même DOI comptent parmi
-    // ses `bloquants` (lib/export-ojs.js, ojs.err.doi.double), rien ne part du tout.
+    // Bloquant : l'export refuse deux articles au même DOI (ojs.err.doi.double).
     if (autresMemeDoi.length > 0) {
       constats.push({ ton: 'danger', texte: T('art.doi.double', [autresMemeDoi[0]]) });
     }
-    // Un article sans titre reste dans la liste, et la carte dit pourquoi elle montre un
-    // slug : la compilation refusera de partir sur cet article, et il faut le savoir ici.
-    // Bloquant aussi, et le message le dit déjà : sans titre dans sa fiche, la compilation
-    // de cet article refuse de partir.
+    // Un article sans titre reste dans la liste, nommé par son slug. Bloquant : sa
+    // compilation est refusée.
     if (titre === '') { constats.unshift({ ton: 'danger', texte: T('art.sansfiche') }); }
     return {
       cle: slug,
-      // Le numéro du DOSSIER, pas le rang dans l'ordre : ce nombre sert à retrouver
-      // l'article dans l'Explorateur de fichiers, il ne doit donc jamais promettre un
-      // rangement que le disque n'a pas. Un dossier sans préfixe n'affiche ni numéro ni
-      // séparateur (libelleArticle) — la carte dit la vérité du disque, trous compris.
+      // Le numéro du dossier, pas le rang dans l'ordre : il sert à retrouver l'article dans
+      // l'Explorateur. Un dossier sans préfixe n'affiche pas de numéro (libelleArticle).
       titre: libelleArticle(prefixeDossier(slug), slug, titre),
-      // Plus de `meta: slug` : le slug redisait dans l'entête ce que le titre numéroté
-      // vient de dire. Il reste l'identifiant technique de l'article — la carte le
-      // porte encore en infobulle du titre, côté webview (media/articles.js), à partir de
-      // `cle` ci-dessus, qui vaut toujours ce même slug.
-      // Pas de bouton « Ouvrir » posé par le composant : il le mettrait en tête du pied,
-      // alors qu'il ferme la série des gestes de la carte. Il est ajouté en dernier dans
-      // `actions` ci-dessous.
+      // Le slug s'affiche en infobulle du titre, à partir de `cle` (media/articles.js).
+      // Le bouton « Ouvrir » est ajouté en dernier dans `actions`, pas en tête par le
+      // composant.
       ouvrir: false,
-      // La langue de l'article, ou celle du numéro quand la fiche n'en déclare pas : c'est
-      // exactement le repli que la compilation applique, donc la langue dans laquelle
-      // l'article paraîtra.
+      // La langue de l'article, sinon celle du numéro : le même repli que la compilation.
       apercu: apercuArticle(meta, interface_, doi.ligne,
         vue.cacherTraductions ? (normaliserLangueArticle(meta.lang) || langue) : ''),
-      // Le quatrième interrupteur : les avertissements sont calculés dans tous les cas — la
-      // frontière du DOI et le refus de déplacement en dépendent ailleurs — mais la carte ne
-      // les reçoit pas quand on a choisi de ne pas les lire.
+      // Les constats sont toujours calculés (la frontière du DOI en dépend), mais ne sont
+      // envoyés que si l'interrupteur les montre.
       constats: vue.cacherConstats ? [] : constats,
-      // La case « pas de DOI ». Verrouillée quand c'est la rubrique qui décide : cocher ou
-      // décocher n'y changerait rien, et un interrupteur sans effet est un mensonge.
+      // La case « pas de DOI », verrouillée quand la rubrique décide.
       sansDoi: {
         coche: sansDoi.has(slug),
         verrouille: !voulus.has(slug) && sansDoi.has(slug)
       },
-      // L'avancement de ses tâches, pour l'entête « À faire » de la carte — jamais en
-      // pastille du pied, qui n'en porte plus aucune (voir le bloc au-dessus de
-      // resumeTachesLigne).
+      // L'avancement des tâches, pour l'entête « À faire ».
       tachesResume: resumeTachesLigne(avance),
-      // Le classement ne se fait plus ici : « Monter »/« Descendre » ont quitté le pied de
-      // la carte complète, et ne vivent plus que dans le bandeau du mode « Changer l'ordre »
-      // (ligne.ordre, ci-dessus) — nulle part ailleurs. L'ordre du pied suit celui du
-      // travail qui reste : remplir les formulaires, envoyer à l'auteur, ouvrir.
+      // Les boutons du pied, dans l'ordre du travail : formulaires, envoi à l'auteur,
+      // ouverture. Le classement se fait dans le mode « Changer l'ordre ».
       actions: [
-        // Les deux formulaires, ouverts sur cet article. Le pied de carte est le seul
-        // endroit d'où l'on écrit : l'aperçu au-dessus ne se modifie pas.
         { id: 'metadonnees', libelle: T('art.meta.editer'), icone: 'info',
           tip: T('art.meta.editer.tip') },
         { id: 'medias', libelle: T('art.medias.editer'), icone: 'camera',
           tip: T('art.medias.editer.tip') },
         { id: 'envoyer', libelle: T('art.envoyer'), icone: 'traduction', tip: T('art.envoyer.tip') },
-        // Ferme la série au lieu de l'ouvrir : c'est le geste qu'on fait après avoir lu la
-        // carte, pas avant.
         { id: 'ouvrir', libelle: T('art.ouvrir'), icone: 'fleche', tip: T('art.ouvrir.tip') }
       ],
       taches: vue.cacherTaches ? [] : taches.map((t) => ({
@@ -693,18 +599,13 @@ function chargeArticles(fournisseur) {
   return {
     titre: T('art.vue.titre'),
     boutons: [
-      // Les quatre interrupteurs d'affichage, LIGNE DU HAUT de la barre : `groupe: 'filtre'`
-      // est le seul contrat qui le dit — media/articles.js répartit `boutons` sur ses deux
-      // lignes selon ce champ, et pose la ligne du bas (les gestes, ci-dessous) avec ce qui
-      // n'en porte pas. Le libellé nomme la chose et ne bouge pas ; c'est `actif` qui dit si
-      // elle est à l'écran — fond plein, oeil ouvert, aria-pressed (voir boutonCommande,
-      // media/_commun.js). Le libellé disait auparavant le geste à venir, ce qui
-      // contredisait le fond dès qu'un fond a existé : il fallait lire les deux pour savoir
-      // où l'on en était. L'infobulle a gardé ce rôle, et elle seule.
+      // Les quatre interrupteurs d'affichage, sur la ligne du haut : media/articles.js range
+      // les boutons `groupe: 'filtre'` en haut, les autres en bas. Le libellé nomme ce qui
+      // s'affiche ; `actif` dit si c'est visible (fond plein, œil ouvert, aria-pressed :
+      // boutonCommande, media/_commun.js). L'infobulle dit ce que fera le clic.
       //
-      // ⚠ La configuration retient ce qui est CACHÉ (cacherTaches…) : `actif` est donc sa
-      //   négation, et non sa valeur. Les recopier telles quelles allumerait exactement les
-      //   quatre boutons dont le contenu ne s'affiche pas.
+      // La configuration retient ce qui est caché (cacherTaches…) : `actif` en est la
+      // négation.
       { id: 'cacher-taches', groupe: 'filtre', actif: !vue.cacherTaches,
         icone: vue.cacherTaches ? 'oeil-ferme' : 'oeil',
         libelle: T('art.taches.bouton'),
@@ -722,53 +623,43 @@ function chargeArticles(fournisseur) {
         libelle: T('art.constats.bouton'),
         tip: T(vue.cacherConstats ? 'art.constats.afficher.tip' : 'art.constats.cacher.tip') }
     ].concat(enOrdre
-      // Dans le mode, la barre ne propose plus que d'en sortir : par le haut ou par le bas.
-      // LIGNE DU BAS (`groupe: 'action'`, comme « Vérifier les méta » ci-dessous) : ce sont
-      // des gestes, jamais des réglages d'affichage — ils gardent leur ligne à eux, que la
-      // vue soit en mode normal ou en mode « Changer l'ordre ».
+      // Dans le mode, la barre ne propose que d'en sortir. Ces boutons sont des actions :
+      // ligne du bas (`groupe: 'action'`).
       ? [{ id: 'ordre-terminer', groupe: 'action', libelle: T('art.ordre.terminer'), icone: 'ok',
            principal: true, tip: T('art.ordre.terminer.tip') },
          { id: 'ordre-annuler', groupe: 'action', libelle: T('art.ordre.annuler'), icone: 'fermer',
            tip: T('art.ordre.annuler.tip') }]
       : [{ id: 'ordre', groupe: 'action', libelle: T('art.ordre.mode'), icone: 'liste',
            tip: T('art.ordre.mode.tip') }])
-      // La feuille de relecture de TOUT le numéro, d'un coup — le pendant du bouton du
-      // formulaire des fiches, qui ne tire que ce qu'il montre. Dernier bouton de la ligne
-      // des ACTIONS (les quatre interrupteurs vivent sur leur propre ligne, `groupe: 'filtre'`
-      // ci-dessus) : ni un réglage d'affichage, ni un geste sur le sommaire, mais
-      // l'aboutissement des deux — on y recourt une fois le numéro monté et relu.
+      // La feuille de vérification de tout le numéro (le formulaire des fiches tire celle
+      // d'un article). Dernier bouton de la ligne des actions.
       //
-      // Absent du mode « Changer l'ordre » : pendant qu'on réordonne, les dossiers sont sur
-      // le point d'être renommés par « Terminer ». Une feuille tirée à ce moment porterait
-      // des slugs et une empreinte déjà périmés au moment où elle sort de l'imprimante —
-      // exactement ce que l'empreinte en pied de feuille est censée empêcher.
+      // Absent du mode « Changer l'ordre » : « Terminer » va renommer les dossiers, et la
+      // feuille porterait des slugs et une empreinte périmés.
       .concat(enOrdre ? [] : [{ id: 'verif-meta', groupe: 'action', libelle: T('verif.bouton'),
                  icone: 'imprimante', tip: T('verif.tous.tip') }])
-      // Les deux gestes de fin de numéro, pendant des boutons du livre. Paginer se retire
-      // d'un numéro gelé, que rafraichirPagination refuse ; l'export OJS y reste.
+      // Les deux actions de fin de numéro. Paginer disparaît sur un numéro gelé
+      // (rafraichirPagination le refuse) ; l'export OJS reste.
       .concat(enOrdre ? [] : boutonsFinNumero()),
     // La page gèle ce qui n'a pas de sens pendant qu'on réordonne.
     ordre: !!enOrdre,
-    // L'aperçu part toujours, même replié : contrairement aux tâches, que l'interrupteur
-    // vide pour de bon, celui-ci ne fait que décider l'état de départ des cartes. Le
-    // chevron de chaque carte reste donc capable d'en déplier une seule, sans aller-retour
-    // avec l'hôte.
+    // L'aperçu est toujours envoyé : l'interrupteur ne fixe que l'état de départ des
+    // cartes, et le chevron de chacune la déplie sans passer par l'hôte.
     metaRepliees: vue.cacherMeta,
     lignes: lignes
   };
 }
 
-// Les seuls types que actionArticle (ci-dessous) sait traiter : la vue Articles s'en sert
-// pour reconnaître un message inconnu avant de l'appeler, plutôt que de laisser un type
-// jamais vu retomber sur « rien à faire » et recharger toute la liste pour rien.
+// Les types de message que traite actionArticle. Un type inconnu est écarté avant, sans
+// recharger la liste.
 const TYPES_ACTION_ARTICLE = [MSG.COMMANDE, MSG.TACHE, MSG.SANSDOI, MSG.ACTION];
 
-// Les gestes de la vue. -> le message à afficher dans la barre, ou null.
+// Les actions de la vue. -> le message à afficher dans la barre, ou null.
 async function actionArticle(fournisseur, rafraichirTout, msg) {
   const racine = fournisseur.racine;
   if (msg.type === MSG.COMMANDE) {
-    // Les trois gestes du livre entier (vue CHAPITRES). Compiler recompose TOUT le livre ;
-    // c'est ici, et par l'aperçu du livre, qu'il se fait — plus au clic d'un chapitre.
+    // Les trois actions sur le livre entier (vue CHAPITRES). Compiler recompose tout le
+    // livre, ce que le clic sur un chapitre ne fait pas.
     if (msg.id === 'livre-compiler') { await ctx.compilerLivre(fournisseur); return null; }
     if (msg.id === 'livre-pdf') { await vscode.commands.executeCommand('szh.apercuLivre'); return null; }
     if (msg.id === 'livre-couverture') { await vscode.commands.executeCommand('szh.livreCouverture'); return null; }
@@ -776,9 +667,8 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
     // Fin de numéro : les commandes gardent leurs propres refus (gel, compilation en cours).
     if (msg.id === 'paginer') { await vscode.commands.executeCommand('szh.rafraichirPagination'); return null; }
     if (msg.id === 'exporter-ojs') { await vscode.commands.executeCommand('szh.exporterXml'); return null; }
-    // Les quatre interrupteurs d'affichage. Réglage de poste et non de numéro — ce qu'on
-    // choisit de lire ne dépend pas du numéro ouvert — donc le verrou du numéro ne s'y
-    // applique pas.
+    // Les quatre interrupteurs d'affichage : un réglage du poste, que le verrou du numéro
+    // n'empêche pas.
     // Le mode « Changer l'ordre ». Entrer et sortir n'écrit rien ; seul « Terminer »
     // renomme, et d'un seul lot.
     if (msg.id === 'ordre') {
@@ -823,19 +713,13 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
     const avance = resumeTaches(taches, faites);
     return { dit: T('art.taches.avancement', [avance.faites, avance.total]),
              avancement: { cle: slug,
-                           // Le compteur de l'entête « À faire » suit la case cochée sans
-                           // reconstruire la carte : reposer la liste entière ferait perdre
-                           // au clavier le focus de la case qu'il vient d'utiliser. Plus de
-                           // pastille à renvoyer avec lui, donc plus de relecture des images
-                           // de l'article à chaque case cochée.
+                           // Seul le compteur de l'entête est mis à jour : reconstruire la
+                           // carte ferait perdre le focus clavier de la case.
                            tachesResume: resumeTachesLigne(avance) } };
   }
-  // La case « pas de DOI » d'un article. Elle décide de deux choses d'un seul coup : que
-  // l'article ne reçoit pas de DOI, et qu'il passe en fin de numéro — donc l'ordre est
-  // réécrit avec elle, sinon le fichier dirait une chose et l'écran une autre.
-  //
-  // C'est l'ordre du numéro qu'elle touche : elle suit donc la même règle que les boutons
-  // de déplacement, refusée sur un numéro archivé et acceptée sur un numéro verrouillé.
+  // La case « pas de DOI » : l'article ne reçoit pas de DOI et passe en fin de numéro,
+  // donc l'ordre est réécrit en même temps. Comme pour les déplacements : refusée sur un
+  // numéro archivé, acceptée sur un numéro verrouillé.
   if (msg.type === MSG.SANSDOI) {
     if (refuserSiArchivee()) { return null; }
     const slug = String(msg.cle || '');
@@ -844,12 +728,10 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
     const voulus = basculerSansDoi(ctx.slugsSansDoiVoulu(racine), slug, !!msg.coche, slugs);
     const modifies = {};
     modifies[CLE_SANS_DOI] = voulus;
-    // L'ordre part avec. listerArticles() applique déjà la règle à la lecture, mais le
-    // fichier doit finir par dire la même chose que l'écran : il se relit à la main, et il
-    // voyage seul sur SharePoint.
+    // L'ordre est écrit aussi : listerArticles() applique la règle à la lecture, mais le
+    // fichier se lit aussi à la main.
     modifies[cleOrdre()] = trierParDoi(slugs, ctx.articlesSansDoi(racine, slugs, { voulus: voulus }));
-    // Un clic isolé ne garde pas de main : il regarde le bail de co-édition et s'abstient
-    // si quelqu'un modifie ausgabe.yaml en ce moment.
+    // Un clic isolé ne prend pas de bail : il s'abstient si quelqu'un modifie ausgabe.yaml.
     const refusBail = refusCoedition(racine, cheminConfig(racine));
     if (refusBail) { return refusBail; }
     const erreur = ctx.ecrireClesAusgabe(racine, modifies);
@@ -863,9 +745,8 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
     await envoyerAuteur(fournisseur, { slug: slug });
     return null;
   }
-  // Les deux formulaires de l'article, ouverts par leur commande et non par leur fonction :
-  // ce sont celles-là qui savent quel panneau réutiliser, et elles portent déjà le refus du
-  // verrou. Rien n'est réécrit ici.
+  // Les deux formulaires de l'article, ouverts par leur commande, qui réutilise le panneau
+  // existant et vérifie le verrou.
   if (msg.id === 'metadonnees') {
     await vscode.commands.executeCommand('szh.metadonneesArticle', { slug: slug });
     return null;
@@ -875,8 +756,7 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
     return null;
   }
   if (msg.id !== 'monter' && msg.id !== 'descendre') { return null; }
-  // Dans le mode, le déplacement ne vit qu'en mémoire : ni ausgabe.yaml ni le disque ne
-  // bougent avant « Terminer ».
+  // Dans le mode, le déplacement reste en mémoire jusqu'à « Terminer ».
   const enOrdre = ctx.ordreEnCours(fournisseur.racine);
   if (enOrdre) {
     ctx.poserModeOrdre({ racine: fournisseur.racine,
@@ -886,35 +766,30 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
   return deplacerUnite(fournisseur, slug, msg.id === 'monter' ? -1 : 1, rafraichirTout);
 }
 
-// Ce que deplacerUnite() a répondu, dans la barre d'état. null veut dire « rien à dire » :
-// on ne le transforme pas en message vide, qui clignoterait pour rien.
+// La réponse de deplacerUnite() dans la barre d'état ; null n'affiche rien.
 function messageDeplacement(message) {
   if (message) { vscode.window.setStatusBarMessage(message, 4000); }
 }
 
-// Déplacer une unité d'un cran dans le sommaire — un article dans son numéro, un chapitre
-// dans son livre. Partagée par la vue en cartes et par le menu contextuel de l'arbre :
-// deux chemins qui écriraient chacun leur ordre finiraient par ne plus dire la même chose.
-// Rend le message à afficher, ou null quand il n'y a rien à dire — être au bout de la
-// liste ne se signale pas, c'est une évidence à l'écran.
+// Déplace une unité d'un cran dans le sommaire (article ou chapitre), pour la vue en
+// cartes et le menu contextuel de l'arbre. Rend le message à afficher, ou null (par
+// exemple en bout de liste).
 function deplacerUnite(fournisseur, slug, delta, rafraichirTout) {
   const racine = fournisseur.racine;
   if (!racine) { return null; }
-  // ⚠ refuserSiArchivee() et non refuserSiVerrouille() : voir la garde elle-même. Un
-  // numéro verrouillé a ses textes figés, mais son sommaire peut encore se décider.
+  // refuserSiArchivee() et non refuserSiVerrouille() : un numéro verrouillé a ses textes
+  // figés, mais son sommaire peut encore changer.
   if (refuserSiArchivee()) { return null; }
   const slugs = fournisseur.listerArticles();
   if (slugs.indexOf(slug) === -1) { return null; }
-  // La règle du tri passe avant le déplacement : franchir la frontière DOI / sans DOI se
-  // refuse en le disant. Sur un livre le jeu est vide — un chapitre n'a pas de DOI — et la
-  // frontière n'existe donc pas.
+  // Un déplacement qui franchit la frontière DOI / sans DOI est refusé, avec un message.
+  // Un livre n'a pas cette frontière.
   const refus = refusDeplacement(slugs, slug, delta, ctx.articlesSansDoi(racine, slugs));
   if (refus === 'frontiere') { return T('art.ordre.frontiere'); }
   if (refus !== '') { return null; }
   const nouveau = deplacerArticle(slugs, slug, delta);
   if (nouveau.join(' ') === slugs.join(' ')) { return null; }   // déjà au bord
-  // La liste entière part dans le fichier de configuration : une liste partielle laisserait
-  // les autres unités à réparer au prochain rendu.
+  // La liste entière est écrite dans le fichier de configuration.
   const modifies = {};
   modifies[cleOrdre()] = nouveau;
   const refusBail = refusCoedition(racine, cheminConfig(racine));
@@ -925,15 +800,12 @@ function deplacerUnite(fournisseur, slug, delta, rafraichirTout) {
   return T('art.ordre.enregistre', [prefixeOrdre(nouveau.indexOf(slug))]);
 }
 
-// Panneau singleton, comme les autres vues : rouvrir la commande révèle celui qui existe,
-// valeurs relues du disque.
+// Panneau unique : rouvrir la commande révèle celui qui existe, valeurs relues du disque.
 async function ouvrirVueArticles(fournisseur, rafraichirTout) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
-  // Ouvrir la vue d'ensemble ferme l'aperçu de la colonne 2 (HTML ou PDF) — on vient
-  // embrasser le numéro, l'article quitté n'a plus à occuper l'écran. Même geste que
-  // la vue Métadonnées. Les rafraîchissements en
-  // tâche de fond passent par envoyerVue, pas par ici : ils ne ferment rien.
+  // Ouvrir la vue ferme l'aperçu de la colonne 2 (HTML ou PDF), comme la vue Métadonnées.
+  // Les rafraîchissements passent par envoyerVue et ne ferment rien.
   await fermerTousLesApercus();
   // Un livre montre ses chapitres et le formulaire de buch.yaml, sans couverture-image ni DOI
   // (chargeChapitres) ; une revue, ses articles et le formulaire du numéro.
@@ -948,10 +820,8 @@ async function ouvrirVueArticles(fournisseur, rafraichirTout) {
     panneau.title = charge.titre;
     noterLectureCoedition(panneau, racine, cheminConfig(racine));
   };
-  // Le formulaire du numéro d'abord : c'est le même code que la page « Méta-données du
-  // numéro », et il répond lui-même au panneau. Aucun bail n'est posé à l'ouverture de
-  // cette vue — elle se consulte, et geler ausgabe.yaml pour une consultation bloquerait
-  // les autres ; il se prend à la première écriture, dans messageNumero.
+  // Le formulaire du numéro d'abord, le même que la page « Méta-données du numéro ». Le bail
+  // sur ausgabe.yaml se prend à la première écriture (messageNumero), pas à l'ouverture.
   const messageVue = async (panneau, msg) => {
     const recharger = () => envoyer(panneau, false);
     // messageLivre rend une promesse pour le dépôt de l'illustration et le bouton « 4e de
@@ -959,22 +829,17 @@ async function ouvrirVueArticles(fournisseur, rafraichirTout) {
     if (livre ? await metadonneesHote.messageLivre(panneau, racine, msg, rafraichirTout, recharger)
       : messageNumero(panneau, racine, msg, rafraichirTout, recharger)) { return; }
     if (msg.type === MSG.OUVRIR) {
-      // Par la commande, pour rester sur le point d'entrée unique. sansApercu : depuis la
-      // vue d'ensemble, on vient lire ou corriger le texte, pas mettre en page ; seul le
-      // .md s'ouvre, sans compilation ni aperçu.
+      // Par la commande. sansApercu : seul le .md s'ouvre, sans compilation ni aperçu.
       await vscode.commands.executeCommand('szh.ouvrirArticle', String(msg.cle || ''),
         { sansApercu: true });
       return;
     }
-    // Un type inconnu ne doit pas tomber dans actionArticle : celui-ci répondrait null, et
-    // envoyer(panneau) plus bas rechargerait la liste entière pour un message qu'elle ne
-    // connaît pas, alors qu'elle n'a rien à en faire.
+    // Un type inconnu n'atteint pas actionArticle, pour ne pas recharger toute la liste.
     if (TYPES_ACTION_ARTICLE.indexOf(msg.type) === -1) {
       console.warn('vue Articles : type de message inconnu', msg.type);
       return;
     }
-    // L'état part après le re-rendu : « valeurs » reconstruit la barre, et donc efface la
-    // zone d'état.
+    // L'état part après le re-rendu, car « valeurs » efface la zone d'état.
     let dit = null;
     let avancement = null;
     try {
@@ -984,9 +849,8 @@ async function ouvrirVueArticles(fournisseur, rafraichirTout) {
       else { dit = reponse; }
     } catch (e) { dit = T('err.commande', [e && e.message ? e.message : String(e)]); }
     if (panneauCourant(VUE) !== panneau) { return; }
-    // Une case cochée ne fait reposer que sa pastille : « valeurs » reconstruirait la liste
-    // entière, et le focus clavier quitterait la case qu'on vient d'utiliser. Dans un outil
-    // dont le sujet est l'accessibilité, cela compte.
+    // Une case cochée ne met à jour que son compteur : « valeurs » reconstruirait la liste
+    // et le focus clavier quitterait la case.
     if (avancement) { repondrePanneau(panneau, Object.assign({ type: MSG.AVANCEMENT }, avancement)); }
     else { envoyer(panneau); }
     if (dit) { repondrePanneau(panneau, { type: MSG.ETAT, message: dit }); }
@@ -994,7 +858,7 @@ async function ouvrirVueArticles(fournisseur, rafraichirTout) {
   const { panneau, nouveau } = panneauUnique({
     viewType: VUE,
     titre: T(livre ? 'chap.vue.titre' : 'art.vue.titre'),
-    // Mode « Trad » : l'état du mode, et le clic détourné — voir repondreModeTrad.
+    // Mode « Trad » : voir repondreModeTrad.
     modeTrad: (panneau, msg) => ctx.repondreModeTrad(panneau, msg),
     html: htmlArticles,
     surPret: (msg, p) => envoyer(p, true),
@@ -1007,36 +871,20 @@ async function ouvrirVueArticles(fournisseur, rafraichirTout) {
 
 // ---- « Envoyer à l'auteur » -----------------------------------------------------
 //
-// Compiler le PDF de l'article, ouvrir un brouillon adressé, et mettre la pièce jointe à un
-// collage près.
+// Compile le PDF de l'article, ouvre un brouillon adressé, et met le PDF au presse-papiers.
 //
-// Trois voies ont été éprouvées sur ce poste (Windows 11 ; le nouvel Outlook est le
-// gestionnaire de `mailto:`, Outlook classique est associé aux .eml) :
+// Le brouillon passe par `mailto:` (ouvert par le nouvel Outlook), qui ne porte pas de
+// pièce jointe. Le PDF est posé au presse-papiers en CF_HDROP (`Set-Clipboard
+// -LiteralPath`) : un Ctrl+V dans le brouillon l'attache. Le corps ne peut pas passer par
+// le même presse-papiers, car Outlook prendrait le fichier et perdrait le texte. Un .eml
+// n'est pas utilisé : Windows n'a pas d'application associée sûre pour l'ouvrir.
 //
-//   1. un .eml déposé sur le disque puis ouvert. Il porte destinataire, sujet, corps et
-//      pièce jointe, et « X-Unsent: 1 » ouvre bien un brouillon modifiable — vérifié. Mais
-//      .eml n'a aucun gestionnaire choisi : Windows affiche « Sélectionnez une application
-//      pour ouvrir ce fichier .eml » et propose les deux Outlook. Le rédacteur doit
-//      deviner ; le nouveau ne sait pas ouvrir un .eml, l'ancien démarre à froid en
-//      cinquante secondes avec ses compléments et ses rappels, dans un client qui n'est pas
-//      celui où il travaille. Écartée : elle réussit ou échoue selon le poste.
-//   2. `mailto:`. Le nouvel Outlook ouvre un brouillon complet — destinataire résolu,
-//      sujet et corps accentués intacts, paragraphes conservés. Sûre, et sans pièce jointe :
-//      un mailto: n'en porte pas.
-//   3. le presse-papiers. `Set-Clipboard -LiteralPath` pose le PDF au format CF_HDROP, et
-//      un seul Ctrl+V dans le brouillon l'attache — vérifié dans le nouvel Outlook. Le
-//      corps ne peut pas voyager sur le même presse-papiers : quand les deux formats y
-//      sont, Outlook prend le fichier et le texte est perdu.
-//
-// Retenue : la 2 pour le brouillon, la 3 pour la pièce jointe. La notification dit au
-// rédacteur qu'il n'a qu'à coller, et propose le dossier du PDF en dernier recours, pour le
-// poste où le presse-papiers serait refusé. Le corps de l'e-mail, lui, ne porte aucune
-// consigne interne : il part tel quel à l'auteur.
+// La notification dit de coller, et propose le dossier du PDF si le presse-papiers est
+// refusé. Le corps de l'e-mail part tel quel à l'auteur.
 
-// Le PDF au presse-papiers comme fichier, ce que vscode.env.clipboard ne sait pas faire :
-// il n'écrit que du texte. Le chemin passe par l'environnement et non par la ligne de
-// commande — aucune citation à échapper, donc aucun chemin à guillemets ou à apostrophe qui
-// casse. -> true si PowerShell est sorti sans erreur.
+// Met le PDF au presse-papiers comme fichier (vscode.env.clipboard n'écrit que du texte).
+// Le chemin passe par une variable d'environnement, pour n'avoir rien à échapper.
+// -> true si PowerShell est sorti sans erreur.
 function copierFichierPressePapiers(chemin) {
   return new Promise((resolve) => {
     let proc;
@@ -1047,9 +895,7 @@ function copierFichierPressePapiers(chemin) {
         { stdio: 'ignore', windowsHide: true,
           env: Object.assign({}, process.env, { SZH_PIECE_JOINTE: chemin }) });
     } catch (e) { resolve(false); return; }
-    // Un PowerShell qui ne rend jamais la main ne doit pas bloquer le brouillon ; et le
-    // minuteur de garde est levé dès qu'il répond, sinon il tiendrait l'hôte d'extensions
-    // éveillé quinze secondes de plus pour rien.
+    // Un minuteur borne l'attente de PowerShell ; il est levé dès que PowerShell répond.
     let minuteur = null;
     let fini = false;
     const rendre = (ok) => {
@@ -1076,15 +922,14 @@ async function envoyerAuteur(fournisseur, cible) {
     vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
     return;
   }
-  // Le PDF d'abord : c'est lui qu'on envoie, et il doit être celui du texte d'aujourd'hui.
+  // Le PDF d'abord, recompilé sur le texte actuel.
   session.poserBuildEnCours(true);
   const statut = vscode.window.setStatusBarMessage(T('art.envoi.compilation', [slug]));
   let code = null;
   try { code = await ctx.lancerTacheObjet(ctx.tacheMakeArticle(racine, slug)); }
   finally { statut.dispose(); session.poserBuildEnCours(false); }
   const pdf = path.join(racine, 'out', slug, slug + '.pdf');
-  // Compilation en échec : un PDF resté de la fois d'avant ne doit pas partir pour la
-  // version du jour. Mieux vaut ne rien préparer que d'envoyer un document périmé.
+  // Compilation en échec : on s'arrête, pour ne pas envoyer un PDF périmé.
   if (code !== 0 || !fs.existsSync(pdf)) {
     vscode.window.showErrorMessage(T('art.envoi.pdf.absent', [slug]));
     return;
@@ -1105,8 +950,8 @@ async function envoyerAuteur(fournisseur, cible) {
   try {
     await vscode.env.openExternal(vscode.Uri.parse(uriMailto(brouillon)));
   } catch (e) {
-    // Aucun client de messagerie, ou refus de l'hôte : le PDF est au presse-papiers, et le
-    // dossier reste la porte de sortie.
+    // Pas de client de messagerie, ou refus de l'hôte : le PDF est au presse-papiers, et
+    // on propose son dossier.
     const bouton = T('art.envoi.dossier');
     const choix = await vscode.window.showWarningMessage(T('art.envoi.mail.echec', [pdf]), bouton);
     if (choix === bouton) { await revelerDansExplorateur(uri); }
@@ -1118,13 +963,8 @@ async function envoyerAuteur(fournisseur, cible) {
   if (choix === bouton) { await revelerDansExplorateur(uri); }
 }
 
-// « Voir le PDF (Explorateur) » : un geste de LECTURE — rien n'est compilé, rien n'est
-// écrit — donc offert même sur un numéro verrouillé ou archivé : c'est justement là qu'on
-// cherche à remettre la main sur un document déjà sorti. Ne montre jamais un chemin qui
-// n'existe pas : un article jamais exporté, ou dont la dernière compilation a échoué, n'a
-// pas de PDF, et révéler un chemin absent ne ferait qu'ouvrir l'Explorateur sur du vide.
-// On se rabat alors sur le dossier out/<slug>/ s'il existe (une compilation en échec y
-// laisse parfois un reste), et à défaut on le dit au rédacteur plutôt que de rester muet.
+// « Voir le PDF (Explorateur) » : lecture seule, donc permis sur un numéro verrouillé ou
+// archivé. Sans PDF, on montre le dossier out/<slug>/ s'il existe, sinon on le dit.
 async function voirPdfArticle(fournisseur, cible) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
@@ -1140,9 +980,8 @@ async function voirPdfArticle(fournisseur, cible) {
   vscode.window.showInformationMessage(T('art.pdf.absent', [slug]));
 }
 
-// Le dossier du PDF, fichier sélectionné. La commande de l'éditeur d'abord ; à défaut, le
-// dossier ouvert par l'hôte — un poste sans intégration Explorateur ne doit pas rester sans
-// pièce jointe.
+// Ouvre le dossier du PDF, fichier sélectionné : par la commande de l'éditeur, sinon par
+// l'hôte (poste sans intégration de l'Explorateur).
 async function revelerDansExplorateur(uri) {
   try { await vscode.commands.executeCommand('revealFileInOS', uri); return; }
   catch (e) { /* pas d'intégration Explorateur */ }

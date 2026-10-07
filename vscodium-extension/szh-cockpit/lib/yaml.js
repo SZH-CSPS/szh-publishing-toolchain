@@ -8,9 +8,8 @@ const path = require('path');
 const crypto = require('crypto');
 const profil = require('./profil');
 
-// Le fichier de configuration du dossier, selon son profil : ausgabe.yaml pour une revue,
-// buch.yaml pour un livre — jamais « ausgabe.yaml » en dur, sinon un livre retombe
-// toujours sur le repli (fichier absent) des fonctions qui lisent l'état du dossier.
+// Le fichier de configuration du dossier selon son profil : ausgabe.yaml pour une revue,
+// buch.yaml pour un livre.
 function cheminConfigDetecte(racine) {
   const p = profil.detecter(racine);
   return path.join(racine, (p && p.config) || 'ausgabe.yaml');
@@ -22,25 +21,20 @@ function cheminConfigDetecte(racine) {
 // les lignes des clés connues ; toute autre ligne — commentaire, clé future — est
 // préservée telle quelle, fins de ligne et BOM compris.
 
-// ⚠ Cette liste est un filtre : `analyserAusgabe` laisse tomber en silence toute clé qui
-//   n'y figure pas. Une clé oubliée ici ne provoque aucune erreur — elle est simplement
-//   lue comme absente, et le geste qui en dépend ne fait rien sans rien dire.
+// Cette liste filtre : `analyserAusgabe` ignore sans erreur toute clé absente d'ici, qui
+// est alors lue comme absente.
 const CLES_METADONNEES = ['title', 'revue', 'volume', 'numero', 'date', 'lang', 'couleur',
   // `id` : identifiant du numéro (docs/FORMAT-DOCUMENTATION-KIRBY.md), 16 caractères
-  // [A-Za-z0-9], posé une seule fois à la première ouverture (voir assurerIdNumero) et
-  // jamais recalculé — c'est lui que les fiches de la bibliothèque partagée portent dans
-  // leur champ Ausgabe pour se rattacher à ce numéro.
+  // [A-Za-z0-9], posé une fois à la première ouverture (assurerIdNumero). Les fiches de la
+  // bibliothèque partagée le portent dans leur champ Ausgabe.
   'id',
   'entete-condensee', 'locked', 'archived', 'version-toolkit', 'ordre-articles',
   'ordre-chapitres', 'articles-sans-doi',
   // ---- buch.yaml : formulaire « Métadonnées du livre » (media/metadata-book.*) ----
-  // `lang` et `couleur`, juste au-dessus, sont déjà communs aux deux profils — un livre les
-  // porte au même niveau qu'un numéro, sous le même nom. Le reste n'existe que dans
-  // buch.yaml. Les six dernières sont des sous-clés de `impression:`, un bloc imbriqué :
-  // `analyserAusgabe` et `serialiserAusgabe` savent lire et réécrire un niveau
-  // d'indentation sous un bloc top-level dont la valeur est vide (voir leur en-tête) — sans
-  // quoi ces six clés, indentées de deux espaces dans le fichier, ne matcheraient jamais la
-  // regex de ligne top-level et tomberaient, elles aussi, en silence.
+  // `lang` et `couleur`, au-dessus, sont communs aux deux profils ; les clés suivantes
+  // n'existent que dans buch.yaml. Les six dernières sont des sous-clés du bloc
+  // `impression:`, lues et écrites sous la forme « impression.<clé> » (voir
+  // analyserAusgabe).
   'titre', 'sous-titre', 'ouvrage', 'maquette', 'format', 'collection', 'tome', 'annee',
   'isbn-print', 'isbn-ebook', 'doi', 'licence',
   // Responsables de l'ouvrage : deux listes de personnes (CLES_PERSONNES), la mention qui
@@ -56,48 +50,39 @@ const CLES_METADONNEES = ['title', 'revue', 'volume', 'numero', 'date', 'lang', 
   'impression.couverture-grammage', 'impression.colle-mm', 'impression.dos-mm',
   'impression.fond-perdu-mm', 'impression.traits-de-coupe', 'impression.profil-cmjn'];
 
-// Les articles du numéro qui ne reçoivent pas de DOI, décidés à la case sur leur carte.
-// Ils vivent ici, à côté de l'ordre, et non dans la fiche de l'article : c'est cette liste
-// qui les range en fin de numéro, et le rang décide du DOI. Une seule ligne dit donc
-// comment tout le numéro est numéroté, et elle se relit à la main.
+// Les articles du numéro sans DOI, cochés sur leur carte. La liste vit ici, à côté de
+// l'ordre, car elle range ces articles en fin de numéro, et le rang décide du DOI.
 const CLE_SANS_DOI = 'articles-sans-doi';
 
-// Clés qui portent une liste et non un scalaire. `ordre-articles` retient l'ordre des
-// articles dans le numéro : il vit ici, avec le reste de ce qui décrit le numéro, et non
-// dans les noms de dossier — déplacer un article ne doit renommer ni dossier ni .md, sans
-// quoi tout out/ serait à recompiler et les liens du numéro tomberaient. Écrite en
-// séquence en ligne, la clé se relit et se corrige à la main, et elle voyage avec le
-// dossier comme le reste d'ausgabe.yaml. lib/articles.js la lit et la répare.
-// `ordre-chapitres` est la même clé pour un livre, dans buch.yaml : même forme, même
-// lecteur, même réparation. Les deux profils ne diffèrent que par le nom.
+// Clés qui portent une liste. `ordre-articles` donne l'ordre des articles du numéro, en
+// séquence en ligne qui se corrige à la main ; lib/articles.js la lit et la répare.
+// `ordre-chapitres` est la même clé pour un livre, dans buch.yaml.
 const CLES_LISTES = ['ordre-articles', 'ordre-chapitres', CLE_SANS_DOI];
 
-// Clés qui portent une liste de personnes (une liste de dicts, au schéma des auteur·e·s des
-// articles) : `auteurs` et `editeurs` de buch.yaml. Écrites en blocs, un dict par « - »,
-// comme dans les modèles du dépôt ; une liste vide s'écrit `[]`.
+// Clés qui portent une liste de personnes (au schéma des auteur·e·s des articles) :
+// `auteurs` et `editeurs` de buch.yaml. Écrites en blocs, un dict par « - » ; une liste
+// vide s'écrit `[]`.
 //   auteurs:
 //   - prenom: "Ada"
 //     nom: "Lovelace"
 const CLES_PERSONNES = ['auteurs', 'editeurs'];
-// Les clés d'une personne, dans l'ordre où elles s'écrivent. Les cinq premières sont
-// toujours écrites ; `ror`, `email` et `photo` seulement si elles portent une valeur. Toute
-// autre clé est ignorée à l'écriture : le schéma est fermé, comme celui des articles.
+// Les clés d'une personne, dans l'ordre d'écriture. Les cinq premières sont toujours
+// écrites ; `ror`, `email` et `photo` seulement si elles ont une valeur. Toute autre clé
+// est ignorée à l'écriture.
 const CHAMPS_PERSONNE = ['prenom', 'nom', 'fonction', 'affiliation', 'orcid', 'ror', 'email', 'photo'];
 const CHAMPS_PERSONNE_FIXES = 5;
 
-// Les jetons d'une séquence en ligne, telle que `ordre-articles` et `articles-sans-doi`
-// l'écrivent : `["a", "b"]` comme le sérialiseur la pose, ou une simple suite séparée par
-// des virgules ou des espaces, ce qu'une correction à la main donne. Doublons et jetons
-// vides partent ; ce qu'est un jeton valide est jugé par l'appelant, seul à savoir ce
-// qu'il attend. Un seul lecteur pour les deux clés : deux se seraient mis à diverger.
+// Les jetons d'une séquence en ligne (`ordre-articles`, `articles-sans-doi`) : `["a", "b"]`
+// comme l'écrit le sérialiseur, ou une suite séparée par des virgules ou des espaces,
+// écrite à la main. Doublons et jetons vides sont retirés ; l'appelant juge la validité.
 function listeYamlEnLigne(valeur) {
   const brut = Array.isArray(valeur)
     ? valeur.join(' ')
     : String(valeur === undefined || valeur === null ? '' : valeur);
   const interieur = brut.trim().replace(/^\[/, '').replace(/\]$/, '');
   const liste = [];
-  // Un jeton citant un espace (« "a b" ») ne doit pas s'y faire couper : la virgule et
-  // l'espace ne séparent qu'hors guillemets, comme dans decouperFlowYaml.
+  // Virgule et espace ne séparent qu'hors guillemets (« "a b" » reste un jeton), comme
+  // dans decouperFlowYaml.
   let courant = '';
   let guillemet = null;
   const pousser = () => {
@@ -128,33 +113,26 @@ function listeYamlEnLigne(valeur) {
   return liste;
 }
 
-// Deux drapeaux indépendants, écrits en booléens YAML nus : `locked` gèle le numéro
-// (éditeur en lecture seule, écritures du cockpit refusées) et `archived` le range dans
-// l'arborescence d'archives (plus de compilation automatique). Désarchiver ne
-// déverrouille pas, et l'inverse.
+// Deux drapeaux indépendants, en booléens YAML nus : `locked` gèle le numéro (éditeur en
+// lecture seule, écritures du cockpit refusées), `archived` le range dans les archives
+// (plus de compilation automatique).
 const CLES_BOOLEENNES = ['entete-condensee', 'locked', 'archived', 'impression.traits-de-coupe',
   'couverture.illustration-plein'];
 
-// Clés numériques : écrites en jeton YAML nu (jamais cité), comme les booléennes — un
-// grammage ou un dos en millimètres cité en chaîne (« "90" ») resterait lisible côté
-// pipeline (Python fait `float("90")` sans broncher) mais s'écarterait sans raison du
-// style que la chaîne écrit elle-même dans buch.yaml. Sanitée à l'écriture (voir
-// formaterValeurYaml) : seuls chiffres, point et signe moins traversent, jamais de guillemet
-// à contourner. Une valeur vide est un jeton nu valide — c'est ainsi que `dos-mm:` dit
-// « pas de valeur imposée » dans buch.yaml, et effacer le champ doit pouvoir la restituer.
+// Clés numériques, écrites en jeton YAML nu comme dans les buch.yaml du dépôt. Seuls
+// chiffres, point et signe moins sont gardés (formaterValeurYaml). Une valeur vide
+// (`dos-mm:`) veut dire « pas de valeur imposée ».
 const CLES_NOMBRES = ['annee', 'impression.grammage', 'impression.main',
   'impression.couverture-volume', 'impression.couverture-grammage', 'impression.colle-mm',
   'impression.dos-mm', 'impression.fond-perdu-mm', 'couverture.fond-teinte',
   'couverture.illustration-x-mm', 'couverture.illustration-y-mm'];
 
-// Clés de buch.yaml qui s'écrivent en jeton nu, comme `lang` : voir l'en-tête de
-// formaterValeurYaml pour le pourquoi (le fichier les écrit toujours ainsi à la main).
+// Clés de buch.yaml écrites en jeton nu, comme `lang` (voir formaterValeurYaml).
 const CLES_JETONS_NUS = ['ouvrage', 'maquette', 'format', 'licence', 'couleur-impression',
   'couverture.fond', 'couverture.modele'];
 
-// Valeurs acceptées comme vraies à la lecture, un ausgabe.yaml pouvant avoir été écrit à
-// la main. Miroir de la table VRAIS de pipeline/filters/szh-maquette.lua, qui décide au
-// rendu ; tout le reste est faux.
+// Valeurs lues comme vraies (un ausgabe.yaml peut être écrit à la main) ; tout le reste
+// est faux. Même table que VRAIS dans pipeline/filters/szh-maquette.lua.
 const VRAIS_YAML = ['true', '1', 'oui', 'ja', 'yes', 'si'];
 function estVraiYaml(valeur) {
   if (valeur === true) { return true; }
@@ -162,11 +140,8 @@ function estVraiYaml(valeur) {
   return VRAIS_YAML.indexOf(v) !== -1;
 }
 
-// ⚠ L'ordre n'est pas cosmétique : c'est lui qui décide de la couleur de l'année suivante
-// (voir couleurAnnuelle, plus bas — l'avance d'un cran se fait dans CET ordre). Réordonner
-// cette liste change donc les couleurs futures des deux revues, pas seulement l'ordre des
-// pastilles à l'écran. L'ordre choisi est l'ordre alphabétique des noms français : Bleu
-// acier, Capucine, Mountbatten, Moutarde, Poireau, Rouge.
+// L'ordre (alphabétique des noms français) décide de la couleur de chaque année
+// (couleurAnnuelle) : le changer change les couleurs futures des deux revues.
 const COULEURS_NUMERO = [
   { cle: 'bleuacier',   hex: '#5F9FBC' },
   { cle: 'capucine',    hex: '#EB5E51' },
@@ -177,12 +152,10 @@ const COULEURS_NUMERO = [
 ];
 const HEX_COULEURS = COULEURS_NUMERO.map((c) => c.hex.toUpperCase());
 
-// La couleur annuelle d'un numéro : elle avance d'un cran (dans l'ordre de COULEURS_NUMERO
-// ci-dessus) à chaque année civile, en bouclant sur les six teintes. Les ancres ci-dessous
-// sont les deux numéros de 2026 réellement parus (Zeitschrift vol. 32, Revue vol. 16),
-// relevés par la rédaction : tout le reste s'en déduit, et il n'y a donc rien à tenir à
-// jour chaque année. Miroir de Get-SzhCouleurPour dans windows/szh-produits.ps1 — un test
-// (test/js/couleur-annuelle.test.js) compare les deux tables.
+// La couleur annuelle d'un numéro avance d'un cran dans COULEURS_NUMERO à chaque année
+// civile, en boucle. Les ancres sont les couleurs de 2026 (Zeitschrift vol. 32, Revue
+// vol. 16). Même table que Get-SzhCouleurPour dans windows/szh-produits.ps1, comparée par
+// test/js/couleur-annuelle.test.js.
 const ANNEE_ANCRE_COULEUR = {
   zeitschrift: { annee: 2026, cle: 'bleuacier' },
   revue:       { annee: 2026, cle: 'poireau' }
@@ -204,8 +177,8 @@ function couleurAnnuelle(revue, annee) {
   return COULEURS_NUMERO[index].hex;
 }
 
-// Jeton canonique de revue -> ISSN et langue par défaut, dérivés et jamais stockés
-// séparément. Miroir de derive_revue() dans pipeline/filters/szh-maquette.lua.
+// Jeton de revue -> ISSN et langue par défaut, non stockés. Même table que derive_revue()
+// dans pipeline/filters/szh-maquette.lua.
 const REVUES = [
   { cle: 'zeitschrift', issn: '2813-4907', langue: 'de' },
   { cle: 'revue',       issn: '2813-4915', langue: 'fr' }
@@ -218,9 +191,8 @@ function normaliserRevue(valeur) {
   return '';
 }
 
-// Échappements d'une chaîne citée YAML : décodés à la lecture (decoderEchappementsYaml),
-// ré-encodés à l'écriture (encoderEchappementsYaml) — les deux sens sont symétriques, si
-// bien qu'un aller-retour répété ne double jamais un antislash déjà posé.
+// Échappements d'une chaîne citée YAML, décodés à la lecture et ré-encodés à l'écriture.
+// Les deux sens sont symétriques : un aller-retour ne double pas les antislashs.
 function decoderEchappementsYaml(s) {
   return s.replace(/\\(u[0-9a-fA-F]{4}|n|t|"|\\)/g, (m, motif) => {
     if (motif.charAt(0) === 'u') { return String.fromCharCode(parseInt(motif.slice(1), 16)); }
@@ -273,8 +245,8 @@ function decouperValeurYaml(reste) {
   return { valeur: reste.slice(0, debutComm).trim(), suite: reste.slice(debutComm).replace(/\s+$/, '') };
 }
 
-// Une chaîne citée qui ne se referme pas sur SA ligne : l'analyseur ligne à ligne ne la
-// voit jamais, et la confond avec un scalaire nu commençant par un guillemet égaré.
+// Vrai pour une chaîne citée qui ne se referme pas sur sa ligne, ce que l'analyseur ligne
+// à ligne ne sait pas lire.
 function citationOuverte(reste) {
   const net = String(reste).trim();
   if (net.charAt(0) === '"') {
@@ -350,8 +322,7 @@ function detecterInfidelitesFrontmatter(lignes) {
   return infidelites;
 }
 
-// Message d'erreur uniforme des trois sérialiseurs : nomme la clé et la raison, jamais un
-// refus muet.
+// Message d'erreur commun aux trois sérialiseurs : la clé et la raison.
 function erreurInfidelite(cle, raison) {
   return new Error('Écriture refusée : la clé « ' + cle + ' » ne peut pas être réécrite '
     + 'fidèlement (' + raison + ').');
@@ -439,31 +410,23 @@ function lignesPersonnes(cle, liste) {
   return lignes;
 }
 
-// Lit un YAML plat, une clé par ligne — ausgabe.yaml comme buch.yaml — avec UN niveau
-// d'imbrication : un bloc top-level ouvre un bloc pour les lignes indentées qui suivent,
-// exposées sous la forme « parent.sous-clé » — c'est ainsi que `impression.grammage` entre
-// dans CLES_METADONNEES, et non comme une clé `grammage` isolée qui collisionnerait avec
-// n'importe quel autre bloc. Le bloc s'ouvre que la ligne du parent porte une valeur ou non :
-// un parent à valeur non vide suivi de lignes indentées est un YAML douteux, mais
-// serialiserAusgabe() doit pouvoir retrouver ce bloc pour y insérer une sous-clé plutôt que
-// d'en créer un second en fin de fichier (voir son en-tête) — la lecture et l'écriture
-// partagent donc la même règle d'ouverture. Le bloc se referme à la première ligne qui n'est
-// pas indentée, reconnue comme top-level ou non : ausgabe.yaml n'a aujourd'hui aucun bloc
-// ambigu de ce genre, ce qui rend ce comportement neutre pour lui.
+// Lit un YAML plat, une clé par ligne (ausgabe.yaml, buch.yaml), avec un niveau
+// d'imbrication : les lignes indentées sous une clé de premier niveau sont exposées en
+// « parent.sous-clé » (par exemple `impression.grammage`). Le bloc s'ouvre même si la ligne
+// du parent porte une valeur, avec la même règle que serialiserAusgabe(), et se referme à
+// la première ligne non indentée.
 //
-// Le BOM éventuel est retiré avant tout découpage en lignes, à l'identique de
-// serialiserAusgabe() (voir plus bas) : un ausgabe.yaml ou buch.yaml enregistré par un
-// éditeur Windows ou par `Out-File` de PowerShell 5.1 le porte, et sans ce retrait la
-// première ligne ne matchait plus la regex de clé (son premier caractère n'étant plus
-// alphanumérique) — la première clé du fichier se lisait alors comme absente, en silence.
+// Le BOM est retiré avant le découpage en lignes : un fichier enregistré par un éditeur
+// Windows ou par `Out-File` de PowerShell 5.1 en porte un, et la première clé ne serait
+// pas reconnue.
 function analyserAusgabe(contenu) {
   const valeurs = {};
   let parentActuel = null;
   const brut = String(contenu);
   const sansBom = brut.charAt(0) === '\uFEFF' ? brut.slice(1) : brut;
   const lignes = sansBom.split(/\r?\n/);
-  // Une clé infidèle n'est jamais rendue : mieux vaut l'absence, honnête, qu'une valeur
-  // qu'on sait fausse (le | d'un scalaire de bloc, lu comme si c'était le texte entier).
+  // Une clé lue de façon infidèle n'est pas rendue (par exemple le « | » d'un scalaire de
+  // bloc, qui n'est pas le texte).
   const infidele = detecterInfidelitesPlat(lignes, (cle) => CLES_METADONNEES.indexOf(cle) !== -1);
   const clesInfideles = new Set(infidele.map((x) => x.cle));
   let i = 0;
@@ -472,8 +435,7 @@ function analyserAusgabe(contenu) {
     const mTop = ligne.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
     if (mTop) {
       parentActuel = mTop[1];
-      // Le dernier gagne, comme YAML : aucune garde de « déjà vu », on écrase à chaque
-      // occurrence rencontrée.
+      // La dernière occurrence l'emporte, comme en YAML.
       if (CLES_METADONNEES.indexOf(mTop[1]) !== -1 && !clesInfideles.has(mTop[1])) {
         if (CLES_PERSONNES.indexOf(mTop[1]) !== -1) {
           const fin = finListePersonnes(lignes, i);
@@ -511,9 +473,8 @@ function analyserAusgabe(contenu) {
         continue;
       }
     }
-    // Ni ligne top-level reconnue, ni sous-clé d'un bloc ouvert : commentaire, item de
-    // séquence (`- prenom: …` d'une liste d'auteurs), ligne inconnue — ignorée ici comme
-    // avant, `serialiserAusgabe` la restitue telle quelle.
+    // Autre ligne (commentaire, item de liste, clé inconnue) : ignorée ici, restituée telle
+    // quelle par serialiserAusgabe.
     i++;
   }
   if (infidele.length > 0) { valeurs._infidele = infidele; }
@@ -522,9 +483,9 @@ function analyserAusgabe(contenu) {
 
 // ---- Frontmatter d'article ----
 //
-// Format antérieur, encore lu et écrit : les métadonnées dans le frontmatter du
-// <slug>.md. Clés gérées : title, subtitle, author, doi, keywords ; tout le reste, corps
-// compris, est préservé mot pour mot.
+// Ancien format, toujours lu et écrit : les métadonnées dans le frontmatter du <slug>.md.
+// Clés gérées : title, subtitle, author, doi, keywords ; tout le reste, corps compris, est
+// préservé.
 
 const CLES_FRONTMATTER = ['title', 'subtitle', 'author', 'doi', 'keywords'];
 
@@ -695,8 +656,8 @@ function lignesCleFrontmatter(cle, valeur) {
 }
 
 // Réécrit le document : les clés gérées de `modifies` sont régénérées à la place de leur
-// première occurrence, les clés absentes ajoutées à la fin, les lignes inconnues
-// restituées telles quelles, et le corps n'est jamais touché. BOM et CRLF préservés.
+// première occurrence, les clés absentes ajoutées à la fin, les lignes inconnues et le
+// corps restitués tels quels. BOM et CRLF préservés.
 function serialiserFrontmatter(texte, modifies) {
   const partie = separerFrontmatter(texte);
   const fmLignes = (partie.fm === null || partie.fm === '') ? [] : partie.fm.split(/\r?\n/);
@@ -741,13 +702,12 @@ function serialiserFrontmatter(texte, modifies) {
 
 // ---- Métadonnées d'article : le fichier <slug>.meta.yaml ----
 //
-// Format en vigueur : le .md ne contient que le texte, et les métadonnées vivent dans
-// articles/<slug>/<slug>.meta.yaml, masqué par files.exclude et édité par le seul
-// formulaire, qui le régénère à chaque enregistrement en restituant les clés inconnues.
-// Pandoc le lit par --metadata-file après ausgabe.yaml, donc l'article surcharge le numéro.
+// Le .md ne contient que le texte ; les métadonnées sont dans articles/<slug>/<slug>.meta.yaml,
+// masqué par files.exclude et régénéré par le formulaire en gardant les clés inconnues.
+// Pandoc le lit par --metadata-file après ausgabe.yaml : l'article l'emporte sur le numéro.
 
-// Deux groupes : liés au dossier, dont le libellé affiché sera le titre du dossier, puis
-// hors dossier. Même ordre que dans szh-maquette.lua.
+// Deux groupes : liés au dossier thématique, puis hors dossier. Même ordre que dans
+// szh-maquette.lua.
 const TYPES_DOSSIER = ['article', 'editorial', 'interview'];
 const TYPES_HORS = ['varia', 'tribune-libre', 'documentation'];
 const TYPES_ARTICLE = TYPES_DOSSIER.concat(TYPES_HORS);
@@ -765,9 +725,8 @@ const GROUPES_TYPES = {
 };
 const LANGUES_META = ['fr', 'de', 'it'];   // fr et de affichées ; it activable par carte
 
-// Langue de l'article : les trois langues de la revue, jamais l'anglais — la maquette
-// (libellés Figure/Tableau, « Résumé », mention de licence) n'existe que dans celles-là.
-// Une fiche sans `lang` retombe sur la langue du numéro, et szh-maquette.lua le dit.
+// Langues d'article possibles : fr, de, it, les seules dont la maquette a les libellés.
+// Une fiche sans `lang` prend la langue du numéro (szh-maquette.lua).
 const LANGUES_ARTICLE = LANGUES_META;
 
 // Jeton de langue d'article accepté : les deux premières lettres, dans la liste. Tout le
@@ -776,28 +735,20 @@ function normaliserLangueArticle(valeur) {
   const v = String(valeur === undefined || valeur === null ? '' : valeur).trim().toLowerCase().slice(0, 2);
   return LANGUES_ARTICLE.indexOf(v) !== -1 ? v : '';
 }
-// Champs d'un auteur, dans l'ordre de sérialisation : analyserMeta et serialiserMeta
-// parcourent cette constante, l'étendre ici suffit aux deux. `photo` est un chemin
-// relatif vers portraits/<slug-auteur>.{original.<ext>|avec-fond.png|sans-fond.png},
-// posé par la modale photo et jamais saisi au clavier.
+// Champs d'un auteur, dans l'ordre d'écriture ; analyserMeta et serialiserMeta suivent
+// cette liste. `photo` est un chemin relatif vers
+// portraits/<slug-auteur>.{original.<ext>|avec-fond.png|sans-fond.png}, posé par la
+// fenêtre de la photo.
 const CHAMPS_AUTEUR = ['prenom', 'nom', 'fonction', 'affiliation', 'ror', 'orcid', 'email', 'photo'];
 
-// Licence d'un article. La revue publie en CC-BY 4.0 : c'est la valeur par défaut, et une
-// fiche sans clé `licence` sort exactement comme avant que ce champ existe — aucun numéro
-// en cours ne bouge.
+// Licence d'un article. Par défaut CC-BY 4.0, la licence de la revue.
 //
-// Le jeu offert est la suite Creative Commons 4.0 au complet, ni plus ni moins : ces six
-// licences sont les seules que Creative Commons publie en 4.0, et un sous-ensemble choisi
-// à la main se rediscuterait à chaque reprise. S'y ajoute « droits réservés », le cas
-// d'un entretien, d'une reprise ou d'une photo d'agence — sans lui, une figure « © Getty »
-// continuerait de sortir sous une couverture CC-BY. Il n'a pas d'URL et on ne lui en
-// fabrique pas : les consommateurs traitent l'absence au lieu de la contourner.
+// Les six licences Creative Commons 4.0, plus « droits réservés » (entretien, reprise,
+// photo d'agence), qui n'a pas d'URL.
 //
-// `nom` est la mention imprimée sur la couverture, dans la graphie de la maison (trait
-// d'union) ; elle est la même dans les trois langues, seule la phrase qui l'entoure est
-// traduite — voir szh-maquette.lua, dont la table est le miroir de celle-ci. `url` est
-// l'adresse du résumé Creative Commons, forme canonique avec barre finale. Les libellés du
-// formulaire, eux, vivent dans lib/i18n.js sous « licence.<clé> ».
+// `nom` est la mention imprimée, identique dans les trois langues (même table dans
+// szh-maquette.lua). `url` est l'adresse du résumé Creative Commons, avec barre finale. Les
+// libellés du formulaire sont dans lib/i18n.js, sous « licence.<clé> ».
 const LICENCE_DEFAUT = 'cc-by-4.0';
 const LICENCES_ARTICLE = [
   { cle: 'cc-by-4.0',       nom: 'CC-BY 4.0',       url: 'https://creativecommons.org/licenses/by/4.0/' },
@@ -809,26 +760,23 @@ const LICENCES_ARTICLE = [
   { cle: 'droits-reserves', nom: '',                url: '' }
 ];
 
-// Jeton de licence accepté, ou '' hors liste — ce qui vaut « non déclarée », donc la
-// licence par défaut. Une valeur de travers ne doit jamais s'imprimer.
+// Jeton de licence accepté, ou '' hors liste (« non déclarée », donc la licence par
+// défaut).
 function normaliserLicence(valeur) {
   const v = String(valeur === undefined || valeur === null ? '' : valeur).trim().toLowerCase();
   for (const l of LICENCES_ARTICLE) { if (l.cle === v) { return v; } }
   return '';
 }
 
-// Chapitre retiré de la table des matières (case du formulaire des fiches, livre
-// seulement) : clé `sommaire: non` du <slug>.meta.yaml — `false` est aussi accepté à la
-// lecture, miroir de CHAPITRES_HORS_SOMMAIRE (pipeline/profils/livre.mk). L'absence de la
-// clé EST le « au sommaire » par défaut ; serialiserMeta n'écrit donc jamais de
-// `sommaire: oui`, seulement `sommaire: non` ou rien.
+// Chapitre hors de la table des matières (livre seulement) : `sommaire: non` dans le
+// <slug>.meta.yaml ; `false` est aussi accepté, comme CHAPITRES_HORS_SOMMAIRE
+// (pipeline/profils/livre.mk). Sans la clé, le chapitre est au sommaire.
 function estHorsSommaire(valeur) {
   const v = String(valeur === undefined || valeur === null ? '' : valeur).trim().toLowerCase();
   return v === 'non' || v === 'false';
 }
 
-// L'entrée à appliquer : celle de la fiche, ou celle par défaut quand la clé est absente
-// ou illisible. Point de passage unique de tout ce qui, côté cockpit, dit une licence.
+// La licence à appliquer : celle de la fiche, sinon celle par défaut.
 function licenceArticle(valeur) {
   const cle = normaliserLicence(valeur) || LICENCE_DEFAUT;
   for (const l of LICENCES_ARTICLE) { if (l.cle === cle) { return l; } }
@@ -855,10 +803,9 @@ function langueRevue(racine) {
 
 // ---- Identifiant du numéro (id) --------------------------------------------------------
 //
-// 16 caractères [A-Za-z0-9], même alphabet que kirby-contenu.js#genererUuid (une fiche et
-// un numéro partagent la même forme d'identifiant, jamais la même valeur). Posé une seule
-// fois, à la première ouverture d'un numéro qui n'en a pas encore — jamais recalculé, jamais
-// changé par un renommage ou un archivage (docs/FORMAT-DOCUMENTATION-KIRBY.md).
+// 16 caractères [A-Za-z0-9], comme kirby-contenu.js#genererUuid. Posé à la première
+// ouverture d'un numéro qui n'en a pas, puis inchangé, même après un renommage ou un
+// archivage (docs/FORMAT-DOCUMENTATION-KIRBY.md).
 const ALPHABET_ID_NUMERO = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 function genererIdNumero() {
   const octets = crypto.randomBytes(16);
@@ -867,8 +814,7 @@ function genererIdNumero() {
   return s;
 }
 
-// idNumero(racine) -> l'id du numéro, ou '' s'il n'en a pas encore (ou fichier illisible —
-// jamais une levée : un numéro sans configuration lisible n'a simplement pas d'id).
+// idNumero(racine) -> l'id du numéro, ou '' s'il n'en a pas ou si le fichier est illisible.
 function idNumero(racine) {
   let valeurs = {};
   try { valeurs = analyserAusgabe(fs.readFileSync(cheminConfigDetecte(racine), 'utf8')); }
@@ -876,11 +822,9 @@ function idNumero(racine) {
   return String(valeurs.id || '');
 }
 
-// assurerIdNumero(racine) -> l'id du numéro, le posant s'il n'en a pas encore (écriture qui
-// préserve tout le reste du fichier, via serialiserAusgabe). '' si le fichier de
-// configuration n'existe pas ou n'est pas lisible : rien à poser, aucune écriture tentée —
-// un livre (buch.yaml, hors de ce champ) ou un dossier hors arborescence ne doit jamais se
-// voir écrire un ausgabe.yaml qu'il n'a pas.
+// assurerIdNumero(racine) -> l'id du numéro, posé s'il manque (par serialiserAusgabe, qui
+// garde le reste du fichier). '' sans ausgabe.yaml lisible : rien n'est écrit, ni pour un
+// livre ni pour un dossier quelconque.
 function assurerIdNumero(racine) {
   const chemin = cheminConfigDetecte(racine);
   let brut;
@@ -897,16 +841,14 @@ function assurerIdNumero(racine) {
 // subtitle:{}, resume:{}, keywords:{}, author:[], _inconnues:[lignes brutes] }. Accepte les
 // maps par langue et les listes en bloc comme en ligne.
 //
-// `horsSommaire` (clé `sommaire:` du fichier, voir estHorsSommaire ci-dessus) ne concerne
-// que les chapitres de livre ; une fiche d'article n'a jamais cette clé, et la lit donc à
-// false comme n'importe quel .meta.yaml d'avant ce champ.
+// `horsSommaire` (clé `sommaire:`, voir estHorsSommaire) ne concerne que les chapitres
+// de livre ; il vaut false pour un article.
 //
-// `source` (le nom du .docx d'origine, posé par l'import) et `licence` sont des clés de
-// première classe : le formulaire des métadonnées reconstruit sa carte depuis la webview,
-// et c'est ecrireCartesArticles() qui relit du fichier ce que la carte ne porte pas.
-// Les cinq clés scalaires d'une fiche, lues sur une seule ligne physique : les seules que
-// analyserMeta puisse juger infidèles (title/subtitle/resume/keywords/author gèrent déjà
-// leur propre lecture sur plusieurs lignes, ce n'est pas une infidélité).
+// `source` (nom du .docx d'origine, posé par l'import) et `licence` sont lues ici ;
+// ecrireCartesArticles() les relit du fichier, car la carte de la webview ne les porte pas.
+// Les cinq clés scalaires d'une fiche, lues sur une seule ligne : les seules qu'analyserMeta
+// puisse juger infidèles (title, subtitle, resume, keywords et author se lisent sur
+// plusieurs lignes).
 const CLES_META_SCALAIRES = ['type', 'lang', 'source', 'licence', 'doi', 'sommaire'];
 
 function analyserMeta(texte) {
@@ -930,14 +872,12 @@ function analyserMeta(texte) {
       if (raison) { infidele.push({ cle: cle, raison: raison }); i++; continue; }
     }
     if (cle === 'type') { valeurs.type = decouperValeurYaml(reste).valeur; i++; continue; }
-    // Langue de l'article, propre à la fiche : elle prime sur la langue du numéro au
-    // rendu. Une valeur hors liste est relue comme non déclarée, jamais imprimée.
+    // Langue de l'article, prioritaire sur celle du numéro. Hors liste : non déclarée.
     if (cle === 'lang') { valeurs.lang = normaliserLangueArticle(decouperValeurYaml(reste).valeur); i++; continue; }
-    // Le Word d'origine : c'est lui qui distingue un redépôt du même fichier d'un
-    // homonyme dont le nom se tronque pareil.
+    // Le Word d'origine : il distingue un redépôt du même fichier d'un homonyme au slug
+    // identique.
     if (cle === 'source') { valeurs.source = decouperValeurYaml(reste).valeur; i++; continue; }
-    // Licence de l'article. Une valeur hors liste est relue comme absente, donc CC-BY 4.0 :
-    // mieux vaut la licence de la revue qu'un jeton inventé imprimé sur la couverture.
+    // Licence de l'article. Hors liste : absente, donc CC-BY 4.0.
     if (cle === 'licence') { valeurs.licence = normaliserLicence(decouperValeurYaml(reste).valeur); i++; continue; }
     if (cle === 'doi') { valeurs.doi = decouperValeurYaml(reste).valeur; i++; continue; }
     if (cle === 'sommaire') { valeurs.horsSommaire = estHorsSommaire(decouperValeurYaml(reste).valeur); i++; continue; }
@@ -1027,15 +967,13 @@ function analyserMeta(texte) {
 
 // serialiserMeta(valeurs) -> YAML régénéré dans l'ordre type, lang, source, licence, doi,
 // sommaire, title, subtitle, resume, keywords, author, puis les clés inconnues. Valeurs
-// vides, langues sans contenu et auteurs vides sont omis. Le même ordre que
-// serialiser_meta() de pipeline/docx-meta.py, qui écrit la fiche à l'import : une fiche
-// enregistrée par le formulaire ne doit pas différer de celle que l'import vient de poser
-// — `sommaire` (livre seulement) n'a pas de pendant côté import DOCX.
+// vides, langues sans contenu et auteurs vides sont omis. Même ordre que serialiser_meta()
+// de pipeline/docx-meta.py, qui écrit la fiche à l'import (`sommaire`, propre aux livres,
+// n'y figure pas).
 function serialiserMeta(valeurs) {
   const v = valeurs || {};
-  // serialiserMeta régénère la fiche entière depuis `v` : une clé infidèle (voir
-  // analyserMeta) n'a jamais eu de valeur fiable à régénérer — mieux vaut refuser
-  // d'écrire que de perdre en silence ce que la lecture n'a pas su comprendre.
+  // La fiche est régénérée en entier : une clé lue de façon infidèle (voir analyserMeta)
+  // ferait perdre son contenu, donc on refuse d'écrire.
   if (Array.isArray(v._infidele) && v._infidele.length > 0) {
     const premiere = v._infidele[0];
     throw erreurInfidelite(premiere.cle, premiere.raison);
@@ -1043,22 +981,21 @@ function serialiserMeta(valeurs) {
   const lignes = [];
   const type = String(v.type || '').trim();
   if (TYPES_ARTICLE.indexOf(type) !== -1) { lignes.push('type: ' + type); }
-  // Jeton nu et non cité : szh-maquette.lua relit cette ligne à part, hors pandoc, pour
-  // savoir si l'article a déclaré sa langue ou s'il suit celle du numéro.
+  // Jeton nu : szh-maquette.lua relit cette ligne hors pandoc pour savoir si l'article
+  // déclare sa langue.
   const langue = normaliserLangueArticle(v.lang);
   if (langue !== '') { lignes.push('lang: ' + langue); }
-  // Le Word d'origine, juste après la langue, là où l'import le pose.
+  // Le Word d'origine, après la langue, comme à l'import.
   const source = String(v.source || '').trim();
   if (source !== '') { lignes.push('source: ' + citerFrontmatter(source)); }
-  // Licence : jeton nu et non cité, comme la langue — szh-maquette.lua relit cette ligne
-  // à part, hors pandoc. Absente, l'article sort sous la licence par défaut de la revue,
-  // et rien ne s'écrit : c'est le cas de toutes les fiches d'avant ce champ.
+  // Licence : jeton nu, relu hors pandoc par szh-maquette.lua. Absente : licence par
+  // défaut, rien n'est écrit.
   const licence = normaliserLicence(v.licence);
   if (licence !== '') { lignes.push('licence: ' + licence); }
   const doi = String(v.doi || '').trim();
   if (doi !== '') { lignes.push('doi: ' + citerFrontmatter(doi)); }
-  // Chapitre hors sommaire : seul le « non » s'écrit, jamais un « sommaire: oui » —
-  // l'absence de la clé vaut déjà « oui » (voir analyserMeta / estHorsSommaire).
+  // Chapitre hors sommaire : seul « sommaire: non » s'écrit ; sans la clé, il est au
+  // sommaire.
   if (v.horsSommaire === true) { lignes.push('sommaire: non'); }
   for (const cle of ['title', 'subtitle', 'resume']) {
     const map = v[cle] || {};
@@ -1107,18 +1044,13 @@ function serialiserMeta(valeurs) {
   return lignes.length > 0 ? lignes.join('\n') + '\n' : '';
 }
 
-// Le premier morceau du titre de la vue : « {Revue|Zeitschrift} {AAAA}/{numero} », SANS le
-// titre du dossier thématique — « Revue » et « Zeitschrift » sont les noms des deux
-// publications, identiques dans les deux langues de l'interface : ce sont des littéraux, pas
-// des libellés traduits (ce module ne charge pas i18n.js). Le nom vient du jeton `revue:`
-// (normaliserRevue) ; s'il manque ou est inconnu, repli sur la langue par défaut, pour qu'un
-// ausgabe.yaml ancien sans cette clé garde un nom. Année et numéro se joignent par une barre
-// oblique ; chaque morceau manquant est omis ; chaîne vide si aucun des deux n'est connu (pas
-// de repli sur le nom du dossier ici — c'est titreNumero(), plus bas, qui le fait).
+// Le début du titre de la vue : « {Revue|Zeitschrift} {AAAA}/{numero} », sans le titre du
+// dossier thématique. « Revue » et « Zeitschrift » sont des noms propres, non traduits. Le
+// nom vient de `revue:` (normaliserRevue), sinon de la langue par défaut. Un morceau
+// manquant est omis ; '' si ni l'année ni le numéro ne sont connus.
 //
-// Réutilisé par titreNumero() ci-dessous ET par l'onglet Archive de la Documentation
-// (documentation-hote.js) pour composer le libellé lisible d'un numéro de rattachement
-// (« Revue 2025/1 ») — la même formule doit valoir aux deux endroits.
+// Utilisé par titreNumero() et par l'onglet Archive de la Documentation
+// (documentation-hote.js), pour le libellé d'un numéro (« Revue 2025/1 »).
 function libelleCourtNumero(racine) {
   let valeurs = {};
   try { valeurs = analyserAusgabe(fs.readFileSync(cheminConfigDetecte(racine), 'utf8')); }
@@ -1127,9 +1059,8 @@ function libelleCourtNumero(racine) {
   const nom = revueCle === 'zeitschrift' ? 'Zeitschrift'
     : revueCle === 'revue' ? 'Revue'
     : (langueDefaut(valeurs) === 'de' ? 'Zeitschrift' : 'Revue');
-  // Année : celle de `date:` si elle y est, sinon celle du nom du dossier (« 2027-03 »).
-  // `date:` est la date de publication, vide jusqu'à la parution ; sans ce repli, la barre
-  // d'un numéro neuf s'annoncerait « Revue /03 ». Même règle que szh-maquette.lua.
+  // Année : celle de `date:`, sinon celle du nom du dossier (« 2027-03 ») : `date:` reste
+  // vide jusqu'à la parution. Même règle que szh-maquette.lua.
   let annee = (String(valeurs.date || '').match(/\d{4}/) || [''])[0];
   if (annee === '') {
     annee = (String(path.basename(racine)).match(/^(\d{4})-\d/) || ['', ''])[1];
@@ -1140,8 +1071,7 @@ function libelleCourtNumero(racine) {
 }
 
 // Titre de la vue : « {Revue|Zeitschrift} {AAAA}/{numero} | {title} ». Chaque morceau
-// manquant est omis, le préfixe seul ne comptant pas ; à défaut, le nom du dossier sert de
-// titre, qui n'est donc jamais vide.
+// manquant est omis ; à défaut, le nom du dossier sert de titre.
 function titreNumero(racine) {
   let valeurs = {};
   try { valeurs = analyserAusgabe(fs.readFileSync(cheminConfigDetecte(racine), 'utf8')); }
@@ -1155,11 +1085,9 @@ function titreNumero(racine) {
   return morceaux.join(' | ');
 }
 
-// État d'un numéro. ausgabe.yaml en est la seule source de vérité : rien n'est mémorisé
-// côté éditeur ni côté poste, si bien qu'un numéro archivé sur OneDrive l'est pour tout le
-// monde et que le dossier reste lisible sans le toolkit. `versionToolkit` est vide pour un
-// numéro antérieur à cette clé, et aucun avertissement de divergence n'est alors affiché.
-// Fichier illisible ou absent : état neutre.
+// État d'un numéro, lu dans ausgabe.yaml seulement : un numéro archivé l'est pour tous les
+// postes. `versionToolkit` vide : pas d'avertissement de divergence de version. Fichier
+// illisible ou absent : état neutre.
 function etatRevue(racine) {
   let valeurs = {};
   try { valeurs = analyserAusgabe(fs.readFileSync(cheminConfigDetecte(racine), 'utf8')); }
@@ -1171,37 +1099,28 @@ function etatRevue(racine) {
   };
 }
 
-// Tout est cité, ce qui met à l'abri des deux-points, dièses, guillemets et accents, sauf
-// `lang` : le Makefile lit cette clé avec un sed qui ne comprend pas les guillemets, d'où
-// un jeton nu restreint à [a-zA-Z-].
+// Tout est cité (deux-points, dièses, guillemets et accents sont ainsi sans danger), sauf
+// `lang` : le Makefile la lit avec un sed qui ne comprend pas les guillemets, d'où un jeton
+// nu restreint à [a-zA-Z-].
 function formaterValeurYaml(cle, valeur) {
   if (cle === 'lang') { return String(valeur).replace(/[^a-zA-Z-]/g, '') || 'fr'; }
-  // Jetons nus de buch.yaml, comme `lang` ci-dessus : les trois exemples du dépôt
-  // (test/livre-normal, test/livre-falc, livre-template) les écrivent tous sans guillemets
-  // à la main — `ouvrage: monographie`, `maquette: normal`, `format: standard`,
-  // `licence: cc-by-nc-nd-4.0` — et pipeline/profils/livre.mk lit `maquette` par un sed qui,
-  // lui, tolère les guillemets (`[\"']*`) mais n'a aucune raison d'en recevoir. Ce
-  // formulaire ne doit pas changer le style du fichier au premier champ touché. Alphabet
-  // plus large que celui de `lang` : une licence porte des chiffres et un point
-  // (« cc-by-4.0 »).
+  // Jetons nus de buch.yaml, comme dans les exemples du dépôt (`maquette: normal`,
+  // `licence: cc-by-nc-nd-4.0`…), pour garder le style du fichier. Alphabet plus large que
+  // celui de `lang` : une licence porte des chiffres et un point.
   if (CLES_JETONS_NUS.indexOf(cle) !== -1) {
     return String(valeur === undefined || valeur === null ? '' : valeur).trim().replace(/[^a-zA-Z0-9.-]/g, '');
   }
-  // Séquence en ligne : une clé par ligne reste la règle du fichier, et la liste se lit
-  // d'un coup d'oeil. Les jetons sont cités, comme partout ailleurs ici.
+  // Séquence en ligne, jetons cités : le fichier garde une clé par ligne.
   if (CLES_LISTES.indexOf(cle) !== -1) {
     const liste = (Array.isArray(valeur) ? valeur : String(valeur === undefined || valeur === null ? '' : valeur).split(/[,\s]+/))
       .map((v) => String(v).trim()).filter((v) => v !== '');
     return '[' + liste.map((v) => '"' + encoderEchappementsYaml(v) + '"').join(', ') + ']';
   }
-  // Les drapeaux s'écrivent en booléen YAML nu, jamais cité : la chaîne « "false" » serait
-  // vraie pour le `$if()$` du gabarit pandoc.
+  // Drapeaux en booléen YAML nu : la chaîne « "false" » serait vraie pour le `$if()$` du
+  // gabarit pandoc.
   if (CLES_BOOLEENNES.indexOf(cle) !== -1) { return estVraiYaml(valeur) ? 'true' : 'false'; }
-  // Nombre nu, comme la chaîne l'écrit elle-même (`grammage: 90`, pas `grammage: "90"`).
-  // Assaini ici, jamais fait confiance : seuls chiffres, point et signe moins traversent —
-  // aucun guillemet à échapper, donc aucune valeur ne peut casser la ligne qui la porte.
-  // Vide est un jeton nu valide (`dos-mm:`) : c'est ainsi qu'un champ effacé redevient
-  // « pas de valeur imposée » plutôt que la chaîne littérale de son ancienne valeur.
+  // Nombre nu (`grammage: 90`). Seuls chiffres, point et signe moins sont gardés : la
+  // ligne ne peut pas être cassée. Vide (`dos-mm:`) veut dire « pas de valeur imposée ».
   if (CLES_NOMBRES.indexOf(cle) !== -1) {
     return String(valeur === undefined || valeur === null ? '' : valeur).trim().replace(/[^0-9.-]/g, '');
   }
@@ -1212,22 +1131,15 @@ function formaterValeurYaml(cle, valeur) {
 // conservant leur commentaire de fin, clés absentes ajoutées à la fin sauf si leur valeur
 // est vide. Aucune autre ligne n'est modifiée.
 //
-// Une clé « parent.sous-clé » (buch.yaml : `impression.grammage`…) suit la même règle, un
-// cran plus bas : sa ligne existante, indentée sous le bloc `parent:`, est réécrite en
-// place ; absente, elle s'insère juste après la dernière ligne connue du bloc — jamais à la
-// toute fin du fichier, où `grammage: 90` perdrait le bloc qui lui donne son sens ; et si le
-// bloc lui-même n'existe pas du tout, il est créé en fin de fichier, avec ses sous-clés.
+// Une clé « parent.sous-clé » (`impression.grammage`…) suit la même règle un cran plus
+// bas : sa ligne indentée sous `parent:` est réécrite en place ; absente, elle s'insère
+// après la dernière ligne du bloc ; si le bloc manque, il est créé en fin de fichier avec
+// ses sous-clés.
 //
-// ⚠ `finBloc` retient toute ligne top-level rencontrée, valeur vide ou non — pas seulement
-// celles qui ouvrent un bloc au sens strict. Un `parent:` à valeur non vide suivi de lignes
-// indentées est un YAML douteux, mais la clé ne doit jamais être dupliquée pour autant : sans
-// cette entrée, une sous-clé manquante de ce bloc ne trouvait pas `finBloc.has(parent)`,
-// tombait dans la branche « bloc absent » (plus bas) et ouvrait un second `parent:` en fin de
-// fichier — le fichier sortait avec deux clés top-level du même nom, l'ancienne gardant ses
-// données orphelines. Décision retenue : le parent douteux est traité comme un bloc, sa
-// valeur d'origine préservée intacte (sa ligne n'est réécrite que si `parent` lui-même,
-// jamais l'une de ses sous-clés, est dans `modifies`) — jamais refusé en silence, jamais
-// dupliqué. analyserAusgabe() lit avec la même règle, pour l'aller-retour.
+// `finBloc` retient toute clé de premier niveau, même si sa ligne porte une valeur : sans
+// cela, une sous-clé ajoutée sous un tel parent créerait un second `parent:` en fin de
+// fichier. La ligne du parent n'est réécrite que si `parent` lui-même est dans `modifies`.
+// analyserAusgabe() lit avec la même règle.
 function serialiserAusgabe(contenu, modifies) {
   const eol = contenu.indexOf('\r\n') !== -1 ? '\r\n' : '\n';
   const bom = contenu.charAt(0) === '\uFEFF' ? '\uFEFF' : '';
@@ -1235,9 +1147,8 @@ function serialiserAusgabe(contenu, modifies) {
   const lignes = corps === '' ? [] : corps.split(/\r?\n/);
   if (lignes.length > 0 && lignes[lignes.length - 1] === '') { lignes.pop(); }
 
-  // Une clé que l'analyse ne lit pas fidèlement ne s'écrit pas non plus : mieux vaut un
-  // échec net, qui nomme la clé et la raison, qu'un fichier réécrit à côté de ce qu'il
-  // contenait vraiment (voir analyserAusgabe et son en-tête).
+  // Une clé que l'analyse ne lit pas fidèlement fait échouer l'écriture, avec la clé et la
+  // raison (voir analyserAusgabe).
   const infidelites = detecterInfidelitesPlat(lignes, (cle) => CLES_METADONNEES.indexOf(cle) !== -1);
   for (const cle of Object.keys(modifies)) {
     const trouve = infidelites.find((inf) => inf.cle === cle);
@@ -1246,9 +1157,8 @@ function serialiserAusgabe(contenu, modifies) {
 
   const restantes = new Set(Object.keys(modifies));
 
-  // Dernière occurrence de chaque clé connue : YAML retient la dernière en cas de
-  // doublon, et la réécriture ne doit plus en laisser qu'une — les occurrences plus
-  // anciennes sont retirées telles quelles, jamais réécrites.
+  // Dernière occurrence de chaque clé connue (celle que YAML retient). Les précédentes sont
+  // retirées.
   const dernierIndex = new Map();
   {
     let parent = null;
@@ -1292,8 +1202,8 @@ function serialiserAusgabe(contenu, modifies) {
         i = j;
         continue;
       }
-      // Liste en blocs : ses « - item » suivent la ligne de clé, valeur propre vide — si
-      // cette clé est réécrite, ils ne survivent pas à la forme en ligne qui les remplace.
+      // Liste en blocs : ses « - item » suivent la ligne de clé. Réécrite en ligne, la clé
+      // les remplace.
       let finBlocListe = i;
       const estPersonnes = CLES_PERSONNES.indexOf(mTop[1]) !== -1;
       if (estPersonnes) { finBlocListe = finListePersonnes(lignes, i) - 1; }
@@ -1348,8 +1258,8 @@ function serialiserAusgabe(contenu, modifies) {
       for (const l of lignesPersonnes(cle, modifies[cle])) { resultat.push(l); }
       continue;
     }
-    // Une liste vide vaut « rien à retenir » : String([]) rend '', et la clé n'est pas
-    // ajoutée. Une clé déjà présente, elle, est réécrite plus haut, vide comprise.
+    // Une liste vide n'est pas ajoutée (String([]) rend '') ; une clé déjà présente est
+    // réécrite plus haut, même vide.
     if (String(modifies[cle]) === '') { continue; }
     const point = cle.indexOf('.');
     if (point === -1) {
@@ -1361,9 +1271,8 @@ function serialiserAusgabe(contenu, modifies) {
     if (finBloc.has(parent)) {
       const pos = finBloc.get(parent) + 1;
       resultat.splice(pos, 0, ligneAj);
-      // Les positions déjà retenues glissent d'une ligne — la sienne y compris, pour qu'une
-      // seconde sous-clé du même bloc s'empile après celle qu'on vient d'insérer, et non à
-      // sa place.
+      // Les positions retenues glissent d'une ligne, celle du bloc comprise : une seconde
+      // sous-clé du même bloc s'insère après la première.
       for (const [autre, idx] of finBloc) { if (idx >= pos) { finBloc.set(autre, idx + 1); } }
     } else if (indexNouveauBloc[parent] !== undefined) {
       nouveauxBlocs[indexNouveauBloc[parent]][1].push(ligneAj);
@@ -1379,11 +1288,9 @@ function serialiserAusgabe(contenu, modifies) {
   return bom + resultat.join(eol) + (resultat.length > 0 ? eol : '');
 }
 
-// Écriture atomique : un temporaire « ~$…‹pid›.‹aléa› » dans le même dossier, préfixe
-// ignoré par la synchro OneDrive, puis rename. Le nom est unique par appel : deux écritures
-// concurrentes du même fichier (deux processus, ou un temporaire orphelin d'un plantage
-// précédent) ne partagent jamais le même temporaire, et le finally ne supprime donc jamais
-// que le sien. Jamais de fichier à moitié écrit.
+// Écriture atomique : un temporaire « ~$…‹pid›.‹aléa› » dans le même dossier (OneDrive
+// ignore le préfixe « ~$ »), puis rename. Le nom est unique par appel : deux écritures
+// concurrentes ne partagent pas de temporaire, et le finally ne supprime que le sien.
 function ecrireAtomique(chemin, contenu) {
   const jeton = process.pid + '.' + Math.random().toString(36).slice(2, 8);
   const tmp = path.join(path.dirname(chemin), '~$' + path.basename(chemin) + '.' + jeton);
