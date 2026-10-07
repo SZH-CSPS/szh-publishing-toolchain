@@ -153,10 +153,12 @@ par format : [`docs/LIMITES-ACCESSIBILITE.md`](docs/LIMITES-ACCESSIBILITE.md).
 - Après toute écriture dans `extension.js`, les ancres `function activate(` et `_pur:`
   doivent être présentes, puis `node --check`.
 - Python seulement dans la WSL, y compris pour les scripts de transformation d'un agent.
-- `tmp/` est un bac à sable non suivi ; seuls `tmp/corpus-relecture/` et
-  `tmp/lexique-sources/` sont lus par des tests.
-- Les incidents qui ont fondé ces règles sont racontés dans
-  [`docs/DEVELOPPEMENT.md`](docs/DEVELOPPEMENT.md), pas ici.
+- `tmp/` est un bac à sable non suivi ; seuls `tmp/corpus-relecture/`,
+  `tmp/lexique-sources/` et `tmp/docx-dev/` sont lus par des tests.
+- Aucune recherche récursive sur OneDrive (`C:\Users\…\OneDrive*`) : Files On-Demand
+  télécharge tout ce qu'on lit. Une consigne d'agent l'interdit en toutes lettres.
+- Les pièges qui fondent ces règles sont listés dans
+  [`docs/DEVELOPPEMENT.md`](docs/DEVELOPPEMENT.md#pièges-à-connaître).
 ## 8. Publier
  
 La procédure est dans [`docs/DEVELOPPEMENT.md`](docs/DEVELOPPEMENT.md) :
