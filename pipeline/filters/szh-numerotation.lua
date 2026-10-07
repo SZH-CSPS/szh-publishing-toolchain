@@ -1,56 +1,44 @@
--- Numérote les figures et les tableaux, pose leur texte alternatif et leurs crédits, en
--- mémoire à la compilation : ni le .md ni tables/*.html ne sont réécrits, l'éditeur du
--- cockpit relisant ces fichiers (un numéro écrit dedans se dupliquerait à chaque build).
--- Deux compteurs indépendants ; sans légende, aucun numéro consommé — « Tableau 3 »
--- désigne le 3ᵉ tableau légendé.
+-- Numérote les figures et les tableaux, et pose leur texte alternatif, leurs crédits et
+-- leur note. Tout se fait en mémoire : le .md et tables/*.html ne sont pas réécrits, car le
+-- cockpit les relit et y retrouverait les numéros.
 --
--- Accessibilité : la légende n'est jamais masquée, l'alt la complète. Sur une figure,
--- <img alt> porte la description et la <figcaption> « Figure N — Légende » plus les
--- crédits, sans ARIA ajouté — la légende différant structurellement de l'alt, pandoc ne
--- repose pas aria-hidden dessus, et c'est un invariant de ce filtre.
--- Crédits : entre parenthèses à la suite du titre, « Figure 3 — Titre (© X | Y) » ; le
--- copyright porte toujours un ©, la source n'a pas d'étiquette.
--- Note : un paragraphe sous la figure ou le tableau, « Note : texte » (seule l'étiquette en
--- italique). HTML : <p class="szh-bloc-note" id="szh-bloc-note-N"> dans la <figure> après
--- l'image, ou juste après </table> — aucun élément HTML n'existe pour cela, et l'id est
--- ajouté à l'aria-describedby de l'<img> ou du <table> pour que le lecteur d'écran la lise
--- avec lui. ⚠ Pas la classe .szh-note : c'est celle des notes de bas de page. alt="" explicite ->
--- image décorative (alt="" + role="presentation"). Sur un tableau, le <caption> porte
--- numéro, légende et crédits ; une description longue (data-alt) devient un
--- aria-describedby vers un élément masqué visuellement, et sans data-alt il n'y a rien,
--- la structure th/scope/colspan se lisant d'elle-même.
+-- Seules les figures et les tableaux qui ont une légende reçoivent un numéro. Figures et
+-- tableaux ont chacun leur compteur.
 --
--- Contrat de format, partagé avec l'éditeur du cockpit. Figure, dans le .md :
---   ![Légende visible](media/x.png){alt="description" copyright="© J. D." source="ESA"
---                                   note="texte de la note"}
---   alt absent -> l'alt reprend la légende ; alt="" -> décorative ; copyright=, source= et
---   note= facultatifs (pandoc 3.5 émet les deux premiers en data-copyright / data-source).
--- Image hors numérotation, dans le .md :
---   ![](media/x.png){.szh-hors-figure alt="description" copyright="© J. D."}
---   légende vide et classe .szh-hors-figure : ni numéro, ni légende visible. Voir la
---   passe dédiée plus bas ; le contrat d'écriture vit dans lib/references.js.
--- Tableau, dans articles/<slug>/tables/table-NN.html, en attributs sur <table> :
---   class="szh-tableau" data-entete-lignes data-alt data-copyright data-source data-note, plus
---   <caption>Légende</caption> ; attributs omis quand vides.
+-- Rendu HTML :
+-- - figure : <img alt> porte la description ; la <figcaption> porte « Figure N — Légende »
+--   suivi des crédits « (© X | Source) » ;
+-- - tableau : la <caption> porte numéro, légende et crédits. Une description longue
+--   (data-alt) va dans un élément masqué visuellement, relié par aria-describedby ;
+-- - note : un paragraphe « Note : texte » sous l'image ou après </table>, de classe
+--   szh-bloc-note (szh-note est réservée aux notes de bas de page), relié lui aussi par
+--   aria-describedby ;
+-- - image décorative (alt="") : un fond CSS, voir en_decor().
 --
--- ⚠ Deux lecteurs, un seul résultat : le lecteur `markdown` (PDF et HTML) consomme
--- l'attribut alt= et le déplace dans la description de l'Image, tandis que `commonmark_x`
--- (aperçu) le laisse dans les attributs. L'alt est donc lu aux deux endroits.
+-- Format d'entrée, partagé avec le cockpit :
+--   figure     ![Légende](media/x.png){alt="description" copyright="© J. D." source="ESA"
+--                                     note="texte de la note"}
+--              sans alt, l'alt reprend la légende ; alt="" rend l'image décorative.
+--   hors numérotation
+--              ![](media/x.png){.szh-hors-figure alt="description" copyright="© J. D."}
+--              ni numéro ni légende (voir lib/references.js).
+--   tableau    dans tables/table-NN.html : <table class="szh-tableau" data-entete-lignes
+--              data-alt data-copyright data-source data-note> et <caption>Légende</caption>.
 --
--- Doit tourner après szh-tabelle-inclure.lua (les tableaux n'existent qu'une fois
--- réinjectés) et après szh-figure.lua (sous commonmark_x, les Figure ne sont construites
--- que là) — voir l'ordre des --lua-filter dans le Makefile.
+-- L'aperçu et le PDF ne lisent pas le .md avec le même lecteur Pandoc : `markdown` (PDF)
+-- déplace alt= dans la description de l'image, `commonmark_x` (aperçu) le laisse dans les
+-- attributs. Le filtre lit donc l'alt aux deux endroits.
+--
+-- S'exécute après szh-tabelle-inclure.lua (qui insère les tableaux) et szh-figure.lua (qui
+-- construit les figures de l'aperçu).
 
 local utils = pandoc.utils
 
--- Module commun (a_classe, trim, contexte) : un chargement raté arrête la compilation, ce
--- filtre ne pouvant plus distinguer une classe, nettoyer un texte ni dire de langue fiable
--- sans lui.
+-- Module commun. Sans lui le filtre ne peut pas travailler : la compilation s'arrête.
 local commun
 do
-  -- debug.getinfo, pas PANDOC_SCRIPT_FILE : ce dernier nomme le script reçu par pandoc en
-  -- ligne de commande, pas celui-ci quand un autre le charge par dofile — voir
-  -- szh-commun.lua.
+  -- debug.getinfo donne le chemin de ce fichier ; PANDOC_SCRIPT_FILE donnerait celui du
+  -- script passé à pandoc, qui peut être un autre.
   local function dossier_ce_fichier()
     local source = debug.getinfo(1, 'S').source
     if source:sub(1, 1) == '@' then source = source:sub(2) end
@@ -67,15 +55,10 @@ do
 end
 
 -- ─── Aperçu du cockpit seulement ─────────────────────────────────────────────
--- SZH_APERCU=1 distingue les deux chaînes, comme dans szh-citations.lua : l'aperçu et le
--- PDF sortent de deux appels à pandoc, et seul l'aperçu porte cette variable.
--- szh-apercu-lecteur-ecran.lua y pose sous chaque image et chaque tableau un encadré
--- montrant ce qu'un lecteur d'écran reçoit. Le fichier n'est même pas ouvert hors aperçu :
--- rien de ce qu'il contient — balisage, classe, règle CSS — ne peut atteindre le PDF.
--- Chargé par dofile plutôt que par require : le Makefile ne pose aucun chemin de recherche
--- Lua aux filtres, et PANDOC_SCRIPT_FILE donne le dossier de celui-ci. Fichier absent ou
--- fautif -> l'aperçu sort sans encadré, jamais en échec : une aide à la relecture ne doit
--- pas empêcher de compiler.
+-- SZH_APERCU=1 n'est posée que pour la compilation de l'aperçu. Dans ce cas,
+-- szh-apercu-lecteur-ecran.lua ajoute sous chaque image et chaque tableau un encadré qui
+-- montre ce qu'un lecteur d'écran reçoit. Hors aperçu, ce fichier n'est pas chargé, et rien
+-- n'en arrive dans le PDF. S'il manque, l'aperçu sort sans encadré.
 local APERCU = (os.getenv('SZH_APERCU') or '') ~= ''
 local lecteur_ecran = nil
 if APERCU then
@@ -90,37 +73,25 @@ if APERCU then
 end
 
 -- ─── Livre : numérotation continue sur tout le volume ───────────────────────
--- Un livre compile chaque chapitre par une invocation pandoc séparée (voir
--- pipeline/profils/livre.mk) : les compteurs n_figure/n_tableau ci-dessous, locaux à
--- cette invocation, repartiraient sinon à zéro à chaque chapitre. Les livres publiés
--- numérotent en continu (« Abbildung 12 » au chapitre 4, pas « Abbildung 1 »).
+-- Chaque chapitre est compilé par un appel séparé à pandoc (pipeline/profils/livre.mk).
+-- Pour que la numérotation continue d'un chapitre à l'autre, chaque chapitre écrit dans
+-- SZH_COMPTEURS (<dossier>/<rang>.txt) le nombre de figures puis de tableaux qu'il a
+-- numérotés. Le chapitre N part de la somme des fichiers des chapitres 1 à N-1.
 --
--- Mécanisme : SZH_COMPTEURS donne le chemin où ce chapitre écrit, en fin de passe, ce
--- qu'il a consommé — deux nombres, figures puis tableaux, un par ligne — et ce chemin
--- suit la convention « <dossier-partagé>/<rang>.txt » (une entrée par chapitre, même
--- dossier). Pour trouver son point de départ, ce chapitre additionne ce que les
--- chapitres 1..SZH_CHAPITRE-1 ont chacun écrit dans leur fichier — pas seulement le
--- précédent, pour rester correct même si l'un d'eux n'a consommé ni figure ni tableau.
--- Hors livre, aucun de ces fichiers n'est ni lu ni écrit.
+-- Si l'un de ces fichiers manque (par exemple quand make ne recompile qu'un chapitre après
+-- un nettoyage de out/), le chapitre le signale et numérote à partir de 1.
 --
--- ⚠ make peut recompiler un seul chapitre. Si le report d'un chapitre précédent manque
--- (dossier de sortie nettoyé entre deux builds, ordre de compilation inhabituel...),
--- impossible de savoir combien de figures ce chapitre absent a réellement consommées :
--- mieux vaut le dire et repartir de 0 (numérotation locale à ce chapitre, comme hors
--- livre) que d'inventer un numéro qui aurait l'air juste sans l'être.
--- Posés par Pandoc(doc), d'après le contexte de composition.
+-- Hors livre, rien n'est lu ni écrit. Les trois valeurs sont posées par Pandoc(doc).
 local LIVRE, CHAPITRE, CHEMIN_COMPTEURS = false, nil, nil
 
--- Livre en maquette normal : le bloc `mise-en-page:` de buch.yaml règle la numérotation
--- (`numeros-figures` : volume, chapitre ou aucun) et la place de la légende des figures
--- (`legende` : dessus ou dessous), lus par commun.mise_en_page. Hors livre normal, les
--- deux valent nil et rien ne change.
+-- Livre en maquette normale : le bloc `mise-en-page:` de buch.yaml règle la numérotation
+-- (`numeros-figures` : volume, chapitre ou aucun) et la place de la légende (`legende` :
+-- dessus ou dessous). Ailleurs, les deux valent nil.
 local NUMEROS_FIGURES, LEGENDE = nil, nil
 -- Classe posée sur une figure dont la légende se lit après l'image (szh-legende-avant.lua).
 local CLASSE_LEGENDE_DESSOUS = 'szh-legende-dessous'
 
--- Dossier contenant CHEMIN_COMPTEURS, sans le séparateur final ; '.' si le chemin ne
--- porte aucun dossier (n'arrive pas en usage réel, seulement en test isolé).
+-- Dossier de CHEMIN_COMPTEURS, sans séparateur final ; '.' si le chemin n'en a pas.
 local function dossier_compteurs()
   return (CHEMIN_COMPTEURS:match('^(.*)[/\\][^/\\]*$')) or '.'
 end
@@ -130,9 +101,8 @@ local function chemin_report(rang)
   return dossier_compteurs() .. '/' .. rang .. '.txt'
 end
 
--- Point de départ des deux compteurs pour ce chapitre : ce que les chapitres 1..CHAPITRE-1
--- ont consommé, chacun dans son propre report. (0, 0) si le mode livre ne fournit pas de
--- quoi le calculer, ou dès qu'un report manque — voir l'avertissement en tête de section.
+-- Point de départ des deux compteurs : la somme des chapitres précédents. Rend (0, 0) hors
+-- livre, en numérotation par chapitre, ou si le fichier d'un chapitre précédent manque.
 local function depart_compteurs()
   if not CHAPITRE or not CHEMIN_COMPTEURS then return 0, 0 end
   if NUMEROS_FIGURES == 'chapitre' then return 0, 0 end
@@ -140,9 +110,8 @@ local function depart_compteurs()
   for rang = 1, CHAPITRE - 1 do
     local chemin = chemin_report(rang)
     local fh = io.open(chemin, 'r')
-    -- Deux lectures séparées : une affectation multiple n'ordonnerait pas forcément ses
-    -- expressions de droite de gauche à droite, or c'est le premier nombre lu qui doit
-    -- être les figures.
+    -- Deux lectures séparées : Lua ne garantit pas l'ordre d'évaluation d'une affectation
+    -- multiple, et le premier nombre est celui des figures.
     local f, t = nil, nil
     if fh then
       f = fh:read('*n')
@@ -161,8 +130,7 @@ local function depart_compteurs()
   return figures, tableaux
 end
 
--- Écrit ce que ce chapitre a consommé (n_figure, n_tableau déjà diminués du point de
--- départ), pour que les chapitres suivants le retrouvent. N'écrit rien hors mode livre.
+-- Écrit le nombre de figures et de tableaux numérotés par ce chapitre. Rien hors livre.
 local function ecrire_compteurs(n_figure, n_tableau)
   if not CHEMIN_COMPTEURS then return end
   local dossier = dossier_compteurs()
@@ -176,22 +144,16 @@ local function ecrire_compteurs(n_figure, n_tableau)
   fh:close()
 end
 
--- Libellés localisés : les trois langues de la maison.
 local LIBELLE_FIGURE  = { fr = 'Figure',  de = 'Abbildung', it = 'Figura' }
 local LIBELLE_TABLEAU = { fr = 'Tableau', de = 'Tabelle',   it = 'Tabella' }
--- Étiquette de la note sous une figure ou un tableau. Le deux-points n'appartient pas à
--- l'étiquette (elle seule est en italique).
+-- Étiquette de la note. Seule l'étiquette est en italique, sans le deux-points.
 local LIBELLE_NOTE    = { fr = 'Note', de = 'Notiz', it = 'Nota' }
--- Ponctuation après l'étiquette : le français exige une espace fine insécable (U+202F)
--- avant le deux-points, pas les trois autres langues.
+-- Le français met une espace fine insécable (U+202F) avant le deux-points.
 local PONCT_NOTE      = { fr = '\u{202F}:', de = ':', it = ':' }
 
--- Séparateur visible : cadratin entouré d'espaces. L'espace de tête est un
--- pandoc.Space (donc sécable), celui de queue est collé au cadratin dans le Span.
 local CADRATIN = '\u{2014}'
--- Le préfixe d'une légende : « Figure 3 — ». En livre normal, « Abbildung 3: », avec la
--- fine insécable du français devant le deux-points (PONCT_NOTE) ; nil pour
--- `numeros-figures: aucun`, la légende restant seule.
+-- Préfixe d'une légende : « Figure 3 — », ou « Abbildung 3: » en livre normal ; nil si
+-- `numeros-figures: aucun`.
 local function prefixe_legende(mot, n, lang)
   if NUMEROS_FIGURES == 'aucun' then return nil end
   if NUMEROS_FIGURES then return mot .. ' ' .. n .. (PONCT_NOTE[lang] or PONCT_NOTE.fr) end
@@ -199,45 +161,36 @@ local function prefixe_legende(mot, n, lang)
 end
 -- Séparateur entre copyright et source dans un crédit.
 local SEP_CREDIT = ' | '
--- Sous un même titre, plusieurs copyrights (ou plusieurs sources) se suivent par une virgule.
+-- Séparateur entre plusieurs copyrights, ou plusieurs sources.
 local SEP_MEME_CHAMP = ', '
--- Classe et préfixe d'id du paragraphe de note ; szh-legende-avant.lua reconnaît la classe.
+-- Classe et préfixe d'id du paragraphe de note (lue aussi par szh-legende-avant.lua).
 local CLASSE_NOTE = 'szh-bloc-note'
-local n_note = 0               -- id unique de chaque note posée dans le document
+local n_note = 0               -- numéro de la dernière note, pour des id uniques
 
--- Classe posée par le cockpit sur une image à ne pas numéroter, et classe posée par ce
--- filtre sur la <figure> qu'il en fait : elle dit à szh-legende-avant.lua que la
--- <figcaption> ne porte qu'un crédit et se lit donc après l'image.
+-- CLASSE_HORS_FIGURE : posée par le cockpit sur une image à ne pas numéroter.
+-- CLASSE_CREDIT_SEUL : posée ici sur la <figure> dont la légende n'est qu'un crédit ;
+-- szh-legende-avant.lua la place alors après l'image.
 local CLASSE_HORS_FIGURE = 'szh-hors-figure'
 local CLASSE_CREDIT_SEUL = 'szh-credit-seul'
 
--- ─── Image décorative : un fond CSS, jamais un <img> ─────────────────────────
--- WeasyPrint 69 balise tout <img> en /Figure et n'y pose un /Alt que si l'attribut alt
--- est non vide. Une image décorative (alt="") sortait donc en /Figure sans /Alt, ce que
--- PDF/UA-1 interdit (règle 7.3) : mesuré à la loupe, role="presentation" et
--- aria-hidden="true" n'y changent rien. Le seul moyen de dire « ce dessin ne porte
--- aucune information » est de ne pas en faire un <img> : un fond CSS n'entre pas dans
--- l'arbre de structure, donc le décor y est absent — c'est exactement ce qu'on veut dire.
--- ⚠ Ne pas revenir à un <img> pour une image décorative : le PDF cesserait d'être
---   conforme, et make verifier-ua le refuserait à l'export.
+-- ─── Image décorative : un fond CSS, pas un <img> ────────────────────────────
+-- WeasyPrint balise tout <img> comme /Figure, et une /Figure sans texte alternatif est
+-- interdite par PDF/UA-1 (règle 7.3). role="presentation" et aria-hidden n'y changent rien.
+-- Une image décorative est donc rendue en fond CSS, qui n'entre pas dans la structure du
+-- PDF.
 --
--- Géométrie, pour que le rendu ne bouge pas d'un pixel : deux <span> imbriqués.
--- L'externe porte la largeur naturelle de l'image, bornée à la colonne par le
--- max-width de print.css ; l'interne porte un padding-top en pourcentage, qui se résout
--- sur la largeur de l'externe et rend donc la même hauteur qu'un <img> à height:auto.
--- WeasyPrint 69 ignore `aspect-ratio` (« unknown property »), d'où le padding.
+-- Rendu : deux <span> imbriqués. L'externe a la largeur naturelle de l'image (bornée par
+-- print.css) ; l'interne a un padding-top en pourcentage, qui donne la hauteur à
+-- proportion. WeasyPrint ne connaît pas `aspect-ratio`.
 --
--- Le url() est écrit dans un <style> ajouté en fin de document, et non dans un
--- attribut style= : `pandoc --embed-resources` remplace les chemins par des data: URI
--- dans les <style> et dans src/href, jamais dans un style= (mesuré). Sans ce détour,
--- le HTML autonome perdrait l'image.
+-- Le url() est écrit dans un <style> en fin de document, car `pandoc --embed-resources`
+-- n'intègre pas les images citées dans un attribut style=.
 local CLASSE_DECOR = 'szh-decor'
 local decors = {}          -- une entrée par image décorative rencontrée
 
 -- Largeur et hauteur naturelles d'une image, en pixels CSS ; nil si elle est illisible.
--- WeasyPrint ignore la résolution déclarée dans le fichier (images.py :
--- get_intrinsic_size divise par `image-resolution`, à 1 par défaut) : les pixels de
--- pandoc.image.size sont donc bien des pixels CSS.
+-- WeasyPrint ignore la résolution inscrite dans le fichier : un pixel de l'image vaut un
+-- pixel CSS.
 local function mesure_image(src)
   local ok, _, contenu = pcall(pandoc.mediabag.fetch, src)
   if not ok or type(contenu) ~= 'string' then return nil end
@@ -249,21 +202,18 @@ local function mesure_image(src)
 end
 
 -- Remplace une image décorative par les deux <span> qui la rendent en fond CSS.
--- Renvoie nil si l'image est illisible : l'appelant garde alors son <img>, un rendu ne
--- doit pas échouer pour un décor. Le PDF sortira non conforme et le dira.
+-- Rend nil si l'image est illisible : l'appelant garde alors le <img>, et le contrôle
+-- PDF/UA le signalera.
 --
--- `garder_largeur` : le décor reprend la largeur déclarée de l'image (width=, p. ex.
--- « 2.85in » posé par l'import Word) au lieu de sa largeur naturelle. Réservé aux images au
--- fil d'un paragraphe (decors_declares, plus bas) : deux photos côte à côte doivent le
--- rester. Les décors d'avant gardent leur largeur naturelle — un numéro déjà compilé ne
--- doit pas changer de mise en page.
+-- `garder_largeur` : reprendre la largeur déclarée (width=, posée par l'import Word) plutôt
+-- que la largeur naturelle. Sert aux images au fil d'un paragraphe, pour que deux photos
+-- côte à côte le restent.
 local function en_decor(img, garder_largeur)
   local largeur, hauteur = mesure_image(img.src)
   if not largeur then return nil end
   local classe = CLASSE_DECOR .. '-' .. (#decors + 1)
   local declaree = garder_largeur and img.attributes['width'] or nil
-  -- Seule une longueur CSS simple passe (chiffres, unité ou %) : la valeur finit dans un
-  -- <style>, rien d'autre n'y entre.
+  -- Seule une longueur CSS simple est acceptée, puisque la valeur est écrite dans un <style>.
   if declaree and not declaree:match('^%d+%.?%d*%a*%%?$') then declaree = nil end
   decors[#decors + 1] = { classe = classe, src = img.src, largeur_css = declaree,
                           largeur = largeur, ratio = 100.0 * hauteur / largeur }
@@ -271,25 +221,8 @@ local function en_decor(img, garder_largeur)
     .. '" role="presentation"><span></span></span>')
 end
 
--- Le <style> des images décoratives, à poser en fin de document. Même spécificité que
--- print.css mais plus loin dans la cascade : ces règles-ci l'emportent.
---
--- Un décor n'est pas un <img> (voir en_decor ci-dessus) : c'est un fond CSS posé par
--- `padding-top` en pourcentage, que `max-height` ne borne pas. Dans une grille, le
--- plafond de hauteur d'une figure (--plafond-figure, socle.css) doit pourtant valoir
--- pour lui aussi, sans quoi un décor en portrait ferait dépasser la page comme une image
--- ordinaire non bornée. Seule une max-width le peut, calculée depuis le plafond de
--- hauteur avec le rapport hauteur/largeur — le diviseur `ratio / 100`, `ratio` étant déjà
--- 100 * hauteur / largeur. `min(100%, …)` est indispensable : sans lui, cette règle
--- (spécificité 0,1,0) remplacerait le `max-width: 100%` de `.szh-decor` (print.css) et un
--- décor large déborderait de la colonne. Une seule formule couvre grille et hors grille :
--- --szh-rangees retombe sur 1 hors grille (posé par szh-grille.lua).
--- Échappement du chemin inséré dans url("…") : le guillemet cassait déjà la chaîne CSS,
--- mais une parenthèse, une apostrophe ou un retour à la ligne dans le nom du fichier
--- (« Bild (1).png », un nom saisi avec une apostrophe) casse tout autant l'analyse du
--- url("…") — la sienne, faite par pandoc --embed-resources pour retrouver le fichier à
--- incorporer, comme celle de tout outil qui relirait ce <style>. Un retour à la ligne, en
--- plus de casser la valeur, romprait la règle CSS elle-même.
+-- Échappe un chemin pour url("…") : guillemets, apostrophes, parenthèses et retours à la
+-- ligne (« Bild (1).png ») casseraient la règle CSS.
 local function echapper_url(s)
   s = s:gsub('"', '%%22')
   s = s:gsub("'", '%%27')
@@ -299,6 +232,12 @@ local function echapper_url(s)
   return s
 end
 
+-- Le <style> des images décoratives, posé en fin de document pour passer après print.css.
+--
+-- Un fond CSS n'est pas borné par max-height. Pour respecter la hauteur maximale d'une
+-- figure (--plafond-figure, socle.css), on borne donc la largeur : plafond divisé par le
+-- rapport hauteur/largeur (`ratio` vaut 100 × hauteur / largeur). min(100%, …) garde aussi
+-- la limite de largeur de la colonne. --szh-rangees vaut 1 hors d'une grille.
 local function style_decors()
   if #decors == 0 then return nil end
   local regles = {}
@@ -318,8 +257,8 @@ local trim = commun.trim
 local slug_article = commun.slug_article
 local function vide(t) return t == nil or t:match('^%s*$') ~= nil end
 
--- Copyright avec son ©. Une valeur qui commence déjà par ©, « Copyright » ou l'entité
--- &copy; est gardée ; un « (c) » ou « (C) » de tête est remplacé par ©.
+-- Ajoute « © » devant un copyright, sauf s'il commence déjà par ©, « Copyright » ou
+-- &copy;. Un « (c) » initial devient ©.
 local function copyright_avec_signe(c)
   c = trim(c)
   local bas = c:lower()
@@ -331,10 +270,9 @@ local function copyright_avec_signe(c)
   return '\u{A9} ' .. c
 end
 
--- Crédit « (© J. Dupont | ESA) », parenthèses comprises. Entrées : la liste des copyrights
--- et celle des sources, déjà dédoublonnées ; l'une ou l'autre peut être vide, les deux vides
--- -> nil, donc pas de parenthèse orpheline. `seul` : le crédit n'accompagne aucun titre (il
--- se lit sous l'image), il sort sans parenthèses (décision de Robin, 30.09.2026).
+-- Crédit « (© J. Dupont | ESA) » à partir des listes de copyrights et de sources ; nil si
+-- les deux sont vides. `seul` : le crédit n'accompagne pas de légende et s'écrit sans
+-- parenthèses.
 local function credit_depuis(copyrights, sources, seul)
   local bouts = {}
   if #copyrights > 0 then bouts[#bouts + 1] = table.concat(copyrights, SEP_MEME_CHAMP) end
@@ -344,17 +282,15 @@ local function credit_depuis(copyrights, sources, seul)
   return '(' .. table.concat(bouts, SEP_CREDIT) .. ')'
 end
 
--- Crédit d'une seule image ou d'un seul tableau. Valeurs reprises telles quelles : texte
--- brut côté figure (pandoc les échappera), déjà échappées côté tableau puisqu'elles
--- sortent d'un attribut HTML.
+-- Crédit d'une image ou d'un tableau. Les valeurs d'un tableau viennent d'un attribut HTML
+-- et sont donc déjà échappées.
 local function texte_credit(copyright, source, seul)
   return credit_depuis(
     vide(copyright) and {} or { copyright_avec_signe(copyright) },
     vide(source) and {} or { trim(source) }, seul)
 end
 
--- Cumul des crédits de plusieurs images (grille) : un copyright ou une source identique ne
--- se répète pas, chaque champ garde l'ordre de première apparition.
+-- Cumul des crédits de plusieurs images (grille), sans doublons, dans l'ordre d'apparition.
 local function nouveau_cumul() return { copyrights = {}, sources = {}, vus = {} } end
 local function cumuler(cumul, img)
   local function ajouter(liste, valeur, cle)
@@ -375,8 +311,7 @@ local function ajouter_describedby(img, id)
   img.attributes['aria-describedby'] = vide(deja) and id or (trim(deja) .. ' ' .. id)
 end
 
--- Découpe un texte brut en Str et Space : les filtres qui suivent (césure) travaillent mot
--- par mot, ce que ne ferait pas une seule Str.
+-- Découpe un texte en mots (Str et Space), pour les filtres suivants comme la césure.
 local function mots(texte)
   local inl = pandoc.Inlines({})
   for mot in texte:gmatch('%S+') do
@@ -386,9 +321,8 @@ local function mots(texte)
   return inl
 end
 
--- Le paragraphe de note d'une figure, en blocs pandoc : <p> et </p> sont du HTML brut
--- autour d'un Plain, seule façon d'obtenir une classe et un id sur un <p> (le lecteur
--- comme le writer ne les gardent que sur div et span).
+-- Le paragraphe de note d'une figure. <p> et </p> sont écrits en HTML brut, car pandoc
+-- ne garde une classe et un id que sur div et span.
 local function bloc_note(texte, id, lang)
   local inl = pandoc.Inlines({
     pandoc.RawInline('html', '<p class="' .. CLASSE_NOTE .. '" id="' .. id .. '">'),
@@ -402,18 +336,15 @@ local function bloc_note(texte, id, lang)
   return pandoc.Plain(inl)
 end
 
--- Le même paragraphe en HTML brut, pour un tableau réinjecté : `texte` sort d'un attribut
--- HTML, il est donc déjà échappé.
+-- Le même paragraphe pour un tableau, en HTML. `texte` est déjà échappé.
 local function html_note(texte, id, lang)
   return '<p class="' .. CLASSE_NOTE .. '" id="' .. id .. '"><span class="' .. CLASSE_NOTE
     .. '-etiquette">' .. (LIBELLE_NOTE[lang] or LIBELLE_NOTE.fr) .. '</span>'
     .. (PONCT_NOTE[lang] or PONCT_NOTE.fr) .. ' ' .. trim(texte) .. '</p>'
 end
 
--- Prend la note d'une image : l'attribut note= est retiré (il ne doit pas ressortir en
--- data-note sur l'<img>), un id lui est attribué et l'image le reçoit en aria-describedby
--- — sauf si elle est décorative, une image sans nom n'ayant rien à se faire décrire.
--- Renvoie (texte, id), ou nil sans note.
+-- Retire l'attribut note= d'une image et lui attribue un id, ajouté à l'aria-describedby de
+-- l'image (sauf image décorative). Rend (texte, id), ou nil sans note.
 local function prendre_note(img)
   local t = img.attributes['note']
   img.attributes['note'] = nil
@@ -424,9 +355,8 @@ local function prendre_note(img)
   return trim(t), id
 end
 
--- Insère le préfixe en tête du premier bloc de la légende (Plain ou Para) ; les blocs
--- suivants d'une légende multi-paragraphes restent intacts. Le préfixe est un Span
--- porteur d'une classe, que print.css graisse ; le texte reste dans le flux.
+-- Insère le préfixe « Figure N — » au début du premier paragraphe de la légende, dans un
+-- Span de classe szh-numero (mis en gras par print.css).
 local function prefixer(blocs, prefixe)
   for i, b in ipairs(blocs) do
     if b.t == 'Plain' or b.t == 'Para' then
@@ -442,8 +372,7 @@ local function prefixer(blocs, prefixe)
   return blocs
 end
 
--- Ajoute les crédits à la fin du dernier bloc de la légende, dans le même élément.
--- Mise en forme dans print.css (.szh-credit).
+-- Ajoute les crédits à la fin du dernier paragraphe de la légende (classe szh-credit).
 local function crediter(blocs, texte)
   local span = pandoc.Span({ pandoc.Str(texte) }, pandoc.Attr('', { 'szh-credit' }, {}))
   for i = #blocs, 1, -1 do
@@ -459,10 +388,9 @@ local function crediter(blocs, texte)
   return blocs
 end
 
--- ─── Tableaux réinjectés en HTML brut ────────────────────────────────────────
--- Ils arrivent en RawBlock('html'), opaques à l'AST : on agit sur le texte, en
--- mémoire ; tables/table-NN.html n'est jamais réécrit.
--- Patterns insensibles à la casse écrits à la main (Lua n'a pas d'option /i).
+-- ─── Tableaux insérés en HTML brut ───────────────────────────────────────────
+-- Ces tableaux arrivent en RawBlock('html') : on modifie leur texte directement.
+-- Lua n'a pas d'option « insensible à la casse », d'où ces motifs.
 local OUVRANTE = '<[cC][aA][pP][tT][iI][oO][nN][^>]*>'
 local FERMANTE = '</[cC][aA][pP][tT][iI][oO][nN]%s*>'
 local TABLE    = '<[tT][aA][bB][lL][eE]([^>]*)>'
@@ -474,14 +402,12 @@ local function attribut(attrs, nom)
       or attrs:match("%s" .. n .. "%s*=%s*'([^']*)'")
 end
 
--- Traite un bloc HTML de tableau. Renvoie (html, numerote), numerote valant true si un
--- numéro a été consommé ; nil si le bloc n'est pas un <table>. L'ordre des insertions
--- compte, chacune décalant ce qui suit : la <caption> d'abord (tout est après le '>' du
--- <table …>, les indices du tag restent valides), puis le tag lui-même (aria-describedby,
--- data-note retiré), puis la note après </table>. `ids` : les ids que le tableau doit
--- référencer en aria-describedby, séparés par une espace (nil sans rien à référencer).
--- `note_html` : le paragraphe de note, posé juste après </table> ; l'élément de description
--- longue, ajouté par l'appelant, vient donc après la note.
+-- Traite le HTML d'un tableau. Rend (html, numerote), où numerote dit si un numéro a été
+-- utilisé ; rend nil si le bloc n'est pas un <table>.
+-- `ids` : les id à ajouter à aria-describedby, séparés par une espace, ou nil.
+-- `note_html` : le paragraphe de note, placé après </table>.
+-- Les modifications se font dans cet ordre, pour que les positions calculées restent
+-- justes : <caption>, puis balise <table>, puis note.
 local function traiter_tableau(html, prefixe, credit, ids, note_html)
   local _, fin_tag, attrs = html:find(TABLE)
   if not fin_tag then return nil end
@@ -494,7 +420,7 @@ local function traiter_tableau(html, prefixe, credit, ids, note_html)
                     and not html:sub(f_ouv + 1, d_ferm - 1):match('^%s*$')
 
   if a_legende then
-    -- numéro en tête de légende, crédits en queue — un seul découpage.
+    -- Numéro au début de la légende, crédits à la fin.
     local queue = credit and (' <span class="szh-credit">' .. credit .. '</span>') or ''
     html = html:sub(1, f_ouv)
         .. (prefixe and ('<span class="szh-numero">' .. prefixe .. '</span> ') or '')
@@ -503,9 +429,8 @@ local function traiter_tableau(html, prefixe, credit, ids, note_html)
         .. html:sub(d_ferm)
     numerote = true
   elseif credit then
-    -- Pas de légende mais des crédits : un crédit est une mention de droits, il ne
-    -- doit pas se perdre. On fabrique une <caption> qui ne porte que le crédit, et
-    -- qui ne consomme aucun numéro puisque le tableau n'est pas légendé.
+    -- Pas de légende mais des crédits : une <caption> qui ne contient que le crédit,
+    -- sans numéro.
     local remplacer = d_ouv ~= nil and d_ferm ~= nil      -- <caption> présente mais vide
     local avant = remplacer and html:sub(1, d_ouv - 1) or html:sub(1, fin_tag)
     local apres = remplacer and html:sub(d_ferm) or html:sub(fin_tag + 1)
@@ -515,8 +440,7 @@ local function traiter_tableau(html, prefixe, credit, ids, note_html)
         .. apres
   end
 
-  -- Le tag : data-note en sort (le texte est rendu plus bas, pas dupliqué en attribut) et
-  -- aria-describedby reçoit les ids, ajoutés à ceux déjà présents, jamais écrasés.
+  -- Balise <table> : retire data-note, ajoute les ids à aria-describedby.
   local tag = html:sub(1, fin_tag)
   tag = tag:gsub('%s+data%-note%s*=%s*"[^"]*"', ''):gsub("%s+data%-note%s*=%s*'[^']*'", '')
   if ids then
@@ -534,7 +458,7 @@ local function traiter_tableau(html, prefixe, credit, ids, note_html)
   html = tag .. html:sub(fin_tag + 1)
 
   if note_html then
-    -- Après le DERNIER </table> du bloc ; sans fermeture (HTML tronqué), en fin de bloc.
+    -- Après le dernier </table> du bloc, ou à la fin s'il n'y en a pas.
     local pos, suivant = nil, 1
     while true do
       local _, f = html:find('</[tT][aA][bB][lL][eE]%s*>', suivant)
@@ -549,16 +473,11 @@ local function traiter_tableau(html, prefixe, credit, ids, note_html)
 end
 
 -- ─── Images hors numérotation ────────────────────────────────────────────────
--- La légende est vide dans le .md, donc aucun lecteur n'en fait de Figure et rien n'est
--- numéroté : il n'y a que le texte alternatif, les crédits et la note à placer. Or un crédit
--- est une mention de droits, il ne doit pas se perdre — comme pour un tableau sans légende.
--- L'image est donc enveloppée dans une <figure> dont la <figcaption> ne porte que le
--- crédit : le lien entre l'image et ses droits reste explicite pour un lecteur d'écran,
--- sans numéro ni légende. Sans crédit ni note à porter, l'image reste un <img> dans son
--- paragraphe, une <figure> sans <figcaption> n'apportant rien. Une note sans crédit donne
--- une <figure> sans <figcaption>, la note après l'image.
+-- Une image de classe szh-hors-figure n'a ni numéro ni légende. Si elle a un crédit ou une
+-- note, elle est placée dans une <figure> dont la <figcaption> ne contient que le crédit,
+-- et la note suit l'image. Sinon elle reste un simple <img>.
 
--- L'image seule d'un Para/Plain, si elle porte la classe ; nil sinon.
+-- L'image seule d'un paragraphe, si elle porte la classe ; nil sinon.
 local function image_hors_figure(b)
   if b.t ~= 'Para' and b.t ~= 'Plain' then return nil end
   local img = nil
@@ -577,25 +496,21 @@ end
 local function hors_numerotation(b, lang)
   local img = image_hors_figure(b)
   if not img then return nil end
-  -- Sans texte alternatif, l'image est décorative : role="presentation" neutralise le
-  -- role="img" que --embed-resources ajoute (même raison que dans la passe principale).
-  -- Avec un alt=, le writer l'émet tel quel, la description de l'Image étant vide.
+  -- Sans texte alternatif, l'image est décorative : role="presentation" remplace le
+  -- role="img" qu'ajoute --embed-resources.
   local credit = texte_credit(img.attributes['copyright'], img.attributes['source'], true)
   local contenu = img
   local a_note = not vide(img.attributes['note'])
   if vide(img.attributes['alt']) then
     img.attributes['alt'] = ''
     img.attributes['role'] = 'presentation'
-    -- Décorative ET créditée : le crédit reste (c'est une mention de droits), mais
-    -- l'image passe en fond CSS, sans quoi la <figure> porterait une /Figure sans /Alt.
-    -- Sans crédit, on laisse la passe principale s'en charger : `en_decor` inscrit une
-    -- règle CSS, l'appeler ici pour rien en laisserait une inutile.
+    -- Décorative avec crédit ou note : fond CSS ici. Sans eux, la passe principale s'en
+    -- charge.
     if credit or a_note then contenu = en_decor(img) or img end
   end
   if not credit and not a_note then return nil end
-  -- La note se prend AVANT d'insérer l'image dans le Plain : pandoc copie l'élément à
-  -- l'insertion, une modification faite ensuite ne l'atteindrait plus. Décor : pas d'<img>
-  -- à décrire (role="presentation"), la note se lit quand même sous l'image.
+  -- La note se lit avant d'insérer l'image dans le Plain, car pandoc copie l'élément à
+  -- l'insertion.
   local texte, id = prendre_note(img)
   local corps = pandoc.Blocks({ pandoc.Plain({ contenu }) })
   if texte then corps:insert(bloc_note(texte, id, lang)) end
@@ -608,30 +523,17 @@ local function hors_numerotation(b, lang)
                        pandoc.Attr('', { CLASSE_CREDIT_SEUL }, {}))
 end
 
--- ─── Constat au rédacteur : figure sans texte alternatif (aperçu seulement) ─────────────
--- Une image dont l'attribut alt est ABSENT (pas alt="", qui est une décision assumée) et
--- dont la légende est vide n'atteint pas un lecteur d'écran : ni la légende (il n'y en a
--- pas) ni l'alt (il n'y en a pas non plus) ne lui donnent de nom. C'est exactement le seul
--- cas rouge de encadre_image() (szh-apercu-lecteur-ecran.lua, l. ~140-173) et celui que
--- imagesSansAlternative() (lib/references.js) refuse à l'export OJS : ce constat le montre
--- ici, à la relecture, plutôt qu'au tout dernier moment où il est encore réparable.
+-- ─── Signalement : image sans texte alternatif (aperçu seulement) ────────────
+-- Une image sans attribut alt et sans légende n'est pas annoncée par un lecteur d'écran.
+-- (alt="" est différent : c'est une image déclarée décorative.) L'export OJS refuse ces
+-- images (imagesSansAlternative() de lib/references.js) ; on les signale dès la relecture.
 --
--- Une seule vérification par image, qu'elle soit dans une Figure ou hors figure : l'alt se
--- lit sur l'Image elle-même dans les deux cas, et sous commonmark_x (la lecture de
--- l'aperçu), la légende d'une image insérée dans une Figure par szh-figure.lua reste sur
--- l'Image (szh-figure.lua ne la vide jamais) — un seul test suffit donc aux deux formes.
---
--- Émis SEULEMENT sous SZH_APERCU, et seulement à cet endroit de Pandoc(doc), juste après
--- l'appel à lecteur_ecran : c'est le seul moment où alt="" (décoratif, voulu) se distingue
--- encore d'un alt absent — les passes suivantes de ce filtre posent alt="" partout où
--- l'alt manque (voir l'avertissement en tête de fichier). Lecture seule : aucune Image
--- n'est modifiée ici, donc aucun effet sur la sortie HTML.
---
--- Un constat par fichier image, jamais par occurrence — même règle que szh-metafichier.lua.
+-- Le contrôle se fait dans l'aperçu, au début de Pandoc(doc), avant que les passes
+-- suivantes ne posent alt="" sur les images qui n'en ont pas. Il ne modifie rien.
+-- Un signalement par fichier image.
 local FIGURES_SANS_ALT_SIGNALEES = {}
 
--- « | » sépare les champs du format à codes : un nom de fichier qui en porterait un
--- couperait la ligne (commun.sans_barre).
+-- Retire « | », qui sépare les champs d'un constat.
 local sans_barre = commun.sans_barre
 
 local function constat_figure_sans_alt(src)
@@ -639,8 +541,6 @@ local function constat_figure_sans_alt(src)
   FIGURES_SANS_ALT_SIGNALEES[src] = true
   local nom = src:match('([^/\\]+)$') or src
   local champ_unite = (LIVRE and 'chapitre « ' or 'article « ') .. slug_article() .. ' »'
-  -- Insécable française devant le deux-points (même caractère que PONCT_NOTE plus
-  -- haut) ; l'allemand suisse colle sa ponctuation haute, donc aucune espace ici.
   commun.constat('numerotation', 'avertissement', 'figure-sans-alt',
     { champ_unite, 'image « ' .. sans_barre(src) .. ' »' },
     sans_barre('L’image ' .. nom .. ' n’a ni texte alternatif ni légende\u{202F}: '
@@ -649,20 +549,14 @@ local function constat_figure_sans_alt(src)
       .. 'Legende: ein Screenreader sagt dazu nichts.'))
 end
 
--- Vrai si `img` n'a ni alt (attribut absent, donc nil — pas alt="") ni légende (caption
--- vide) : le seul cas qu'on signale. Une image alt="" explicite, une image sans alt mais
--- avec légende (l'alt reprend la légende), un décor szh-decor ou un portrait ne matchent
--- jamais ceci — les deux premiers parce que attr n'est pas nil ou que la légende n'est pas
--- vide, les deux derniers parce qu'ils n'existent pas encore comme Image à cet instant
--- (szh-auteurs.lua, qui pose les portraits, tourne après ce filtre ; szh-decor est une
--- sortie de ce filtre-ci, jamais une entrée).
+-- Vrai si `img` n'a ni attribut alt ni légende. Les portraits ne sont pas concernés : ils
+-- sont ajoutés plus tard, par szh-auteurs.lua.
 local function figure_sans_alt(img)
   return img.attributes['alt'] == nil and #img.caption == 0
 end
 
--- ─── Passe unique, dans l'ordre du document ──────────────────────────────────
--- Tout part de Pandoc(doc) : seul point où les métadonnées sont lues avant les blocs
--- (dans un filtre ordinaire, Meta est appelé après eux).
+-- ─── Point d'entrée ─────────────────────────────────────────────────────────
+-- Pandoc(doc) permet de lire les métadonnées avant de parcourir les blocs.
 function Pandoc(doc)
   local contexte = commun.contexte(doc.meta)
   local lang = contexte.lang
@@ -674,21 +568,14 @@ function Pandoc(doc)
   LEGENDE = mep and mep.legende or nil
   local mot_figure  = LIBELLE_FIGURE[lang]  or LIBELLE_FIGURE.fr
   local mot_tableau = LIBELLE_TABLEAU[lang] or LIBELLE_TABLEAU.fr
-  -- Hors livre, depart_compteurs() rend (0, 0) : n_figure/n_tableau partent d'où ils
-  -- partaient déjà, rien ne change.
   local depart_figure, depart_tableau = depart_compteurs()
   local n_figure, n_tableau, n_desc = depart_figure, depart_tableau, 0
 
-  -- Aperçu : les encadrés « lecteur d'écran » avant toute autre passe, sur l'AST encore
-  -- intact. C'est là, et seulement là, que se lit l'intention du rédacteur : un alt=""
-  -- écrit exprès (image décorative) ne se distingue plus d'un alt absent dès que les
-  -- passes ci-dessous ont normalisé, elles posent alt="" dans les deux cas.
+  -- Aperçu : encadrés « lecteur d'écran » et signalements, avant les passes qui posent
+  -- alt="" sur les images sans alt (on ne distinguerait plus un alt vide voulu d'un alt
+  -- absent).
   if lecteur_ecran then doc.blocks = lecteur_ecran.blocs(doc.blocks, lang) end
 
-  -- Constat au rédacteur, à la même place et pour la même raison que l'encadré ci-dessus :
-  -- lecture seule, doc.blocks n'est pas réassigné, donc aucun effet sur la sortie. Le
-  -- résultat du walk est délibérément ignoré (l'effet recherché est le io.stderr:write, pas
-  -- une transformation de l'arbre).
   if APERCU then
     doc.blocks:walk({
       Image = function(img)
@@ -698,24 +585,17 @@ function Pandoc(doc)
     })
   end
 
-  -- Les images hors numérotation d'abord, et dans un walk à part : le walk principal
-  -- visite les Inline avant les Block, l'image y serait déjà passée par le filtre Image
-  -- quand son paragraphe arrive. Les Figure produites ici portent CLASSE_CREDIT_SEUL et
-  -- sont écartées du numérotage plus bas.
+  -- Images hors numérotation, dans un parcours à part : le parcours principal traite les
+  -- images avant leur paragraphe. Les figures créées ici ne seront pas numérotées.
   doc.blocks = doc.blocks:walk({
     Para = function(b) return hors_numerotation(b, lang) end,
     Plain = function(b) return hors_numerotation(b, lang) end,
   })
 
-  -- Images au fil d'un paragraphe (deux photos côte à côte, « ![Bild 1](…){alt=""} ») que
-  -- la rédaction a déclarées décoratives : alt="" EXPLICITE, que le formulaire Médias écrit
-  -- pour « Image purement décorative ». Le texte entre crochets n'y est pas une légende —
-  -- une image au fil du texte n'a pas de <figcaption>, et l'alt explicite remplace ce
-  -- texte dans le HTML. La passe principale ci-dessous ne les rendait pas en décor (elle
-  -- ne regarde que les images sans ce texte) : WeasyPrint en faisait deux /Figure sans /Alt,
-  -- PDF/UA 7.3-1, alors que le cockpit, voyant « Bild 1 », n'en nommait aucune (mesuré sur
-  -- Zeitschrift 2025-02, article 02, 29.09.2026). Seuls les Para : une image seule dans son
-  -- paragraphe est déjà devenue une Figure, dont le contenu est un Plain.
+  -- Images au fil d'un paragraphe déclarées décoratives (« ![Bild 1](…){alt=""} », par
+  -- exemple deux photos côte à côte) : fond CSS, en gardant leur largeur. Le texte entre
+  -- crochets n'est pas une légende ici. Seuls les Para sont concernés : une image seule
+  -- dans son paragraphe est déjà une Figure.
   doc.blocks = doc.blocks:walk({
     Para = function(b)
       local change = false
@@ -735,12 +615,7 @@ function Pandoc(doc)
 
   doc.blocks = doc.blocks:walk({
 
-    -- Image hors figure et sans alt : déclarée décorative. role="presentation" neutralise
-    -- le role="img" que --embed-resources ajoute à toute image devenue data: URI, sans
-    -- lequel le lecteur d'écran annoncerait « image » sans nom. Un alt= explicite non vide
-    -- est respecté tel quel. WeasyPrint 69 ne distingue pas alt="" d'un alt absent : il
-    -- avertit dans les deux cas et produit quand même le PDF/UA-1 — mais avec une
-    -- /Figure sans /Alt, non conforme. D'où le passage en fond CSS (voir en_decor).
+    -- Image hors figure et sans alt : décorative, rendue en fond CSS (voir en_decor).
     Image = function(img)
       if #img.caption == 0 and vide(img.attributes['alt']) then
         img.attributes['alt'] = ''
@@ -751,14 +626,12 @@ function Pandoc(doc)
     end,
 
     Figure = function(fig)
-      -- Figure fabriquée par la passe hors numérotation : sa légende n'est qu'un crédit,
-      -- déjà posé, et elle ne consomme pas de numéro.
+      -- Figure créée par la passe hors numérotation : déjà traitée.
       if a_classe(fig, CLASSE_CREDIT_SEUL) then return nil end
       local legende = utils.stringify(fig.caption.long)
       if legende:match('^%s*$') then
-        -- Sans légende : pas de numéro. Mais un copyright, une source ou une note ne se
-        -- perdent pas (grille sans légende) : ils sortent comme pour une image hors
-        -- numérotation, le crédit en <figcaption> après les images, la note sous elles.
+        -- Sans légende : pas de numéro. Crédits et note sont rendus comme pour une image
+        -- hors numérotation.
         local cumul, note, id_note = nouveau_cumul(), nil, nil
         fig.content = fig.content:walk({
           Image = function(img)
@@ -787,16 +660,12 @@ function Pandoc(doc)
         fig.classes = classes
       end
 
-      -- Une figure peut porter plusieurs images : c'est ce qu'est une grille
-      -- (szh-grille.lua). Chacune a ses droits, et une mention de droits ne se perd pas.
-      -- Les crédits identiques — le cas courant d'une série d'un même photographe — ne se
-      -- répètent pas. Sur une figure à une image, le résultat est exactement l'ancien.
+      -- Une figure peut contenir plusieurs images (grille, szh-grille.lua). Leurs crédits
+      -- sont réunis, sans doublons.
       local cumul, note, id_note = nouveau_cumul(), nil, nil
       fig.content = fig.content:walk({
         Image = function(img)
-          -- L'alt se lit à deux endroits selon le lecteur (voir l'en-tête) : attribut
-          -- alt= sous commonmark_x, description sous markdown, qui a déjà résolu alt=
-          -- ou, à défaut, y a recopié la légende.
+          -- L'alt est dans l'attribut alt= (aperçu) ou dans la description (PDF).
           local attr_alt = img.attributes['alt']
           local alt = attr_alt or utils.stringify(img.caption)
           if vide(alt) then
@@ -805,19 +674,15 @@ function Pandoc(doc)
             img.attributes['alt'] = ''
             img.attributes['role'] = 'presentation'
           elseif attr_alt then
-            -- alt= explicite : il devient la description, seule source de l'attribut
-            -- alt en sortie ; le laisser aussi dans les attributs ferait écrire `alt`
-            -- deux fois par le writer HTML.
+            -- alt= devient la description ; laissé en attribut, il serait écrit deux fois.
             img.caption = pandoc.Inlines({ pandoc.Str(attr_alt) })
             img.attributes['alt'] = nil
             if img.attributes['role'] == 'presentation' then img.attributes['role'] = nil end
           end
-          -- Cas restant (pas d'attribut, description non vide) : le lecteur markdown a
-          -- déjà mis le bon texte dans la description ; le réécrire en pandoc.Str
-          -- aplatirait la mise en forme de la légende. Le numéro n'est jamais ajouté à
-          -- l'alt, la légende n'étant pas masquée.
+          -- Sinon, la description est déjà la bonne ; on la garde telle quelle pour ne
+          -- pas perdre sa mise en forme.
           cumuler(cumul, img)
-          -- La note est une donnée de la figure : celle de la première image qui en porte une.
+          -- La note de la figure est celle de la première image qui en a une.
           if not note then
             note, id_note = prendre_note(img)
           else
@@ -832,8 +697,7 @@ function Pandoc(doc)
       return fig
     end,
 
-    -- Tableau natif pandoc (écrit en markdown avec « : Légende »). Le contrat data-*
-    -- n'existe que pour les tableaux extraits : ici, numéro seul.
+    -- Tableau écrit en Markdown (« : Légende ») : numéro seulement.
     Table = function(tbl)
       if utils.stringify(tbl.caption.long):match('^%s*$') then return nil end
       n_tableau = n_tableau + 1
@@ -842,7 +706,7 @@ function Pandoc(doc)
       return tbl
     end,
 
-    -- Tableau extrait, réinjecté en HTML brut par szh-tabelle-inclure.lua.
+    -- Tableau de tables/, inséré en HTML par szh-tabelle-inclure.lua.
     RawBlock = function(raw)
       if raw.format ~= 'html' and raw.format ~= 'html5' then return nil end
       local _, _, attrs = raw.text:find(TABLE)
@@ -851,8 +715,7 @@ function Pandoc(doc)
       local alt = attribut(attrs, 'data-alt')
       local credit = texte_credit(attribut(attrs, 'data-copyright'),
                                   attribut(attrs, 'data-source'))
-      -- data-alt vide ou absent -> ni aria-describedby, ni élément : la structure du
-      -- tableau se lit d'elle-même.
+      -- data-alt : description longue, reliée par aria-describedby.
       local id_desc = nil
       local ids = {}
       if not vide(alt) then
@@ -860,7 +723,7 @@ function Pandoc(doc)
         id_desc = 'szh-tabelle-desc-' .. n_desc
         ids[#ids + 1] = id_desc
       end
-      -- data-note -> un paragraphe après le tableau, que le tableau référence aussi.
+      -- data-note : paragraphe après le tableau, relié lui aussi.
       local note = attribut(attrs, 'data-note')
       local id_note, note_html = nil, nil
       if not vide(note) then
@@ -880,13 +743,11 @@ function Pandoc(doc)
       end
       if numerote then n_tableau = n_tableau + 1 end
       if id_desc then
-        -- Description longue : élément masqué visuellement — jamais display:none, sinon
-        -- les lecteurs d'écran l'ignoreraient — placé juste après le tableau. Le même
-        -- masquage vaut pour le PDF (partage-filtres.css) : WeasyPrint ne transporte pas
-        -- aria-describedby, mais il balise le texte rogné juste après le /Table.
-        -- <div> et non <p> : le lecteur html de pandoc ne conserve les classes que sur les
-        -- <div> et <span>, et c'est cette classe qui permet à szh-galley-docx.lua de
-        -- retirer le bloc du galley Word.
+        -- Description longue : un <div> après le tableau, masqué visuellement (pas
+        -- display:none, que les lecteurs d'écran ignorent). Dans le PDF, WeasyPrint
+        -- n'utilise pas aria-describedby mais balise ce texte juste après le tableau.
+        -- Un <div> et non un <p>, pour que pandoc garde la classe dont
+        -- szh-galley-docx.lua a besoin.
         html = html .. '\n<div class="szh-description" id="' .. id_desc .. '">'
                     .. alt .. '</div>'
       end
@@ -894,20 +755,17 @@ function Pandoc(doc)
     end,
   })
 
-  -- Les fonds des images décoratives, en un seul <style> de fin de corps : c'est le
-  -- seul endroit où `pandoc --embed-resources` sait remplacer un chemin par un data: URI.
+  -- Le <style> des images décoratives, en fin de document.
   local style = style_decors()
   if style then doc.blocks:insert(style) end
 
-  -- La feuille des encadrés d'aperçu, à côté de la précédente et pour la même raison :
-  -- c'est le seul endroit où elle ne peut pas se retrouver dans la chaîne du PDF.
+  -- Le style des encadrés de l'aperçu.
   if lecteur_ecran then
     local style_le = lecteur_ecran.style()
     if style_le then doc.blocks:insert(style_le) end
   end
 
-  -- Ce que ce chapitre a consommé (au-delà de son point de départ), pour le chapitre
-  -- suivant. N'écrit rien hors mode livre (voir ecrire_compteurs).
+  -- Livre : nombre de figures et de tableaux de ce chapitre, pour le suivant.
   ecrire_compteurs(n_figure - depart_figure, n_tableau - depart_tableau)
 
   return doc

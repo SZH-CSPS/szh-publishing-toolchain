@@ -86,6 +86,11 @@ le dépôt, et où chacun vit :
   ou une application Electron à part.
 ## 4. Texte et formats
  
+- **Documentation et commentaires** : selon [`docs/ECRIRE-LA-DOC.md`](docs/ECRIRE-LA-DOC.md),
+  à relire avant d'en écrire. Dire ce que fait le code, simplement, en français ; ni
+  historique, ni provenance des décisions, ni majuscules d'insistance. Un changement de
+  comportement met à jour, dans le même commit, la doc qui le décrit ; une tâche ouverte va
+  dans `docs/A-FAIRE.md`.
 - Une clé i18n s'ajoute en fr **et** en de. fr et de s'opposent sur l'épicène.
 - Toute surface de texte passe `python3 test/typo-check.py`, dans la WSL, et se corrige par
   `--corriger`. Les règles maison : [`docs/TYPOGRAPHIE.md`](docs/TYPOGRAPHIE.md).
