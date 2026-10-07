@@ -1,18 +1,17 @@
-// Références d'un asset dans le texte d'un article : retrait d'une image ou d'un tableau,
-// et attributs de figure d'une image (seconde moitié du fichier). Tout est pur, sans
+// Références d'une image ou d'un tableau dans le texte d'un article : retrait, attributs de
+// figure, place d'une nouvelle figure, grilles d'images. Fonctions sur du texte, sans
 // disque ni vscode ; les retraits rendent { texte, n }, n comptant les références ôtées.
 //
-// Supprimer un asset ne doit pas laisser un lien mort dans le .md : le rendu afficherait
-// une image cassée, ou le bloc d'avertissement de
-// pipeline/filters/szh-tabelle-inclure.lua pour un tableau. Le retrait suit donc à la
-// lettre les formes que le pipeline écrit :
+// Supprimer un fichier retire aussi ses références, sinon le rendu afficherait une image
+// cassée, ou l'avertissement de pipeline/filters/szh-tabelle-inclure.lua pour un tableau.
+// Formes reconnues, celles qu'écrit le pipeline :
 //   image   ![légende](media/<relatif>)
 //   tableau ::: {.szh-tabelle src="tables/table-NN.html"}\n:::
 'use strict';
 
-// Une image seule sur sa ligne est un paragraphe (implicit_figures) : la ligne vidée doit
-// disparaître, sinon il reste un paragraphe vide. On ne recolle que les blancs devenus
-// adjacents, jamais tout le fichier.
+// Une image seule sur sa ligne est un paragraphe (implicit_figures) : la ligne vidée
+// disparaît, sinon il resterait un paragraphe vide. Seuls les blancs devenus adjacents sont
+// fusionnés.
 function retirerLignesVidees(lignes, videes) {
   const resultat = [];
   for (let i = 0; i < lignes.length; i++) {
@@ -31,17 +30,14 @@ function retirerLignesVidees(lignes, videes) {
   return resultat;
 }
 
-// Ouverture « ::: {…} » et fermeture « ::: » d'un « fenced div » pandoc, seules formes
-// que le toolkit écrit. Partagées avec lib/formatting.js : une seule définition de ce
-// qu'est un bloc, sinon le retrait d'un tableau et la pose d'un bloc de classe
-// finiraient par voir des lignes différentes.
+// Ouverture « ::: {…} » et fermeture « ::: » d'un bloc pandoc (« fenced div »), seules
+// formes que le toolkit écrit. Partagées avec lib/formatting.js.
 const RE_DIV_OUVERTURE = /^\s*:::+\s*\{([^}]*)\}\s*$/;
 const RE_DIV_FERMETURE = /^\s*:::+\s*$/;
 
-// Fermeture du div ouvert à la ligne `ouverture` : l'indice de sa ligne « ::: », ou -1.
-// À chercher avant de toucher quoi que ce soit : un bloc laissé ouvert à la main ne doit
-// pas emporter la suite de l'article. La recherche s'arrête au début du bloc suivant,
-// même mal formé — d'où le préfixe « ::: { » et non RE_DIV_OUVERTURE entière.
+// Fermeture du bloc ouvert à la ligne `ouverture` : l'indice de sa ligne « ::: », ou -1.
+// Un bloc laissé ouvert à la main ne doit pas emporter la suite de l'article : la recherche
+// s'arrête au bloc suivant, même mal formé (d'où le seul préfixe « ::: { »).
 function fermetureDeDiv(lignes, ouverture) {
   for (let j = ouverture + 1; j < lignes.length; j++) {
     if (/^\s*:::+\s*\{/.test(lignes[j])) { return -1; }      // bloc suivant : pas de fermeture
@@ -108,7 +104,7 @@ function retirerTable(texte, nom) {
 
 // ---- Attributs d'une figure (légende, texte alternatif, crédits) ----
 //
-// Format arrêté avec le pipeline, à ne pas réinventer ailleurs :
+// Format partagé avec le pipeline (szh-numerotation.lua) :
 //   ![Légende visible](media/x.png){alt="description" copyright="© J. Dupont" source="ESA"}
 //   - le texte entre crochets est la légende, visible dans le rendu ;
 //   - alt absent : le pipeline retombe sur la légende. alt="" : image décorative,
@@ -120,23 +116,21 @@ function retirerTable(texte, nom) {
 
 // Image hors numérotation : la classe .szh-hors-figure et une légende vide.
 //   ![](media/x.png){.szh-hors-figure alt="description" copyright="© J. Dupont"}
-// Aucun lecteur n'en fait de Figure — implicit_figures demande un texte entre crochets —
-// et szh-numerotation.lua ne lui donne donc ni numéro ni légende ; il l'enveloppe dans une
-// <figure> à <figcaption> de crédits seuls quand il y a des crédits à porter. La légende
-// est forcée vide à l'écriture : la case cochée et un texte de légende se contrediraient.
+// Sans texte entre crochets, pandoc n'en fait pas une Figure : szh-numerotation.lua ne lui
+// donne ni numéro ni légende, et l'enveloppe dans une <figure> dont la <figcaption> ne
+// porte que les crédits, s'il y en a. La légende est forcée vide à l'écriture.
 const CLASSE_HORS_FIGURE = 'szh-hors-figure';
 
 // Motif d'une image markdown, à la lettre de ce que pandoc écrit. Groupes : 1 = légende,
-// 2 = cible, 3 = titre, 4 = bloc {…}. Fabriqué à chaque appel, un littéral /g partagé
-// garderait son lastIndex.
+// 2 = cible, 3 = titre, 4 = bloc {…}. Recréé à chaque appel, car une expression /g
+// partagée garderait son lastIndex.
 function reImage() {
   return /!\[([^\]]*)\]\(\s*(<[^>]*>|[^()\s]+)((?:\s+"[^"]*")?)\s*\)(\{[^}]*\})?/g;
 }
 
-// Contenu d'un bloc d'attributs pandoc -> jetons, dans l'ordre et avec leur texte brut,
-// pour réécrire tel quel ce qui ne nous regarde pas : la fiche image ne doit pas faire
-// disparaître un attribut posé par le pipeline ou à la main. Scan caractère par caractère
-// plutôt que regex, les valeurs citées pouvant contenir espaces, « = » et \" échappés.
+// Contenu d'un bloc d'attributs pandoc -> éléments, dans l'ordre et avec leur texte brut,
+// pour réécrire tels quels les attributs inconnus. Lecture caractère par caractère, car
+// les valeurs citées peuvent contenir espaces, « = » et \" échappés.
 function scannerAttributs(source) {
   const s = String(source === undefined || source === null ? '' : source);
   const jetons = [];
@@ -181,10 +175,9 @@ function citerValeur(v) {
   return '"' + String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
 }
 
-// Valeur assainie ici, passage obligé de l'écriture : une seule ligne, trimée, sans
-// accolade — le bloc étant délimité par { }, une accolade dans un copyright casserait
-// silencieusement la référence entière. Les crochets, eux, partent de la légende, qu'ils
-// délimitent dans un lien markdown.
+// Nettoie une valeur avant écriture : une seule ligne, sans espaces de bord, sans accolade
+// (une accolade casserait le bloc { }). Les crochets sont retirés de la légende, qu'ils
+// délimitent.
 function normaliserValeurFigure(v) {
   return String(v === undefined || v === null ? '' : v)
     .replace(/[\r\n\t]+/g, ' ').replace(/[{}]/g, '').trim();
@@ -195,8 +188,8 @@ function normaliserLegendeFigure(v) {
     .replace(/[\r\n\t]+/g, ' ').replace(/[[\]]/g, '').trim();
 }
 
-// La classe .szh-hors-figure est réécrite en tête plutôt qu'à sa place d'origine : une
-// seule position possible, donc un second passage rend le même texte.
+// La classe .szh-hors-figure est réécrite en tête, pour qu'un second passage rende le même
+// texte.
 function reconstruireBloc(blocOriginal, cibles) {
   const contenu = blocOriginal ? String(blocOriginal).slice(1, -1) : '';
   const sortie = cibles.horsFigure ? ['.' + CLASSE_HORS_FIGURE] : [];
@@ -219,10 +212,9 @@ function reconstruireBloc(blocOriginal, cibles) {
   return sortie.length === 0 ? '' : '{' + sortie.join(' ') + '}';
 }
 
-// Ordre d'apparition des images de media/ dans le texte : rend une Map
-// « relatif normalisé (minuscules) -> rang », les images jamais insérées n'y figurant pas.
-// C'est ce qui permet au gestionnaire des médias de suivre la lecture de l'article plutôt
-// que l'alphabet.
+// Ordre d'apparition des images de media/ dans le texte : Map « relatif en minuscules ->
+// rang », sans les images non insérées. Le gestionnaire des médias suit ainsi l'ordre de
+// l'article.
 function ordreImages(texte) {
   const ordre = new Map();
   const re = reImage();
@@ -240,14 +232,11 @@ function ordreImages(texte) {
 
 // ---- Où poser une nouvelle figure ----
 //
-// Le curseur ne suffit pas. Au milieu d'un paragraphe, l'image reste au fil du texte et ne
-// devient pas une figure ; dans un bloc de code elle s'affiche en clair ; dans une liste
-// elle est avalée par l'item ; dans une citation elle emporte la ligne suivante ; dans un
-// tableau elle le tronque ; et dans un bloc « ::: {.szh-tabelle} »,
-// szh-tabelle-inclure.lua remplace tout le bloc et l'image disparaît du rendu sans un mot.
-// On n'accepte donc le curseur que dans un paragraphe ordinaire de premier niveau, et on
-// pose la figure à la fin de ce paragraphe. Ailleurs, l'appelant retombe sur la fin du
-// document, où l'image est visible et déplaçable à la main.
+// Au milieu d'un paragraphe, l'image ne deviendrait pas une figure ; dans un bloc de code,
+// une liste, une citation, un tableau ou un bloc « ::: {.szh-tabelle} », elle serait mal
+// rendue ou perdue. Le curseur n'est donc accepté que dans un paragraphe ordinaire de
+// premier niveau, et la figure se pose à la fin de ce paragraphe. Sinon, l'appelant la
+// pose à la fin du document.
 
 // Une ligne qui ouvre autre chose qu'un paragraphe : liste, citation, titre, tableau, bloc
 // clôturé, bloc pandoc, ou retrait de quatre espaces (bloc de code indenté).
@@ -307,10 +296,9 @@ function envelopperFigure(lignes, ligne, colonne, reference) {
   return (avant ? '' : '\n\n') + String(reference) + (apres ? '' : '\n\n');
 }
 
-// Toutes les insertions d'image du texte, dans l'ordre, une entrée par insertion — une
-// même image insérée deux fois compte deux fois. `relatif` est le chemin sous media/,
-// normalisé en minuscules, ou null quand la cible est ailleurs (lien externe, autre
-// dossier). Sert aux contrôles qui portent sur les insertions et non sur les fichiers.
+// Toutes les insertions d'image du texte, dans l'ordre, une entrée par insertion (une
+// image insérée deux fois compte deux fois). `relatif` est le chemin sous media/ en
+// minuscules, ou null pour une cible ailleurs (lien externe, autre dossier).
 function listerImages(texte) {
   const res = [];
   const re = reImage();
@@ -341,11 +329,9 @@ function listerImages(texte) {
   return res;
 }
 
-// Insertions sans nom accessible : pas de texte alternatif, pas de légende sur laquelle
-// retomber, et pas de déclaration « décorative » (alt="" explicite). Le rendu les traite
-// alors en images décoratives — szh-numerotation.lua leur pose alt="" et
-// role="presentation" — ce qui est peut-être un oubli plutôt qu'un choix. C'est cette
-// ambiguïté que l'export signale, au dernier moment où elle est réparable.
+// Insertions sans nom accessible : ni texte alternatif, ni légende, ni alt="" explicite.
+// Le rendu les traite en images décoratives (szh-numerotation.lua), ce qui est peut-être un
+// oubli : l'export les signale.
 function imagesSansAlternative(texte) {
   return listerImages(texte).filter((i) => !i.altDefini && i.legende.trim() === '');
 }
@@ -384,9 +370,9 @@ function lireAttributsImage(texte, relatif) {
 
 // ---- Grilles d'images ----
 //
-// Plusieurs images qui se lisent ensemble — une série, un avant/après, quatre vignettes —
-// forment une figure : un numéro, une légende, un bloc qui ne se coupe pas. Le contrat,
-// arrêté avec pipeline/filters/szh-grille.lua :
+// Plusieurs images qui se lisent ensemble (une série, un avant/après) forment une figure :
+// un numéro, une légende, un bloc insécable. Format partagé avec
+// pipeline/filters/szh-grille.lua :
 //
 //   ::: {.szh-grille disposition="2-2"}
 //   ![Légende de la figure](media/a.png){alt="…" copyright="© A"}
@@ -400,21 +386,19 @@ function lireAttributsImage(texte, relatif) {
 //   - la légende et le numéro sont ceux de la première image, qui est la figure entière ;
 //     les suivantes s'écrivent toujours avec un texte de légende vide (voir
 //     offsetsSuiveuses, appliqué par ecrireAttributsImage) ;
-//   - le texte alternatif et les crédits, eux, restent propres à chaque image : deux
-//     photos d'une même planche n'ont ni le même photographe ni le même sujet ;
+//   - le texte alternatif et les crédits restent propres à chaque image ;
 //   - `disposition` vaut « auto » ou une suite de rangées, « 2-2 » = deux rangées de deux.
 //     Absente ou incohérente avec le nombre d'images -> le rendu retombe sur « auto ».
 const CLASSE_GRILLE = 'szh-grille';
 const GRILLE_AUTO = 'auto';
 
-// Six images au plus. Au-delà, la colonne n'a plus assez de largeur pour que chacune se
-// lise : le geste juste est de scinder en deux figures, qui porteront deux numéros.
+// Six images au plus : au-delà, chacune serait trop petite pour la largeur de la colonne.
 const GRILLE_MAX = 6;
 
 // Les dispositions offertes, par nombre d'images ; la première de chaque liste sert de
 // repli quand « auto » ne peut pas mesurer les fichiers.
-// ⚠ Table recopiée dans pipeline/filters/szh-grille.lua, qui compose. Les deux doivent
-//   rester identiques — test/js/contrats.test.js le contrôle.
+// Table recopiée dans pipeline/filters/szh-grille.lua ; test/js/contrats.test.js vérifie
+// qu'elles sont identiques.
 const DISPOSITIONS = {
   2: ['2', '1-1'],
   3: ['3', '2-1', '1-2', '1-1-1'],
@@ -423,10 +407,9 @@ const DISPOSITIONS = {
   6: ['3-3', '2-2-2', '6']
 };
 
-// Hauteur visée du bloc d'images, en fraction de la largeur de la colonne. C'est le seul
-// réglage du mode automatique : chaque disposition possible est mesurée, et celle dont la
-// hauteur en approche le plus l'emporte. 0,62 remplit la colonne sans manger la page.
-// ⚠ Recopiée elle aussi dans szh-grille.lua.
+// Hauteur visée du bloc d'images, en fraction de la largeur de la colonne : le mode
+// automatique retient la disposition dont la hauteur s'en approche le plus. Recopiée dans
+// szh-grille.lua.
 const GRILLE_CIBLE = 0.62;
 
 function dispositionsPossibles(n) {
@@ -451,15 +434,13 @@ function dispositionValide(code, n) {
 // aberrante vaut 1 (carrée). Une rangée justifiée sur la largeur de la colonne a pour
 // hauteur 1 / Σ(ratios de la rangée) — c'est la somme de ces hauteurs que l'on compare.
 //
-// Ce que la règle produit, et pourquoi elle tombe juste : deux panoramas côte à côte
-// donneraient un bandeau de 0,17 de haut, illisible ; l'un sur l'autre, 0,67 — c'est ce
-// qu'elle choisit. Deux portraits, à l'inverse, partent côte à côte.
+// Exemple : deux panoramas côte à côte feraient un bandeau de 0,17, l'un sur l'autre 0,67 :
+// ils sont empilés. Deux portraits sont mis côte à côte.
 function dispositionAutomatique(n, ratios) {
   const codes = dispositionsPossibles(n);
   if (codes.length === 0) { return null; }
-  // Une seule image illisible — un SVG sans dimensions, un fichier disparu — et la mesure
-  // ne veut plus rien dire : on rend le repli plutôt qu'un calcul fait sur des carrés
-  // imaginaires, qui alignerait volontiers quatre images en un bandeau.
+  // Une image sans dimensions lisibles (SVG sans taille, fichier disparu) fausse la mesure :
+  // on rend la disposition de repli.
   const r = [];
   for (let i = 0; i < n; i++) {
     const v = Number((ratios || [])[i]);
@@ -482,8 +463,8 @@ function dispositionAutomatique(n, ratios) {
   return meilleur;
 }
 
-// Une ligne qui ne porte qu'une seule image : sa cible normalisée, ou null. C'est la seule
-// forme qu'une grille contient, et la seule qu'on sache envelopper.
+// Une ligne qui ne porte qu'une image : sa cible normalisée, ou null. C'est la seule forme
+// admise dans une grille.
 function ligneImageSeule(ligne) {
   const t = String(ligne === undefined || ligne === null ? '' : ligne).trim();
   if (t === '') { return null; }
@@ -546,10 +527,8 @@ function grilleDeImage(texte, relatif) {
   return null;
 }
 
-// Décalages, dans le texte, des insertions qui suivent la première d'une grille. La grille
-// est une figure, elle n'a qu'une légende : celle de sa première image. Les suivantes
-// s'écrivent donc toujours entre crochets vides, faute de quoi implicit_figures en ferait
-// des figures individuelles et le bloc se disloquerait.
+// Positions, dans le texte, des insertions qui suivent la première d'une grille. Elles
+// s'écrivent entre crochets vides : sinon implicit_figures en ferait des figures séparées.
 function offsetsSuiveuses(texte) {
   const s = String(texte === undefined || texte === null ? '' : texte);
   const lignes = s.split('\n');
@@ -566,8 +545,8 @@ function offsetsSuiveuses(texte) {
   return res;
 }
 
-// La ligne « ::: {…} » d'une grille, sa disposition remplacée. Les autres attributs — un
-// identifiant posé à la main, par exemple — sont réécrits tels quels et à leur place.
+// La ligne « ::: {…} » d'une grille, avec sa disposition remplacée. Les autres attributs
+// sont réécrits tels quels, à leur place.
 function ligneOuvertureGrille(attrsOriginaux, disposition) {
   const sortie = ['.' + CLASSE_GRILLE];
   let pose = false;
@@ -585,9 +564,8 @@ function ligneOuvertureGrille(attrsOriginaux, disposition) {
   return '::: {' + sortie.join(' ') + '}';
 }
 
-// La référence markdown d'une image, telle que le pipeline la lit. Sert à réécrire une
-// insertion qui change de place : la porter d'un endroit à l'autre à la main lui ferait
-// perdre ses crédits et son texte alternatif.
+// La référence markdown complète d'une image (avec crédits et texte alternatif), pour
+// déplacer une insertion.
 function referenceImage(relatif, valeurs) {
   const v = valeurs || {};
   const horsFigure = !!v.horsFigure;
@@ -614,9 +592,9 @@ function dispositionApresChangement(ancienne, n) {
   return dispositionValide(ancienne, n) ? String(ancienne) : (dispositionParDefaut(n) || GRILLE_AUTO);
 }
 
-// Insère des lignes à l'indice donné, isolées par une ligne vide de chaque côté — une image
-// collée au paragraphe voisin n'est plus une figure, elle est au fil du texte. Aucune ligne
-// vide n'est ajoutée là où il y en a déjà une.
+// Insère des lignes à l'indice donné, isolées par une ligne vide de chaque côté (une image
+// collée à un paragraphe n'est pas une figure). Aucune ligne vide n'est ajoutée là où il y
+// en a déjà une.
 function insererIsole(lignes, ou, bloc) {
   const avant = (ou > 0 && lignes[ou - 1].trim() !== '') ? [''] : [];
   const apres = (ou < lignes.length && lignes[ou].trim() !== '') ? [''] : [];
@@ -625,11 +603,10 @@ function insererIsole(lignes, ou, bloc) {
 
 // poserDansGrille(texte, ancre, ajout) -> { texte, ok, motif, legendePerdue }
 //
-// Met `ajout` à côté de `ancre`. Si `ancre` est déjà dans une grille, l'image s'ajoute en
-// queue ; sinon la grille se crée autour de son insertion. `ajout` qui n'est inséré nulle
-// part est simplement posé ; inséré une seule fois ailleurs, il est déplacé — c'est le
-// geste attendu quand on range deux images déjà écrites. Inséré plusieurs fois, on refuse :
-// rien ne dit laquelle des insertions il faudrait déplacer.
+// Met `ajout` à côté de `ancre`. Si `ancre` est déjà dans une grille, l'image s'ajoute à
+// la fin ; sinon la grille se crée autour de son insertion. Un `ajout` absent du texte est
+// posé ; inséré une fois ailleurs, il est déplacé ; inséré plusieurs fois, refusé, faute de
+// savoir laquelle déplacer.
 // `motif` nomme le refus : 'ancre' (introuvable, ou pas seule sur sa ligne), 'ajout'
 // (plusieurs insertions), 'pleine' (six images), 'meme' (l'image et elle-même).
 function poserDansGrille(texte, ancre, ajout) {
@@ -643,15 +620,15 @@ function poserDansGrille(texte, ancre, ajout) {
   const dansGrille = grilleDeImage(src, cibleAncre);
   if ((dansGrille ? dansGrille.grille.membres.length : 1) >= GRILLE_MAX) { return refus('pleine'); }
 
-  // Les valeurs de l'image qui rejoint la grille, prises avant de la retirer : son texte
-  // alternatif et ses crédits la suivent, sa légende et sa note propres ne peuvent pas — une grille n'en
-  // porte qu'une, celle de la figure.
+  // Valeurs de l'image qui rejoint la grille, lues avant de la retirer : son texte
+  // alternatif et ses crédits la suivent ; sa légende et sa note sont perdues, la grille
+  // n'ayant que celles de la figure.
   const valeursAjout = lireAttributsImage(src, cibleAjout);
   if (valeursAjout.n > 1) { return refus('ajout'); }
   const legendePerdue = valeursAjout.n === 1
     && (valeursAjout.legende.trim() !== '' || valeursAjout.note.trim() !== '');
 
-  // Le retrait d'abord : il déplace des lignes, et tout ce qui suit se recalcule dessus.
+  // Le retrait d'abord : il déplace des lignes, et la suite se calcule après.
   let travail = src;
   if (valeursAjout.n === 1) {
     const ote = retirerImage(travail, cibleAjout);
@@ -659,8 +636,8 @@ function poserDansGrille(texte, ancre, ajout) {
   }
 
   const lignes = travail.split('\n');
-  // Légende forcée vide : la figure n'en porte qu'une, celle de son ancre. `legendePerdue`
-  // dit à l'appelant qu'il y avait quelque chose à perdre, pour qu'il le signale.
+  // Légende forcée vide : la figure n'a que celle de son ancre. `legendePerdue` permet à
+  // l'appelant de signaler la perte.
   const nouvelle = '  ' + referenceImage(cibleAjout,
     Object.assign({}, valeursAjout, { legende: '', note: '' }));
   const apres = grilleDeImage(travail, cibleAncre);
@@ -673,8 +650,8 @@ function poserDansGrille(texte, ancre, ajout) {
     return { texte: lignes.join('\n'), ok: true, motif: null, legendePerdue: legendePerdue };
   }
 
-  // Pas de grille : il en faut une autour de l'insertion de l'ancre, qui doit être seule
-  // sur sa ligne — au fil d'un paragraphe, l'envelopper couperait la phrase en deux.
+  // Pas de grille : on en crée une autour de l'ancre, qui doit être seule sur sa ligne
+  // (l'envelopper au milieu d'un paragraphe couperait la phrase).
   let ligneAncre = -1;
   for (let i = 0; i < lignes.length; i++) {
     if (ligneImageSeule(lignes[i]) === 'media/' + cibleAncre) { ligneAncre = i; break; }
@@ -689,18 +666,12 @@ function poserDansGrille(texte, ancre, ajout) {
 }
 
 // retirerDeGrille(texte, relatif) -> { texte, ok }
-// L'image sort de la grille mais reste dans l'article : elle repart en figure ordinaire,
-// juste après le bloc. Quand il n'en reste qu'une, la grille se dissout — un bloc d'une
-// seule image n'est plus une grille, c'est une figure.
 // `options.garderDansTexte` (vrai par défaut) dit ce que devient l'image ôtée :
-//   vrai  — elle reste dans l'article, en figure ordinaire juste après le bloc. C'est
-//           « sortir de la grille » : on défait le voisinage, pas le travail ;
-//   faux  — elle quitte aussi le texte. C'est « retirer de la figure » : le fichier reste
-//           dans media/ et sa carte reste au formulaire, prête à être réinsérée ailleurs.
-//           Rien d'autre n'est touché — ni l'image d'à côté, ni la figure, qui garde son
-//           numéro et sa légende.
-// Dans les deux cas, une grille tombée à une image se dissout : un bloc d'une seule image
-// n'est plus une grille, c'est une figure.
+//   vrai  — « sortir de la grille » : elle reste dans l'article, en figure ordinaire juste
+//           après le bloc ;
+//   faux  — « retirer de la figure » : elle quitte le texte, mais le fichier reste dans
+//           media/ et sa carte au formulaire.
+// Une grille réduite à une image se dissout et redevient une figure ordinaire.
 function retirerDeGrille(texte, relatif, options) {
   const garder = !options || options.garderDansTexte !== false;
   const src = String(texte === undefined || texte === null ? '' : texte);
@@ -712,9 +683,9 @@ function retirerDeGrille(texte, relatif, options) {
   const restants = g.membres.filter((m, k) => k !== trouve.rang);
 
   if (restants.length <= 1) {
-    // Dissolution : les deux « ::: » disparaissent, les images reprennent leur place de
-    // figure ordinaire — chacune seule dans son paragraphe — dans l'ordre où la grille
-    // les tenait, la sortante en dernier quand on la garde.
+    // Dissolution : les deux « ::: » disparaissent, les images redeviennent des figures
+    // ordinaires, chacune dans son paragraphe, dans l'ordre de la grille ; l'image sortante
+    // en dernier quand on la garde.
     const bloc = [];
     for (const m of restants) { bloc.push(lignes[m.ligne].trim(), ''); }
     if (garder) { bloc.push(sortante); } else if (bloc.length > 0) { bloc.pop(); }
@@ -723,8 +694,8 @@ function retirerDeGrille(texte, relatif, options) {
     return { texte: lignes.join('\n'), ok: true };
   }
   const disposition = dispositionApresChangement(g.disposition, restants.length);
-  // La ligne ôtée est toujours entre les deux « ::: » : l'ouverture ne bouge pas, la
-  // fermeture recule d'un cran, et c'est juste après elle que l'image sortante se repose.
+  // La ligne ôtée est entre les deux « ::: » : la fermeture remonte d'une ligne, et l'image
+  // sortante se pose juste après.
   lignes.splice(g.membres[trouve.rang].ligne, 1);
   if (garder) { insererIsole(lignes, g.fermeture, [sortante]); }
   lignes[g.ouverture] = ligneOuvertureGrille(RE_DIV_OUVERTURE.exec(lignes[g.ouverture])[1],
@@ -733,14 +704,12 @@ function retirerDeGrille(texte, relatif, options) {
 }
 
 // normaliserGrilles(texte) -> { texte, n }
-// Remet les grilles d'aplomb après une opération qui a ôté une image sans passer par
-// retirerDeGrille — la suppression d'un fichier, ou une main dans le .md. Une grille
-// tombée à une image ou moins se dissout, ce qui reste redevient une figure ordinaire ;
-// les autres voient leur disposition ramenée à une valeur possible pour le nombre d'images
-// qui restent. `n` compte les grilles touchées. Idempotent.
+// Corrige les grilles après le retrait d'une image hors de retirerDeGrille (suppression
+// d'un fichier, modification à la main du .md). Une grille d'une image ou moins se dissout ;
+// les autres reçoivent une disposition possible pour leur nombre d'images. `n` compte les
+// grilles touchées. Idempotent.
 //
-// Une seule correction par tour, puis relecture : chaque écriture déplace des lignes, et
-// les indices d'une grille lue avant ne valent plus après.
+// Une correction par tour, puis relecture : chaque écriture décale les indices.
 function normaliserGrilles(texte) {
   let travail = String(texte === undefined || texte === null ? '' : texte);
   let n = 0;
@@ -772,8 +741,8 @@ function normaliserGrilles(texte) {
 }
 
 // ecrireDispositionGrille(texte, relatif, disposition) -> { texte, ok }
-// Une disposition qui ne correspond pas au nombre d'images de la grille est refusée : le
-// rendu retomberait sur « auto » et le menu mentirait.
+// Une disposition qui ne correspond pas au nombre d'images de la grille est refusée (le
+// rendu retomberait sur « auto »).
 function ecrireDispositionGrille(texte, relatif, disposition) {
   const src = String(texte === undefined || texte === null ? '' : texte);
   const trouve = grilleDeImage(src, relatif);
@@ -788,16 +757,13 @@ function ecrireDispositionGrille(texte, relatif, disposition) {
   return { texte: lignes.join('\n'), ok: true };
 }
 
-// Réécrit toutes les insertions de l'image, qui n'a qu'un jeu de crédits : les laisser
-// diverger donnerait deux légendes pour une seule figure. Idempotent.
+// Réécrit toutes les insertions de l'image avec les mêmes valeurs. Idempotent.
 function ecrireAttributsImage(texte, relatif, valeurs) {
   const attendu = ('media/' + String(relatif || '').replace(/\\/g, '/')).toLowerCase();
   if (attendu === 'media/') { return { texte: texte, n: 0 }; }
   const v = valeurs || {};
   const horsFigure = !!v.horsFigure;
-  // Hors figure, la légende ne va nulle part : le texte entre crochets vide est ce qui
-  // empêche implicit_figures d'en fabriquer une, et la laisser remplie donnerait un
-  // fichier qui affirme deux choses contraires.
+  // Hors figure : crochets vides, pour qu'implicit_figures n'en fasse pas une figure.
   const legende = horsFigure ? '' : normaliserLegendeFigure(v.legende);
   const alt = normaliserValeurFigure(v.alt);
   const copyright = normaliserValeurFigure(v.copyright);

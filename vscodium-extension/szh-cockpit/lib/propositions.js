@@ -12,7 +12,7 @@ const FORMAT = 'pronto-proposition/1';
 const FORMAT_ETAT = 'pronto-etat/1';
 const CODES_DOUTE = ['date-illisible', 'langue-devinee', 'correspondance-incertaine',
   'valeur-hors-liste', 'champ-introuvable', 'texte-tronque', 'personne-nommee'];
-// Ces doutes se signalent (cas B) sans bloquer l'acceptation : il n'y a rien à corriger d'office.
+// Ces doutes se signalent (cas B) sans bloquer l'acceptation.
 const DOUTES_SIGNAL = ['personne-nommee'];
 const DECISIONS = ['accepte', 'refuse'];
 const MOTIFS_REFUS = ['hors-sujet', 'doublon', 'autre'];
@@ -20,7 +20,7 @@ const DOSSIER_DECISIONS = '_Decisions';
 const RE_LOT = /^(\d{4}-\d{2}-\d{2})-(\d+)\.jsonl$/;
 // Finesse du tri : dix crans par moissonneur et par langue, réglés pour toute une rédaction.
 const NB_CRANS = 10;
-// « Acceptées récemment » : les décisions des 30 derniers jours (décision de la supervision).
+// « Acceptées récemment » : les décisions des 30 derniers jours.
 const JOURS_ACCEPTEES = 30;
 const DOSSIER_REGLAGES = '_Reglages';
 const RE_ID_SUR = /^[A-Za-z0-9_-]{1,64}$/;
@@ -214,9 +214,9 @@ function lireLots(racineArbreVal) {
 
 // ---- Compte de l'arbre --------------------------------------------------------------
 
-// L'empreinte de ce que le compte lit : les dossiers (un lot ou une décision ajoutés les
-// changent) et chaque lot. Un stat ne télécharge pas un fichier « en ligne seulement »,
-// une lecture si : c'est tout l'intérêt de ce cache sur OneDrive.
+// L'empreinte de ce que le compte lit : les dossiers (qu'un lot ou une décision ajoutés
+// modifient) et chaque lot. Elle se calcule par stat, qui ne télécharge pas un fichier
+// OneDrive « en ligne seulement », alors qu'une lecture le ferait.
 function empreinteMoissons(racineArbreVal) {
   const base = cheminMoissons(racineArbreVal);
   const parts = [];
@@ -224,8 +224,8 @@ function empreinteMoissons(racineArbreVal) {
     try { const s = fs.statSync(chemin); parts.push(chemin + '|' + s.mtimeMs + '|' + s.size + '|' + (extra || '')); }
     catch (e) { parts.push(chemin + '|absent'); }
   };
-  // Réglages et etat.json sont de toute façon lus par le compte : leur contenu entre dans
-  // l'empreinte, car deux écritures rapprochées gardent sous Windows le même mtime et la même taille.
+  // Réglages et etat.json sont lus de toute façon : leur contenu entre dans l'empreinte, car
+  // deux écritures rapprochées peuvent garder sous Windows le même mtime et la même taille.
   const noterContenu = (chemin) => {
     let h = '';
     try { h = crypto.createHash('sha1').update(fs.readFileSync(chemin)).digest('hex'); } catch (e) { /* absent */ }
@@ -259,7 +259,8 @@ function compterPropositions(racineArbreVal, langue) {
 // compterVisibles(racine, langue, apercu?) -> { total, aVerifier, masquees } : les
 // propositions en attente et visibles dans cette langue, dont les cas B, et celles que la
 // finesse masque. `apercu` ({ type: cran }) est le cran que le poste regarde ; sans lui, le
-// réglage partagé, sinon le cran par défaut. Rien n'est relu tant que l'empreinte, l'aperçu et le contrat n'ont pas changé.
+// réglage partagé, sinon le cran par défaut. Le résultat est gardé tant que l'empreinte,
+// l'aperçu et le contrat ne changent pas.
 function compterVisibles(racineArbreVal, langue, apercu) {
   const cle = racineArbreVal + '|' + langue + '|' + JSON.stringify(apercu || {});
   const empreinte = empreinteMoissons(racineArbreVal);
@@ -451,14 +452,14 @@ function annulerDecision(racineArbreVal, cle) {
 // accepter(racine, p, valeurs, { ausgabeId, proposerAutreRevue }) -> { ok, uuid, slug, raison? }.
 // La décision est écrite avant la fiche, avec l'Uuid de celle-ci : une création qui
 // échoue laisse une décision qui désigne une fiche introuvable, jamais deux fiches.
-// `langue` (options) est la langue de la vue, celle du numéro ouvert : la fiche y nait. Une
+// `langue` (options) est la langue de la vue, celle du numéro ouvert : la fiche y naît. Une
 // proposition multilingue doit la porter ; une monolingue garde sa propre langue.
 function accepter(racineArbreVal, p, valeurs, options) {
   const o = options || {};
   if (!p || !kirby.typeConnu(p.type)) { return { ok: false, raison: 'type-inconnu' }; }
   const langue = langueVue(p, o.langue);
   if (!langue) { return { ok: false, raison: 'langue-absente' }; }
-  // Le formulaire grise déjà le geste ; ceci garde la fiche si un appel le contourne.
+  // Le formulaire désactive déjà l'action ; ce contrôle couvre un appel direct.
   const ecarts = ecartsFormat(p.type, valeurs);
   if (ecarts.length > 0) { return { ok: false, raison: 'valeurs-hors-format', ecarts: ecarts }; }
   const uuid = kirby.genererUuid();
@@ -475,7 +476,7 @@ function accepter(racineArbreVal, p, valeurs, options) {
   return { ok: true, uuid: uuid, slug: cree.slug };
 }
 
-// La langue où la fiche nait : celle de la vue, si la proposition la porte ; sans vue, la
+// La langue où la fiche naît : celle de la vue, si la proposition la porte ; sans vue, la
 // langue d'une proposition monolingue.
 function langueVue(p, langue) {
   if (!langue) { return estMultilingue(p) ? '' : p.langue; }
@@ -495,9 +496,9 @@ function resteATraduire(type, valeurs) {
 }
 
 // La coche « + autre revue ». Pour une proposition multilingue dont seul le titre se traduit,
-// le fichier de l'autre langue nait aussitôt, orphelin, avec son titre officiel et les champs
-// communs ; sinon, l'autre langue reçoit le statut « à traduire » (jamais les deux : un statut
-// posé à côté d'un fichier existant serait ignoré).
+// le fichier de l'autre langue naît aussitôt, orphelin, avec son titre officiel et les champs
+// communs ; sinon, l'autre langue reçoit le statut « à traduire ». Jamais les deux : un statut
+// posé à côté d'un fichier existant serait ignoré.
 function proposerAutreRevue(racineArbreVal, p, langue, slug, uuid, valeurs) {
   for (const autre of kirby.autresLangues(langue)) {
     const titre = estMultilingue(p) && languesDe(p).indexOf(autre) !== -1 ? p.titres[autre] : '';
@@ -663,8 +664,8 @@ function refuserLot(racineArbreVal, langue, cles, motif) {
 // annulerLot(racine, [cle], langue?) -> { faites, echecs, fichesSupprimees, autresGardees } :
 // `langue` est celle de la vue (voir annulerAcceptation). Chaque décision se
 // défait selon sa nature, une acceptation avec la fiche qu'elle a créée. `options` : { garde,
-// sauf } ; la garde vaut pour chaque acceptation, sauf celles de `sauf` (le geste qu'on vient de
-// faire, que le bandeau « Annuler » défait même dans un numéro).
+// sauf } ; la garde vaut pour chaque acceptation, sauf celles de `sauf` (l'action qu'on vient
+// de faire, que le bandeau « Annuler » défait même dans un numéro).
 function annulerLot(racineArbreVal, cles, langue, options) {
   const o = options || {};
   const sauf = new Set(Array.isArray(o.sauf) ? o.sauf : []);
@@ -717,7 +718,7 @@ function lireProposition(racineArbreVal, cle) {
 
 // recreerFiche(racine, cle, p, valeurs, { ausgabeId, proposerAutreRevue }) -> { ok, uuid, slug, raison? }.
 // La fiche d'une acceptation dont la création vient d'échouer (raison fiche-introuvable),
-// avec l'Uuid que porte la décision : jamais une seconde fiche.
+// avec l'Uuid que porte la décision, pour ne pas créer une seconde fiche.
 function recreerFiche(racineArbreVal, cle, p, valeurs, options) {
   const o = options || {};
   const d = lireDecision(racineArbreVal, cle);
@@ -1022,7 +1023,8 @@ const LANGUES_TERME = ['fr', 'de', 'it'];
 const STATUTS_DEMANDE = ['en-attente', 'applique', 'applique-partiel', 'refuse-perte', 'refuse-bruit', 'doublon',
   'a-confirmer', 'retrait-en-attente'];
 const LONGUEUR_TERME = 60;
-// Lettres, espaces, tirets et apostrophes : rien qu'un moissonneur puisse lire comme un motif.
+// Lettres, espaces, tirets et apostrophes, pour qu'un moissonneur ne puisse pas lire le
+// terme comme un motif.
 const RE_CARACTERE_INTERDIT = /[^\p{L}\p{M} '’-]/u;
 // La même règle, envoyée à la page pour qu'elle signale l'erreur pendant la frappe.
 const REGLE_TERME = Object.freeze({ longueur: LONGUEUR_TERME, interdit: RE_CARACTERE_INTERDIT.source });
@@ -1187,7 +1189,7 @@ function retirerDemande(racineArbreVal, moissonneur, id, par) {
 }
 
 // retablirDemande(racine, moissonneur, contenu) -> { ok, raison? } : remet tel quel le fichier
-// d'une demande retirée (Annuler). Jamais par-dessus un fichier présent.
+// d'une demande retirée (Annuler), sauf si un fichier existe déjà.
 function retablirDemande(racineArbreVal, moissonneur, contenu) {
   const id = contenu && typeof contenu.id === 'string' ? contenu.id : '';
   if (!moissonneurValide(moissonneur) || !RE_ID_SUR.test(id)) { return { ok: false, raison: 'demande-invalide' }; }

@@ -1,8 +1,6 @@
-// Les trois boutons de la barre de titre — Commande, Édition, Export — ouvrent chacun un
-// QuickPick qui ne fait qu'appeler des commandes enregistrées ailleurs. Les actions de
-// mise en forme viennent de PALETTE_MEF (lib/formatting-pur.js — la part de
-// lib/formatting.js qui ne référence pas vscode, importée directement pour ne pas tirer
-// tout ce module derrière une simple donnée). Format d'une entrée :
+// Les trois boutons de la barre de titre (Commande, Édition, Export) ouvrent chacun un
+// QuickPick qui appelle des commandes enregistrées ailleurs. Les actions de mise en forme
+// viennent de PALETTE_MEF (lib/formatting-pur.js). Format d'une entrée :
 // ['--', cléGroupe] pour un séparateur, sinon [cléLibellé, commande, raccourci, icône].
 'use strict';
 
@@ -10,8 +8,8 @@ const vscode = require('vscode');
 const { T, TP } = require('./i18n');
 const profils = require('./profil');
 const { PALETTE_MEF, PALETTE_MEF_LIVRE } = require('./formatting-pur');
-// Un QuickPick se ferme dès que le focus bouge : la garde retient, tant qu'un panneau est
-// ouvert, ce qui le lui volerait (rafraîchissement d'aperçu, avis de fin de compilation).
+// Un QuickPick se ferme dès que le focus bouge : tant qu'un panneau est ouvert, la garde
+// retient ce qui prendrait le focus (rafraîchissement d'aperçu, avis de fin de compilation).
 const { sousGarde } = require('./interaction');
 
 const PANNEAU_COMMANDE = [
@@ -40,7 +38,7 @@ function itemsDepuisEntrees(entrees) {
 }
 
 async function choisirEtExecuter(entrees, clePlaceholder) {
-  // Seul le choix est sous garde : la commande choisie, elle, peut rafraîchir ce qu'elle veut.
+  // La garde ne couvre que le choix, pas l'exécution de la commande choisie.
   const choix = await sousGarde(() => vscode.window.showQuickPick(itemsDepuisEntrees(entrees), {
     placeHolder: T(clePlaceholder)
   }));
@@ -51,18 +49,17 @@ function ouvrirPanneauCommande() {
   return choisirEtExecuter(pourProfil(PANNEAU_COMMANDE), 'panneau.commande.placeholder');
 }
 
-// Les commandes szh.fmt.* transforment l'éditeur actif quel qu'il soit et n'ont pas de
-// garde markdown : le panneau « Édition » la pose pour elles. Y échappent les entrées qui
-// doivent marcher depuis n'importe où, ou qui retrouvent seules leur article.
+// Les commandes szh.fmt.* agissent sur l'éditeur actif quel qu'il soit : le panneau
+// « Édition » vérifie pour elles qu'il s'agit d'un .md. Sauf les entrées ci-dessous, qui
+// marchent depuis n'importe où ou retrouvent seules leur article.
 const HORS_GARDE_MD = ['szh.basculerApercu', 'szh.metadonneesArticle', 'szh.mediasArticle',
                        'szh.traduction'];
 
 async function ouvrirPanneauEdition() {
   const ed = vscode.window.activeTextEditor;
   const estMarkdown = !!(ed && ed.document.languageId === 'markdown');
-  // L'aperçu du livre entier n'existe que pour un livre : un chapitre s'aperçoit comme un
-  // article, mais la pagination, le sommaire et ses numéros de page n'ont de sens
-  // qu'une fois tous les chapitres assemblés.
+  // L'aperçu du livre entier, pour un livre seulement : la pagination et le sommaire
+  // demandent tous les chapitres assemblés.
   const apercuLivre = capacites().sortiesLivre
     ? [['panneau.apercuLivre', 'szh.apercuLivre', '', '$(book)']]
     : [];
@@ -77,9 +74,8 @@ async function ouvrirPanneauEdition() {
     ['panneau.lierReference', 'szh.lierReference', '', '$(references)'],
     ['panneau.traduction', 'szh.traduction', '', '$(globe)']
   ]).concat(PALETTE_MEF)
-    // Groupe « Livre » (falc-header, qr-link) : jamais montré pour une revue ni une
-    // Zeitschrift — mêmes deux commandes que celles ajoutées au clic droit
-    // (ouvrirMiseEnForme, lib/formatting.js).
+    // Groupe « Livre » (falc-header, qr-link), pour un livre seulement ; mêmes commandes
+    // qu'au clic droit (ouvrirMiseEnForme, lib/formatting.js).
     .concat(capacites().paletteLivre ? PALETTE_MEF_LIVRE : []);
   const choix = await sousGarde(() => vscode.window.showQuickPick(itemsDepuisEntrees(pourProfil(entrees)), {
     placeHolder: T('panneau.edition.placeholder')
@@ -92,20 +88,14 @@ async function ouvrirPanneauEdition() {
   await vscode.commands.executeCommand(choix.commande);
 }
 
-// Les documents produits, puis le cycle de vie du numéro (ou du livre). Ne figurent que
-// les entrées que l'état rend possibles. szh.exporterXml étant facultative, sa présence est
-// testée par getCommands.
+// Les documents produits, puis le cycle de vie du numéro (ou du livre), selon ce que l'état
+// permet. szh.exporterXml est facultative : sa présence est testée par getCommands.
 //
-// « Exporter cet article » n'était offert ici que sur un numéro gelé, au motif que la
-// compilation automatique s'occupe du reste sur un numéro vivant. Elle s'en occupe à
-// l'enregistrement, ce qui n'est pas la même chose que de le demander : on veut refaire le
-// PDF d'un seul article sans attendre ni toucher au texte, et sans lancer le numéro entier.
-// L'entrée est donc là dans les deux cas — la commande, elle, n'a jamais rien exigé de
-// l'état (exporterArticle, extension.js). Elle vise l'article du .md actif, à défaut celui
-// en aperçu, et le dit si elle n'en trouve aucun.
+// « Exporter cet article » est offert quel que soit l'état : il refait le PDF d'un seul
+// article sans toucher au texte. Il vise l'article du .md actif, sinon celui en aperçu.
 //
-// Le cycle de vie, lui, vaut pour les deux profils ; ses libellés prennent leur variante
-// « .livre » par TP (itemsDepuisEntrees), comme les textes de lib/cycle-vie.js.
+// Le cycle de vie vaut pour les deux profils ; ses libellés prennent leur variante
+// « .livre » par TP (itemsDepuisEntrees), comme ceux de lib/cycle-vie.js.
 async function ouvrirPanneauExport() {
   const etat = hote.etat();
   const entrees = [['--', 'panneau.g.export'],
@@ -117,7 +107,7 @@ async function ouvrirPanneauExport() {
   if (commandes.indexOf('szh.exporterXml') !== -1) {
     entrees.push(['panneau.exporterXml', 'szh.exporterXml', '', '$(file-code)']);
   }
-  // Les quatre sorties du livre : sans objet sur une revue, offertes ici seulement.
+  // Les quatre sorties du livre.
   if (capacites().sortiesLivre) {
     entrees.push(
       ['panneau.livreImprimeur', 'szh.livreImprimeur', '', '$(file-pdf)'],
@@ -130,8 +120,8 @@ async function ouvrirPanneauExport() {
   if (!etat.archivee) {
     entrees.push(['panneau.archiver', 'szh.archiverVerrouiller', '', '$(archive)']);
   } else if (!etat.verrouillee) {
-    // Gelé puis déverrouillé pour une correction : reste à le reverrouiller. Même
-    // commande, qui constate d'elle-même qu'il n'y a plus de dossier à déplacer.
+    // Gelé puis déverrouillé pour une correction : reste à le reverrouiller, par la même
+    // commande, qui voit qu'il n'y a plus de dossier à déplacer.
     entrees.push(['panneau.verrouiller', 'szh.archiverVerrouiller', '', '$(lock)']);
   }
   if (etat.verrouillee) {
@@ -143,19 +133,18 @@ async function ouvrirPanneauExport() {
   await choisirEtExecuter(pourProfil(entrees), 'panneau.export.placeholder');
 }
 
-// État du numéro injecté par extension.js, qui le tient d'ausgabe.yaml. Sans hôte, le
-// repli neutre laisse les panneaux fonctionner sans cycle de vie.
+// État du numéro, injecté par extension.js depuis ausgabe.yaml. Sans hôte, les panneaux
+// fonctionnent sans cycle de vie.
 let hote = {
   etat: () => ({ verrouillee: false, archivee: false }),
-  // ⚠ Repli sur « revue » : sans injection, les panneaux se comportent exactement comme
-  //   avant. C'est ce qui rend ce changement sûr pour la revue.
+  // Sans injection, profil « revue ».
   profil: () => 'revue'
 };
 
 function capacites() { return (profils.profilPour(hote.profil()) || profils.PROFILS.revue).capacites; }
 
 // La capacité qui réserve une commande à un profil, lue dans le `when` szh.peut.<capacité>
-// de sa ligne commandPalette : le panneau retire ce que la palette cache, sans seconde liste.
+// de sa ligne commandPalette : le panneau masque ce que la palette masque.
 const CAPACITE_DE_COMMANDE = {};
 for (const e of require('../package.json').contributes.menus.commandPalette) {
   const m = /^szh\.peut\.(\w+)$/.exec(e.when || '');

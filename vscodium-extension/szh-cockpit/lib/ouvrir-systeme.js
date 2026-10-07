@@ -1,15 +1,14 @@
-// Ouvrir un fichier ou un dossier avec l'application que le système lui associe. Pas de
-// require('vscode') : l'appelant passe son module, utilisé hors Windows seulement.
+// Ouvre un fichier ou un dossier avec l'application associée par le système. L'appelant
+// passe son module vscode, utilisé hors Windows seulement.
 'use strict';
 
 const path = require('path');
 const { spawn } = require('child_process');
 const { dossierWindows } = require('./poste');
 
-// Sous Windows, le chemin brut va à explorer.exe. Le file:// que vscode.env.openExternal
-// fabrique encode le « : » du lecteur et les accents (en UTF-8), et ShellExecute le refuse
-// alors en « fichier introuvable » (0x2) ; le même chemin brut s'ouvre (mesuré).
-// -> { programme, args } ou null hors Windows.
+// Sous Windows, le chemin brut va à explorer.exe : le file:// de vscode.env.openExternal
+// encode le « : » du lecteur et les accents, et ShellExecute le refuse alors (« fichier
+// introuvable », 0x2). -> { programme, args } ou null hors Windows.
 function commande(chemin, plateforme, windir) {
   if (plateforme !== 'win32') { return null; }
   return { programme: path.join(windir || 'C:\\Windows', 'explorer.exe'), args: [String(chemin)] };

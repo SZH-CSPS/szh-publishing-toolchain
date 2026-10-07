@@ -1,12 +1,12 @@
-// La moisson mensuelle vue du cockpit, sans vscode : ce que _Moissons dit de l'état partagé
-// (créneau, compteurs du mois, socle, dernière passe, imports FNS), et l'état d'une passe tiré des
-// événements pronto-moisson/1 (moissonneurs/LISEZMOI.md, docs/FORMAT-MOISSONS.md).
+// La moisson mensuelle vue du cockpit, sans vscode : l'état partagé lu dans _Moissons
+// (créneau, compteurs du mois, socle, dernière passe, imports FNS) et l'état d'une passe tiré
+// des événements pronto-moisson/1 (moissonneurs/LISEZMOI.md, docs/FORMAT-MOISSONS.md).
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
 
-// Recopiées de moissonneurs/creneau.py, que le cockpit ne peut pas importer ; un test les compare.
+// Recopiées de moissonneurs/creneau.py ; un test vérifie qu'elles sont identiques.
 const PERIME_S = 15 * 60;
 const ATTENTE_CRENEAU_S = 90;
 const MARGE_REQUETES = 120;
@@ -90,7 +90,7 @@ function derniereExecution(moissons, m) {
     propositions: Number.isInteger(e.propositions_ecrites) ? e.propositions_ecrites : 0 };
 }
 
-// La note de la dernière importation FNS (une par import, un seul écrivain).
+// La note de la dernière importation FNS (une note par import).
 function dernierImportFns(moissons) {
   const dossier = path.join(moissons, 'recherche', '_partage', 'imports-fns');
   let dernier = null;
@@ -183,7 +183,7 @@ function ligneDe(p, m) {
   return p.lignes[m];
 }
 
-// Rend vrai si l'événement est reconnu. Les champs viennent du contrat ; rien n'est recalculé ici.
+// Rend vrai si l'événement est reconnu. Les champs sont repris tels que l'événement les donne.
 function appliquer(p, e) {
   if (!e || e.format !== FORMAT_EVENEMENT) { return false; }
   const m = typeof e.moissonneur === 'string' ? e.moissonneur : null;

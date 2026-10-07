@@ -1,11 +1,10 @@
-// Les adresses d'ojs.szh.ch : la base des deux revues, et les chemins que Pronto FIXE à
-// l'export OJS (url_path) pour que la newsletter puisse lier un numéro ou un article avant
-// même qu'il soit publié. Une seule source : l'export OJS (lib/export-ojs.js) écrit ces
-// chemins, la newsletter (lib/secretariat.js) en bâtit les adresses, l'OAI-PMH
-// (lib/auteurs-ojs.js, lib/secretariat.js) part de la même base. Module pur, sans
-// dépendance.
+// Les adresses d'ojs.szh.ch : la base des deux revues, et les chemins (url_path) que Pronto
+// fixe à l'export OJS, pour que la newsletter puisse lier un numéro ou un article avant sa
+// publication. Utilisé par l'export OJS (lib/export-ojs.js), la newsletter et l'OAI-PMH
+// (lib/secretariat.js, lib/auteurs-ojs.js).
 //
-// Règle des chemins (OJS : unique dans la revue, jamais uniquement numérique, [a-z0-9-]) :
+// Règle des chemins (OJS les veut uniques dans la revue, en [a-z0-9-], pas seulement
+// numériques) :
 //   numéro                -> « 2026-03 »
 //   article sans DOI      -> « 2026-03-documentation » (clé du numéro + slug sans son
 //                            préfixe d'ordre « 10- »)
@@ -21,7 +20,7 @@ function urlJournal(locale) {
   return j ? BASE_OJS + '/' + j : '';
 }
 
-// Sans accent, en minuscules, [a-z0-9-] seulement, tirets simples et jamais en bord.
+// Sans accent, en minuscules, [a-z0-9-] seulement, tirets simples, aucun tiret en bord.
 function aplatir(texte) {
   return String(texte === undefined || texte === null ? '' : texte)
     .replace(/ß/g, 'ss').replace(/[æÆ]/g, 'ae').replace(/[œŒ]/g, 'oe')
@@ -50,11 +49,10 @@ function cleNumero(annee, numero) {
 
 function cheminNumero(annee, numero) { return normaliserCheminOjs(cleNumero(annee, numero)); }
 
-// slug -> chemin, pour les articles SANS DOI d'un numéro (`slugs`, dans l'ordre du numéro).
-// Le slug perd son préfixe d'ordre, qui change quand on réordonne ; si deux slugs se
-// confondent une fois le préfixe retiré, tous deux le gardent, et un dernier doublon reçoit
-// un compteur : un chemin ne doit jamais désigner deux articles. La clé du numéro, qui
-// contient un tiret, empêche tout chemin d'être purement numérique.
+// slug -> chemin, pour les articles sans DOI d'un numéro (`slugs`, dans l'ordre du numéro).
+// Le slug perd son préfixe d'ordre, qui change quand on réordonne. Si deux slugs se
+// confondent sans préfixe, tous deux le gardent, et un doublon restant reçoit un compteur.
+// La clé du numéro, qui contient un tiret, empêche un chemin purement numérique.
 function cheminsArticlesSansDoi(cle, slugs) {
   const base = normaliserCheminOjs(cle);
   const res = {};

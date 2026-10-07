@@ -1,50 +1,33 @@
-// Client HTTP et parseur OAI-PMH communs aux deux moissonneurs du cockpit : lib/auteurs-ojs.js
-// (auteur·e·s publiés, ojs.szh.ch) et lib/mots-cles-edudoc.js (descripteurs bilingues,
-// edudoc.ch). Ce que les deux moissonneurs partagent vraiment vit ici : le client https qui
-// suit les redirections OAI-PMH, le parseur XML minimal (resumptionToken, <error>,
-// entités), le pliage de chaîne pour comparer deux libellés, et le repli sur un 503
-// « Retry after », qu'edudoc.ch comme ojs.szh.ch peuvent montrer.
+// Client HTTP et analyse OAI-PMH communs à lib/auteurs-ojs.js (ojs.szh.ch) et
+// lib/mots-cles-edudoc.js (edudoc.ch) : client https qui suit les redirections, lecture
+// minimale du XML (resumptionToken, <error>, entités), pliage de chaîne pour comparer deux
+// libellés, et repli sur un 503 « Retry after ». Les endpoints, le format des
+// enregistrements, la pagination et le cache restent dans chaque moissonneur.
 //
-// Ce qui n'est pas ici, parce que propre à chaque instance : les endpoints et les sets, le
-// format des enregistrements (dc:creator / marcxml $u côté OJS, champ MARC 690 côté
-// edudoc), la boucle de pagination elle-même (l'URL et l'extracteur de records diffèrent
-// d'un moissonneur à l'autre), la forme du cache et les règles de fusion — tout cela reste
-// dans le moissonneur qui le connaît.
-//
-// Point de passage unique vers un vrai socket https dans tout le cockpit : recupererHttps.
-// La garde SZH_RESEAU_INTERDIT vit ici, à cet unique endroit, pour couvrir d'un seul geste
-// les deux moissonneurs actuels et tout futur module qui s'y brancherait. Elle ne se
-// déclenche que si aucun transport factice n'est fourni — un test qui injecte le sien pour
-// éprouver recupererHttps elle-même (redirections, taille, délais) n'est pas concerné,
-// puisqu'il ne touche jamais le réseau. `test/js/hote-factice.js` pose cette variable pour
-// tous les tests qui activent l'extension : un appel réel échoue alors tout de suite, fort
-// et clair, au lieu de partir en silence vers ojs.szh.ch ou edudoc.ch.
+// recupererHttps est le seul accès réseau https du cockpit. Quand SZH_RESEAU_INTERDIT est
+// posée (par test/js/hote-factice.js) et qu'aucun transport factice n'est fourni, un appel
+// réel échoue aussitôt.
 'use strict';
 
 const https = require('https');
 const { URL } = require('url');
 
 const DELAI_REQUETE_MS = 10000;            // inactivité socket
-// Délai total par requête, en plus de l'inactivité : un serveur qui égoutte un octet
-// toutes les neuf secondes ne déclenche jamais le timeout socket et retiendrait la
-// requête indéfiniment.
+// Délai total par requête, en plus de l'inactivité : un serveur qui envoie un octet toutes
+// les neuf secondes ne déclencherait jamais le délai d'inactivité.
 const DELAI_TOTAL_MS = 60000;
-// Borne dure sur la taille d'une réponse : une page OAI réelle pèse ~300 Ko (100 records).
-// Au-delà de 20 Mo, ce n'est plus une réponse OAI mais un robinet ouvert — on coupe.
+// Taille maximale d'une réponse. Une page OAI réelle pèse environ 300 Ko (100 records).
 const OCTETS_MAX_REPONSE = 20 * 1024 * 1024;
 const REDIRECTIONS_MAX = 3;
-// Délais de repli sur un 503 « Retry after » (voir l'en-tête ci-dessus) : trois essais,
-// croissants. Overridable par les tests (options.delaisRepliMs) pour ne pas attendre 7 s
-// par cas.
+// Délais de repli sur un 503 « Retry after » : trois essais, croissants. Les tests les
+// remplacent par options.delaisRepliMs.
 const DELAIS_REPLI_503 = [1000, 2000, 4000];
 
 // ---- Parseur XML minimal, ciblé OAI-PMH ------------------------------------------
 //
-// Pas de dépendance : chaque moissonneur n'en tire que ce qu'il lit lui-même (records,
-// dc:creator ou champ 690, resumptionToken, <error>) via ses propres expressions
-// régulières — seuls le décodage d'entités/CDATA, le resumptionToken et l'erreur OAI sont
-// assez génériques pour vivre ici. Tolérant : un XML tronqué ou hostile rend simplement
-// moins de records, jamais une exception.
+// Sans dépendance. Chaque moissonneur extrait ses records avec ses propres expressions
+// régulières ; ici, seulement le décodage des entités et CDATA, le resumptionToken et
+// l'erreur OAI. Un XML tronqué ou malformé ne lève pas d'exception.
 
 function decoderTexteXml(brut) {
   let t = String(brut === undefined || brut === null ? '' : brut);
@@ -62,9 +45,8 @@ function decoderTexteXml(brut) {
     .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
 }
 
-// Le resumptionToken d'une réponse : '' quand il n'y en a pas, ou qu'il est vide —
-// les deux veulent dire « dernière page ». OJS l'écrit avec des attributs sur plusieurs
-// lignes (expirationDate, completeListSize, cursor) ; edudoc.ch aussi.
+// Le resumptionToken d'une réponse, ou '' sur la dernière page (absent ou vide). La
+// balise peut porter des attributs sur plusieurs lignes.
 function extraireResumptionToken(xml) {
   const m = String(xml === undefined || xml === null ? '' : xml)
     .match(/<resumptionToken(?:\s[^>]*)?>([\s\S]*?)<\/resumptionToken>/);
@@ -72,8 +54,8 @@ function extraireResumptionToken(xml) {
   return decoderTexteXml(m[1]).trim();
 }
 
-// L'erreur OAI d'une réponse, ou null. noRecordsMatch n'est pas une panne : c'est la
-// réponse normale d'un moissonnage incrémental qui n'a rien de neuf.
+// L'erreur OAI d'une réponse, ou null. noRecordsMatch signifie seulement qu'il n'y a rien
+// de neuf.
 function erreurOai(xml) {
   const m = String(xml === undefined || xml === null ? '' : xml)
     .match(/<error\s[^>]*\bcode\s*=\s*["']([^"']*)["'][^>]*(?:\/>|>([\s\S]*?)<\/error>)/);
@@ -83,10 +65,8 @@ function erreurOai(xml) {
 
 // ---- Pliage de chaîne, pour comparaison --------------------------------------------
 
-// Casse et accents pliés, espaces réduits : « MORAND, Robin » et « Mörand, robin »
-// tombent sur la même clé. Sert à dédupliquer aussi bien un nom d'auteur·e
-// (lib/auteurs-ojs.js) qu'un libellé de descripteur edudoc (lib/mots-cles-edudoc.js, sous
-// l'alias plierTexte) : le corps ne fait rien de spécifique à un nom de personne.
+// Casse et accents pliés, espaces réduits : « MORAND, Robin » et « Mörand, robin » donnent
+// la même clé. Sert aux noms d'auteur·e·s comme aux descripteurs edudoc (alias plierTexte).
 function plierNom(texte) {
   let t = String(texte === undefined || texte === null ? '' : texte)
     .toLowerCase().replace(/\s+/g, ' ').trim();
@@ -97,10 +77,9 @@ function plierNom(texte) {
 
 // ---- Réseau ------------------------------------------------------------------------
 
-// Une redirection n'est suivie que vers le même hôte, en https : OJS ne redirige que vers
-// son préfixe de locale (« /revue/oai » -> « /revue/fr/oai »). Une 3xx vers un domaine
-// tiers — proxy captif, détournement DNS — est refusée net : nos requêtes suivantes n'ont
-// rien à aller y porter. Pure, pour être éprouvable sans réseau.
+// Une redirection n'est suivie que vers le même hôte, en https. OJS redirige vers son
+// préfixe de locale (« /revue/oai » -> « /revue/fr/oai ») ; une redirection vers un autre
+// domaine (portail captif, détournement DNS) est refusée.
 function resoudreRedirection(urlCourante, location) {
   let depart;
   let cible;
@@ -117,15 +96,11 @@ function resoudreRedirection(urlCourante, location) {
   return cible.toString();
 }
 
-// GET https natif : User-Agent posé, et les redirections suivies à la main — OJS répond
-// 302 vers l'URL à préfixe de locale, et https.get s'arrêterait là. Trois gardes contre un
-// serveur détourné ou malade : redirections même-hôte seulement (resoudreRedirection),
-// réponse bornée à OCTETS_MAX_REPONSE, et délai total par requête en plus du timeout
-// d'inactivité. `options` est réservé aux tests : { transport, delaiTotalMs } — le
-// transport factice y rejoue les trois pannes sans réseau ni attente réelle.
-//
-// Point de passage unique vers un vrai socket https dans tout le cockpit — voir l'en-tête
-// du fichier pour la garde SZH_RESEAU_INTERDIT posée juste ici.
+// GET https avec User-Agent. Les redirections sont suivies ici, car https.get s'arrête au
+// 302 d'OJS. Trois gardes : redirections vers le même hôte seulement (resoudreRedirection),
+// réponse bornée à OCTETS_MAX_REPONSE, délai total en plus du délai d'inactivité.
+// `options` sert aux tests : { transport, delaiTotalMs }. Voir l'en-tête pour
+// SZH_RESEAU_INTERDIT.
 function recupererHttps(url, redirections, options) {
   const o = options || {};
   if (!o.transport && process.env.SZH_RESEAU_INTERDIT) {
@@ -138,17 +113,15 @@ function recupererHttps(url, redirections, options) {
   return new Promise((resolve, reject) => {
     let req = null;
     let minuteur = null;
-    // Toute issue passe par ici : le minuteur du délai total ne survit jamais à la requête.
+    // Toute issue passe par ici, qui arrête le minuteur du délai total.
     const finir = (fn, valeur) => {
       if (minuteur) { clearTimeout(minuteur); minuteur = null; }
       fn(valeur);
     };
     try {
       req = transport(url, {
-        // JSON compris dans l'Accept : le même transport sert l'OAI, qui rend du XML, et
-        // l'API ROR, qui rend du JSON et répondait 406 à un Accept purement XML. Aucun test
-        // ne pouvait le voir — ils injectent tous un `recuperer` factice — et les 45
-        // institutions restaient sans libellé, en silence.
+        // JSON dans l'Accept : le même client sert aussi l'API ROR, qui répond 406 à un
+        // Accept limité au XML.
         headers: {
           'User-Agent': 'SZH-Publishing',
           'Accept': 'text/xml, application/xml, application/json'
@@ -165,7 +138,7 @@ function recupererHttps(url, redirections, options) {
           let suivante;
           try { suivante = resoudreRedirection(url, res.headers.location); }
           catch (e) { finir(reject, e); return; }
-          // Chaque saut repart avec son propre délai total : les options suivent.
+          // Chaque redirection repart avec son propre délai total.
           finir(resolve, recupererHttps(suivante, (redirections || 0) + 1, options));
           return;
         }
@@ -179,7 +152,7 @@ function recupererHttps(url, redirections, options) {
         res.on('data', (m) => {
           total += m.length;
           if (total > OCTETS_MAX_REPONSE) {
-            // Réponse démesurée : on coupe la connexion, on ne garde rien.
+            // Réponse trop grosse : connexion coupée, rien n'est gardé.
             finir(reject, new Error('réponse trop volumineuse (plus de ' +
               OCTETS_MAX_REPONSE + ' octets) : ' + url));
             try { req.destroy(); } catch (e) { /* déjà fermée */ }
@@ -196,10 +169,8 @@ function recupererHttps(url, redirections, options) {
       reject(new Error('délai total dépassé (' + delaiTotal + ' ms) : ' + url));
       try { req.destroy(); } catch (e) { /* déjà fermée */ }
     }, delaiTotal);
-    // Pas d'unref() ici : un minuteur qui ne retient pas la boucle d'événements peut ne
-    // jamais tirer dans un processus au repos, et la promesse resterait pendante à vie.
-    // Il est nettoyé par finir() à chaque issue — il ne retient donc jamais plus que la
-    // requête en cours.
+    // Pas d'unref() : dans un processus au repos, le minuteur pourrait ne jamais se
+    // déclencher et la promesse resterait pendante. finir() l'arrête à chaque issue.
     req.on('timeout', () => { req.destroy(new Error('délai dépassé (inactivité) : ' + url)); });
     req.on('error', (e) => { finir(reject, e); });
   });
@@ -207,15 +178,12 @@ function recupererHttps(url, redirections, options) {
 
 // ---- Repli sur un 503 « Retry after » -----------------------------------------------
 //
-// Passé une poignée de requêtes rapprochées, une instance OAI-PMH peut répondre
-// « 503 Retry after 1 seconds » puis se rétablir d'elle-même à la requête suivante.
-// ojs.szh.ch ne l'a pas montré en un an d'usage, mais rien ne garantit qu'elle ne se
-// comporte pas un jour de même : le repli vit ici plutôt que dans un seul des deux
-// moissonneurs.
+// Après quelques requêtes rapprochées, edudoc.ch peut répondre « 503 Retry after 1
+// seconds », puis répondre normalement à la requête suivante.
 function attendre(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
-// `options` suit recupererHttps (transport, delaiTotalMs) ; `delaisRepliMs` s'y ajoute pour
-// les tests, qui n'ont aucune raison d'attendre 1 à 4 secondes par cas.
+// `options` suit recupererHttps (transport, delaiTotalMs), plus `delaisRepliMs` pour les
+// tests.
 async function recupererAvecRepli(url, options) {
   const o = options || {};
   const delais = Array.isArray(o.delaisRepliMs) ? o.delaisRepliMs : DELAIS_REPLI_503;

@@ -1,37 +1,22 @@
-// Ce qu'est le dossier qu'on vient d'ouvrir : un numéro de revue, ou un livre.
+// Le profil du dossier ouvert : un numéro de revue (`ausgabe.yaml`, `articles/`,
+// `articles-word/`) ou un livre (`buch.yaml`, `chapitres/`, `chapitres-word/`). PROFILS
+// est la table qui nomme ces différences et les capacités de chaque profil.
 //
-// Le cockpit a longtemps connu un seul objet, « la revue » : un dossier portant
-// `ausgabe.yaml`, des articles dans `articles/<slug>/<slug>.md`, un dépôt Word dans
-// `articles-word/`. Ces trois faits étaient écrits en toutes lettres à une vingtaine
-// d'endroits. Le moteur livre en ajoute trois autres — `buch.yaml`, `chapitres/`,
-// `chapitres-word/` — qui ne diffèrent que par leur nom.
+// Sans `require('vscode')`, pour être testé par `node --test`.
 //
-// Ce module est la table qui les nomme, et rien de plus. Ce n'est pas un cadre à
-// greffons : deux profils ne justifient pas une architecture d'extension. C'est une
-// table de vérité de six lignes, plus les fonctions qui la lisent, pour que chaque
-// hypothèse « revue » du code devienne nommée et testable au lieu d'être littérale.
-//
-// ⚠ Le module est pur : aucun `require('vscode')`. Il ne fait que du chemin, du
-//   `fs.existsSync` et la lecture du profil posé dans lib/session.js, ce qui permet à `node --test` de l'exercer sans hôte. Toute
-//   fonction qui aurait besoin de l'API de l'éditeur n'a pas sa place ici.
-//
-// ⚠ La détection se fait sur la présence du fichier de configuration, jamais sur une
-//   clé qu'il contiendrait. C'est la même règle que côté chaîne (`pipeline/Makefile`,
-//   `LIVRE_CONFIG := $(wildcard buch.yaml)`), et elle vaut d'être tenue des deux côtés :
-//   un livre n'a pas d'`ausgabe.yaml`, il n'a donc aucune clé `profil:` à lire, et les
-//   règles de la revue gardent leur littéral sans qu'on y touche.
+// Le profil se reconnaît à la présence du fichier de configuration, comme dans
+// `pipeline/Makefile` (`LIVRE_CONFIG := $(wildcard buch.yaml)`).
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
-// Seul état lu : le profil posé par l'extension (module pur lui aussi).
+// Seul état lu : le profil posé par l'extension.
 const session = require('./session');
 
-// La table. `contexte` est la clé que l'extension pose pour VS Code (`setContext`) et que
-// les `when` du package.json lisent ; `cible` est la cible make que Ctrl+S déclenche.
-// `capacites` dit quelle fonction existe dans le profil : chacune est posée en contexte
-// `szh.peut.<nom>` (contextes() plus bas) et relue par les `when`, les panneaux, l'arbre
-// et les webviews. Les deux profils portent le même jeu de clés.
+// `contexte` est la clé posée par `setContext` et lue par les `when` du package.json ;
+// `cible` est la cible make lancée par Ctrl+S. `capacites` dit quelles fonctions existent
+// dans le profil : chacune devient le contexte `szh.peut.<nom>` (contextes()), lu par les
+// `when`, les panneaux, l'arbre et les webviews. Les deux profils ont les mêmes clés.
 const PROFILS = {
   revue: {
     cle: 'revue',
@@ -81,20 +66,16 @@ const PROFILS = {
 // Préfixe des clés de contexte des capacités : `szh.peut.doi`, `szh.peut.ojs`…
 const PREFIXE_CAPACITE = 'szh.peut.';
 
-// ⚠ L'ordre compte. Un dossier qui porterait les deux fichiers de configuration est un
-//   accident — une revue dans laquelle quelqu'un a déposé un buch.yaml, ou l'inverse. On
-//   tranche pour le livre, parce que c'est le cas le plus récent et le plus probablement
-//   voulu, et parce que la chaîne tranche déjà dans ce sens (le Makefile teste buch.yaml
-//   avant de lire le profil d'ausgabe.yaml). Les deux côtés doivent dire la même chose,
-//   sans quoi l'éditeur montrerait des chapitres et la compilation produirait des articles.
+// L'ordre compte : un dossier qui porte les deux fichiers est un livre, comme pour le
+// Makefile, qui teste buch.yaml avant ausgabe.yaml.
 const ORDRE_DETECTION = ['livre', 'revue'];
 
 function profilPour(cle) {
   return PROFILS[cle] || null;
 }
 
-// Le profil d'un dossier, ou null s'il n'en est pas un. `opts.existe` est injectable pour
-// les tests — aucun test ne doit toucher au disque pour vérifier une table.
+// Le profil d'un dossier, ou null s'il n'en est pas un. `opts.existe` remplace l'accès au
+// disque dans les tests.
 function detecter(dossier, opts) {
   if (!dossier) { return null; }
   const existe = (opts && opts.existe) || fs.existsSync;
@@ -108,8 +89,7 @@ function detecter(dossier, opts) {
 }
 
 // Le premier dossier du workspace qui est une publication, avec son profil.
-// Rend { racine, profil } ou null — et c'est ce null qui garde la vue latérale masquée
-// dans une fenêtre ouverte sur autre chose.
+// Rend { racine, profil } ou null ; null masque la vue latérale.
 function racineDepuis(dossiers, opts) {
   if (!dossiers || !dossiers.length) { return null; }
   for (const d of dossiers) {
@@ -120,11 +100,9 @@ function racineDepuis(dossiers, opts) {
   return null;
 }
 
-// En remontant depuis un fichier : le dossier de publication qui le contient, ou null.
-// Sert à l'ouverture d'un .md par double-clic, et à tout geste qui part d'un chemin
-// absolu sans savoir de quelle publication il relève.
-// La remontée s'arrête à la racine du volume ; `limite` borne le nombre de crans pour
-// qu'un chemin pathologique ne boucle pas.
+// Le dossier de publication qui contient un fichier, en remontant, ou null. Sert par
+// exemple à l'ouverture d'un .md par double-clic. La remontée s'arrête à la racine du
+// volume ; `limite` borne le nombre de niveaux.
 function remonterVers(fichier, opts, limite) {
   let courant = fichier ? path.dirname(fichier) : null;
   let restant = typeof limite === 'number' ? limite : 40;
@@ -138,10 +116,7 @@ function remonterVers(fichier, opts, limite) {
   return null;
 }
 
-// Tous les chemins d'une unité de texte — un article ou un chapitre — en un seul endroit.
-// C'est cette fonction qui remplace les `path.join(racine, 'articles', slug, slug + '.md')`
-// semés dans extension.js : le jour où un profil range ses unités ailleurs, il n'y a qu'ici
-// à le dire.
+// Tous les chemins d'une unité de texte (article ou chapitre).
 function chemins(profil, racine, slug) {
   const p = typeof profil === 'string' ? profilPour(profil) : profil;
   if (!p) { throw new TypeError('profil inconnu'); }
@@ -149,9 +124,8 @@ function chemins(profil, racine, slug) {
                  unites: path.join(racine, p.unites.dossier),
                  depot: path.join(racine, p.depot),
                  sortie: path.join(racine, p.sortie) };
-  // Le PDF que la porte PDF/UA valide : pour un livre, c'est celui de l'ouvrage entier
-  // (aucun chapitre n'a le sien, voir outUnite plus bas) — connu même sans slug, posé ici
-  // et non plus bas pour que chemins('livre', racine) seul le rende déjà.
+  // Le PDF que valide le contrôle PDF/UA : pour un livre, celui de l'ouvrage entier, connu
+  // même sans slug (chemins('livre', racine)).
   if (p.cle === 'livre') { base.pdf = pdfLivre(racine); }
   if (!slug) { return base; }
   const dossier = path.join(base.unites, slug);
@@ -164,31 +138,29 @@ function chemins(profil, racine, slug) {
     media:   path.join(dossier, 'media'),
     tables:  path.join(dossier, 'tables'),
     portraits: path.join(dossier, 'portraits'),
-    // ⚠ Les sorties d'un article vivent dans out/<slug>/ ; celles d'un livre sont
-    //   communes à tout l'ouvrage et portent le nom du dossier, pas celui du chapitre.
-    //   Un chapitre n'a donc pas de PDF à lui — seulement son aperçu HTML cliquable
-    //   (out/chapitres/<slug>.apercu.html, comme APERCUS_CHAPITRES dans livre.mk) ; le PDF
-    //   du volume entier se demande à pdfLivre(), plus bas.
+    // Les sorties d'un article sont dans out/<slug>/. Celles d'un livre sont communes à
+    // l'ouvrage et portent le nom du dossier ; un chapitre n'a que son aperçu HTML
+    // (out/chapitres/<slug>.apercu.html, APERCUS_CHAPITRES dans livre.mk). Le PDF du livre
+    // vient de pdfLivre().
     outUnite: p.cle === 'livre'
       ? path.join(base.sortie, p.unites.dossier, slug + '.apercu.html')
       : path.join(base.sortie, slug),
-    // Le PDF d'un article de revue : out/<slug>/<slug>.pdf. Pour un livre, déjà posé sur
-    // `base` ci-dessus (identique quel que soit le chapitre demandé).
+    // Le PDF d'un article de revue : out/<slug>/<slug>.pdf. Pour un livre, il est déjà
+    // dans `base`.
     pdf: p.cle === 'livre' ? base.pdf : path.join(base.sortie, slug, slug + '.pdf'),
   });
 }
 
-// Le PDF numérique du livre entier (LIVRE_PDF de livre.mk : out/<NOM_LIVRE>.pdf, le nom du
-// dossier du livre, jamais celui d'un chapitre) — celui que PDF/UA valide, à ne pas
-// confondre avec le PDF imprimeur (fond perdu, traits de coupe, cible make séparée).
+// Le PDF numérique du livre entier (LIVRE_PDF de livre.mk : out/<NOM_LIVRE>.pdf, du nom du
+// dossier), celui que valide PDF/UA. Le PDF imprimeur (fond perdu, traits de coupe) a sa
+// propre cible make.
 function pdfLivre(racine) {
   return path.join(racine, 'out', path.basename(racine) + '.pdf');
 }
 
-// La vue d'ensemble que le clic sur l'en-tête d'une section ouvre, ou null quand la section
-// n'en a pas (« Actualité ») ou n'existe pas dans ce profil. La section des unités porte la
-// vue de son profil (table ci-dessus) ; « traductions » et « Word en attente » sont les
-// mêmes partout. Une revue n'a donc aucune entrée « chapitres », et un livre aucune « articles ».
+// La vue d'ensemble ouverte par un clic sur l'en-tête d'une section, ou null si la section
+// n'en a pas (« Actualité ») ou n'existe pas dans ce profil. La section des unités ouvre la
+// vue de son profil ; « traductions » et « Word en attente » sont communes.
 const VUES_COMMUNES = { traductions: 'szh.vueTraductions', word: 'szh.vueWord' };
 
 function vueDeSection(profil, categorie) {
@@ -198,14 +170,13 @@ function vueDeSection(profil, categorie) {
   return VUES_COMMUNES[categorie] || null;
 }
 
-// Ce que le clic sur une unité fait compiler, et le PDF qu'il ouvre. Un chapitre a le sien
-// (cible livre-chapitre-pdf, out/chapitres/<slug>.pdf) : le livre ne se recompile pas à
-// chaque clic. Une revue garde le sien dans out/<slug>/ et le build complet (cible null :
-// l'appelant lance alors la tâche « Aperçu / Export PDF »).
+// Ce qu'un clic sur une unité fait compiler, et le PDF qu'il ouvre. Un chapitre a sa
+// cible (livre-chapitre-pdf, out/chapitres/<slug>.pdf), pour ne pas recompiler tout le
+// livre. Un article de revue a son PDF dans out/<slug>/ et la cible null : l'appelant lance
+// alors la tâche « Aperçu / Export PDF ».
 //
-// ⚠ Le slug d'un chapitre finit dans une ligne bash (CHAPITRE=<slug>) : il est refusé s'il
-//   porte autre chose que lettres, chiffres, point, tiret et tiret bas. Une revue n'en fait
-//   pas usage dans une ligne de commande, son slug n'est donc pas contrôlé ici.
+// Le slug d'un chapitre entre dans une ligne bash (CHAPITRE=<slug>) : il est refusé s'il
+// contient autre chose que lettres, chiffres, point, tiret et tiret bas.
 const SLUG_SUR = /^[\p{L}\p{N}][\p{L}\p{N}._-]*$/u;
 
 function apercuUnite(profil, racine, slug) {
@@ -221,18 +192,16 @@ function apercuUnite(profil, racine, slug) {
   return { cible: null, variables: [], pdf: path.join(racine, p.sortie, slug, slug + '.pdf') };
 }
 
-// Le nom d'une unité au singulier, dans la langue de l'interface. Sert aux messages :
-// « supprimer cet article » / « supprimer ce chapitre ». Les libellés complets restent
-// dans lib/i18n.js ; ce qui est ici, c'est la clé à lui demander.
+// La clé i18n du nom d'une unité au singulier (« supprimer cet article » / « ce
+// chapitre ») ; les libellés sont dans lib/i18n.js.
 function cleLibelle(profil, suffixe) {
   const p = typeof profil === 'string' ? profilPour(profil) : profil;
   if (!p) { throw new TypeError('profil inconnu'); }
   return 'unite.' + p.unites.mot + (suffixe ? '.' + suffixe : '');
 }
 
-// Toutes les clés de contexte, pour les poser d'un coup : celle du profil actif à vrai,
-// les autres à faux. Sans le second temps, une fenêtre qui passe d'une revue à un livre
-// garderait szh.estRevue vrai et afficherait les deux vues.
+// Toutes les clés de contexte : celle du profil actif à vrai, les autres à faux, pour
+// qu'une fenêtre qui passe d'une revue à un livre ne garde pas szh.estRevue.
 function contextes(profil) {
   const actif = profil ? (typeof profil === 'string' ? profilPour(profil) : profil) : null;
   const out = {};
@@ -245,9 +214,8 @@ function contextes(profil) {
   return out;
 }
 
-// Le profil du dossier ouvert, tel que l'extension l'a posé dans lib/session.js, ou celui
-// de la revue tant qu'aucun livre n'est ouvert : les gestes écrits avant le moteur livre
-// gardent ainsi leur comportement.
+// Le profil du dossier ouvert, posé par l'extension dans lib/session.js ; « revue » par
+// défaut.
 function courant() {
   return session.profilOuvrage() || PROFILS.revue;
 }

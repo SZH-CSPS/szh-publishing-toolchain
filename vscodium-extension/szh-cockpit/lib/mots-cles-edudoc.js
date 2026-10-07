@@ -1,54 +1,30 @@
-// Le vocabulaire des descripteurs edudoc.ch (thésaurus bilingue DE/FR appliqué à nos deux
-// revues), moissonné sur l'interface OAI-PMH publique d'edudoc.ch et gardé dans
-// C:\ProgramData\SZH\mots-cles.json. Alimente l'autocomplétion de mots clés (côté webview,
-// media/_fiches.js) et l'appariement DE/FR vers l'export edudoc (champ MARC 690, plus bas
-// dans ce fichier) : ce module moissonne, dédoublonne, garde — et apparie.
+// Les descripteurs du thésaurus edudoc.ch (bilingue DE/FR), moissonnés par OAI-PMH et gardés
+// dans C:\ProgramData\SZH\mots-cles.json. Ils servent à l'autocomplétion des mots-clés
+// (media/_fiches.js) et à l'appariement DE/FR de l'export edudoc (champ MARC 690).
 //
-// Endpoint https://edudoc.ch/oai2d, instance Invenio/TIND sans authentification. Les deux
-// revues y sont des sets dédiés, identifiants exacts (avec espaces, à encodeURIComponent) :
+// Source : https://edudoc.ch/oai2d, sans authentification. Chaque revue est un set, dont
+// l'identifiant contient des espaces (à passer par encodeURIComponent) :
 //   "Revue suisse de pédagogie spécialisée"
 //   "Schweizerische Zeitschrift für Heilpädagogik"
+// Seul metadataPrefix=marcxml expose le champ 690 (oai_dc n'a pas de sujet) : des paires
+// répétées, $a = allemand, $b = français. L'allemand ou le français peut manquer.
+// Les balises MARC portent le préfixe « marc: » (<marc:datafield tag="690">…), que les
+// expressions régulières doivent tolérer.
 //
-// metadataPrefix=oai_dc ne porte aucun champ sujet. Seul metadataPrefix=marcxml expose le
-// champ MARC 690, en paires bilingues répétées : $a = allemand, $b = français.
-//
-// Différence structurelle avec lib/auteurs-ojs.js (qui vise OJS, pas edudoc) : le marcxml
-// d'edudoc préfixe tout son contenu MARC avec le namespace « marc: » —
-// <marc:record><marc:datafield tag="690"><marc:subfield code="a">…</marc:subfield></marc:datafield></marc:record>
-// — alors qu'OJS ne préfixe pas. Conséquence heureuse : pas de collision de balise <record>
-// (le <record> OAI est nu, le <marc:record> MARC est préfixé) là où OJS imbriquait deux
-// <record> de même nom. Mais les expressions régulières de ce module doivent tolérer le
-// préfixe, faute de quoi elles ne matcheraient simplement rien sur les vraies réponses.
-//
-// Repli 503 : passé une poignée de requêtes rapprochées, l'instance peut répondre
-// « 503 Retry after 1 seconds » puis se rétablir d'elle-même à la requête suivante. D'où
-// recupererAvecRepli() dans lib/oai-pmh.js plutôt que dans ce seul module (voir plus bas) —
-// lib/auteurs-ojs.js en profite aussi, même si l'instance OJS visée ne l'a pas montré.
-//
-// Des paires incomplètes existent en pratique (l'allemand ou le français peut manquer) :
-// la tolérance n'est pas théorique.
-//
-// Cache séparé de config.json (qui est réécrit en entier à chaque réglage), forme imposée :
+// Format du cache, distinct de config.json, écrit de façon atomique (lib/yaml.js) :
 //   { dateFetch: "2026-08-31T12:00:00.000Z" | null, motsCles: [{ de, fr, manque }, …] }
-// où `manque` vaut 'de', 'fr' ou null. Écriture atomique (lib/yaml.js).
+// où `manque` vaut 'de', 'fr' ou null.
 //
-// Rythme : au plus une fois par mois (dateFetch), incrémental (from = date du dernier fetch,
-// au jour). Hors ligne = normal : l'échec est silencieux, comme pour les auteur·e·s.
-// dateFetch n'avance que si les deux sets ont répondu ; sinon on réessaie, la fusion étant
-// idempotente.
+// Rafraîchi au plus une fois par mois, de façon incrémentale (from = jour du dernier
+// moissonnage). Un échec réseau est silencieux. dateFetch n'avance que si les deux sets ont
+// répondu ; la fusion étant idempotente, on peut réessayer.
 //
-// SZH_MOTS_CLES_CACHE impose un autre fichier de cache — les tests s'en servent, comme
-// SZH_AUTEURS_CACHE pour lib/auteurs-ojs.js : aucun test ne touche C:\ProgramData, et aucun
-// ne fait de réseau (le moissonnage prend son `recuperer` en paramètre).
+// SZH_MOTS_CLES_CACHE désigne un autre fichier de cache (pour les tests). Le moissonnage
+// reçoit sa fonction `recuperer` en paramètre, ce qui permet de tester sans réseau.
 //
-// Réutilisation délibérée de lib/oai-pmh.js, module commun avec lib/auteurs-ojs.js : son
-// client HTTP (recupererHttps, avec ses gardes — redirections même-hôte, réponse bornée à
-// 20 Mo, délai total de 60 s), son repli sur 503 (recupererAvecRepli) et son parseur
-// générique OAI-PMH (erreurOai, extraireResumptionToken, decoderTexteXml) ne sont pas
-// spécifiques aux auteur·e·s ni à edudoc : ils sont importés tels quels plutôt que réécrits.
-// plierNom (casse + accents pliés) est importé de même sous l'alias `plierTexte` — son nom
-// trompe, son corps ne fait rien de spécifique à un nom de personne. Seule l'extraction du
-// champ 690, la fusion des descripteurs et la pagination avec `set=` sont propres à ce module.
+// Le client HTTP, le repli sur les 503 « Retry after » d'edudoc et l'analyse OAI-PMH
+// viennent de lib/oai-pmh.js ; plierNom est importé sous le nom `plierTexte`, car il plie
+// n'importe quel texte.
 'use strict';
 
 const fs = require('fs');
@@ -66,9 +42,9 @@ const SETS_EDUDOC_DEFAUT = [
   'Schweizerische Zeitschrift für Heilpädagogik'
 ];
 
-const JOURS_FRAICHEUR = 30;                // « une fois par mois », comme les auteur·e·s.
-// Garde anti-boucle, avec une marge d'un ordre de grandeur au-delà du volume réel d'une revue
-// (une vingtaine de pages à 100 notices).
+const JOURS_FRAICHEUR = 30;
+// Garde contre une boucle de pagination, dix fois au-dessus du volume réel d'une revue (une
+// vingtaine de pages de 100 notices).
 const PAGES_MAX = 500;
 
 function cheminCacheMotsCles() {
@@ -78,13 +54,11 @@ function cheminCacheMotsCles() {
 
 // ---- Extraction MARC 690 -----------------------------------------------------------
 //
-// Tolérant, comme le parseur de lib/auteurs-ojs.js : un XML tronqué ou hostile rend
-// simplement moins de records, jamais une exception. `(?:[\w.-]+:)?` avale le préfixe
-// « marc: » sans l'imposer — au cas où une future réponse edudoc en serait dépourvue.
+// Un XML tronqué ou malformé rend moins de records, sans exception. `(?:[\w.-]+:)?`
+// accepte le préfixe « marc: » sans l'exiger.
 
 // Les records d'une réponse ListRecords marcxml : [{ datestamp, deleted, descripteurs }],
-// descripteurs = [{ de, fr, manque }]. `manque` signale un $a ou un $b absent — jamais
-// rejeté en silence, voir recordsEnMotsCles et fusionnerMotsCles.
+// descripteurs = [{ de, fr, manque }]. `manque` signale un $a ou un $b absent.
 function extraireRecordsMotsCles(xml) {
   const records = [];
   const source = String(xml === undefined || xml === null ? '' : xml);
@@ -98,8 +72,7 @@ function extraireRecordsMotsCles(xml) {
     )) {
       let de = '';
       let fr = '';
-      // Un seul $a et un seul $b par champ 690 dans tout ce qui a été observé sur
-      // l'instance (contrairement au $u répétable d'OJS) : le premier de chaque fait foi.
+      // Un champ 690 n'a qu'un $a et un $b ; on prend le premier de chaque.
       let vuA = false;
       let vuB = false;
       for (const sf of field[1].matchAll(
@@ -109,7 +82,7 @@ function extraireRecordsMotsCles(xml) {
         if (sf[1] === 'a' && !vuA) { de = valeur; vuA = true; }
         else if (sf[1] === 'b' && !vuB) { fr = valeur; vuB = true; }
       }
-      if (de === '' && fr === '') { continue; }              // rien à garder
+      if (de === '' && fr === '') { continue; }
       descripteurs.push({ de: de, fr: fr, manque: de === '' ? 'de' : (fr === '' ? 'fr' : null) });
     }
     records.push({
@@ -121,8 +94,8 @@ function extraireRecordsMotsCles(xml) {
   return records;
 }
 
-// Les records d'un moissonnage aplatis en descripteurs. Records deleted ignorés — jamais de
-// suppression côté cache, comme pour les auteur·e·s.
+// Les records d'un moissonnage aplatis en descripteurs. Les records supprimés sont ignorés :
+// le cache ne perd jamais d'entrée.
 function recordsEnMotsCles(records) {
   const sortie = [];
   for (const r of Array.isArray(records) ? records : []) {
@@ -134,25 +107,14 @@ function recordsEnMotsCles(records) {
 
 // ---- Déduplication et fusion --------------------------------------------------------
 //
-// Clé de rapprochement : forme pliée (casse et accents) de l'allemand OU du français —
-// l'un ou l'autre suffit à retrouver une entrée déjà connue, ce qui permet à une paire
-// incomplète de compléter plus tard une entrée déjà entrevue (ou l'inverse). Jamais de
-// suppression, jamais d'écrasement d'une valeur remplie par une autre différente : un vrai
-// désaccord entre deux moissons (même allemand, français distinct — ce n'est pas théorique :
-// « Lernschwierigkeit » a deux traductions concurrentes sur l'instance) donne une seconde
-// entrée plutôt qu'un remplacement muet.
+// Rapprochement par la forme pliée (casse et accents) de l'allemand ou du français : l'un
+// des deux suffit à retrouver une entrée, et une paire incomplète peut ainsi être complétée
+// plus tard. Une valeur remplie n'est jamais écrasée : deux traductions différentes du même
+// terme (« Lernschwierigkeit » en a deux) donnent deux entrées.
 //
-// parDe/parFr ne pointent chacune que vers la PREMIÈRE entrée rencontrée pour une clé
-// donnée (poserSiAbsente-like : jamais réécrites) : après un fork sur désaccord, l'allemand
-// du fork reste donc introuvable via parDe, qui désigne toujours l'entrée d'origine. Sans
-// garde-fou, un troisième descripteur identique au fork (même allemand ET même français)
-// retomberait sur l'entrée d'origine via parDe, redécouvrirait le même désaccord et
-// forkerait à nouveau — un fork de plus par répétition, jamais reconnu comme un doublon.
-// D'où parPaire : la clé COMBINÉE (allemand plié + français plié) de chaque entrée, qui
-// pointe elle vers la bonne entrée quel que soit le nombre de forks déjà accumulés sur le
-// même allemand, et qui coupe court avant toute recherche de candidat — un descripteur
-// rigoureusement identique à une entrée déjà connue ne doit jamais relancer la logique de
-// désaccord/fork, seulement les vrais nouveaux désaccords la déclenchent encore.
+// parDe et parFr désignent la première entrée vue pour une clé. Une seconde entrée née d'un
+// désaccord y est donc introuvable ; parPaire (allemand et français pliés) la retrouve, pour
+// qu'un descripteur déjà connu ne crée pas une nouvelle entrée à chaque répétition.
 function fusionnerMotsCles(existants, nouveaux) {
   const sortie = [];
   const parDe = new Map();     // allemand plié (non vide) -> index dans `sortie`
@@ -176,8 +138,7 @@ function fusionnerMotsCles(existants, nouveaux) {
     const kd = plierTexte(de);
     const kf = plierTexte(fr);
 
-    // Doublon rigoureux (même allemand ET même français, pliés) : rien à ajouter, la
-    // première occurrence fait foi — voir le commentaire au-dessus de la fonction.
+    // Même allemand et même français : déjà connu.
     if (parPaire.has(kd + '' + kf)) { return; }
 
     let i = -1;
@@ -200,7 +161,7 @@ function fusionnerMotsCles(existants, nouveaux) {
         return;
       }
     }
-    // Aucun candidat, ou désaccord détecté ci-dessus : nouvelle entrée, rien n'est effacé.
+    // Aucun candidat, ou désaccord : nouvelle entrée.
     const entree = { de: de, fr: fr, manque: de === '' ? 'de' : (fr === '' ? 'fr' : null) };
     sortie.push(entree);
     indexer(sortie.length - 1);
@@ -217,8 +178,7 @@ function cacheVideMotsCles() {
   return { dateFetch: null, motsCles: [] };
 }
 
-// Lecture tolérante : fichier absent, JSON corrompu, BOM, forme inattendue — tout retombe
-// sur le cache vide, jamais une exception.
+// Fichier absent, JSON corrompu, BOM ou forme inattendue : rend le cache vide.
 function lireCacheMotsCles() {
   let brut;
   try {
@@ -243,8 +203,8 @@ function ecrireCacheMotsCles(cache) {
   } catch (e) { return String((e && e.message) || e); }
 }
 
-// Frais = moins d'un mois. Une dateFetch dans le futur (horloge repassée en arrière) compte
-// comme périmée : le cache se répare tout seul au prochain moissonnage.
+// Frais = moins d'un mois. Une dateFetch dans le futur (horloge reculée) compte comme
+// périmée, ce qui la corrige au prochain moissonnage.
 function cacheFraisMotsCles(cache, maintenant) {
   if (!cache || !cache.dateFetch) { return false; }
   const t = Date.parse(cache.dateFetch);
@@ -255,8 +215,8 @@ function cacheFraisMotsCles(cache, maintenant) {
 
 // ---- Config (surcharge de l'endpoint / des sets) -------------------------------------
 //
-// Pure — la config lui est passée — pour être éprouvable sans lire C:\ProgramData. Comme
-// endpointsOai() dans lib/auteurs-ojs.js : un endpoint http en clair est refusé.
+// Reçoit la config en paramètre. Comme endpointsOai() de lib/auteurs-ojs.js, refuse un
+// endpoint en http.
 function configEdudoc(cfg) {
   const brut = cfg && cfg.edudoc;
   const endpointBrut = brut && typeof brut === 'object' ? String(brut.endpoint || '').trim() : '';
@@ -268,15 +228,13 @@ function configEdudoc(cfg) {
   return { endpoint: endpoint, sets: (sets && sets.length > 0) ? sets : SETS_EDUDOC_DEFAUT.slice() };
 }
 
-// recupererAvecRepli (repli sur le 503 « Retry after » d'edudoc.ch) vit dans lib/oai-pmh.js,
-// importé plus haut : voir l'en-tête du fichier.
 
 // ---- Moissonnage ----------------------------------------------------------------------
 
-// ListRecords sur un set, resumptionToken suivis jusqu'au bout. `recuperer` est injecté —
-// recupererAvecRepli en vrai, une table de fixtures dans les tests. `from` (YYYY-MM-DD)
-// rend le moissonnage incrémental. metadataPrefix et set ne sont portés que par la première
-// requête — OAI-PMH interdit de les répéter avec un resumptionToken.
+// ListRecords sur un set, en suivant les resumptionToken jusqu'au bout. `recuperer` vaut
+// recupererAvecRepli, ou des fixtures dans les tests. `from` (YYYY-MM-DD) rend le
+// moissonnage incrémental. metadataPrefix et set ne vont que dans la première requête :
+// OAI-PMH interdit de les répéter avec un resumptionToken.
 async function moissonnerMotsCles(recuperer, endpoint, setSpec, from) {
   const records = [];
   const jonction = endpoint.indexOf('?') === -1 ? '?' : '&';
@@ -287,7 +245,7 @@ async function moissonnerMotsCles(recuperer, endpoint, setSpec, from) {
     const xml = await recuperer(url);
     const erreur = erreurOai(xml);
     if (erreur) {
-      if (erreur.code === 'noRecordsMatch') { return records; }   // rien de neuf : normal
+      if (erreur.code === 'noRecordsMatch') { return records; }   // rien de neuf
       throw new Error('OAI ' + erreur.code + ' sur ' + endpoint + ' (set ' + setSpec + ')' +
         (erreur.message ? ' : ' + erreur.message : ''));
     }
@@ -334,7 +292,7 @@ async function rafraichirMotsCles(opts) {
       derniereErreur = String((e && e.message) || e);
     }
   }
-  // Hors ligne complet : rien de neuf et rien à réécrire — le fichier reste tel quel.
+  // Aucun set n'a répondu : le fichier reste tel quel.
   const inchange = !complet && JSON.stringify(motsCles) === JSON.stringify(cache.motsCles);
   const neuf = {
     dateFetch: complet ? new Date(maintenant).toISOString() : cache.dateFetch,
@@ -350,29 +308,19 @@ async function rafraichirMotsCles(opts) {
 
 // ---- Export vers edudoc : apparier les mots-clés d'un article avec le thésaurus -------
 //
-// keywords.fr et keywords.de d'un article sont chacune triées alphabétiquement de LEUR
-// côté dans le .meta.yaml (mesuré sur les numéros réels du poste) : la n-ième entrée
-// française n'a donc aucune raison de correspondre à la n-ième allemande. Apparier par
-// position produirait un champ 690 faux sans jamais échouer un test naïf, puisque les deux
-// listes ont la même longueur. La seule paire fiable est celle que porte le thésaurus
-// edudoc lui-même : chaque terme saisi est retrouvé INDÉPENDAMMENT dans l'index, jamais en
-// regardant son vis-à-vis dans l'autre langue.
+// keywords.fr et keywords.de sont triées chacune de son côté dans le .meta.yaml : la n-ième
+// entrée française ne correspond pas à la n-ième allemande. Chaque terme saisi est donc
+// cherché seul dans le thésaurus, qui donne la paire.
 //
-// Deuxième écart mesuré : trois mots-clés sur dix portent un qualificatif entre
-// parenthèses dans le thésaurus (« Inklusion (SZH) », « accessibilité (na) »…) que le
-// rédacteur ne tape jamais. Sans le tolérer, on ne reconnaît qu'un mot-clé sur neuf ; en
-// repliant sur la forme sans qualificatif, un sur deux. D'où deux clés par langue et par
-// entrée : la forme exacte, et la forme privée de son unique parenthèse finale — jamais une
-// parenthèse au milieu du libellé, qui fait partie du terme.
+// Le thésaurus ajoute souvent un qualificatif entre parenthèses (« Inklusion (SZH) »,
+// « accessibilité (na) ») que la saisie n'a pas. Chaque entrée a donc deux clés par langue :
+// la forme exacte, et la forme sans sa parenthèse finale. Une parenthèse au milieu du
+// libellé fait partie du terme.
 //
-// Troisième écart : le .meta.yaml porte l'apostrophe typographique (’, U+2019), le
-// thésaurus l'apostrophe droite (', U+0027). plierNom (importé sous plierTexte) plie déjà
-// la casse, les accents et les espaces, mais ignore les apostrophes : plierDescripteur lui
-// ajoute cette seule normalisation plutôt que de dupliquer le pliage.
+// Le .meta.yaml porte l'apostrophe typographique (’, U+2019), le thésaurus l'apostrophe
+// droite (', U+0027) : plierDescripteur ajoute cette normalisation à plierTexte.
 //
-// Les trois fonctions ci-dessous sont pures : le thésaurus (le tableau motsCles du cache)
-// leur est passé en paramètre, jamais lu sur disque — à charge de l'appelant de le tirer
-// de lireCacheMotsCles() au préalable.
+// Les fonctions ci-dessous reçoivent le thésaurus (motsCles du cache) en paramètre.
 
 const RE_QUALIFICATIF_FINAL = /\s*\([^()]*\)\s*$/;   // un seul groupe, en fin de chaîne
 
@@ -382,23 +330,19 @@ function sansQualificatifFinal(texte) {
   return String(texte === undefined || texte === null ? '' : texte).replace(RE_QUALIFICATIF_FINAL, '');
 }
 
-// Le pliage de comparaison d'un descripteur : plierTexte (casse, accents, espaces) plus la
-// normalisation des trois apostrophes courbes/obliques vers l'apostrophe droite. Tolérant :
-// null, undefined ou un nombre rendent une chaîne vide plutôt que de lever.
+// Forme de comparaison d'un descripteur : plierTexte (casse, accents, espaces), et les
+// apostrophes courbes ramenées à l'apostrophe droite. null, undefined ou un nombre rendent
+// une chaîne vide.
 function plierDescripteur(texte) {
   if (texte === undefined || texte === null || typeof texte === 'number') { return ''; }
   return plierTexte(String(texte).replace(/[’‘ʼ]/g, "'"));
 }
 
-// Index opaque motsCles -> Map(clé pliée -> { de, fr }), pour retrouver une entrée du
-// thésaurus depuis un libellé saisi dans l'une ou l'autre langue. Deux passes délibérées :
-// toutes les clés EXACTES d'abord, puis seulement les clés DÉ-QUALIFIÉES, qui ne remplacent
-// jamais une clé exacte déjà posée — sinon « tessin » (libellé exact d'une entrée) se
-// ferait voler sa clé par « Tessin (na) » (une autre entrée, dé-qualifiée en « tessin »)
-// selon l'ordre d'arrivée, ce qui serait arbitraire. Sur une collision entre deux clés de
-// même rang (deux exactes, ou deux dé-qualifiées), la première entrée rencontrée gagne :
-// le cache est ordonné par ancienneté de moisson, cet ordre fait foi comme dans
-// fusionnerMotsCles. Une clé vide (langue manquante) n'est jamais indexée.
+// Index motsCles -> Map(clé pliée -> { de, fr }), pour retrouver une entrée depuis un
+// libellé saisi dans l'une ou l'autre langue. Les clés exactes sont posées d'abord, puis les
+// clés sans qualificatif, qui ne remplacent pas une clé exacte : « tessin » reste à
+// l'entrée « tessin » et non à « Tessin (na) ». Entre deux clés de même rang, la première
+// entrée du cache l'emporte. Une clé vide n'est pas indexée.
 function indexerThesaurus(motsCles) {
   const entrees = (Array.isArray(motsCles) ? motsCles : []).map((mc) => ({
     de: String((mc && mc.de) || '').trim(),
@@ -433,15 +377,10 @@ function chercherDescripteur(terme, index) {
   return null;
 }
 
-// fusionnerMotsCles garde délibérément deux entrées distinctes quand deux moissons
-// désaccordent sur une traduction (« Lernschwierigkeit » a deux $b concurrents sur
-// l'instance réelle, voir le commentaire de fusionnerMotsCles). Un article peut alors
-// saisir un terme qui tombe sur l'une des deux entrées côté français et un terme qui tombe
-// sur l'autre côté allemand : deux OBJETS distincts du thésaurus, donc invisibles à une
-// déduplication par identité. Sans un second passage, le 690 sortirait avec le même $a et
-// deux $b contradictoires — un doublon pour tout import de bibliothèque. On fond donc après
-// coup les descripteurs déjà collectés dont l'allemand plié OU le français plié coïncide,
-// le premier rencontré gagnant — même règle que partout ailleurs dans ce module.
+// Le thésaurus peut avoir deux entrées pour un même terme (voir fusionnerMotsCles). Un
+// article peut alors toucher l'une par le français et l'autre par l'allemand, et le 690
+// sortirait avec le même $a et deux $b. On fusionne donc les descripteurs dont l'allemand ou
+// le français plié coïncide ; le premier rencontré l'emporte.
 function fusionnerDescripteursApparies(descripteurs) {
   const fondus = [];
   const parDe = new Map();   // allemand plié (non vide) -> index dans `fondus`
@@ -453,27 +392,22 @@ function fusionnerDescripteursApparies(descripteurs) {
     if (kd !== '' && parDe.has(kd)) { i = parDe.get(kd); }
     else if (kf !== '' && parFr.has(kf)) { i = parFr.get(kf); }
     if (i === -1) { i = fondus.length; fondus.push(d); }
-    // Les deux clés du descripteur fondu profitent au survivant, y compris celle qui ne l'a
-    // pas désigné cette fois : un troisième descripteur peut encore s'y raccrocher par elle.
+    // Les deux clés du descripteur fusionné pointent vers le survivant, pour qu'un troisième
+    // descripteur puisse s'y rattacher par l'une ou l'autre.
     if (kd !== '' && !parDe.has(kd)) { parDe.set(kd, i); }
     if (kf !== '' && !parFr.has(kf)) { parFr.set(kf, i); }
   }
   return fondus;
 }
 
-// L'appariement proprement dit. listeFr et listeDe sont les mots-clés saisis par le
-// rédacteur, dans l'ordre du fichier — jamais mis en correspondance l'un avec l'autre,
-// voir l'en-tête de section. Chaque terme est cherché seul ; ce que le thésaurus rend porte
-// LA PAIRE, c'est elle qui part à l'export.
-//   descripteurs : les entrées trouvées et complètes (de et fr non vides), dédoublonnées
-//     par entrée du thésaurus PUIS fondues quand deux entrées distinctes partagent un
-//     allemand ou un français (voir fusionnerDescripteursApparies ci-dessus) — sous leur
-//     forme canonique edudoc, première apparition, liste française d'abord, puis allemande.
-//   nonReconnus : les termes saisis qu'aucune entrée complète n'a captés, dans l'ordre,
-//     sans doublon (comparés sur leur forme pliée), dans leur graphie d'origine. Une entrée
-//     trouvée mais incomplète (l'autre langue manque au thésaurus) compte comme non
-//     reconnue : le champ 690 a besoin de ses deux sous-champs, une moitié de paire n'y a
-//     pas sa place.
+// L'appariement. listeFr et listeDe sont les mots-clés saisis, dans l'ordre du fichier.
+// Chaque terme est cherché seul ; la paire rendue par le thésaurus part à l'export. Rend :
+//   descripteurs : les entrées trouvées et complètes (de et fr non vides), sans doublon puis
+//     fusionnées (fusionnerDescripteursApparies), sous leur forme edudoc, dans l'ordre
+//     d'apparition, liste française d'abord ;
+//   nonReconnus : les termes saisis sans entrée complète, dans l'ordre, sans doublon, dans
+//     leur graphie d'origine. Une entrée sans l'autre langue compte comme non reconnue, le
+//     champ 690 exigeant ses deux sous-champs.
 function apparierDescripteurs(listeFr, listeDe, index) {
   const idx = index instanceof Map ? index : new Map();
   const descripteurs = [];
@@ -515,47 +449,29 @@ module.exports = {
   plierDescripteur, indexerThesaurus, apparierDescripteurs
 };
 
-// ---- Qualificatif de PROVENANCE du thésaurus edudoc, masqué à l'AFFICHAGE (16.09.2026) --
+// ---- Qualificatif de provenance, masqué à l'affichage ----------------------------------
 //
-// Un descripteur edudoc porte parfois un qualificatif final entre parenthèses qui ne dit
-// rien du terme lui-même, seulement d'où il vient dans le thésaurus : « Barrierefreiheit
-// (szh) », « inclusion (CSPS) », « plan d'études (na) ». La saisie passe désormais par une
-// liste fermée qui insère la forme canonique d'edudoc, qualificatif compris, dans le
-// .meta.yaml — et Robin ne veut jamais voir ce qualificatif-là à l'impression : ni sur le
-// PDF, ni sur le HTML, ni sur la page publique d'un article sur ojs.szh.ch. Le CSV Edudoc,
-// lui, garde la forme canonique complète (lib/secretariat.js, export-templates/edudoc.twig) :
-// c'est elle que la bibliothécaire attend, et rien ici n'y touche — le masquage n'a lieu qu'à
-// l'AFFICHAGE, jamais dans le .meta.yaml de l'article.
+// Certains descripteurs edudoc finissent par un qualificatif qui dit d'où ils viennent dans
+// le thésaurus : « Barrierefreiheit (szh) », « plan d'études (na) ». Le .meta.yaml garde la
+// forme complète, comme le CSV Edudoc (lib/secretariat.js, export-templates/edudoc.twig) ;
+// le PDF, le HTML et la page OJS l'affichent sans ce qualificatif.
 //
-// À NE PAS CONFONDRE avec sansQualificatifFinal, plus haut dans ce fichier : celle-ci retire
-// N'IMPORTE QUELLE parenthèse finale, pour reconnaître un terme saisi dans le thésaurus (une
-// parenthèse de SENS n'y gêne pas l'appariement, elle est juste ignorée le temps de la
-// recherche). sansQualificatifDeProvenance fait l'inverse et sert un autre besoin : elle ne
-// retire QUE les cinq jetons de provenance de la liste fermée ci-dessous, et laisse intacte
-// toute autre parenthèse — « diagnostic (résultat) » et « diagnostic (processus) » sont deux
-// concepts différents qui ne doivent jamais se confondre, « procédure d'évaluation
-// standardisée (PES) » et « personne en formation (dans la formation professionnelle) »
-// portent un acronyme ou une précision qui fait partie du terme. Les deux fonctions
-// coexistent donc pour deux besoins différents : reconnaître (large, interne au module) et
-// afficher (étroit, public) — ne pas les fusionner sous prétexte qu'elles se ressemblent.
+// sansQualificatifFinal (plus haut) retire n'importe quelle parenthèse finale, pour
+// rechercher un terme. sansQualificatifDeProvenance ne retire que les cinq qualificatifs
+// ci-dessous : « diagnostic (résultat) » et « diagnostic (processus) » sont deux termes
+// distincts, et « procédure d'évaluation standardisée (PES) » garde son acronyme.
 //
-// Liste fermée, partagée avec pipeline/filters/szh-maquette.lua (QUALIFICATIFS_PROVENANCE,
-// sans_qualificatif_provenance) : le PDF est composé par ce filtre Lua à partir du même
-// .meta.yaml, la page OJS par ce module JS (via lib/export-ojs.js) — les deux doivent
-// masquer exactement les mêmes jetons, sous peine d'afficher deux choses différentes sans
-// que personne ne s'en aperçoive. test/js/mots-cles-grille.test.js lit les deux fichiers et
-// échoue si l'une des deux listes bouge sans l'autre.
+// Liste partagée avec pipeline/filters/szh-maquette.lua (QUALIFICATIFS_PROVENANCE,
+// sans_qualificatif_provenance), qui compose le PDF ; test/js/mots-cles-grille.test.js
+// vérifie que les deux listes sont identiques.
 const QUALIFICATIFS_PROVENANCE = ['na', 'ce', 'szh', 'csps', 'spc'];
 
-// La parenthèse finale ne se retire que si son contenu, espaces ôtés et casse abaissée, est
-// EXACTEMENT l'un des cinq jetons ci-dessus — jamais une recherche à l'intérieur du contenu,
-// qui ferait par exemple sauter une parenthèse dont le texte contient seulement l'un de ces
-// mots au milieu d'autre chose.
+// La parenthèse finale n'est retirée que si son contenu, sans espaces de bord et en
+// minuscules, est exactement l'un des cinq qualificatifs.
 const RE_QUALIFICATIF_PROVENANCE_FINAL = /\s*\(([^()]*)\)\s*$/;
 
-// Un libellé de thésaurus (ou déjà apparié pour l'export), privé de son qualificatif de
-// provenance s'il en porte un. Un libellé sans parenthèse finale, ou dont la parenthèse
-// porte autre chose qu'un des cinq jetons (un sens, un acronyme officiel), ressort inchangé.
+// Un libellé du thésaurus privé de son qualificatif de provenance. Tout autre libellé
+// ressort inchangé.
 function sansQualificatifDeProvenance(texte) {
   const s = String(texte === undefined || texte === null ? '' : texte);
   return s.replace(RE_QUALIFICATIF_PROVENANCE_FINAL, (tout, contenu) =>

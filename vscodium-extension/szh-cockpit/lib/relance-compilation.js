@@ -1,27 +1,22 @@
-// La recompilation d'un article après un enregistrement fait HORS de l'éditeur de texte :
-// formulaire « Médias de l'article », éditeur de tableaux. Ces deux formulaires écrivent
-// soit par fs (ecrireAtomique, copie dans media/), que triggerTaskOnSave ne voit jamais,
-// soit par doc.save() du .md, qu'il voit — et rien ne dit au formulaire lequel des deux a
-// réellement relancé quelque chose. Sans ce module, une correction faite là restait
-// invisible dans « À corriger » jusqu'à la prochaine compilation déclenchée ailleurs.
+// Recompile un article après un enregistrement fait hors de l'éditeur de texte (formulaire
+// « Médias de l'article », éditeur de tableaux). Ces formulaires écrivent soit par fs
+// (ecrireAtomique, copie dans media/), que triggerTaskOnSave ne voit pas, soit par
+// doc.save() du .md, qu'il voit.
 //
-// Ce module ne compile rien lui-même : il décide QUAND redemander la compilation, puis la
-// confie au chemin unique (relancerCompilation → compilerPuisAfficher, extension.js), avec
-// sa garde buildEnCours et sa file de rejeu pendant un import. Trois règles :
+// Le module décide quand redemander la compilation, et la confie à relancerCompilation →
+// compilerPuisAfficher (extension.js). Trois règles :
 //
 //   - Anti-rebond par article : l'éditeur de tableaux enregistre à chaque modification
 //     (autoEnregistrement, 3 s après la dernière frappe, et à chaque sortie de champ).
 //     Chaque demande repousse l'échéance ; une seule compilation part, DELAI ms après la
 //     dernière. `vider(slug)` (fermeture du panneau) fait partir tout de suite une demande
 //     encore en attente.
-//   - Une compilation qui a DÉMARRÉ après la demande la couvre : elle lit le disque tel que
-//     l'enregistrement l'a laissé. C'est le cas du doc.save() que triggerTaskOnSave a
-//     relayé — la redemander ferait tourner la même tâche deux fois (VS Code refuse une
-//     tâche déjà active). `demarrages()` est un compteur de démarrages de la tâche de build,
-//     tenu par l'hôte (onDidStartTask) : il a bougé depuis la demande → rien à faire.
-//   - Une compilation déjà en vol AVANT la demande ne la couvre pas (elle a pu lire
-//     l'ancien fichier) : l'échéance est repoussée d'un délai, jusqu'à ce qu'elle finisse.
-//     compilerPuisAfficher, lui, l'aurait simplement laissée tomber.
+//   - Une compilation démarrée après la demande la couvre : elle lit le disque à jour.
+//     C'est le cas d'un doc.save() relayé par triggerTaskOnSave (VS Code refuserait de
+//     relancer une tâche active). `demarrages()` compte les démarrages de la tâche de
+//     build (onDidStartTask, côté hôte) : s'il a bougé depuis la demande, rien à faire.
+//   - Une compilation en cours avant la demande ne la couvre pas (elle a pu lire l'ancien
+//     fichier) : l'échéance est repoussée jusqu'à ce qu'elle finisse.
 //
 // Compilation automatique coupée (numéro verrouillé ou archivé, compilationAutoCoupee) :
 // aucune demande n'est retenue, et une échéance qui arrive après un verrouillage tombe.
@@ -29,8 +24,7 @@
 
 const DELAI_PAR_DEFAUT = 2500;
 
-// Réglable par les tests (la même instance de module que celle d'extension.js, par le cache
-// de require) : lu à chaque demande, jamais figé à la création.
+// Modifiable par les tests (même instance de module qu'extension.js) : lu à chaque demande.
 let delaiCourant = DELAI_PAR_DEFAUT;
 function poserDelai(ms) { delaiCourant = Number(ms) >= 0 ? Number(ms) : DELAI_PAR_DEFAUT; }
 function delai() { return delaiCourant; }
@@ -66,7 +60,7 @@ function creerRelanceDifferee(deps) {
     if (deps.coupee()) { attentes.delete(slug); return; }
     // Une compilation partie depuis la demande a lu l'enregistrement : elle suffit.
     if (deps.demarrages() !== entree.repere) { attentes.delete(slug); return; }
-    // Une compilation partie AVANT : on attend qu'elle ait fini, sans rien perdre.
+    // Une compilation partie avant : on attend qu'elle finisse.
     if (deps.occupe()) { armer(slug, entree, delai()); return; }
     attentes.delete(slug);
     deps.relancer(entree.fournisseur, slug);
@@ -79,7 +73,7 @@ function creerRelanceDifferee(deps) {
     const cle = String(slug);
     const entree = attentes.get(cle) || { fournisseur: fournisseur, repere: 0, jeton: null };
     entree.fournisseur = fournisseur;
-    // Le repère suit la DERNIÈRE écriture : une compilation démarrée entre deux
+    // Le repère suit la dernière écriture : une compilation démarrée entre deux
     // enregistrements rapprochés n'a pas lu le second.
     entree.repere = deps.demarrages();
     attentes.set(cle, entree);
@@ -95,9 +89,8 @@ function creerRelanceDifferee(deps) {
     echoir(cle);
   }
 
-  // La demande tombe sans rien lancer : le fichier enregistré va disparaître (suppression du
-  // tableau), et une compilation partie maintenant lirait un dossier en cours de suppression.
-  // Le .md que la suppression enregistre ensuite relance, lui, la compilation (Ctrl+S).
+  // Abandonne la demande : le tableau est en cours de suppression. L'enregistrement du .md
+  // qui suit relance la compilation.
   function abandonner(slug) {
     const cle = String(slug || '');
     const entree = attentes.get(cle);

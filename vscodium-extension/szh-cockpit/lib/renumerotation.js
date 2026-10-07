@@ -1,47 +1,29 @@
 // Aligner le numéro du dossier sur celui de l'écran.
 //
-// Données pures et fonctions pures : ni `vscode`, ni `fs`, aucun accès disque — comme
-// lib/constats.js et lib/codes-erreur.js. Ce module ne renomme rien : il rend un PLAN, que
-// l'hôte exécute. C'est ce qui permet d'éprouver les cas qui font mal — l'échange de deux
-// rangs, l'interruption au milieu, le dossier déjà en place — sans monter une arborescence.
+// Sans accès disque : le module rend un plan, que lib/renumerotation-fs.js exécute. Les cas
+// délicats (échange de deux rangs, interruption, dossier déjà en place) se testent ainsi
+// sans arborescence.
 //
-// LE PROBLÈME. Le numéro qu'un article porte à l'écran vient de son rang dans l'ordre du
-// numéro ; le préfixe de son dossier est figé à l'import et n'était jamais renommé — c'était
-// écrit noir sur blanc dans l'infobulle de « Monter ». Les deux divergent donc au premier
-// déplacement, et l'on cherche l'article affiché « 02 » dans l'explorateur pour tomber sur
-// « 01- » — ou l'inverse, le rang affiché COMPTANT À PARTIR DE ZÉRO (prefixeOrdre(),
-// lib/articles.js) alors qu'un décalage de un s'était glissé ici.
+// Le numéro affiché d'un article vient de son rang dans l'ordre du numéro ; le préfixe de
+// son dossier doit le suivre quand l'ordre change.
 //
-// DEUX PASSES, ET POURQUOI. Deux articles qui échangent leur rang ne peuvent pas se
-// renommer directement : le premier viserait un nom que le second occupe encore. Tout
-// dossier qui change de nom passe donc par un temporaire, puis rejoint sa destination. Le
-// temporaire PORTE sa destination (« ~ordre-02-inclusion ») : c'est ce qui rend une
-// interruption rattrapable, planReprise() n'ayant alors qu'à lire les noms restés sur le
-// disque.
+// Deux passes : deux articles qui échangent leur rang ne peuvent pas se renommer
+// directement. Chaque dossier passe par un nom temporaire qui porte sa destination
+// (« ~ordre-02-inclusion ») ; après une interruption, planReprise() n'a qu'à lire ces noms.
 //
-// CE QUI NE BOUGE PAS. Les images et les tableaux sont désignés en chemin relatif depuis le
-// .md (`media/x.png`, `tables/y.html`) : ils ne sont pas concernés. En revanche le .md
-// lui-même porte le nom de son dossier — le Makefile l'exige — et la fiche, la
-// bibliographie et le sidecar des tâches suivent la même règle. On renomme donc, dans le
-// dossier, tout fichier dont le nom commence par l'ancien slug : cela attrape aussi les
-// sidecars qu'on ne connaît pas encore, alors qu'une liste écrite ici en oublierait un le
-// jour où la chaîne en ajoute un.
+// Les images et les tableaux, désignés en chemin relatif depuis le .md, ne bougent pas. Le
+// .md, la fiche, la bibliographie et le sidecar des tâches portent le nom du dossier (le
+// Makefile l'exige pour le .md) : tout fichier dont le nom commence par l'ancien slug est
+// renommé, ce qui couvre aussi un futur sidecar.
 //
-// ⚠ Ça ne suffit pas pour la bibliographie. Le fichier <slug>.biblio.md suit bien cette
-// règle, comme n'importe quel sidecar — mais le .md de l'article le désigne AUSSI par son
-// NOM, dans le marqueur qu'y laisse l'import (« ::: {.szh-biblio src="<slug>.biblio.md"} »,
-// pipeline/filters/szh-biblio-detacher.lua) : un texte, pas un chemin relatif comme
-// media/ ou tables/, et ce texte contient le slug. Renommer les FICHIERS d'un dossier, ce
-// que ce module décide et que lib/renumerotation-fs.js exécute, ne réécrit donc pas ce
-// marqueur — il faut le faire à part, voir reecrireMarqueurBiblio() dans ce dernier
-// fichier, sans quoi la bibliographie d'un article renommé pointe vers un fichier qui
-// n'existe plus.
+// Le marqueur de bibliographie, qui nomme <slug>.biblio.md dans le texte du .md, est
+// réécrit à part par lib/renumerotation-fs.js (reecrireMarqueurBiblio()).
 'use strict';
 
 const { prefixeOrdre } = require('./articles');
 
-// Le préfixe temporaire. Le tilde n'apparaît dans aucun slug (slugifier ne le produit
-// jamais) et trie en fin de liste dans l'explorateur : un lot interrompu se voit.
+// Le préfixe temporaire. Le tilde n'apparaît dans aucun slug et se trie en fin de liste
+// dans l'explorateur : un lot interrompu se voit.
 const PREFIXE_TEMPO = '~ordre-';
 
 // La partie parlante d'un slug : ce qui reste une fois le « NN- » retiré. Un dossier créé à
@@ -51,10 +33,8 @@ function tige(slug) {
   return m ? m[2] : String(slug);
 }
 
-// Le préfixe vient de prefixeOrdre() (lib/articles.js), la même fonction qui calcule le
-// nombre affiché à l'écran (libelleArticle(), et le DOI par rangDoi()). En avoir un second
-// calcul ici est précisément ce qui a créé la divergence que ce module corrige : le disque
-// et l'écran doivent lire le même nombre, jamais deux formules qui s'accordent par hasard.
+// Le préfixe vient de prefixeOrdre() (lib/articles.js), qui calcule aussi le nombre
+// affiché (libelleArticle(), et le DOI par rangDoi()) : disque et écran ont le même nombre.
 function nomVoulu(slug, rang) {
   return prefixeOrdre(rang) + '-' + tige(slug);
 }
@@ -74,10 +54,7 @@ function fichiersSuivis(fichiers, ancien, neuf) {
 // planRenumerotation(articles, ordreVoulu) -> { aFaire, renommages, passes }
 //
 //   articles   [{ slug, fichiers: [nom…] }] — l'état du disque, dans n'importe quel ordre.
-//   ordreVoulu [slug…] — les mêmes slugs, dans l'ordre voulu à l'écran. C'est l'appelant
-//              qui l'a calculé, avec la fonction qui décide déjà de l'ordre affiché : le
-//              rang ne se recalcule pas ici, sinon le disque et l'écran divergeraient à
-//              nouveau, en pire.
+//   ordreVoulu [slug…] — les mêmes slugs, dans l'ordre affiché, calculé par l'appelant.
 //
 //   renommages [{ de, vers, fichiers: [{de, vers}] }] — les dossiers qui changent de nom.
 //   passes     [[{de, vers}…], …] — les mouvements à exécuter, dans l'ordre. Deux passes
@@ -87,8 +64,7 @@ function planRenumerotation(articles, ordreVoulu) {
   for (const a of articles || []) { parSlug.set(String(a.slug), a); }
   const voulu = (ordreVoulu || []).map(String);
 
-  // Un ordre calculé sur une liste périmée renommerait au hasard : on refuse, on ne
-  // complète pas d'office.
+  // Un ordre calculé sur une liste périmée est refusé, et non complété.
   if (voulu.length !== parSlug.size) {
     throw new Error('ordre incomplet : ' + voulu.length + ' rangs pour ' + parSlug.size + ' articles');
   }
@@ -99,7 +75,7 @@ function planRenumerotation(articles, ordreVoulu) {
   const renommages = [];
   voulu.forEach((slug, i) => {
     const vers = nomVoulu(slug, i);
-    if (vers === slug) { return; }                 // déjà au bon rang : on n'y touche pas
+    if (vers === slug) { return; }                 // déjà au bon rang
     renommages.push({ de: slug, vers: vers,
                       tempo: PREFIXE_TEMPO + vers,
                       fichiers: fichiersSuivis(parSlug.get(slug).fichiers, slug, vers) });
@@ -110,9 +86,8 @@ function planRenumerotation(articles, ordreVoulu) {
     throw new Error('deux articles viseraient le même dossier : ' + cibles.join(', '));
   }
 
-  // Les passes ne portent que des DOSSIERS. Les fichiers de chaque dossier se renomment
-  // après les deux passes, quand le dossier a repris un nom définitif : les renommer plus
-  // tôt les laisserait sous un nom temporaire si le lot s'interrompait entre les deux.
+  // Les passes ne portent que des dossiers. Leurs fichiers se renomment après, une fois le
+  // nom définitif atteint, pour qu'une interruption ne les laisse pas sous un nom temporaire.
   const passes = renommages.length === 0 ? [] : [
     renommages.map((r) => ({ de: r.de, vers: r.tempo })),
     renommages.map((r) => ({ de: r.tempo, vers: r.vers }))
@@ -122,9 +97,9 @@ function planRenumerotation(articles, ordreVoulu) {
 
 // planReprise(dossiers) -> { aFaire, passes }
 //
-// Ce qu'il reste à faire quand un lot s'est interrompu : des « ~ordre-… » traînent sur le
-// disque, et leur nom porte leur destination. Une seule passe suffit — le temporaire est
-// justement ce qui garantit qu'aucune destination n'est occupée par un dossier en attente.
+// Ce qu'il reste à faire après un lot interrompu : les « ~ordre-… » restés sur le disque
+// portent leur destination. Une seule passe suffit, aucune destination n'étant occupée par
+// un dossier en attente.
 function planReprise(dossiers) {
   const noms = (dossiers || []).map(String);
   const presents = new Set(noms);
@@ -132,8 +107,8 @@ function planReprise(dossiers) {
   for (const nom of noms) {
     if (nom.indexOf(PREFIXE_TEMPO) !== 0) { continue; }
     const vers = nom.slice(PREFIXE_TEMPO.length);
-    // Une destination déjà occupée veut dire deux exécutions concurrentes, ou un dossier
-    // recréé à la main : on refuse plutôt que d'écraser le travail de quelqu'un.
+    // Une destination déjà occupée (deux exécutions concurrentes, ou dossier recréé à la
+    // main) : refus, pour ne rien écraser.
     if (presents.has(vers)) {
       throw new Error('reprise impossible : « ' + vers + ' » est occupé');
     }

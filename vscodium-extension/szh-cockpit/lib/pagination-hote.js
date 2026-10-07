@@ -1,27 +1,17 @@
 // Pagination continue du numéro, côté cockpit : lecture de l'état (pipeline/pagination.py
-// via `make etat-pagination`), rafraîchissement à la demande (`make rafraichir-pagination`),
-// et les constats qu'un numéro périmé pose dans « À corriger ».
+// via `make etat-pagination`), rafraîchissement (`make rafraichir-pagination`), et les
+// constats qu'un numéro périmé pose dans « À corriger ».
 //
-// On ne pagine QU'AU BOUCLAGE, par un bouton manuel (szh.rafraichirPagination,
-// extension.js) : ce module ne lance jamais lui-même une compilation, il expose seulement
-// les deux appels make et les fonctions pures qui en tirent un constat ou un compte.
+// La pagination se fait au bouclage, par un bouton (szh.rafraichirPagination). Ce module ne
+// lance pas de compilation de lui-même. Les rappels vers l'hôte passent par configurer() ;
+// les tests injectent un `lancer` factice.
 //
-// ⚠ Impur (spawn WSL, disque) : sur le modèle de lib/pdfua-hote.js, les rappels vers l'hôte
-// passent par configurer(). Les tests injectent un `lancer` factice — child_process.spawn
-// n'est pas simulé par le harnais, tout lancement réel doit passer par ce point d'entrée.
+// `etat-pagination` ne compile ni n'écrit rien : on lit sa sortie standard.
+// `rafraichir-pagination` est une vraie compilation : elle écrit dans le même journal que
+// tasks.json (`… 2>&1 | tee .szh-journal.log`), que le cockpit relit ensuite.
 //
-// ── Deux formes d'appel, et pourquoi elles diffèrent ────────────────────────────────
-// `etat-pagination` ne compile rien et n'écrit rien : un appel `make` nu suffit, capté sur
-// la sortie standard du processus WSL. `rafraichir-pagination` est une VRAIE compilation
-// (elle peut refaire plusieurs PDF) : elle passe par le même journal que tasks.json
-// (`… 2>&1 | tee .szh-journal.log`), pour que la relecture du journal qui suit un
-// rafraîchissement voie exactement ce que cette compilation-là vient de dire — jamais un
-// texte reconstruit à côté.
-//
-// ── Sécurité : ORDRE est interpolé dans une ligne shell ─────────────────────────────
-// Chaque slug de l'ordre doit avoir la forme d'un slug (lib/articles.js, FORME_SLUG) AVANT
-// d'entrer dans la commande — un slug vient du disque, on ne l'interpole jamais sans
-// vérification dans un `bash -c`. Le refus se fait avant tout lancement de processus.
+// ORDRE est interpolé dans une ligne shell : chaque slug est donc vérifié (FORME_SLUG de
+// lib/articles.js) avant tout lancement.
 'use strict';
 
 const fs = require('fs');
@@ -31,8 +21,7 @@ const moteur = require('./moteur');
 const { FORME_SLUG } = require('./articles');
 
 const NOM_ETAT = '.szh-pagination.json';
-// Même nom que JOURNAL_TACHE (extension.js) et tasks.json : une seule notion de « dernier
-// journal de compilation » dans tout le cockpit.
+// Même journal que JOURNAL_TACHE (extension.js) et tasks.json.
 const NOM_JOURNAL = '.szh-journal.log';
 
 const SCHEMA = 'szh-pagination/1';
@@ -40,8 +29,8 @@ const SCHEMA = 'szh-pagination/1';
 // Même source que MAKEFILE_WSL de lib/pdfua-hote.js : lib/moteur.js.
 const MAKEFILE_WSL = moteur.toolkitMoteur('pipeline', 'Makefile');
 
-// Large, comme DELAI_VALIDATION de lib/pdfua-hote.js : un numéro de plusieurs articles
-// recompile deux fois (pagination.py appelle `make pdf` avant et après le recalcul).
+// Large : pagination.py appelle `make pdf` avant et après le recalcul, soit deux
+// compilations du numéro.
 const DELAI_MAKE = 600000;
 
 // ---- Rappels vers l'hôte -----------------------------------------------------------
@@ -49,8 +38,8 @@ let ctx = { lancer: lancerDefaut };
 function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
 
 // ---- Lancement réel, dans la distro WSL du pipeline --------------------------------
-// -> Promise<{ texte, code, erreur }>. Ne rejette jamais : comme lancerValidateurDefaut()
-// de lib/pdfua-hote.js, les trois issues (sortie, panne, délai) se lisent dans le retour.
+// -> Promise<{ texte, code, erreur }>. Ne rejette jamais : sortie, panne et délai dépassé
+// se lisent dans le retour.
 function lancerDefaut(racine, argv) {
   return moteur.reveiller().then(() => new Promise((resolve) => {
     let proc;
@@ -81,7 +70,7 @@ function lancerDefaut(racine, argv) {
 }
 
 // ---- Sécurité : la forme de chaque slug avant toute interpolation shell -----------
-// -> '' si l'ordre est sûr, sinon le message d'erreur. N'appelle jamais ctx.lancer.
+// -> '' si l'ordre est sûr, sinon le message d'erreur.
 function ordreInvalide(ordre) {
   const liste = Array.isArray(ordre) ? ordre : [];
   for (const s of liste) {
@@ -93,9 +82,8 @@ function ordreInvalide(ordre) {
 }
 
 // ---- La ligne JSON au milieu d'une sortie mêlée ------------------------------------
-// Pure : aucune ligne qui ne commence pas EXACTEMENT par `{"schema"`, ni dont le schéma
-// diffère, ne compte — un JSON d'un autre outil (pdf-ua, par exemple) ne doit jamais être
-// pris pour un état de pagination.
+// Seule compte une ligne qui commence par `{"schema"` avec le bon schéma : la sortie peut
+// contenir le JSON d'un autre outil (pdf-ua, par exemple).
 function extraireEtat(texte) {
   const lignes = String(texte || '').split(/\r?\n/);
   for (const brute of lignes) {
@@ -108,12 +96,10 @@ function extraireEtat(texte) {
   return null;
 }
 
-// ---- etat-pagination : lecture seule, ne compile ni n'écrit rien ------------------
+// ---- etat-pagination : lecture seule ---------------------------------------------
 // -> Promise<etat>, rejetée en cas d'ordre invalide, de panne de lancement, de code non
-// nul, ou d'absence de ligne JSON reconnue. Contrairement à lancerDefaut(), qui ne
-// rejette jamais, cette fonction-ci REJETTE : l'appelant (extension.js) doit pouvoir
-// distinguer « rien à signaler » de « je n'ai pas pu vérifier », et ne jamais confondre
-// les deux — en particulier avant un export OJS.
+// nul ou d'absence de ligne JSON reconnue : l'appelant distingue ainsi « rien à signaler »
+// de « vérification impossible », notamment avant un export OJS.
 function lireEtat(racine, ordre) {
   const erreur = ordreInvalide(ordre);
   if (erreur) { return Promise.reject(new Error(erreur)); }
@@ -129,12 +115,10 @@ function lireEtat(racine, ordre) {
 }
 
 // ---- rafraichir-pagination : une vraie compilation, journalisée comme tasks.json -----
-// -> Promise<{ code, etat }>, jamais rejetée sauf ordre invalide (refusé avant tout
-// lancement, comme lireEtat()). `etat` est `null` si aucune ligne JSON n'a pu être lue
-// (compilation arrêtée avant l'appel à pagination.py, par exemple) : c'est alors `code`,
-// non nul, qui porte la panne — l'appelant affiche pagination.echec dans ce cas.
-// Le journal (.szh-journal.log) est la seule source relue ensuite par relireJournal() :
-// cette fonction ne fait que le produire, jamais son propre résumé des constats.
+// -> Promise<{ code, etat }>, rejetée seulement sur un ordre invalide. `etat` vaut `null`
+// si aucune ligne JSON n'a été lue (compilation arrêtée avant pagination.py) : `code`, non
+// nul, porte alors la panne. Les constats se lisent ensuite dans .szh-journal.log, par
+// relireJournal().
 function rafraichir(racine, ordre) {
   const erreur = ordreInvalide(ordre);
   if (erreur) { return Promise.reject(new Error(erreur)); }
@@ -149,10 +133,9 @@ function rafraichir(racine, ordre) {
 }
 
 // ---- Constats « À corriger » -------------------------------------------------------
-// Un par slug périmé, dans l'ordre où pagination.py les rend — lui d'abord, du premier
-// article qui diverge, et tous ceux qui le suivent (voir pipeline/pagination.py,
-// calculer_perimes). Rien tant que le numéro n'a jamais été paginé : on n'a rien promis à
-// personne, et un numéro non enregistré ne doit jamais afficher d'avertissement.
+// Un par slug périmé, dans l'ordre rendu par pagination.py : le premier article qui
+// diverge, puis tous ceux qui le suivent (calculer_perimes). Aucun tant que le numéro n'a
+// jamais été paginé.
 function constatsPagination(etat) {
   if (!etat || !etat.enregistre) { return []; }
   const perimes = Array.isArray(etat.perimes) ? etat.perimes : [];
@@ -163,11 +146,9 @@ function constatsPagination(etat) {
 }
 
 // ---- Le compte de PDF qui seront recompilés ----------------------------------------
-// Jamais paginé (enregistreSurDisque absent, ou sans articles) -> tous. Sinon, un article
-// compte s'il n'est pas dans l'enregistrement ou si son départ calculé a bougé — et comme
-// le départ d'un article est le cumul des pages qui le précèdent, un seul article décalé
-// entraîne mécaniquement tous les suivants dans ce compte, sans qu'il faille l'écrire à
-// part (voir pipeline/pagination.py, calculer_perimes, même raisonnement).
+// Jamais paginé (enregistreSurDisque absent ou sans articles) -> tous. Sinon, un article
+// compte s'il manque à l'enregistrement ou si sa première page a changé ; un décalage se
+// propage donc à tous les articles suivants (comme calculer_perimes de pagination.py).
 function aRecompiler(etat, enregistreSurDisque) {
   const articles = (etat && Array.isArray(etat.articles)) ? etat.articles : [];
   const enregistres = (enregistreSurDisque && Array.isArray(enregistreSurDisque.articles))
@@ -184,10 +165,9 @@ function aRecompiler(etat, enregistreSurDisque) {
 }
 
 // ---- L'état enregistré sur le disque, pour aRecompiler() ---------------------------
-// .szh-pagination.json vit dans le dossier du numéro, jamais sous out/ : il survit à
-// `make clean` comme à l'archivage (voir pipeline/Makefile, en-tête sur PAGINATION_ETAT).
-// Illisible ou absent -> null, jamais une raison de bloquer : aRecompiler() le lit comme
-// « rien d'enregistré ».
+// .szh-pagination.json est dans le dossier du numéro, hors de out/, pour survivre à
+// `make clean` et à l'archivage (voir PAGINATION_ETAT dans pipeline/Makefile). Illisible ou
+// absent -> null, que aRecompiler() lit comme « rien d'enregistré ».
 function lireRegistre(racine) {
   try {
     const brut = JSON.parse(fs.readFileSync(path.join(racine, NOM_ETAT), 'utf8'));
@@ -197,9 +177,8 @@ function lireRegistre(racine) {
   }
 }
 
-// -> true si le numéro a déjà été paginé au moins une fois. Tant que c'est faux, aucun
-// appel WSL ne doit être tenté en tâche de fond (extension.js, relireJournal()) : le
-// contrôle ne doit rien coûter avant le bouclage.
+// -> true si le numéro a déjà été paginé. Sinon, relireJournal() (extension.js) ne lance
+// aucun appel WSL en tâche de fond.
 function estPagine(racine) {
   try { return fs.existsSync(path.join(racine, NOM_ETAT)); } catch (e) { return false; }
 }

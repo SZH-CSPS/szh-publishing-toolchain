@@ -1,7 +1,6 @@
-// Formulaires de métadonnées : le numéro (ausgabe.yaml), le livre (buch.yaml), et les
-// fiches de tous les articles (meta.yaml). Trois formulaires, un seul moteur de carte
-// d'auteur·e et de photo. Impur (webviews, disque) ; les rappels vers l'hôte passent par
-// configurer() plus bas, jamais par require('../extension').
+// Formulaires de métadonnées : le numéro (ausgabe.yaml), le livre (buch.yaml) et les
+// fiches des articles (meta.yaml). Les trois partagent la carte d'auteur·e et la photo.
+// Les rappels vers l'hôte passent par configurer().
 'use strict';
 
 const vscode = require('vscode');
@@ -51,28 +50,27 @@ const {
 } = require('./medias');
 
 // ---- Rappels vers l'hôte ----------------------------------------------------------
-// Posés une seule fois, à la fin d'extension.js. Les valeurs par défaut ne servent qu'à ne
-// pas planter un test qui require ce module seul. Ils portent les gestes que ce module ne
-// connaît pas (relancer une compilation, focaliser l'arbre, ouvrir un onglet).
+// Posés par extension.js. Ils font ce que ce module ne sait pas faire (relancer une
+// compilation, focaliser l'arbre, ouvrir un onglet). Les défauts permettent de charger le
+// module seul dans un test.
 let ctx = {
   ecrireClesAusgabe: () => 'lib/metadonnees-hote.js non configuré',
   lireCouleurAccent: () => '',
   permuterStatutsTraduction: () => {},
   relancerCompilation: () => {},
   focaliserUnite: () => {},
-  // Les onglets de l'éditeur, pour l'interrupteur « Markdown ». Non configuré : rien n'est
-  // ouvert, rien ne se ferme — le bouton reste éteint plutôt que de mentir.
+  // Les onglets de l'éditeur, pour l'interrupteur « Markdown ». Non configuré, le bouton
+  // reste éteint.
   ongletOuvert: () => false,
   fermerOnglets: async () => {},
   slugDepuisChemin: () => null,
   articlesSansDoi: () => new Set(),
-  // Vérificateur de traduction : le réglage du poste, et le panneau de suggestion que la
-  // pastille d'un champ ouvre. Éteint par défaut — un test qui require ce module seul ne
-  // doit pas se mettre à poser des pastilles.
+  // Vérificateur de traduction : le réglage du poste, et le panneau de suggestion ouvert
+  // par la pastille d'un champ. Éteint par défaut.
   lireVerifTraduction: () => false,
   ouvrirSuggestionTraduction: () => {},
-  // Mode « Trad » : le clic détourné vers le formulaire de suggestion. Un module non
-  // configuré le prend à lib/traduction-hote.js.
+  // Mode « Trad » : envoie le clic vers le formulaire de suggestion. Par défaut, celui de
+  // lib/traduction-hote.js.
   repondreModeTrad: require('./traduction-hote').repondreModeTrad
 };
 
@@ -107,9 +105,9 @@ function couvertureNumero(racine) {
   return null;
 }
 
-// L'aperçu voyage en data: dans le postMessage : c'est la seule voie, la webview n'ayant
-// aucune racine locale autorisée (localResourceRoots: []). Au-delà de ce poids, on montre
-// le nom et le poids sans l'image plutôt que de faire passer huit mégaoctets de base64.
+// L'aperçu passe en data: dans le postMessage, car la webview n'a aucune racine locale
+// autorisée (localResourceRoots: []). Au-delà de ce poids, seuls le nom et le poids sont
+// montrés.
 const MAX_APERCU_COUVERTURE = 6 * 1024 * 1024;
 
 function chargeCouverture(racine) {
@@ -125,8 +123,8 @@ function chargeCouverture(racine) {
   return { nom: trouvee.nom, description: poidsLisible(trouvee.taille), apercu: apercu };
 }
 
-// -> null, ou le message de l'échec. Format et poids sont revérifiés ici : ce qui vient
-// d'une webview n'est jamais cru sur parole.
+// -> null, ou le message de l'échec. Format et poids sont revérifiés ici, la webview
+// n'étant pas une source sûre.
 function ecrireCouverture(racine, nomFichier, donneesBase64) {
   const nom = nomCouverture(nomFichier);
   if (nom === '') { return T('art.couverture.format'); }
@@ -145,8 +143,8 @@ function ecrireCouverture(racine, nomFichier, donneesBase64) {
       try { if (fs.existsSync(tmp)) { fs.unlinkSync(tmp); } } catch (e) { /* déjà renommé */ }
     }
   } catch (e) { return T('err.ecriture', [nom, String((e && e.message) || e)]); }
-  // Une seule couverture par numéro : les autres noms que l'export essaie sont retirés,
-  // sans quoi il prendrait le premier de sa liste et non celui qu'on vient de déposer.
+  // Une seule couverture par numéro : les autres noms sont retirés, sinon l'export
+  // prendrait le premier de sa liste au lieu de celui qu'on vient de déposer.
   for (const autre of NOMS_COUVERTURE) {
     if (autre === nom) { continue; }
     try {
@@ -157,11 +155,10 @@ function ecrireCouverture(racine, nomFichier, donneesBase64) {
   return null;
 }
 
-// ---- Formulaire du numéro : une seule charge utile, une seule écriture ----------
+// ---- Formulaire du numéro ---------------------------------------------------------
 //
 // La page « Méta-données du numéro » et la vue « Articles » montrent le même formulaire
-// (SZH.formulaireNumero, media/_numero.js). Elles lisent et écrivent donc par ici, et non
-// chacune de son côté.
+// (SZH.formulaireNumero, media/_numero.js) ; toutes deux lisent et écrivent par ici.
 const LIBELLES_NUMERO = ['meta.title', 'meta.revue', 'meta.revue.zeitschrift', 'meta.revue.revue',
   'meta.volume', 'meta.numero', 'meta.date', 'meta.langue', 'meta.langue.aucune',
   'meta.langue.fr', 'meta.langue.de', 'meta.langue.en', 'meta.langue.it',
@@ -186,27 +183,22 @@ function textesNumero() {
     couvertureApercuAbsent: T('art.couverture.apercu.absent'),
     couvertureFermer: T('art.couverture.fermer'),
     couvertureEnregistree: T('art.couverture.enregistree'),
-    // Formats et poids acceptés : ceux de lib/articles.js, et non une seconde liste écrite
-    // dans la webview. Elle s'en sert pour refuser tout de suite ; l'hôte les revérifie.
+    // Formats et poids acceptés, tirés de lib/articles.js. La webview s'en sert pour
+    // refuser tout de suite ; l'hôte les revérifie.
     couvertureExtensions: Object.keys(EXTENSIONS_COUVERTURE),
     couvertureMax: MAX_COUVERTURE
   };
 }
 
-// `avecCouverture` : l'aperçu de la couverture pèse plusieurs mégaoctets en base64. Il
-// part au premier chargement, et non à chaque re-rendu d'une vue.
+// `avecCouverture` : l'aperçu de la couverture pèse plusieurs mégaoctets en base64 ; il
+// n'est envoyé qu'au premier chargement.
 function chargeNumero(racine, avecCouverture) {
   let valeurs = {};
   try { valeurs = analyserAusgabe(fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8')); }
   catch (e) { /* fichier illisible : formulaire vide */ }
-  // Défaut « compact » depuis le 09.09.2026 : une clé ABSENTE d'ausgabe.yaml (aucun numéro
-  // existant ne l'a — voir szh-maquette.lua) doit cocher la case, pas la décocher, sinon le
-  // formulaire affiche l'inverse de l'état réel du numéro. C'est le mensonge d'écran le
-  // plus grave possible ici : media/_numero.js n'envoie que les champs touchés, mais si la
-  // rédaction touche cette case-là — même pour la laisser décochée, croyant confirmer ce
-  // qu'elle voit déjà — elle écrit un `entete-condensee: false` explicite, qui, lui,
-  // ramène vraiment la hauteur fixe, sans que personne ne l'ait demandé. Une clé PRÉSENTE
-  // reste lue telle quelle par estVraiYaml.
+  // En-tête condensé par défaut : une clé absente d'ausgabe.yaml coche la case, comme
+  // szh-maquette.lua l'interprète. Sinon la case montrerait l'inverse de l'état réel, et
+  // la toucher écrirait un `entete-condensee: false` que personne n'a voulu.
   valeurs['entete-condensee'] = valeurs['entete-condensee'] === undefined ? 'true'
     : (estVraiYaml(valeurs['entete-condensee']) ? 'true' : 'false');
   const charge = { valeurs: valeurs };
@@ -214,9 +206,9 @@ function chargeNumero(racine, avecCouverture) {
   return charge;
 }
 
-// Seuls les champs modifiés arrivent : une valeur que le formulaire n'a pas su afficher
-// n'est pas écrasée. -> null, ou le message de l'échec ; null aussi quand il n'y avait rien
-// de recevable à écrire.
+// Seuls les champs modifiés arrivent, si bien qu'une valeur que le formulaire n'a pas su
+// afficher n'est pas écrasée. -> null, ou le message de l'échec ; null aussi quand il n'y
+// avait rien de recevable à écrire.
 function ecrireChampsNumero(racine, brut) {
   const modifies = {};
   for (const cle of CLES_METADONNEES) {
@@ -241,17 +233,15 @@ function ecrireChampsNumero(racine, brut) {
     if (e !== 'true' && e !== 'false') { delete modifies['entete-condensee']; }
     else { modifies['entete-condensee'] = e; }
   }
-  // L'ordre des articles ne se saisit pas au clavier : il ne passe pas par ce formulaire.
+  // L'ordre des articles ne passe pas par ce formulaire.
   delete modifies[cleOrdre()];
   if (Object.keys(modifies).length === 0) { return null; }
   return ctx.ecrireClesAusgabe(racine, modifies);
 }
 
-// Les messages du formulaire du numéro, traités à l'identique dans les deux panneaux qui le
-// portent. -> true quand le message a été traité.
-//
-// `recharger` remet le formulaire à ce que le disque dit ; il ne sert qu'au refus « périmé »
-// de la co-édition.
+// Traite les messages du formulaire du numéro pour les deux panneaux qui le portent.
+// -> true quand le message a été traité. `recharger` relit le disque, après un refus
+// « périmé » de la co-édition.
 function messageNumero(panneau, racine, msg, rafraichirTout, recharger) {
   if (msg.type === MSG.ENREGISTRER) {
     if (session.etatNumero().verrouillee) {
@@ -299,11 +289,10 @@ function envoyerValeursMetadonnees(panneau, racine) {
 
 // ---- Formulaire « Métadonnées du livre » -----------------------------------------
 //
-// Le pendant du bloc ci-dessus, pour buch.yaml. Même schéma — un fragment partagé
-// (SZH.formulaireLivre, media/_numero.js), une charge et une écriture uniques — mais un
-// second jeu de fonctions : la validation d'un livre n'est pas celle d'un numéro.
+// Le pendant du bloc ci-dessus pour buch.yaml (SZH.formulaireLivre, media/_numero.js),
+// avec sa propre validation.
 //
-// Les six dernières clés sont celles du bloc `impression:` de buch.yaml — grammage, main,
+// Les six dernières clés sont celles du bloc `impression:` de buch.yaml : grammage, main,
 // dos imposé, fond perdu, traits de coupe, profil CMJN.
 const LIBELLES_LIVRE = ['meta.livre.titre', 'meta.livre.soustitre', 'meta.livre.ouvrage',
   'meta.livre.ouvrage.monographie', 'meta.livre.ouvrage.collectif', 'meta.livre.langue',
@@ -315,7 +304,7 @@ const LIBELLES_LIVRE = ['meta.livre.titre', 'meta.livre.soustitre', 'meta.livre.
   'meta.livre.licence', 'meta.livre.couleur',
   'meta.livre.grammage', 'meta.livre.main', 'meta.livre.dosMm', 'meta.livre.fondPerduMm',
   'meta.livre.traitsDeCoupe', 'meta.livre.profilCmjn',
-  // Responsables, couleurs de l imprimé, fond, papier de couverture, dos calculé,
+  // Responsables, couleurs de l'imprimé, fond, papier de couverture, dos calculé,
   // illustration et 4e de couverture.
   'fiches.auteur.ajouter', 'meta.livre.auteurs', 'meta.livre.editeurs', 'meta.livre.mention',
   'meta.livre.mention.defaut.fr', 'meta.livre.mention.defaut.de',
@@ -332,8 +321,7 @@ const LIBELLES_LIVRE = ['meta.livre.titre', 'meta.livre.soustitre', 'meta.livre.
   'livre.couverture.illustrationPlein.aide', 'livre.couverture.titre2',
   'livre.couverture.sousTitre2', 'livre.couverture.voisinAide'];
 
-// Les jetons fermés du formulaire — refusés ici ET par le <select>/<input radio> côté
-// webview.
+// Valeurs permises des listes fermées du formulaire, contrôlées ici et par la webview.
 const OUVRAGES_VALIDES = ['monographie', 'collectif'];
 const MAQUETTES_LIVRE_VALIDES = ['normal', 'falc'];
 const FORMATS_LIVRE_VALIDES = ['standard', 'a4'];
@@ -341,9 +329,9 @@ const MODELES_COUVERTURE_VALIDES = ['falc', 'classique', 'recherche', 'prospectr
 // Titres de couverture à plusieurs lignes : « // » dans le fichier.
 const CLES_TITRES_LIGNES = ['titre', 'sous-titre', 'couverture.titre-2', 'couverture.sous-titre-2'];
 
-// Les couleurs de référence de l'imprimé : pipeline/styles/couleurs-reference.json, lu et
-// non recopié — la même table décide du CMJN du PDF d'impression et du RGB de la couverture.
-// Dépôt d'abord (développement, tests), puis le toolkit installé.
+// Couleurs de référence de l'imprimé, lues dans pipeline/styles/couleurs-reference.json :
+// la même table donne le CMJN du PDF d'impression et le RGB de la couverture. Cherchée dans
+// le dépôt, puis dans le toolkit installé.
 function couleursReference() {
   const relatif = ['pipeline', 'styles', 'couleurs-reference.json'];
   const candidats = [path.resolve(__dirname, '..', '..', '..', ...relatif), path.join(toolkitPoste(), ...relatif)];
@@ -371,9 +359,8 @@ const MIME_ILLUSTRATION = { jpg: 'image/jpeg', png: 'image/png', svg: 'image/svg
 function textesLivre() {
   const libelles = {};
   for (const cle of LIBELLES_LIVRE) { libelles[cle] = T(cle); }
-  // Le reste (rien, enregistre, couleurs, couvertureExtensions/Max, couverture*) vient de
-  // textesNumero() : ce formulaire réutilise le même moteur (_numero.js). La « couverture »
-  // du moteur est ici l'illustration de couverture, avec ses textes et ses formats.
+  // Le reste vient de textesNumero(), le formulaire partageant _numero.js. La
+  // « couverture » y désigne ici l'illustration de couverture.
   return Object.assign({}, textesNumero(), textesAuteur(), {
     libelles: libelles,
     licences: [{ valeur: '', libelle: T('meta.livre.licence.aucune') }].concat(licencesTraduites()),
@@ -397,8 +384,8 @@ function htmlMetadonneesLivre(nonce) {
 // ---- Dos calculé, illustration et 4e de couverture ----
 
 // out/<livre>-dos.json, écrit par la compilation de la couverture : {nb_pages, dos_mm,
-// grammage_couverture, source}. null s'il manque ou ne se lit pas — la page dit alors de
-// compiler la couverture, plutôt que d'afficher des NaN.
+// grammage_couverture, source}. null s'il manque ou ne se lit pas ; la page invite alors à
+// compiler la couverture.
 function chargeDos(racine) {
   try {
     const j = JSON.parse(fs.readFileSync(path.join(racine, 'out', path.basename(racine) + '-dos.json'), 'utf8'));
@@ -410,10 +397,9 @@ function chargeDos(racine) {
   } catch (e) { return null; }
 }
 
-// Retour à la ligne forcé dans un titre : le formulaire montre de vraies lignes, la chaîne
-// (buch.yaml, fiches) les écrit « // » entre deux espaces, sur une seule ligne. Une seule
-// découpe pour les deux sens : lignes vides retirées, espaces de bord coupées, et « A//B »
-// se lit comme deux lignes.
+// Retour à la ligne forcé dans un titre : le formulaire montre des lignes, buch.yaml et les
+// fiches écrivent « // » sur une seule ligne. La découpe retire les lignes vides et les
+// espaces de bord ; « A//B » donne deux lignes.
 function lignesTitre(texte) {
   return String(texte === undefined || texte === null ? '' : texte)
     .split(/\r\n|\r|\n|\/\//).map((l) => l.trim()).filter((l) => l !== '');
@@ -449,8 +435,7 @@ function chargeIllustration(racine) {
   return { nom: trouvee.nom, description: poidsLisible(trouvee.taille), apercu: apercu };
 }
 
-// -> { erreur } ou { ext, donnees }. Format et poids revérifiés ici : ce qui vient d'une
-// webview n'est jamais cru sur parole.
+// -> { erreur } ou { ext, donnees }. Format et poids sont revérifiés ici.
 function illustrationRecevable(nomFichier, donneesBase64) {
   const m = String(nomFichier || '').toLowerCase().match(/\.([a-z0-9]+)$/);
   const ext = m ? EXTENSIONS_ILLUSTRATION[m[1]] : undefined;
@@ -464,7 +449,7 @@ function illustrationRecevable(nomFichier, donneesBase64) {
 }
 
 // -> null, ou le message de l'échec. Une seule illustration par livre : les autres
-// extensions sont retirées, sans quoi la compilation prendrait la première de sa liste.
+// extensions sont retirées, sinon la compilation prendrait la première de sa liste.
 function ecrireIllustration(racine, ext, donnees) {
   const dossier = dossierCouvertureLivre(racine);
   const cible = path.join(dossier, 'illustration.' + ext);
@@ -510,8 +495,7 @@ async function deposerIllustration(panneau, racine, msg) {
   vscode.window.setStatusBarMessage(T('meta.livre.illustration.enregistree'), 3000);
 }
 
-// Ouvre couverture/quatrieme.md dans l'éditeur, en le créant vide s'il manque ; un texte
-// existant n'est jamais touché.
+// Ouvre couverture/quatrieme.md dans l'éditeur, en le créant vide s'il manque.
 async function ouvrirQuatrieme(racine) {
   const chemin = path.join(dossierCouvertureLivre(racine), 'quatrieme.md');
   if (!fs.existsSync(chemin)) {
@@ -542,23 +526,21 @@ function chargeLivre(racine) {
   const reference = couleursReference();
   return {
     valeurs: valeurs, dos: chargeDos(racine), couverture: chargeIllustration(racine),
-    // Les couleurs de la référence de l'imprimé, pour les pastilles : lues du JSON à chaque
-    // chargement, jamais recopiées dans la page.
+    // Couleurs de référence de l'imprimé pour les pastilles, relues à chaque chargement.
     couleursImpression: Object.keys(reference).map((cle) => ({
       cle: cle, nom: reference[cle].nom, rgb: reference[cle].rgb
     }))
   };
 }
 
-// -> null, ou le message de l'échec. Miroir d'ecrireChampsNumero, avec sa propre
-// validation : une couleur de livre est libre, et ouvrage/maquette/format sont des jetons
-// fermés que ce formulaire est seul à poser.
+// -> null, ou le message de l'échec. Pendant d'ecrireChampsNumero, avec sa propre
+// validation : ouvrage, maquette et format sont des listes fermées.
 function ecrireChampsLivre(racine, brut) {
   const modifies = {};
   for (const cle of CLES_METADONNEES) {
     if (CLES_PERSONNES.indexOf(cle) !== -1) {
-      // Une liste de personnes : champs du schéma, texte sur une ligne, personnes sans nom
-      // écartées. Rien n'est cru sur parole.
+      // Liste de personnes : champs du schéma seuls, texte sur une ligne, personnes sans
+      // nom écartées.
       if (brut && Array.isArray(brut[cle])) {
         modifies[cle] = brut[cle].slice(0, 100).map((p) => {
           const propre = {};
@@ -622,7 +604,7 @@ function ecrireChampsLivre(racine, brut) {
   return ctx.ecrireClesAusgabe(racine, modifies);
 }
 
-// Miroir de messageNumero ; l'illustration de couverture et la 4e de couverture en plus.
+// Pendant de messageNumero, avec l'illustration et la 4e de couverture en plus.
 function messageLivre(panneau, racine, msg, rafraichirTout, recharger) {
   if (msg.type === MSG.ENREGISTRER) {
     if (session.etatNumero().verrouillee) {
@@ -642,27 +624,24 @@ function messageLivre(panneau, racine, msg, rafraichirTout, recharger) {
     return true;
   }
   // L'illustration de couverture : mêmes messages que la couverture d'un numéro. Rend la
-  // promesse (truthy) : le dépôt peut attendre une confirmation.
+  // promesse (truthy), car le dépôt peut attendre une confirmation.
   if (msg.type === MSG.COUVERTURE_DEPOSER) {
     return deposerIllustration(panneau, racine, msg).catch((e) => {
       repondrePanneau(panneau, { type: MSG.ERREUR, message: String((e && e.message) || e) });
     });
   }
-  // Le bouton « 4e de couverture » : ouvre couverture/quatrieme.md dans l'éditeur.
   if (msg.type === MSG.OUVRIR && msg.cible === 'quatrieme') {
     return ouvrirQuatrieme(racine).catch((e) => console.warn('4e de couverture : ' + ((e && e.message) || e)));
   }
   return false;
 }
 
-// Panneau singleton : rouvrir la commande révèle le formulaire existant, valeurs relues du
-// disque. Un seul panneau pour les deux profils, deux formulaires distincts derrière.
+// Panneau unique : rouvrir la commande révèle le formulaire, valeurs relues du disque. Le
+// même panneau sert à la revue et au livre, avec deux formulaires.
 //
-// `item` porte { slug, focus } quand la commande vient d'un bouton de constat (revue F03) :
-// le slug ne sert à rien ici (un seul numéro par dossier), mais focus nomme un champ de
-// CHAMPS/CHAMPS_LIVRE (media/_numero.js) — envoyé avec les valeurs à CHAQUE ouverture,
-// panneau neuf ou déjà ouvert, puisque envoyerValeurs() est le seul chemin des deux cas ;
-// un focus vide ou qui ne désigne aucun champ ne fait rien de plus, sans jamais d'erreur.
+// `item` porte { slug, focus } quand la commande vient du bouton d'un constat. focus
+// nomme un champ de CHAMPS/CHAMPS_LIVRE (media/_numero.js) ; il est envoyé avec les
+// valeurs à chaque ouverture. Un focus vide ou inconnu est ignoré.
 async function ouvrirMetadonnees(fournisseur, rafraichirTout, item) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
@@ -679,7 +658,7 @@ async function ouvrirMetadonnees(fournisseur, rafraichirTout, item) {
     else { repondrePanneau(panneau, Object.assign({ type: MSG.VALEURS }, chargeNumero(racine, true), extra)); }
     noterLectureCoedition(panneau, racine, cheminConfig(racine));
   };
-  // Panneau neuf (PRET) ou déjà ouvert : les mêmes valeurs, et la même annonce de bail.
+  // Panneau neuf (PRET) ou déjà ouvert : mêmes valeurs, même annonce de bail.
   const accueillir = (panneau) => {
     envoyerValeurs(panneau);
     annoncerMain(panneau, racine, cheminConfig(racine));
@@ -703,8 +682,8 @@ async function ouvrirMetadonnees(fournisseur, rafraichirTout, item) {
 }
 
 // ---- Éditeur des métadonnées de tous les articles --------------------------------
-// Une carte par article : type, doi, title/subtitle/keywords traduisibles, auteurs.
-// Gabarit partagé avec le dialogue d'import (extension.js).
+// Une carte par article : type, doi, title/subtitle/keywords traduisibles, auteurs. Le
+// gabarit est partagé avec le dialogue d'import.
 function textesCarteArticle() {
   return Object.assign({
     type: T('fiches.type'), typeAucun: T('fiches.type.aucun'),
@@ -726,31 +705,31 @@ function textesCarteArticle() {
     motsClesHorsThesaurus: T('mc.horsThesaurus'),
     motsClesAjouterHorsThesaurus: T('mc.ajouterHorsThesaurus'),
     rien: T('form.rien'), enregistre: TP('fiches.enregistre', profilCourant()),
-    // L'interrupteur des traductions : un libellé fixe, et les deux infobulles qui disent
-    // le geste à venir. Il porte aussi l'oeil, ouvert ou fermé — traductions() le reconstruit.
+    // L'interrupteur des traductions : un libellé fixe et deux infobulles selon l'action à
+    // venir. L'œil ouvert ou fermé est redessiné par traductions().
     tradBouton: T('fiches.trad.bouton'),
     mdBouton: T('fiches.md.bouton'),
     mdAfficher: TP('fiches.md.afficher', profilCourant()), mdMasquer: TP('fiches.md.masquer', profilCourant()),
     tradAfficher: T('fiches.trad.afficher'), tradMasquer: T('fiches.trad.masquer'),
     langueAvenir: TP('fiches.langue.avenir', profilCourant()),
     doiVerrouTip: T('fiches.doi.tip'), doiManuel: T('fiches.doi.manuel'),
-    // Deux notes discrètes, jamais bloquantes : la forme attendue d'un DOI saisi à la main,
-    // et l'avertissement d'unicité quand deux cartes en portent un identique. Voir
-    // champDoi() et verifierDoublonsDoi() dans media/_fiches.js.
+    // Deux notes non bloquantes : la forme attendue d'un DOI saisi à la main, et
+    // l'avertissement quand deux cartes portent le même. Voir champDoi() et
+    // verifierDoublonsDoi() dans media/_fiches.js.
     doiForme: T('fiches.doi.forme'), doiDouble: T('fiches.doi.double'),
-    // Vérificateur de traduction : l'infobulle de la pastille posée à côté de chaque
-    // intitulé traduisible. Le mode lui-même arrive dans le message « valeurs ».
+    // Vérificateur de traduction : l'infobulle de la pastille de chaque intitulé
+    // traduisible. Le mode arrive dans le message « valeurs ».
     suggPastille: T('sugg.pastille'),
-    // Case « hors sommaire » : livre seulement (capacites.horsSommaire), jamais
-    // construite pour un article. Voir construireCarte() dans media/_fiches.js.
+    // Case « hors sommaire » : livre seulement (capacites.horsSommaire). Voir
+    // construireCarte() dans media/_fiches.js.
     sommaireCase: T('fiches.sommaire'), sommaireAide: T('fiches.sommaire.aide'),
     // Aide sous titre et sous-titre d'un chapitre (livre seulement, media/_fiches.js).
     brAide: T('meta.livre.brAide')
   }, textesAuteur());
 }
 
-// La fiche d'auteur·e et sa modale (media/_auteurs.js) servent à plusieurs vues : leurs
-// libellés vivent dans une seule table, ajoutée à chacune.
+// Libellés de la fiche d'auteur·e et de sa modale (media/_auteurs.js), partagés par
+// plusieurs vues.
 function textesAuteur() {
   return {
     aPrenom: T('fiches.auteur.prenom'), aNom: T('fiches.auteur.nom'),
@@ -780,7 +759,7 @@ function licencesTraduites() {
   return LICENCES_ARTICLE.map((l) => ({ valeur: l.cle, libelle: T('licence.' + l.cle) }));
 }
 
-// Deux groupes, dans la langue de l'interface : la fiche n'enregistre que le jeton.
+// Deux groupes, dans la langue de l'interface ; la fiche n'enregistre que le code.
 function typesTraduits() {
   const langue = langueCockpit();
   const options = (liste, groupe) => liste.map((t) => ({
@@ -790,10 +769,9 @@ function typesTraduits() {
   return options(TYPES_DOSSIER, 'dossier').concat(options(TYPES_HORS, 'hors'));
 }
 
-// Écrit les cartes reçues d'une webview de fiches : nettoyage, restitution des clés
+// Écrit les cartes reçues d'une webview de fiches : nettoyage, conservation des clés
 // inconnues, écriture atomique. `slugsAutorises` restreint à la liste du panneau.
-// `panneau` sert au bail de co-édition : il se prend fiche par fiche, et seulement sur
-// celles qui changent.
+// `panneau` sert au bail de co-édition, pris fiche par fiche, sur celles qui changent.
 function ecrireCartesArticles(fournisseur, cartes, slugsAutorises, panneau) {
   const connus = new Set(fournisseur.listerArticles());
   const langueNumero = langueRevue(fournisseur.racine);
@@ -821,10 +799,9 @@ function ecrireCartesArticles(fournisseur, cartes, slugsAutorises, panneau) {
         const ancien = analyserMeta(fs.readFileSync(fichierMeta, 'utf8'));
         carte._inconnues = ancien._inconnues;
         if (carte.source === '') { carte.source = ancien.source; }
-        // Un champ que le profil ne construit pas (type, licence, DOI, mots-clés d'un
-        // chapitre) revient toujours vide de la webview : sans ceci, la moindre sauvegarde
-        // effacerait une valeur héritée — une fiche migrée depuis un article, ou posée à la
-        // main — au lieu de ne pas y toucher. Même garde que carte.source ci-dessus.
+        // Un champ que le profil n'affiche pas (type, licence, DOI, mots-clés d'un
+        // chapitre) revient vide de la webview : on garde la valeur du disque, qu'elle
+        // vienne d'une migration ou d'une saisie à la main.
         const cap = profilCourant().capacites;
         if (!cap.typeArticle && carte.type === '') { carte.type = ancien.type; }
         if (!cap.licence && carte.licence === '') { carte.licence = ancien.licence; }
@@ -855,8 +832,7 @@ function messageCartes(res) {
   return morceaux.length > 0 ? morceaux.join(' ') : null;
 }
 
-// L'enregistrement des métadonnées relance la compilation de chaque article écrit, en
-// tâche de fond.
+// Relance en tâche de fond la compilation de chaque article enregistré.
 function relancerCompilationCartes(fournisseur, res) {
   for (const slug of (res && res.ecrits) || []) {
     ctx.relancerCompilation(fournisseur, slug, { sansAffichage: true });
@@ -913,12 +889,10 @@ function anneeNumero(racine, valeurs) {
   return (String(path.basename(racine)).match(/^(\d{4})-\d/) || ['', ''])[1];
 }
 
-// Le DOI calculé de chaque article, pour les formulaires de fiches : locale, année, numéro
-// et rang parmi les porteurs. Rendu slug -> DOI, '' quand il est incalculable ou que
-// l'article n'en reçoit pas.
+// Le DOI calculé de chaque article (locale, année, numéro, rang parmi les articles qui en
+// portent). -> { slug: DOI }, '' quand il est incalculable ou que l'article n'en reçoit pas.
 function doisCalculesArticles(fournisseur) {
-  // Un chapitre de livre n'a pas de DOI (pas d'OJS, pas de numéro de revue à y rattacher) :
-  // le calcul lui-même n'a pas de sens, pas seulement son affichage.
+  // Un chapitre de livre n'a pas de DOI.
   if (!profilCourant().capacites.doi) { return {}; }
   const racine = fournisseur.racine;
   const slugs = fournisseur.listerArticles();
@@ -941,8 +915,8 @@ const NOM_DOIS_CALCULES = 'dois-calcules.yaml';
 function ecrireDoisCalcules(fournisseur) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
-  // Un livre n'a pas de DOI : rien à dériver, et surtout pas dois-calcules.yaml à côté de
-  // buch.yaml — szh-maquette.lua (pipeline) ne le lit que pour le bandeau DOI d'une revue.
+  // Un livre n'a pas de DOI : pas de dois-calcules.yaml, que szh-maquette.lua ne lit que
+  // pour le bandeau DOI d'une revue.
   if (!profilCourant().capacites.doi) { return; }
   if (etatRevue(racine).archivee) { return; }
   const dois = doisCalculesArticles(fournisseur);
@@ -995,10 +969,8 @@ function lireMetadonneesArticles(fournisseur, filtre) {
 
 function nettoyerCarte(brut) {
   const texteCourt = (v, max) => String(v === undefined || v === null ? '' : v).replace(/[\r\n]+/g, ' ').slice(0, max).trim();
-  // Le DOI est d'abord dépouillé (trim) avant d'être tronqué : un espace collé en bout de
-  // saisie manuelle, une fois tronqué puis seulement alors dépouillé, peut encore laisser
-  // passer une valeur qui a l'air juste et ne l'est pas — la forme attendue est ancrée
-  // (^...$) et un espace de trop la rend fausse.
+  // trim avant la troncature : la forme attendue est ancrée (^...$), et un espace resté en
+  // bout de chaîne la rendrait fausse.
   const doiPropre = (v) => String(v === undefined || v === null ? '' : v).trim().replace(/[\r\n]+/g, ' ').slice(0, 200);
   const carte = { type: '', lang: '', source: '', licence: '', doi: doiPropre(brut && brut.doi), horsSommaire: false, title: {}, subtitle: {}, resume: {}, keywords: {}, author: [] };
   const type = texteCourt(brut && brut.type, 40);
@@ -1006,8 +978,7 @@ function nettoyerCarte(brut) {
   carte.lang = normaliserLangueArticle(brut && brut.lang);
   carte.source = texteCourt(brut && brut.source, 300);
   carte.licence = normaliserLicence(brut && brut.licence);
-  // Case « hors sommaire » : livre seulement, même hors panne d'affichage côté webview —
-  // un article n'écrit jamais cette clé, quoi que la carte porte.
+  // Case « hors sommaire » : écrite pour un livre seulement, quoi que la carte envoie.
   if (profilCourant().capacites.horsSommaire) { carte.horsSommaire = (brut && brut.horsSommaire) === true; }
   for (const cle of ['title', 'subtitle', 'resume']) {
     const map = (brut && brut[cle]) || {};
@@ -1042,7 +1013,7 @@ function nettoyerCarte(brut) {
 }
 
 // ---- Auteur·e·s et photos : les cartes des fiches --------------------------------
-// SZH.LIMITES (media/_commun.js) au chargement des webviews médias, documentation,
+// Limites envoyées en SZH.LIMITES (media/_commun.js) aux webviews médias, documentation,
 // vérification d'import et fiches.
 const EXTENSIONS_PHOTO = ['png', 'jpg', 'jpeg', 'webp'];
 const TAILLE_MAX_PHOTO = 20 * 1024 * 1024;     // 20 Mo, vérifiés webview et hôte
@@ -1055,14 +1026,14 @@ function limitesMedias() {
   };
 }
 
-let photoEnCours = false;                       // le pipeline est long : pas de doublon
+let photoEnCours = false;                       // un traitement à la fois
 
 function dossierPortraitsArticle(racine, slug) {
   return path.join(racine, dossierUnites(), slug, 'portraits');
 }
 
-// Vignette d'un portrait pour la fiche d'auteur·e, sous un budget partagé : au-delà, la
-// fiche montre le pictogramme d'absence — la modale, elle, chargera la photo à la demande.
+// Vignette d'un portrait pour la fiche d'auteur·e, dans un budget partagé. Au-delà, la
+// fiche montre le pictogramme d'absence et la modale charge la photo à la demande.
 const TAILLE_MAX_VIGNETTE = 3 * 1024 * 1024;
 const BUDGET_VIGNETTES = 8 * 1024 * 1024;
 
@@ -1078,8 +1049,8 @@ function vignetteAuteur(racine, slug, photo, budget) {
   return dataUriImage(chemin);
 }
 
-// Le cache (auteurs.json, lib/auteurs-ojs.js) part vers chaque vue qui porte la modale
-// d'auteur·e — métadonnées, vérification d'import, médias — en même temps que ses valeurs.
+// Le cache auteurs.json (lib/auteurs-ojs.js), envoyé avec les valeurs aux vues qui portent
+// la modale d'auteur·e : métadonnées, vérification d'import, médias.
 function envoyerAuteursConnus(panneau, racine) {
   let cache;
   try { cache = lireCacheAuteursPublies(); } catch (e) { return; }
@@ -1106,8 +1077,8 @@ function libelleRor(nomsRor, ror, langue) {
   return String(e[langue] || e.en || e.fr || e.de || '');
 }
 
-// Le cache (mots-cles.json, lib/mots-cles-edudoc.js) part vers les vues qui portent la
-// grille de mots-clés — métadonnées, vérification d'import.
+// Le cache mots-cles.json (lib/mots-cles-edudoc.js), envoyé aux vues qui portent la grille
+// de mots-clés : métadonnées, vérification d'import.
 function envoyerMotsClesConnus(panneau) {
   let cache;
   try { cache = lireCacheMotsCles(); } catch (e) { return; }
@@ -1119,8 +1090,8 @@ function envoyerMotsClesConnus(panneau) {
   });
 }
 
-// Rythme d'activation propre à ce cockpit : 7 jours. Échec réseau = silence, hors ligne est
-// un état normal du poste.
+// Rafraîchi tous les 7 jours à l'activation. Un échec réseau est silencieux : le poste
+// peut être hors ligne.
 const JOURS_FRAICHEUR_MOTS_CLES_ACTIVATION = 7;
 
 function rafraichirMotsClesConnusEnFond() {
@@ -1188,9 +1159,8 @@ function ouvrirVersionsPhoto(fournisseur, panneau, msg) {
   });
 }
 
-// Écrit l'original par fichier « ~$ » puis rename, purge les anciens, lance le pipeline.
-// Seul chemin d'écriture d'un portrait : le formulaire des fiches et le gestionnaire des
-// médias y passent tous les deux.
+// Écrit l'original dans un fichier « ~$ » puis le renomme, purge les anciens et lance le
+// traitement. Le formulaire des fiches et le gestionnaire des médias passent tous deux ici.
 async function ecrirePortraitEtTraiter(fournisseur, slug, slugAuteur, ext, donneesBase64) {
   const echec = (message) => ({ ok: false, message: message });
   if (!new Set(fournisseur.listerArticles()).has(String(slug || ''))) { return echec(T('photo.err.introuvable')); }
@@ -1311,9 +1281,8 @@ function filtreValide(fournisseur, slugs) {
   return retenus.length > 0 ? retenus : null;
 }
 
-// Une fiche écrite ailleurs rend le modèle du formulaire périmé. Panneau propre : on le
-// recharge. Panneau portant des cartes modifiées : on le dit et c'est à l'utilisateur de
-// trancher.
+// Une fiche écrite ailleurs rend le formulaire périmé. Sans modification en cours, il est
+// rechargé ; sinon, la personne choisit.
 function signalerFichesPerimees() {
   if (!panneauCourant('szhApercuMetadonnees') || !rafraichirFiches) { return; }
   if (fichesModifie) { vscode.window.showWarningMessage(T('fiches.perimees')); return; }
@@ -1324,7 +1293,7 @@ function titreFiches(filtre) {
   return (filtre && filtre.length === 1) ? T('fiches.titre.un', [filtre[0]]) : T('fiches.titre');
 }
 
-// La case « Définir manuellement le DOI » d'une carte : l'hôte pose la question et répond.
+// Case « Définir manuellement le DOI » d'une carte : l'hôte demande confirmation et répond.
 async function confirmerDoiManuel(panneau, msg) {
   const retirer = msg.sens === 'retirer';
   const choix = await vscode.window.showWarningMessage(
@@ -1339,15 +1308,10 @@ async function confirmerDoiManuel(panneau, msg) {
 
 // ---- « Markdown » : le texte de l'article à droite de sa fiche ---------------------
 //
-// Le formulaire occupe la colonne 1 ; le .md s'ouvre en colonne 2, donc à sa droite. De
-// quoi recopier un titre, un résumé ou une référence d'un côté à l'autre sans fermer la
-// fiche. Rien n'est écrit d'ici : c'est l'éditeur ordinaire, avec l'enregistrement
-// automatique du poste.
+// Le formulaire occupe la colonne 1, le .md s'ouvre en colonne 2, dans l'éditeur ordinaire.
 //
-// L'état n'est pas tenu en mémoire mais RELU dans les onglets à chaque bascule : un onglet
-// se ferme aussi à la croix, et un interrupteur qui ne connaîtrait que ses propres clics
-// finirait par montrer l'inverse de l'écran. La page ne décide donc de rien : elle demande,
-// et se peint sur la réponse.
+// L'état est relu dans les onglets à chaque bascule, car un onglet peut être fermé à la
+// croix. La page demande et s'affiche selon la réponse.
 function estOngletDu(entree, chemin) {
   return !!(entree && entree.uri && entree.uri.fsPath
     && entree.uri.fsPath.toLowerCase() === String(chemin).toLowerCase());
@@ -1356,8 +1320,7 @@ function estOngletDu(entree, chemin) {
 async function basculerMarkdownFiche(fournisseur, panneau, msg) {
   const racine = fournisseur.racine;
   const connus = racine ? new Set(fournisseur.listerArticles()) : new Set();
-  // Ce que la page a visé, puis le filtre quand il ne désigne qu'un article : rouvrir la
-  // fiche d'un article la filtre sur lui seul, et la page n'a alors rien à deviner.
+  // L'article visé par la page, sinon celui du filtre quand il n'en désigne qu'un.
   let slug = String((msg && msg.slug) || '');
   if (!connus.has(slug) && filtreArticles && filtreArticles.length === 1) { slug = filtreArticles[0]; }
   if (!connus.has(slug)) {
@@ -1374,8 +1337,7 @@ async function basculerMarkdownFiche(fournisseur, panneau, msg) {
     repondrePanneau(panneau, { type: MSG.MARKDOWN, visible: false, message: T('fiches.md.horsarticle') });
     return;
   }
-  // `preserveFocus` : la fiche garde la main. On vient d'y saisir un champ, et se faire
-  // déplacer le curseur dans le .md à chaque clic serait insupportable.
+  // `preserveFocus` : le curseur reste dans la fiche.
   try {
     await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(md),
       { viewColumn: vscode.ViewColumn.Two, preserveFocus: true });
@@ -1388,12 +1350,9 @@ async function basculerMarkdownFiche(fournisseur, panneau, msg) {
 
 // Pleine page : les aperçus sont fermés avant, même pour un simple reveal.
 //
-// `focus` nomme un champ de la carte ([data-cle], media/_fiches.js — title, subtitle,
-// resume, lang, licence, doi ; 'keywords' vise la grille de mots-clés) : il part avec CHAQUE
-// message « valeurs », le seul chemin qui construise les cartes ici — il n'y a pas, comme
-// pour les médias, de second chemin « panneau déjà ouvert, pas de rechargement » à part, la
-// vue des fiches reconstruisant déjà tout à chaque filtre. Un focus vide ou qui ne désigne
-// aucun champ ne fait rien de plus, jamais d'erreur.
+// `focus` nomme un champ de la carte ([data-cle], media/_fiches.js : title, subtitle,
+// resume, lang, licence, doi ; 'keywords' vise la grille de mots-clés). Il part avec chaque
+// message « valeurs ». Un focus vide ou inconnu est ignoré.
 async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs, focus) {
   if (!fournisseur.racine) { return; }
   const filtre = filtreValide(fournisseur, slugs);
@@ -1401,10 +1360,8 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs, focus
   await fermerTousLesApercus();
   const envoyerValeurs = (panneau, extra) => {
     const langue = langueRevue(fournisseur.racine);
-    // La forme attendue des DOI de CETTE revue (motif et exemple, FORME_DOI de
-    // lib/export-ojs.js) : une fois par numéro, pas par article — la webview la réutilise
-    // pour chaque carte. `langue` n'est que fr/de ici (langueRevue() le garantit), mais un
-    // repli sur fr protège quand même contre une clé absente.
+    // La forme attendue des DOI de cette revue (motif et exemple, FORME_DOI de
+    // lib/export-ojs.js), envoyée une fois pour toutes les cartes.
     const forme = FORME_DOI[langue] || FORME_DOI.fr;
     panneau.webview.postMessage(Object.assign({
       type: MSG.VALEURS,
@@ -1418,9 +1375,8 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs, focus
       licences: licencesTraduites(), licenceDefaut: LICENCE_DEFAUT,
       limites: limitesMedias(),
       formeDoi: { motif: forme.motif.source, exemple: forme.exemple },
-      // Le vérificateur de traduction, relu à chaque envoi : un panneau déjà ouvert quand
-      // le réglage change ne verra les pastilles qu'à sa prochaine reconstruction — un
-      // filtre, un rechargement, ou sa réouverture.
+      // Réglage du vérificateur de traduction, relu à chaque envoi. Un panneau ouvert le
+      // prend en compte à sa prochaine reconstruction.
       verifTrad: ctx.lireVerifTraduction()
     }, extra || {}));
     envoyerAuteursConnus(panneau, fournisseur.racine);
@@ -1439,8 +1395,8 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs, focus
   const existant = revelerPanneau({ viewType: 'szhApercuMetadonnees' });
   if (existant) {
     if (fichesModifie) {
-      // Des cartes portent une saisie non enregistrée : le focus attend la décision de la
-      // personne (RECHARGEMENT ci-dessous), pour ne pas se perdre derrière la question.
+      // Des cartes portent une saisie non enregistrée : le focus attend la réponse à la
+      // question de rechargement (RECHARGEMENT ci-dessous).
       rechargementEnAttente = { filtre: filtre, focus: focusNorme };
       repondrePanneau(existant, { type: MSG.DEMANDE_RECHARGEMENT });
       return;
@@ -1543,17 +1499,14 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs, focus
 // ---- « Vérifier les méta (print) » ------------------------------------------------
 //
 // Une page A4 par article, à imprimer et à relire à côté de la source. Le HTML est
-// autonome et s'ouvre dans le navigateur par défaut, qui l'imprime (Ctrl+P) : une webview
-// VSCodium ne sait pas imprimer, et passer par la WSL pour un PDF ferait dépendre un
-// geste de relecture d'une machine virtuelle qui met dix secondes à se réveiller.
+// autonome et s'ouvre dans le navigateur par défaut, qui l'imprime : une webview ne sait
+// pas imprimer, et passer par la WSL pour un PDF serait lent.
 //
-// La feuille se lit du DISQUE, jamais de l'écran : on enregistre donc d'abord ce que le
-// panneau porte de modifié. C'est ce qui donne son sens à l'empreinte imprimée en pied de
-// page — une feuille signée doit correspondre à un fichier, pas à une saisie en cours.
+// La feuille est lue du disque, après enregistrement de ce que le panneau porte de
+// modifié : l'empreinte du pied de page correspond ainsi à un fichier.
 
-// Le fichier est jetable et se réécrit à chaque clic : il va dans out/, avec le reste de
-// ce que la chaîne fabrique. Un filtre sur un seul article a son propre nom, pour ne pas
-// écraser la feuille du numéro entier qui vient peut-être d'être imprimée.
+// Fichier jetable dans out/, réécrit à chaque clic. La feuille d'un seul article a son
+// propre nom, pour ne pas écraser celle du numéro entier.
 function cheminFeuilleVerif(racine, filtre) {
   const nom = (filtre && filtre.length === 1)
     ? 'verification-' + filtre[0] + '.html'
@@ -1561,8 +1514,8 @@ function cheminFeuilleVerif(racine, filtre) {
   return path.join(racine, 'out', nom);
 }
 
-// Les tables de libellés que le module de rendu ne peut pas connaître : il ne parle
-// aucune langue. Tout suit l'interface, les types comme dans le formulaire.
+// Libellés passés au module de rendu, qui n'en a aucun. Tout suit la langue de
+// l'interface, comme le formulaire.
 function libellesFeuilleVerif() {
   const types = {};
   for (const t of TYPES_ARTICLE) { types[t] = (LIBELLES_TYPES[t] || {})[langueCockpit()] || t; }
@@ -1575,9 +1528,7 @@ function libellesFeuilleVerif() {
 }
 
 // Les trois intitulés traduisibles du formulaire portent la langue entre parenthèses
-// (« Titre ({0}) ») parce qu'à l'écran chaque champ a sa case par langue. Sur la feuille,
-// la langue a sa propre colonne : le gabarit garde donc l'intitulé nu, sans quoi il
-// afficherait « Titre ({0}) » tel quel.
+// (« Titre ({0}) »). Sur la feuille, la langue a sa colonne : on garde l'intitulé nu.
 function sansLangue(texte) { return String(texte).replace(/\s*\(\{0\}\)\s*$/, ''); }
 
 function textesFeuilleVerif() {
@@ -1589,8 +1540,8 @@ function textesFeuilleVerif() {
     sectionMotsCles: T('verif.section.motscles'),
     sectionAuteurs: T('verif.section.auteurs'),
     doiCalcule: T('verif.doi.calcule'), doiManuel: T('verif.doi.manuel'),
-    // Les intitulés des champs sont CEUX DU FORMULAIRE, repris tels quels : la feuille
-    // suit son ordre et ses mots, pour que la correction soit mécanique.
+    // La feuille reprend les intitulés et l'ordre du formulaire, pour faciliter la
+    // correction.
     type: T('fiches.type'), langue: T('fiches.langue.article'), licence: T('fiches.licence'),
     doi: 'DOI', titre: sansLangue(T('fiches.titre.champ')),
     sousTitre: sansLangue(T('fiches.soustitre')), resume: sansLangue(T('fiches.resume')),
@@ -1601,7 +1552,7 @@ function textesFeuilleVerif() {
   };
 }
 
-// Deux chiffres partout, et le point suisse : la feuille est imprimée, pas analysée.
+// Horodatage au format suisse : 07.10.2026 14:05.
 function horodatageFeuille(quand) {
   const d = quand || new Date();
   const p2 = (n) => (n < 10 ? '0' : '') + n;
@@ -1609,9 +1560,8 @@ function horodatageFeuille(quand) {
     + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes());
 }
 
-// Le rendu lui-même : lu du disque, écrit dans out/, rendu au navigateur. `panneau` sert
-// à dire un échec d'écriture à la page qui a demandé la feuille ; il est absent quand le
-// geste vient de la vue « Articles », qui n'attend aucune réponse.
+// Lit le disque, écrit dans out/ et ouvre le navigateur. `panneau` reçoit un éventuel
+// échec d'écriture ; il est absent depuis la vue « Articles », qui n'attend pas de réponse.
 async function genererFeuilleVerif(fournisseur, filtre, panneau) {
   const racine = fournisseur.racine;
   const modele = verifMeta.construireModele(
@@ -1644,9 +1594,8 @@ async function genererFeuilleVerif(fournisseur, filtre, panneau) {
 // Depuis le formulaire des fiches : ce que le panneau montre, filtre compris.
 async function imprimerFeuilleVerif(fournisseur, panneau, msg) {
   if (!fournisseur || !fournisseur.racine) { return; }
-  // Enregistrement d'abord. Un refus (numéro verrouillé, fiche périmée) arrête tout : une
-  // feuille tirée d'un disque qui ne porte pas ce qu'on a sous les yeux serait pire que
-  // pas de feuille du tout.
+  // Enregistrement d'abord. Un refus (numéro verrouillé, fiche périmée) arrête tout : la
+  // feuille ne correspondrait pas à l'écran.
   if (msg && msg.articles && Object.keys(msg.articles).length) {
     if (refuserSiVerrouille()) { return; }
     const res = ecrireCartesArticles(fournisseur, msg.articles, filtreArticles, panneau);
@@ -1661,12 +1610,10 @@ async function imprimerFeuilleVerif(fournisseur, panneau, msg) {
   await genererFeuilleVerif(fournisseur, filtreArticles, panneau);
 }
 
-// Depuis la vue « Articles » : TOUT le numéro d'un coup, sans se soucier du filtre que le
-// formulaire des fiches porte peut-être.
+// Depuis la vue « Articles » : tout le numéro, sans tenir compte du filtre des fiches.
 //
-// Ici on ne peut rien enregistrer : les cartes en cours de saisie sont dans une page qu'on
-// ne pilote pas. Plutôt que de tirer une feuille périmée — ce que l'empreinte du pied de
-// page est censée rendre impossible — on le dit et on s'arrête.
+// Les cartes en cours de saisie ne peuvent pas être enregistrées d'ici : s'il y en a, on
+// le signale et on s'arrête.
 async function imprimerFeuilleVerifTous(fournisseur) {
   if (!fournisseur || !fournisseur.racine) { return; }
   if (fichesModifie) {
@@ -1690,7 +1637,7 @@ async function ouvrirMetadonneesArticle(fournisseur, rafraichirTout, item) {
     return;
   }
   ctx.focaliserUnite(fournisseur, slug);
-  // item.focus (revue F03) : un champ de la carte, voir le commentaire d'ouvrirApercuMetadonnees.
+  // item.focus : un champ de la carte, voir ouvrirApercuMetadonnees.
   await ouvrirApercuMetadonnees(fournisseur, rafraichirTout, [slug], item && item.focus);
 }
 

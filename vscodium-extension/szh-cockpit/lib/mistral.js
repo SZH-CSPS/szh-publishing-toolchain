@@ -1,5 +1,5 @@
-// Le client de l'API Mistral : https de la stdlib, sans dépendance. La clé n'apparait que dans
-// l'en-tête Authorization, jamais dans une erreur ni dans un journal.
+// Client de l'API Mistral, sans dépendance. La clé ne figure que dans l'en-tête
+// Authorization, ni dans les erreurs ni dans les journaux.
 'use strict';
 
 const https = require('https');
@@ -20,8 +20,8 @@ class ErreurMistral extends Error {
   }
 }
 
-// Le transport suit le protocole. http n'est permis que vers la machine elle-même (le faux
-// serveur des tests) : une clé ne part jamais en clair sur le réseau.
+// http n'est permis que vers la machine elle-même (le faux serveur des tests), pour que la
+// clé ne circule pas en clair.
 function transportPour(url) {
   if (url.protocol === 'https:') { return https; }
   if (url.protocol === 'http:' && (url.hostname === '127.0.0.1' || url.hostname === 'localhost')) { return http; }

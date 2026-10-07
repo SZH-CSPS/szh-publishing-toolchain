@@ -14,8 +14,8 @@ const propositions = require('./propositions');
 const archivage = require('./archivage');
 const inventaire = require('./inventaire');
 
-// La clé vit dans le coffre de l'éditeur, propre au poste : jamais dans un fichier, jamais
-// envoyée à une page, jamais dans l'environnement de la chaîne.
+// La clé est gardée dans le coffre de l'éditeur (SecretStorage), propre au poste. Elle
+// n'est écrite dans aucun fichier, ni envoyée à une page, ni passée à la chaîne.
 const CLE_COFFRE = 'szh.mistralCle';
 const RE_MODELE = /^[a-z0-9][a-z0-9._-]{1,63}$/;
 // Après tant d'échecs de suite, la passe s'arrête : le service ne répond plus.

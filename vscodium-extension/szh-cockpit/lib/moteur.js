@@ -1,5 +1,5 @@
-// Le moteur qui exécute la chaîne : aujourd'hui la distro WSL du poste. Seul point d'entrée
-// du cockpit vers wsl.exe, ses chemins en /mnt et le maintien en vie de la VM (lib/wsl.js).
+// Le moteur qui exécute la chaîne : la distro WSL du poste. Seul point d'entrée du cockpit
+// vers wsl.exe, ses chemins en /mnt et le maintien en vie de la VM (lib/wsl.js).
 'use strict';
 
 const cp = require('child_process');
@@ -9,19 +9,18 @@ const services = require('./services-env');
 
 const DISTRO = wsl.DISTRO;
 
-// Les arguments de wsl.exe autour d'une commande du moteur. `cwd` passe tel quel à --cd :
-// c'est wsl.exe qui traduit le chemin Windows, UNC et OneDrive compris. `sansShell` lance la
-// commande par -e : avec --, wsl.exe recolle les arguments et les fait relire par le shell de la
-// distro, où un argument à espace ou à apostrophe se casse.
+// Les arguments de wsl.exe autour d'une commande du moteur. `cwd` passe tel quel à --cd,
+// wsl.exe traduisant le chemin Windows (UNC et OneDrive compris). `sansShell` lance par -e :
+// avec --, wsl.exe recolle les arguments et les fait relire par le shell, ce qui casse un
+// argument contenant une espace ou une apostrophe.
 function argsMoteur(argv, cwd, sansShell) {
   const tete = cwd ? ['-d', DISTRO, '--cd', cwd] : ['-d', DISTRO];
   return tete.concat([sansShell ? '-e' : '--'], argv || []);
 }
 
-// -> le ChildProcess brut, à l'appelant d'en lire les issues. Lève si wsl.exe ne se lance
-// pas. spawn est lu à l'appel, pour que les tests qui le remplacent soient vus. L'env du
-// processus n'est complété que si un service en ligne est réglé (lib/services-env.js) : sinon il
-// n'est pas touché, et WSLENV existant est toujours gardé.
+// -> le ChildProcess brut ; l'appelant en lit les issues. Lève si wsl.exe ne se lance pas.
+// spawn est lu à l'appel, pour que les tests puissent le remplacer. L'env n'est complété que
+// si un service en ligne est réglé (lib/services-env.js) ; un WSLENV existant est gardé.
 function executer(argv, options) {
   const o = options || {};
   const opts = { windowsHide: true };
@@ -32,9 +31,9 @@ function executer(argv, options) {
 }
 
 // La commande d'une tâche VS Code. wsl.exe y est cherché dans le PATH, comme dans
-// tasks.json, et non dans System32 comme pour executer(). Les options (celles d'une
-// ProcessExecution, fusionnées à l'env du parent) ne portent que les ajouts, et n'existent que
-// si un service est réglé.
+// tasks.json (executer() le prend dans System32). Les options d'une ProcessExecution sont
+// fusionnées à l'env du parent : elles ne portent que les ajouts, et seulement si un
+// service est réglé.
 function ligneTache(argv, options) {
   const o = options || {};
   const ligne = { commande: 'wsl.exe', args: argsMoteur(argv, o.cwd) };

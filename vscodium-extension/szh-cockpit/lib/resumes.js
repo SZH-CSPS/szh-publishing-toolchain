@@ -12,7 +12,7 @@ const { ecrireAtomique } = require('./yaml');
 const FORMAT = 'pronto-resume/1';
 const DOSSIER = '_Resumes';
 const CHEMIN_PROMPTS = path.join(__dirname, '..', 'prompts', 'resume-descriptif.json');
-// Ce que coute un appel hors du texte source : la sortie et la marge du gabarit, en jetons.
+// Ce que coûte un appel hors du texte source : la sortie et la marge du gabarit, en jetons.
 const JETONS_SORTIE = 300;
 const CARACTERES_PAR_JETON = 3.5;
 // La marque que le moissonneur du parlement pose au bout d'un texte déposé coupé (moissonneurs/parlement/texte.py).
@@ -37,7 +37,7 @@ function empreinteTexte(texte) { return crypto.createHash('sha256').update(Strin
 // ---- La source ---------------------------------------------------------------------------
 
 // sourceDe(p, P?) -> { texte, mode, tronquee } ou null. Un descriptif de recherche se raccourcit
-// s'il dépasse la borne haute ; une intervention n'a pas de descriptif, le résumé nait de son
+// s'il dépasse la borne haute ; une intervention n'a pas de descriptif, le résumé naît de son
 // texte déposé (`texte_depose`, champ facultatif du lot), plafonné.
 function sourceDe(p, P) {
   const g = P || prompts();
@@ -92,7 +92,7 @@ function remplir(gabarit, valeurs) {
 // construireRequete(p, langue, P?) -> { messages, type, source, fiche } ou null.
 // Rien d'autre que les textes publics d'une proposition (OpenParlData, sites des hautes écoles,
 // FNS) ne part chez Mistral : son descriptif ou son texte déposé, et les valeurs de sa fiche.
-// Jamais un manuscrit ni un fichier de revue : cette fonction ne lit que la proposition.
+// Cette fonction ne lit que la proposition, jamais un manuscrit.
 function construireRequete(p, langue, P) {
   const g = P || prompts();
   const source = sourceDe(p, g);

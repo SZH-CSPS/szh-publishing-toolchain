@@ -1,30 +1,29 @@
-// Invoque `pipeline/portraits.py` dans la WSL (spawn de wsl.exe, sans shell) et lit sa
-// sortie. Le script recadre le visage (YuNet), détoure (rembg), écrit
+// Lance `pipeline/portraits.py` dans la WSL (wsl.exe, sans shell) et lit sa sortie. Le script recadre le visage (YuNet), détoure (rembg), écrit
 // <slug>.avec-fond.png et <slug>.sans-fond.png dans le dossier de sortie, et répond une
 // ligne JSON par image sur stdout :
 //   {"slug":…, "ok":bool, "visage":bool, "recadre":bool,
 //    "fichiers":{"avec_fond":…, "sans_fond":…}|null, "erreur":null|str}
-// L'écriture de l'original et les chemins relatifs du champ `photo` restent à l'appelant.
+// L'appelant écrit l'original et gère les chemins relatifs du champ `photo`.
 'use strict';
 
 const moteur = require('./moteur');
 
 const INTERPRETE_DEFAUT = '/opt/portraits/bin/python';
 const SCRIPT_DEFAUT = moteur.toolkitMoteur('pipeline', 'portraits.py');
-// Large, car le premier appel paie le réveil de la VM et le chargement du modèle
-// u2net_human_seg ; les images suivantes de la même session sont bien plus rapides.
+// Large : le premier appel attend le réveil de la VM et le chargement du modèle
+// u2net_human_seg.
 const TIMEOUT_DEFAUT = 180000;
 
-// Conservée sous ce nom : lib/cmyk.js (et d'autres) l'importent d'ici.
+// lib/cmyk.js et d'autres l'importent d'ici.
 function cheminVersWsl(chemin) {
   return moteur.versMoteur(chemin);
 }
 
-// -> Promise<[{slug, ok, visage, recadre, fichiers, erreur}]>. Une invocation traite
-// toutes les images en une session, le modèle rembg n'étant chargé qu'une fois. Rejette
-// si wsl.exe est introuvable (erreur marquée .wsl), si le délai est dépassé, ou si stdout
-// ne porte aucune ligne JSON exploitable ; un code retour non nul accompagné de lignes
-// valides résout quand même, l'échec étant alors porté par entrée.
+// -> Promise<[{slug, ok, visage, recadre, fichiers, erreur}]>. Un seul appel traite toutes
+// les images, pour ne charger le modèle rembg qu'une fois. Rejette si wsl.exe est
+// introuvable (erreur marquée .wsl), si le délai est dépassé, ou si stdout ne contient
+// aucune ligne JSON. Avec un code de retour non nul mais des lignes valides, résout : les
+// échecs sont portés par entrée.
 function traiterPortraits(options) {
   const o = options || {};
   const entrees = (Array.isArray(o.entrees) ? o.entrees : [])
@@ -73,7 +72,7 @@ function traiterPortraits(options) {
       const resultats = [];
       for (const ligne of Buffer.concat(morceaux).toString('utf8').split(/\r?\n/)) {
         const nette = ligne.trim();
-        if (nette === '' || nette.charAt(0) !== '{') { continue; }   // parasite : ignoré
+        if (nette === '' || nette.charAt(0) !== '{') { continue; }
         try {
           const obj = JSON.parse(nette);
           if (obj && typeof obj === 'object' && typeof obj.slug === 'string') { resultats.push(obj); }

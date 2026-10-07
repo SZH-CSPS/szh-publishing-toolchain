@@ -1,5 +1,5 @@
 // Les chemins et dossiers du poste : base SZH, toolkit, forme WSL, dossiers de l'utilisateur
-// et de Windows. Seul module du cockpit à lire LOCALAPPDATA, USERPROFILE, APPDATA et WINDIR.
+// et de Windows. Seul module du cockpit qui lit LOCALAPPDATA, USERPROFILE, APPDATA et WINDIR.
 'use strict';
 
 const path = require('path');
@@ -9,17 +9,15 @@ const { execFile } = require('child_process');
 
 const BASE_DEFAUT = 'C:\\ProgramData\\SZH';
 
-// Jamais une constante de module : SZH_BASE peut être posée après le chargement (les
-// tests le font), et une valeur figée au require ne la verrait plus jamais.
+// Lu à chaque appel : SZH_BASE peut être posée après le chargement du module (les tests le
+// font).
 function basePoste() {
   const surcharge = String(process.env.SZH_BASE || '').trim();
   return surcharge || BASE_DEFAUT;
 }
 
-// Fonction pure — tout lui arrive par ses paramètres, rien n'est lu sur process.env ni
-// sur le disque — pour rester éprouvable dans ses trois branches sans poser ni retirer
-// de variable d'environnement réelle. Ordre : SZH_TOOLKIT ; sinon la racine du dépôt si
-// pipeline/Makefile s'y trouve trois crans au-dessus de dossierModule ; sinon <base>/toolkit.
+// Tout arrive par les paramètres. Ordre : SZH_TOOLKIT ; sinon la racine du dépôt si
+// pipeline/Makefile se trouve trois niveaux au-dessus de dossierModule ; sinon <base>/toolkit.
 function resoudreToolkit(env, dossierModule, existe) {
   const surcharge = String((env && env.SZH_TOOLKIT) || '').trim();
   if (surcharge) { return surcharge; }
@@ -29,13 +27,13 @@ function resoudreToolkit(env, dossierModule, existe) {
   return path.join(base, 'toolkit');
 }
 
-// Même piège que basePoste() : lecture différée, jamais mise en cache.
+// Lu à chaque appel, comme basePoste().
 function toolkitPoste() {
   return resoudreToolkit(process.env, __dirname, fs.existsSync);
 }
 
-// Identique au caractère près à cheminVersWsl() de lib/portraits.js : lettre de lecteur
-// minusculisée, antislash convertis, UNC laissé sans préfixe /mnt/.
+// Lettre de lecteur en minuscule, antislashs convertis, chemin UNC laissé sans préfixe
+// /mnt/.
 function versWsl(chemin) {
   const c = String(chemin || '');
   const m = c.match(/^([A-Za-z]):[\\/](.*)$/);
@@ -54,15 +52,14 @@ function racineUtilisateur() {
   return v || path.join(os.homedir(), 'AppData', 'Local');
 }
 
-// %USERPROFILE%, ou '' : le masquage des rapports d'erreur ne doit rien deviner.
+// %USERPROFILE%, ou '' : le masquage des rapports d'erreur ne doit pas deviner.
 function dossierProfil() {
   return process.env.USERPROFILE || '';
 }
 
-// Le Bureau que la personne voit, redirection OneDrive comprise : Windows le rend par
-// GetFolderPath, en UTF-8 (reg query écrit dans la page de code OEM, qui abîme un chemin
-// accentué). Lu une fois par processus, sans bloquer l'hôte ; sinon <profil>\Desktop.
-// -> Promise<string>
+// Le Bureau de la personne, redirection OneDrive comprise, lu par GetFolderPath en UTF-8
+// (reg query écrit dans la page de code OEM, qui abîme un chemin accentué). Lu une fois par
+// processus, sans bloquer l'hôte ; à défaut <profil>\Desktop. -> Promise<string>
 function lireBureauSysteme() {
   if (process.platform !== 'win32') { return Promise.resolve(''); }
   const script = "[Console]::OutputEncoding=[Text.Encoding]::UTF8;[Environment]::GetFolderPath('Desktop')";

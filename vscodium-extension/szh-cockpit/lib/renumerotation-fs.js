@@ -1,20 +1,18 @@
 // L'exécution du plan de renumérotation, sur le disque.
 //
-// La décision vit dans lib/renumerotation.js, qui ne touche à rien ; ici on renomme. Pas de
-// `vscode` non plus : ce module ne connaît qu'un chemin de numéro, ce qui permet de
-// l'éprouver sur une vraie arborescence (test/js/renumerotation-fs.test.js) plutôt que sur
-// une simulation. Les refus d'interface — numéro verrouillé, compilation en cours, onglets
-// ouverts — restent à l'appelant, qui seul les connaît.
+// Le plan vient de lib/renumerotation.js ; ce module renomme. Sans `vscode`, il se teste
+// sur une vraie arborescence (test/js/renumerotation-fs.test.js). Les refus liés à
+// l'interface (numéro verrouillé, compilation en cours, onglets ouverts) restent à
+// l'appelant.
 //
-// L'ORDRE DES GESTES, et il n'est pas indifférent :
+// Ordre des opérations :
 //   1. les dossiers, en deux passes par un nom temporaire ;
 //   2. les fichiers de chaque dossier, une fois celui-ci sous son nom définitif ;
 //   3. les documents produits sous l'ancien nom, retirés ;
-//   4. l'ordre du numéro, écrit EN DERNIER.
+//   4. l'ordre du numéro, écrit en dernier.
 //
-// Le 4 est la règle qui compte : écrire ausgabe.yaml avant les renommages laisserait, à la
-// moindre interruption, un fichier qui désigne des dossiers inexistants — un numéro que le
-// cockpit ne sait plus lire. Écrit en dernier, une interruption laisse au pire des dossiers
+// Écrit avant, l'ordre d'ausgabe.yaml désignerait des dossiers inexistants si le lot
+// s'interrompait. Écrit en dernier, une interruption ne laisse que des dossiers
 // temporaires, que reprendre() sait terminer.
 'use strict';
 
@@ -26,10 +24,9 @@ const { CLE_ORDRE } = require('./articles');
 const { nomFichierBiblio } = require('./citations');
 const kirby = require('./kirby-contenu');
 
-// Un numéro sans Documentation n'a pas forcément le contrat déployé (poste pas encore mis
-// à jour, dépôt de test sans pipeline/kirby/) : une exception à son chargement ne doit pas
-// empêcher de renuméroter un numéro qui n'en a pas besoin — voir estFichierPage ci-dessous,
-// seul appelant.
+// Le contrat Kirby peut manquer (poste pas à jour, dépôt de test sans pipeline/kirby/) :
+// une erreur de chargement ne doit pas empêcher de renuméroter un numéro sans
+// Documentation. Seul appelant : estFichierPage.
 function estFichierPage(nomFichier) {
   try { return kirby.estFichierPageDocumentation(nomFichier); }
   catch (e) { return false; }
@@ -46,9 +43,9 @@ function sousDossiers(base) {
   } catch (e) { return []; }
 }
 
-// Les articles tels que le plan les attend : leur nom de dossier, et les fichiers posés
-// directement dedans. media/ et tables/ sont des dossiers, ils ne comptent pas — ce qu'ils
-// contiennent est désigné en chemin relatif depuis le .md et ne bouge donc jamais.
+// Les articles tels que le plan les attend : nom de dossier et fichiers posés directement
+// dedans. media/ et tables/ ne comptent pas : leur contenu est désigné en chemin relatif
+// depuis le .md.
 function listerUnites(racine, options) {
   const base = dossierUnites(racine, options);
   return sousDossiers(base).filter((nom) => nom.indexOf(PREFIXE_TEMPO) !== 0).map((nom) => ({
@@ -64,31 +61,24 @@ function repriseEnAttente(racine, options) {
     .some((nom) => nom.indexOf(PREFIXE_TEMPO) === 0);
 }
 
-// La part « slug » d'un nom de fichier : tout ce qui précède le premier point. C'est elle
-// qui doit suivre le dossier — « 02-inclusion.meta.yaml » sous « 01-inclusion » n'est lu
-// par personne.
+// La part « slug » d'un nom de fichier, avant le premier point. Elle doit suivre le nom du
+// dossier : « 02-inclusion.meta.yaml » sous « 01-inclusion » ne serait pas lu.
 function partSlug(nom) {
   const i = nom.indexOf('.');
   return i === -1 ? nom : nom.slice(0, i);
 }
 
-// Aligne les fichiers d'un dossier sur son nom. La règle vaut pour les deux chemins — le
-// renommage normal comme la reprise, qui ignore l'ancien nom du dossier : un fichier suit
-// si sa part « slug » a la même tige que le dossier mais pas le même préfixe. Un fichier
-// étranger (une note, un Word déposé à la main) n'a pas cette tige et reste tranquille.
+// Aligne les fichiers d'un dossier sur son nom, pour un renommage comme pour une reprise
+// (qui ignore l'ancien nom) : un fichier suit si sa part « slug » a la même tige que le
+// dossier mais un autre préfixe. Un fichier étranger (une note, un Word déposé à la main)
+// n'a pas cette tige et reste tel quel.
 //
-// ⚠ Le fichier de page d'une Documentation Kirby (documentation.<lang>.txt,
-// lib/kirby-contenu.js) échappe à cette règle et doit être exclu EXPLICITEMENT : son nom
-// est fixe, jamais celui du dossier — mais quand ce dossier s'appelle lui-même
-// « documentation » (le nom par défaut, SLUG_DOCUMENTATION côté cockpit), sa tige coïncide
-// avec celle du fichier de page, et la règle générale le prendrait pour un sidecar. Vérifié
-// par un renommage réel qui le transformait en « 02-documentation.fr.txt » — un fichier que
-// plus personne ne sait relire. Les dossiers de fiches (<n>_<slug>/) ne courent pas ce
-// risque : ce sont des DOSSIERS, et la boucle ci-dessous ne touche qu'aux FICHIERS.
+// Le fichier de page d'une Documentation Kirby (documentation.<lang>.txt,
+// lib/kirby-contenu.js) est exclu : son nom est fixe, mais dans un dossier nommé
+// « documentation » (SLUG_DOCUMENTATION), sa tige coïncide et il serait renommé à tort.
 //
-// Une fois les FICHIERS alignés, reste le marqueur — voir reecrireMarqueurBiblio()
-// ci-dessous et le commentaire d'en-tête de lib/renumerotation.js (« CE QUI NE BOUGE
-// PAS ») : lui seul désigne un sidecar par son nom, à l'intérieur du .md.
+// Le marqueur de bibliographie, qui nomme un fichier dans le texte du .md, est traité à
+// part : voir reecrireMarqueurBiblio().
 function alignerFichiers(base, nom) {
   let renommes = 0;
   const dossier = path.join(base, nom);
@@ -105,30 +95,22 @@ function alignerFichiers(base, nom) {
   return renommes;
 }
 
-// ---- le marqueur de bibliographie, qui désigne son fichier par un nom portant le slug --
+// ---- Marqueur de bibliographie ------------------------------------------------------
 //
-// alignerFichiers() ci-dessus renomme les FICHIERS d'un dossier ; il n'ouvre jamais aucun
-// fichier pour regarder ce qu'il y a dedans. Un seul contenu échappe donc à la règle : le
-// marqueur que l'import laisse dans le .md à la place de la bibliographie détachée
-// (« ::: {.szh-biblio src="<slug>.biblio.md"} », pipeline/filters/szh-biblio-detacher.lua).
-// <slug>.biblio.md suit comme n'importe quel sidecar — mais le src= qui le NOMME est du
-// texte à l'intérieur du .md, pas un chemin relatif comme media/ ou tables/ (ceux-là ne
-// portent jamais le slug). Sans ce qui suit, la bibliographie d'un article renommé désigne
-// un fichier qui n'existe plus : szh-citations.lua la dit introuvable à la compilation,
-// alors qu'elle est juste à côté, sous son nouveau nom.
+// L'import laisse dans le .md, à la place de la bibliographie détachée, le marqueur
+// « ::: {.szh-biblio src="<slug>.biblio.md"} » (pipeline/filters/szh-biblio-detacher.lua).
+// Le fichier <slug>.biblio.md est renommé avec les autres, mais le src= qui le nomme est du
+// texte dans le .md : il faut le réécrire, sinon szh-citations.lua ne trouve plus la
+// bibliographie.
 //
-// L'attribut d'un Div pandoc tient toujours sur une seule ligne, jamais coupé en cours de
-// route : chercher `src="…"` sans franchir de retour à la ligne suffit à trouver LE
-// marqueur, et évite de confondre avec un texte qui y ressemblerait ailleurs dans le
-// corps — un extrait cité, une URL. Le motif ne capture QUE la valeur de l'attribut : on
-// ne réécrit jamais le corps de l'article, où le slug peut très bien réapparaître, dans
-// une légende ou un lien.
+// L'attribut d'un Div pandoc tient sur une ligne : le motif cherche `src="…"` sans
+// franchir de retour à la ligne, et ne capture que la valeur. Le reste du texte, où le slug
+// peut apparaître, n'est pas touché.
 const MARQUEUR_BIBLIO_RE = /(\{[^{}\r\n]*\.szh-biblio\b[^{}\r\n]*\bsrc=")([^"]*)(")/;
 
 // Réécrit, dans le .md à `cheminMd`, le src= du marqueur .szh-biblio pour qu'il nomme
-// `versNom`. Rend true si le fichier a été réécrit. Deux gardes contre l'écriture
-// inutile — pas de marqueur, ou marqueur déjà juste — sans quoi la date de modification du
-// .md changerait pour rien à chaque renumérotation, alors que la co-édition la lit.
+// `versNom`. Rend true si le fichier a été réécrit. Sans marqueur, ou avec un marqueur
+// déjà juste, rien n'est écrit : la co-édition lit la date de modification du .md.
 function reecrireMarqueurBiblio(cheminMd, versNom) {
   let texte;
   try { texte = fs.readFileSync(cheminMd, 'utf8'); } catch (e) { return false; }
@@ -140,11 +122,9 @@ function reecrireMarqueurBiblio(cheminMd, versNom) {
   return true;
 }
 
-// Le marqueur d'un dossier qui vient d'être aligné sur `nom` : s'il désigne encore
-// l'ancien fichier, il est réécrit sur nomFichierBiblio(nom) — celui-là existe forcément
-// déjà sous ce nom, la boucle d'alignerFichiers() vient juste de l'y amener. On vérifie
-// quand même son existence : un dossier sans bibliographie n'a ni marqueur ni fichier, et
-// il n'y a alors rien à réparer, ni à inventer.
+// Après l'alignement d'un dossier sur `nom`, réécrit son marqueur sur
+// nomFichierBiblio(nom) s'il désigne encore l'ancien fichier. Rien à faire si ce fichier
+// n'existe pas (dossier sans bibliographie).
 function reparerMarqueurApresAlignement(dossier, nom) {
   const md = path.join(dossier, nom + '.md');
   const bib = nomFichierBiblio(nom);
@@ -152,30 +132,20 @@ function reparerMarqueurApresAlignement(dossier, nom) {
   reecrireMarqueurBiblio(md, bib);
 }
 
-// ---- guérison des marqueurs déjà périmés, sans aucun renommage en cours ---------------
+// ---- Réparation des marqueurs périmés ----------------------------------------------
 //
-// Ce que reparerMarqueurApresAlignement() fait ci-dessus n'empêche qu'un NOUVEAU marqueur
-// se périme ; il ne répare pas ceux qu'un numéro entier porte déjà sur le disque —
-// importés, ou renumérotés, avant ce correctif. Cette fonction-là les guérit sans qu'on
-// ait à toucher au numéro : si le marqueur d'un article désigne un fichier absent, et
-// qu'il existe À CÔTÉ, dans le même dossier, exactement UN fichier `*.biblio.md`, c'est
-// forcément lui. Zéro ou plusieurs candidats : on ne devine pas, et le constat existant
-// (« biblio-introuvable », szh-citations.lua) continue de le dire à la compilation,
-// exactement comme avant ce module.
+// Répare les marqueurs déjà faux sur le disque, hors de tout renommage : si le marqueur
+// d'un article désigne un fichier absent et que le dossier contient exactement un
+// `*.biblio.md`, c'est lui. Avec zéro ou plusieurs candidats, rien n'est changé, et
+// szh-citations.lua signale « biblio-introuvable » à la compilation.
 //
-// Où l'appeler, et pourquoi pas ailleurs : lancerBuild() (extension.js), le chemin unique
-// de toute compilation déclenchée depuis le cockpit — pas reimporter.py --reprise, qui
-// répare un tout autre accident (une bascule de réimport interrompue) et n'a jamais
-// regardé le contenu d'un .md ; les mêler ferait porter à --reprise une responsabilité
-// qui n'est pas la sienne, pour un défaut qu'il ne cause pas. Pas non plus le constat
-// « biblio-inconnue » de lib/constats.js : il ne répare rien, il dit qu'on ne peut pas
-// savoir si une bibliographie a été retouchée depuis l'import — une question différente,
-// qui suppose déjà un marqueur qui se résout.
+// Appelée par lancerBuild() (extension.js), par où passe toute compilation lancée depuis
+// le cockpit.
 function reparerMarqueursOrphelins(racine, options) {
   const base = dossierUnites(racine, options);
   let repares = 0;
   for (const nom of sousDossiers(base)) {
-    if (nom.indexOf(PREFIXE_TEMPO) === 0) { continue; }     // lot en cours : pas son tour
+    if (nom.indexOf(PREFIXE_TEMPO) === 0) { continue; }     // lot en cours
     const dossier = path.join(base, nom);
     let texte;
     try { texte = fs.readFileSync(path.join(dossier, nom + '.md'), 'utf8'); }
@@ -195,19 +165,16 @@ function reparerMarqueursOrphelins(racine, options) {
   return repares;
 }
 
-// Les documents produits sous l'ancien nom : les laisser ferait cohabiter deux PDF pour un
-// même article, dont un périmé que l'export pourrait reprendre. Ils se refont à la
-// prochaine compilation.
+// Retire les documents produits sous l'ancien nom, pour qu'un PDF périmé ne soit pas repris
+// par l'export. La compilation suivante les refait.
 function retirerOut(racine, slug) {
   const out = path.join(racine, 'out', slug);
   try { fs.rmSync(out, { recursive: true, force: true }); } catch (e) { /* rien à retirer */ }
 }
 
 // `options.config` nomme le fichier (ausgabe.yaml par défaut, buch.yaml pour un livre) et
-// `options.cle` la clé qui y porte l'ordre (CLE_ORDRE par défaut, `ordre-chapitres` pour un
-// livre) — mêmes noms que la table de profils (lib/profil.js), que ce module ne peut pas
-// importer sans dépendre de vscode par transitivité. L'appelant (extension.js) les tire de
-// profilCourant() ; à défaut, le comportement d'une revue reste inchangé.
+// `options.cle` la clé de l'ordre (CLE_ORDRE par défaut, `ordre-chapitres` pour un livre).
+// L'appelant les tire de profilCourant() (lib/profil.js) ; par défaut, ceux d'une revue.
 function ecrireOrdre(racine, slugs, options) {
   const nomFichier = (options && options.config) || 'ausgabe.yaml';
   const cle = (options && options.cle) || CLE_ORDRE;
@@ -220,9 +187,8 @@ function ecrireOrdre(racine, slugs, options) {
 }
 
 // Exécute les passes de dossiers, puis aligne les fichiers. -> le nombre de dossiers
-// renommés, ou lève sur le premier refus du système de fichiers : un dossier tenu ouvert
-// par Windows, une synchronisation en cours. On s'arrête là où ça coince, les temporaires
-// restent, et reprendre() saura finir.
+// renommés. Lève au premier refus du système de fichiers (dossier ouvert par Windows,
+// synchronisation en cours) : les temporaires restent, et reprendre() saura finir.
 function executerPasses(base, passes) {
   let renommes = 0;
   for (const passe of passes) {
@@ -239,10 +205,9 @@ function executerPasses(base, passes) {
 
 // renumeroter(racine, ordreVoulu) -> { erreur, renommes }
 //
-// `ordreVoulu` est la liste des slugs dans l'ordre voulu à l'écran, calculée par l'appelant
-// avec la fonction qui décide déjà de l'ordre affiché. Rien n'est touché si le plan ne
-// trouve rien à faire — pas même ausgabe.yaml, dont la date de modification est lue par la
-// co-édition.
+// `ordreVoulu` est la liste des slugs dans l'ordre affiché, calculée par l'appelant. Si le
+// plan ne trouve rien à faire, rien n'est écrit, pas même ausgabe.yaml (la co-édition lit
+// sa date de modification).
 function renumeroter(racine, ordreVoulu, options) {
   const base = dossierUnites(racine, options);
   let plan;
@@ -270,9 +235,8 @@ function renumeroter(racine, ordreVoulu, options) {
 }
 
 // reprendre(racine) -> { erreur, renommes }. Termine un lot interrompu : les dossiers
-// temporaires portent leur destination, il n'y a qu'à les y conduire, puis à aligner leurs
-// fichiers et à réécrire l'ordre — que le lot d'origine n'avait, par construction, pas eu
-// le temps d'écrire.
+// temporaires portent leur destination ; on les y renomme, on aligne leurs fichiers et on
+// écrit l'ordre.
 function reprendre(racine, options) {
   const base = dossierUnites(racine, options);
   let plan;
@@ -285,8 +249,7 @@ function reprendre(racine, options) {
   try {
     const renommes = executerPasses(base, plan.passes);
     for (const etape of plan.passes[0]) { alignerFichiers(base, etape.vers); }
-    // L'ordre, reconstruit depuis les dossiers eux-mêmes : leur préfixe EST le rang, c'est
-    // tout l'intérêt de l'avoir écrit dans leur nom temporaire.
+    // L'ordre se reconstruit depuis les préfixes des dossiers, qui sont leur rang.
     ecrireOrdre(racine, sousDossiers(base).sort(), options);
     return { erreur: null, renommes: renommes };
   } catch (e) {
@@ -294,14 +257,9 @@ function reprendre(racine, options) {
   }
 }
 
-// alignerFichiers est exportée pour lib/import-hote.js : l'import préfixe les dossiers
-// nouvellement créés (voir ce module), et un dossier renommé doit voir ses fichiers suivre
-// exactement comme ici — recopier la boucle aurait fait vivre la même règle à deux endroits,
-// avec le risque qu'ils divergent au prochain sidecar ajouté à la chaîne. Le marqueur de
-// bibliographie suit avec elle (reparerMarqueurApresAlignement), pour que les trois
-// appelants — « Terminer », la reprise d'un lot interrompu, et le préfixage à l'import —
-// en profitent sans le réécrire trois fois. reparerMarqueursOrphelins est exportée pour
-// extension.js (lancerBuild) : voir son commentaire ci-dessus.
+// alignerFichiers sert aussi à lib/import-hote.js, qui préfixe les dossiers créés à
+// l'import ; elle répare au passage le marqueur de bibliographie.
+// reparerMarqueursOrphelins sert à lancerBuild() (extension.js).
 module.exports = {
   listerUnites, repriseEnAttente, renumeroter, reprendre, alignerFichiers,
   reparerMarqueursOrphelins

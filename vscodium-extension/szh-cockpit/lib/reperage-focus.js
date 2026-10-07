@@ -1,26 +1,17 @@
-// Retrouver dans un .md le passage que désigne le `focus` d'un constat (lib/constats.js).
-// Fonction pure : ni `vscode`, ni `fs` — lue par l'extension (surlignage du bouton « Vers
-// l'article ») et par les tests, comme lib/formatting-pur.js et lib/codes-erreur.js.
+// Retrouve dans un .md le passage désigné par le `focus` d'un constat (lib/constats.js),
+// pour le bouton « Vers l'article ». Sans vscode ni fs.
 //
-// Le piège : `focus` vient d'un constat de citations, et pipeline/filters/szh-citations.lua
-// l'a fait passer par sa fonction normaliser() avant de l'écrire — espaces insécables et
-// fines ramenées à l'espace simple, tirets demi-cadratin/cadratin/insécable ramenés au trait
-// d'union, suites d'espaces écrasées. Le .md sur le disque, lui, porte les caractères
-// d'origine. Une recherche littérale de `focus` dans le texte réel échoue donc souvent.
+// pipeline/filters/szh-citations.lua normalise `focus` avant de l'écrire (espaces
+// insécables et fines -> espace, tirets -> trait d'union, suites d'espaces réduites), alors
+// que le .md garde les caractères d'origine. Le texte du document est donc normalisé de la
+// même façon, en gardant pour chaque caractère normalisé la plage de caractères réels qui
+// l'a produit ; le résultat se retraduit en positions réelles.
 //
-// La parade : normaliser aussi le texte du document, de la même façon, mais en gardant pour
-// chaque caractère normalisé la plage de caractères RÉELS qui l'a produit — une suite
-// d'espaces écrasée pointe sur toute la suite, pas seulement sur le survivant. La recherche
-// se fait alors sur les deux formes normalisées, et le résultat se retraduit en offsets
-// réels pour poser un Range dans le document tel qu'il est sur le disque.
-//
-// ⚠ Recopié à la main depuis assainir()/normaliser() du filtre Lua (mêmes six caractères,
-// même ordre) : pas d'import croisé JS/Lua possible. Si le filtre change ses substitutions,
-// celles d'ici doivent suivre.
+// Les substitutions sont recopiées d'assainir()/normaliser() du filtre Lua (mêmes six
+// caractères, même ordre) : si le filtre change, celles d'ici doivent suivre.
 'use strict';
 
-// Les six substitutions d'assainir() (szh-citations.lua) : un caractère pour un caractère,
-// jamais une longueur qui change — la correspondance réel/normalisé reste 1 pour 1 ici.
+// Les six substitutions d'assainir() (szh-citations.lua), un caractère pour un caractère.
 const SUBSTITUTIONS = Object.freeze({
   ' ': ' ',   // espace insécable
   ' ': ' ',   // espace fine insécable
@@ -35,11 +26,9 @@ function estBlanc(c) { return c === ' ' || c === '\t' || c === '\n' || c === '\r
 
 function substitue(c) { return Object.prototype.hasOwnProperty.call(SUBSTITUTIONS, c) ? SUBSTITUTIONS[c] : c; }
 
-// Le balisage Markdown que pandoc retire avant de rendre un texte au filtre : l'emphase
-// (* et _), l'échappement (\) et le code (`). Le constat porte le texte tel que
-// utils.stringify() l'a aplati — « Soi-même comme un autre » —, le .md l'écrit
-// « *Soi-même comme un autre* » : sans cette seconde passe, toute référence qui porte un
-// titre en italique restait introuvable, et la flèche ouvrait l'article sans rien montrer.
+// Le balisage Markdown absent du texte qu'utils.stringify() rend au filtre : emphase (* et
+// _), échappement (\) et code (`). Le constat porte « Soi-même comme un autre », le .md
+// « *Soi-même comme un autre* ».
 const BALISAGE = new Set(['*', '_', '\\', '`']);
 
 // Ce que le filtre ajoute ou abîme au bout d'un extrait : l'ellipse d'une troncature, et
@@ -53,10 +42,8 @@ const PREFIXE_MIN = 30;
 
 // -> { normalise, correspondance } où correspondance[i] = { debut, fin } sont les offsets,
 // dans `texte`, du ou des caractères réels qui ont produit le caractère normalisé n°i.
-// Pas de trim ici : une recherche de sous-chaîne n'en a pas besoin, seuls les bords du
-// texte entier seraient concernés, jamais ceux d'un passage au milieu.
-// `sansBalisage` saute en plus les caractères de BALISAGE : ils ne produisent aucun
-// caractère normalisé, et la correspondance des suivants reste exacte.
+// `sansBalisage` saute en plus les caractères de balisage, qui ne produisent aucun
+// caractère normalisé.
 function normaliserAvecCorrespondance(texte, sansBalisage) {
   const t = String(texte === undefined || texte === null ? '' : texte);
   let normalise = '';
@@ -98,7 +85,7 @@ function chercher(texteDocument, brut, sansBalisage, prefixe) {
 // -> { debut, fin } offsets réels (comme String.slice) dans `texteDocument`, ou null.
 // Deux occurrences : la première gagne — indexOf() le fait déjà.
 //
-// Trois essais, du plus exact au plus lâche, et jamais plus lâche que nécessaire :
+// Trois essais, du plus exact au plus large :
 //   1. le texte entier, espaces et tirets normalisés (le cas des appels de citation) ;
 //   2. le même, balisage Markdown ignoré des deux côtés (un titre en italique) ;
 //   3. son début seulement (PREFIXE_MIN caractères), balisage ignoré : ce que le filtre
@@ -115,11 +102,10 @@ function trouverPlageFocus(texteDocument, focus) {
 
 // ---- Les constats qui ne portent aucun texte ---------------------------------------
 //
-// Certains codes désignent un endroit du texte sans en citer un mot : « titres trop
+// Certains constats désignent un endroit sans en citer le texte : « titres trop
 // profonds », « bibliographie laissée dans le texte », « tableau des autrices et auteurs
-// non lu ». Leur flèche ouvrait l'article en haut, et le rédacteur cherchait seul. Le
-// passage se retrouve pourtant dans le .md, par sa forme : c'est ce que calcule
-// focusDeRepli(), un extrait que trouverPlageFocus() saura ensuite sélectionner.
+// non lu ». focusDeRepli() retrouve le passage par sa forme et rend un extrait que
+// trouverPlageFocus() sait sélectionner.
 
 // La première ligne de titre à `niveau` dièses exactement (« ###### Annexe »), ou ''.
 function premierTitreDeNiveau(texte, niveau) {
@@ -185,7 +171,7 @@ function focusDeRepli(cle, args, texteMd, tables, champs) {
     case 'import/biblio-bornes-perdues':
       return titreBibliographie(texte);
     case 'import/tableau-auteurs-non-lu': {
-      // Le tableau qui porte des adresses e-mail : c'est lui que docx-meta.py n'a pas lu.
+      // Le tableau qui contient des adresses e-mail : celui que docx-meta.py n'a pas lu.
       const t = (tables || []).find((x) => /@[\w-]+\.[\w.-]+/.test(String(x.html || '')));
       const ref = t ? 'tables/' + t.nom : '';
       return ref !== '' && texte.indexOf(ref) !== -1 ? ref : '';

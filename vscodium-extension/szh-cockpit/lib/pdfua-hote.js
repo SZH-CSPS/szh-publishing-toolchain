@@ -1,42 +1,22 @@
 // Validation PDF/UA en arrière-plan, après chaque compilation réussie.
 //
-// Le pipeline sait déjà valider un PDF (pipeline/verifier-ua.sh) mais seulement à l'export
-// (`docx`, `tout-exporter`) : le verdict arrive le jour où le numéro part chez l'imprimeur,
-// jamais après un simple Ctrl+S. Ce module lance le même validateur juste après une
-// compilation qui a réussi, sans bloquer la rédaction, et pose un badge dans la barre
-// d'état pour l'article ouvert (ou le livre) : conforme, non conforme, en cours, ou panne
-// d'outillage. Un cache par empreinte du PDF (lib/coedition.js#empreinte) évite de
-// revalider ce qui n'a pas changé — la plupart des Ctrl+S ne touchent pas le PDF d'un
-// article qu'on n'a pas ouvert.
+// Lance le validateur du pipeline (pipeline/verifier-ua.sh) après chaque compilation
+// réussie, sans bloquer, et pose un badge dans la barre d'état pour l'article ouvert (ou
+// le livre) : conforme, non conforme, en cours, ou panne d'outillage. Un cache par
+// empreinte du PDF (lib/coedition.js#empreinte) évite de revalider un PDF inchangé.
+// Les rappels vers l'hôte passent par configurer() ; les tests injectent un
+// `lancerValidateur` factice.
 //
-// ⚠ Impur (spawn WSL, disque, réglages VS Code) : les rappels vers l'hôte passent par
-// configurer(), comme lib/cycle-vie.js et les autres modules « -hote.js ». Les tests
-// injectent un `lancerValidateur` factice — child_process.spawn n'est pas simulé par le
-// harnais, tout lancement réel doit passer par ce point d'entrée.
+// Cache : <racine>/.szh-pdfua.json
+//   { version: 1, verdicts: { <cle>: { empreinte, verdict, regles, details, date } } }
+// `details` : les règles en échec (journal.js#verdictsPdfUa) ; `cle` : slug de l'article,
+// ou 'livre' pour l'ouvrage entier. Un fichier illisible ou absent repart vide.
+// « en-cours » et « outillage » restent en mémoire : une panne d'outillage n'est pas un
+// verdict, et la compilation suivante doit pouvoir réessayer.
 //
-// ── Le cache, par racine ────────────────────────────────────────────────────────────
-// <racine>/.szh-pdfua.json : { version: 1, verdicts: { <cle>: { empreinte, verdict,
-// regles, details, date } } } (`details` : les règles en échec, voir
-// journal.js#verdictsPdfUa), `cle` = slug de l'article pour une revue, 'livre' pour l'ouvrage
-// entier. Chargé au premier accès à une racine donnée, réécrit après chaque travail de
-// validation. Un fichier illisible ou absent repart vide — jamais une raison de bloquer.
-//
-// Deux états ne sont PAS mis en cache, donc jamais écrits sur le disque :
-//   - « en-cours » : le fichier est en cours de validation (mémoire seulement) ;
-//   - « outillage » : le validateur n'a pas pu rendre de verdict cette fois-ci (mémoire
-//     seulement) — une panne d'outillage n'est pas un verdict, elle ne doit pas empêcher
-//     la prochaine compilation réussie de retenter.
-//
-// ── Un seul travail en vol par racine ────────────────────────────────────────────────
-// planifier() met en file : si un travail tourne déjà pour cette racine, la demande est
-// fusionnée (un drapeau « rejouer ») et rejouée dès que le travail en cours se termine —
-// jamais deux validations concurrentes du même numéro.
-//
-// ── Le piège d'une compilation qui démarre pendant la validation ───────────────────
-// Le validateur WSL peut prendre plusieurs secondes ; rien n'empêche le rédacteur de
-// recompiler entre-temps. Si une tâche démarre pendant le travail (signalerDebutBuild(),
-// compteur de génération), le résultat est jeté à son retour : le PDF qu'on vient de
-// juger n'est peut-être plus celui sur le disque. La compilation suivante replanifiera.
+// Un seul travail à la fois par racine : une demande reçue pendant un travail est rejouée
+// à sa fin. Si une compilation démarre pendant la validation (signalerDebutBuild()), le
+// résultat est jeté, car le PDF a pu changer ; la compilation suivante replanifiera.
 'use strict';
 
 const fs = require('fs');
@@ -55,8 +35,8 @@ const NOM_CACHE = '.szh-pdfua.json';
 const MAKEFILE_WSL = moteur.toolkitMoteur('pipeline', 'Makefile');
 const VERIFIER_UA_WSL = path.posix.dirname(MAKEFILE_WSL) + '/verifier-ua.sh';
 
-// Large, comme lancerReimporter() (extension.js) : le premier appel paie le réveil de la
-// distro, et un PDF illustré prend son temps chez veraPDF.
+// Large : le premier appel attend le réveil de la distro, et veraPDF est lent sur un PDF
+// illustré.
 const DELAI_VALIDATION = 600000;
 
 // ---- Rappels vers l'hôte -----------------------------------------------------------
@@ -77,9 +57,8 @@ function reglageActif() {
 }
 
 // ---- Lancement réel du validateur, dans la distro WSL du pipeline ------------------
-// -> Promise<{ lignes: [texte...], code, erreur }>. Ne rejette jamais : les trois issues
-// (verdict, panne, délai) se lisent dans le retour, jamais dans une exception — même
-// contrat que lancerReimporter() (extension.js).
+// -> Promise<{ lignes: [texte...], code, erreur }>. Ne rejette jamais : verdict, panne et
+// délai dépassé se lisent dans le retour.
 function lancerValidateurDefaut(racine, pdfsRelatifs) {
   const argv = ['bash', VERIFIER_UA_WSL, '-'].concat(pdfsRelatifs);
   return moteur.reveiller().then(() => new Promise((resolve) => {
@@ -132,9 +111,9 @@ function sauvegarderVerdicts(racine, verdicts) {
 }
 
 // ---- L'état en mémoire, par racine ---------------------------------------------------
-// verdicts : ce qui est sur le disque (chargé au premier accès). transitoire : les états
-// « outillage » du travail le plus récent, jamais persistés. enCours : les clés en cours
-// de validation. enVol/rejouer : la file à un seul travail décrite en tête de fichier.
+// verdicts : le contenu du cache disque. transitoire : les états « outillage » du dernier
+// travail. enCours : les clés en cours de validation. enVol/rejouer : la file à un seul
+// travail.
 const etatsParRacine = new Map();
 
 function etatRacine(racine) {
@@ -147,8 +126,8 @@ function etatRacine(racine) {
   return st;
 }
 
-// Le compteur de génération : incrémenté à chaque tâche de compilation démarrée, pour que
-// le travail en cours sache qu'une compilation a peut-être changé le PDF qu'il juge.
+// Incrémenté à chaque compilation démarrée : le travail en cours sait ainsi que le PDF a
+// pu changer.
 let generation = 0;
 function signalerDebutBuild() { generation++; }
 
@@ -173,17 +152,15 @@ function cheminRelatif(racine, chemin) {
 
 // ---- Un travail de validation : les fichiers dont l'empreinte a changé -------------
 async function unTravail(racine, st) {
-  // Les clés fantômes d'un numéro renommé avant que purgerAbsents() n'existe (ou renommé
-  // hors du cockpit, dans l'Explorateur) : élaguées à chaque passage, pour que le fichier
-  // finisse par dire la même chose que le disque.
+  // Retire les clés d'articles qui n'existent plus (renommés hors du cockpit, par exemple).
   if (elaguerAbsents(racine, st)) { sauvegarderVerdicts(racine, st.verdicts); }
   const items = [];
   for (const { cle, chemin } of listerCles(racine)) {
     const emp = coedition.empreinte(chemin);
     if (!emp) { continue; }                          // PDF absent : rien à valider
     const enCache = st.verdicts[cle];
-    // Déjà jugé, rien n'a changé. Un verdict non conforme d'avant `details` ne sait pas
-    // nommer ses règles : on le rejuge une fois plutôt que de le garder muet.
+    // Déjà jugé et inchangé. Un verdict non conforme sans `details` est rejugé, pour
+    // nommer ses règles.
     if (enCache && enCache.empreinte === emp
         && (enCache.verdict !== 'non-conforme' || enCache.details)) { continue; }
     items.push({ cle: cle, chemin: chemin, empreinte: emp });
@@ -205,7 +182,7 @@ async function unTravail(racine, st) {
 
   for (const it of items) {
     st.enCours.delete(it.cle);
-    if (buildDemarrePendant) { continue; }            // jeté : PDF peut-être déjà périmé
+    if (buildDemarrePendant) { continue; }            // jeté : le PDF a pu changer
     if (coedition.empreinte(it.chemin) !== it.empreinte) { continue; }   // jeté : a changé
     if (panneGlobale) { st.transitoire.set(it.cle, { verdict: 'outillage', regles: 0, date: '' }); continue; }
     const trouve = verdicts.find((v) => path.basename(String(v.fichier || '')) === path.basename(it.chemin));
@@ -225,7 +202,7 @@ async function unTravail(racine, st) {
 }
 
 // Le nombre de règles en échec que `nouveau` ajoute à `ancien`, le verdict qu'il remplace.
-// Une règle se reconnaît à son repère ISO : son titre porte aussi le compte et les pages.
+// Une règle se reconnaît à son repère ISO (son titre contient aussi le compte et les pages).
 function idsRegles(v) {
   if (!v || v.verdict !== 'non-conforme') { return null; }
   return new Set(((v.details || {}).fr || []).map((r) => String(r.repere || r.regle || '')));
@@ -254,8 +231,8 @@ function prendreNouveautes(racine) {
   return liste;
 }
 
-// planifier(racine) : à appeler après une compilation réussie. Ne fait rien si le réglage
-// est désactivé. Sans effet si rien n'a changé depuis la dernière validation.
+// planifier(racine) : à appeler après une compilation réussie. Sans effet si le réglage est
+// désactivé ou si rien n'a changé depuis la dernière validation.
 async function planifier(racine) {
   if (!racine) { return; }
   if (!reglageActif()) { return; }
@@ -275,12 +252,9 @@ async function planifier(racine) {
 }
 
 // etat(cle) -> { verdict: 'conforme'|'non-conforme'|'outillage'|'en-cours'|'inconnu',
-// regles, date }. `cle` : un slug d'article, ou 'livre'. Lit la racine courante via
-// ctx.racine() — c'est l'hôte qui la connaît (fournisseur.racine).
+// regles, date }. `cle` : un slug d'article, ou 'livre'. La racine vient de ctx.racine().
 //
-// Réglage désactivé -> toujours « inconnu », même si un verdict d'avant dort encore sur
-// le disque : le badge doit se taire quand on a choisi de ne plus valider, pas répéter un
-// verdict qui n'est peut-être plus vrai depuis.
+// Réglage désactivé -> toujours « inconnu », même si un ancien verdict est en cache.
 function etat(cle) {
   if (!reglageActif()) { return { verdict: 'inconnu', regles: 0, date: '' }; }
   const racine = ctx.racine();
@@ -295,26 +269,19 @@ function etat(cle) {
 
 // constats(racine) -> constats au format de lib/journal.js, pour la vue « Contrôles » et
 // son compteur : un par PDF non conforme en cache, plus un par panne d'outillage en
-// mémoire (jamais mis en cache, donc jamais dans `verdicts`). Réglage désactivé -> rien :
-// même raison que etat() ci-dessus, un verdict d'avant qu'on ne vérifie plus ne doit pas
-// continuer à compter comme bloquant. L'export garde son propre contrôle (verifier-ua),
+// mémoire. Réglage désactivé -> rien. L'export garde son propre contrôle (verifier-ua),
 // indépendant de ce réglage.
 //
 // Chaque règle en échec suit son verdict, en constat « pdfua/regle » dans la langue du
-// cockpit (repli sur le français) : c'est ce que promet la phrase « Les points ci-dessous
-// les nomment un par un ».
+// cockpit (repli sur le français).
 function constats(racine, langue) {
   if (!racine || !reglageActif()) { return []; }
   const st = etatRacine(racine);
-  // Le PDF actuel de chaque clé, pour écarter un verdict que le fichier a dépassé depuis
-  // (une panne d'outillage ou une compilation plus récente n'a pas encore pu le remplacer
-  // en cache) : mieux vaut ne rien dire qu'accuser un PDF qui n'est plus celui sur le disque.
+  // L'empreinte actuelle de chaque PDF : un verdict qui porte sur une autre version du
+  // fichier n'est pas montré.
   //
-  // Une clé absente de listerCles() ne parle plus d'aucun article : renommé (« 01-x » devenu
-  // « 03-x »), supprimé, ou un livre rouvert en revue. Le test laissait passer ce cas
-  // (`actuels[cle] !== undefined && …`), et l'ancien verdict s'affichait sous un nom que
-  // plus rien ne porte. purgerAbsents() l'efface du disque ; ici on ne le montre plus, même
-  // si le nettoyage n'a pas encore eu lieu.
+  // Une clé absente de listerCles() ne désigne plus d'article (renommé, supprimé, ou livre
+  // rouvert en revue) : son verdict n'est pas montré, même avant purgerAbsents().
   const actuels = {};
   for (const item of listerCles(racine)) { actuels[item.cle] = item.chemin; }
   const out = [];
@@ -326,9 +293,9 @@ function constats(racine, langue) {
     const slug = cle === 'livre' ? '' : cle;
     const details = v.details || {};
     const liste = (langue === 'de' && (details.de || []).length) ? details.de : (details.fr || []);
-    // Le résumé « N règle(s) ne sont pas respectées » ne sort que si aucune règle ne suit :
-    // sinon il redisait en chiffre ce que la carte détaille juste dessous (voir aussi
-    // journal.js#sansResumePdfUaRedondant). Seul, il garde l'article dans « À corriger ».
+    // Le résumé « N règle(s) ne sont pas respectées » ne sort que si aucune règle n'est
+    // détaillée (voir journal.js#sansResumePdfUaRedondant). Il garde alors l'article dans
+    // « À corriger ».
     if (liste.length === 0) {
       out.push({ source: 'pdfua', code: 'non-conforme', ton: 'danger', slug: slug,
                  cle: 'ctl.pdfua.nonconforme', args: [String(v.regles || 0)], brut: '' });
@@ -354,15 +321,11 @@ function constats(racine, langue) {
 // suppression de dossiers (extension.js, alignerDossiersSurOrdre) : les verdicts, pannes et
 // validations en cours d'une clé que listerCles() ne connaît plus sont retirés.
 //
-// Migrer plutôt que perdre, quand c'est sûr : un verdict dont l'empreinte est celle du PDF
-// d'un article actuel qui n'a pas encore de verdict à jour passe sous ce nom-là — c'est le
-// même fichier, il a seulement changé de dossier. Sinon il est oublié : la prochaine
-// compilation réussie jugera le nouveau PDF. (renumeroter() retire out/<ancien>, le PDF
-// n'existe donc souvent plus sous aucun nom, et l'oubli est le cas ordinaire.)
+// Un verdict dont l'empreinte est celle du PDF d'un article actuel sans verdict à jour
+// passe sous ce nom : c'est le même fichier, déplacé. Sinon il est oublié, et la prochaine
+// compilation jugera le nouveau PDF.
 //
-// Une liste vide ne purge rien : c'est l'état d'un fournisseur pas encore chargé bien plus
-// souvent que celui d'un numéro sans article, et tout effacer sur un faux vide coûterait
-// une revalidation complète.
+// Une liste vide ne purge rien : c'est le plus souvent un fournisseur pas encore chargé.
 function purgerAbsents(racine) {
   if (!racine) { return false; }
   const change = elaguerAbsents(racine, etatRacine(racine));
@@ -373,8 +336,8 @@ function purgerAbsents(racine) {
   return change;
 }
 
-// Le travail de purgerAbsents(), sans écriture ni avertissement : unTravail() l'appelle
-// aussi, et écrit lui-même. -> true si quelque chose a été retiré (ou migré).
+// Le travail de purgerAbsents(), sans écriture ni avertissement (unTravail() écrit
+// lui-même). -> true si quelque chose a été retiré ou migré.
 function elaguerAbsents(racine, st) {
   const cles = listerCles(racine);
   if (cles.length === 0) { return false; }
@@ -410,9 +373,9 @@ function elaguerAbsents(racine, st) {
 }
 
 // enCours(racine, cle) -> true tant qu'une validation tourne pour cette clé (un slug, ou
-// 'livre'), ou pour n'importe laquelle quand `cle` est vide. Lu par l'hôte pour savoir
-// quand lever le voile « Analyse en cours… » de la vue « À corriger » : le journal relu ne
-// suffit pas, le verdict PDF/UA arrive après.
+// 'livre'), ou pour n'importe laquelle quand `cle` est vide. L'hôte s'en sert pour lever
+// le voile « Analyse en cours… » de « À corriger », le verdict PDF/UA arrivant après le
+// journal.
 function enCours(racine, cle) {
   if (!racine || !etatsParRacine.has(racine)) { return false; }
   const st = etatsParRacine.get(racine);

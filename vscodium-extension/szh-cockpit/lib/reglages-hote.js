@@ -1,6 +1,6 @@
-// Les réglages « SZH » de l'onglet Paramètres de l'Accueil : leurs valeurs, leurs écritures, les
-// réglages protégés (relais, état, fichier à transmettre) et le fichier de langue de l'interface. Impur (panneau, dialogues, disque) ;
-// les rappels vers l'hôte passent par configurer() plus bas, jamais par require('../extension').
+// Les réglages « SZH » de l'onglet Paramètres de l'Accueil : valeurs, écritures, réglages
+// protégés (relais, état, fichier à transmettre) et fichier de langue de l'interface. Les
+// rappels vers l'hôte passent par configurer().
 'use strict';
 
 const vscode = require('vscode');
@@ -34,8 +34,7 @@ const {
 function profilCourant() { return profils.courant(); }
 
 // ---- Rappels vers l'hôte ----------------------------------------------------------
-// Posés une seule fois, à la fin d'extension.js. Les valeurs par défaut ne servent qu'à ne
-// pas planter un test qui require ce module seul.
+// Posés par extension.js. Les défauts permettent de charger le module seul dans un test.
 let ctx = {
   repondrePanneau: () => {},
   revelerDansExplorateur: async () => {},
@@ -54,19 +53,17 @@ function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
 // Global). Le choix français/allemand pilote les chaînes du cockpit (szh.langue) et la
 // locale native (argv.json, effective au redémarrage, et qui suppose le pack de langue).
 
-// Lecture-modification-écriture de config.json. Illisible n'est pas absent : un fichier
-// qu'on n'a pas su lire n'est pas écrasé, sans quoi l'emplacement des revues et la
-// configuration OJS partiraient avec. -> null quand c'est écrit ; sinon le message d'erreur,
-// qui est le chemin du fichier quand c'est lui qui est illisible.
+// Lecture-modification-écriture de config.json. Un fichier illisible n'est pas écrasé, pour
+// ne pas perdre l'emplacement des revues ni la configuration OJS. -> null quand c'est écrit,
+// sinon le message d'erreur (le chemin du fichier s'il est illisible).
 function modifierConfigPoste(fn) {
   const chemin = cheminConfigPoste();
   if (lireConfigPoste() === null && fs.existsSync(chemin)) { return chemin; }
   return ecrireConfigPoste(fn);
 }
 
-// Ce que le panneau doit connaître des tâches : la table effective des deux revues et leur
-// nom lisible. Les listes viennent de lib/articles.js — le panneau n'en recopie aucune, et
-// le jeu de départ vit là-bas, seul endroit où il existe.
+// Les tâches pour le panneau : la table effective des deux revues et leur nom lisible,
+// tirés de lib/articles.js.
 function donneesTaches() {
   return {
     table: tachesConfig(lireConfigPoste()),
@@ -75,10 +72,9 @@ function donneesTaches() {
   };
 }
 
-// Ce que le panneau doit connaître du titre de la bibliographie : les intitulés effectifs,
-// les deux revues et les trois langues, avec leur nom lisible. Les listes viennent de
-// lib/citations.js et de lib/yaml.js — le panneau n'en recopie aucune, et les valeurs par
-// défaut vivent dans le filtre de composition, seul endroit où elles existent.
+// Le titre de la bibliographie pour le panneau : intitulés effectifs, deux revues et trois
+// langues avec leur nom lisible, tirés de lib/citations.js et lib/yaml.js. Les valeurs par
+// défaut sont dans le filtre de composition.
 function donneesBiblio() {
   return {
     titres: configBiblio().titres,
@@ -90,9 +86,9 @@ function donneesBiblio() {
   };
 }
 
-// L'état de la liste des auteur·e·s publiés, pour le groupe informatif des réglages :
-// quand elle a été mise à jour, combien de noms elle porte. Rien ne se règle là — le
-// rafraîchissement se fait seul, à l'activation (rafraichirAuteursPubliesEnFond).
+// État de la liste des auteur·e·s publiés, pour information : date de mise à jour et
+// nombre de noms. Le rafraîchissement se fait à l'activation
+// (rafraichirAuteursPubliesEnFond).
 function resumeAuteursPublies() {
   try {
     const cache = lireCacheAuteursPublies();
@@ -105,10 +101,9 @@ function resumeAuteursPublies() {
   } catch (e) { return { dateFetch: null, dateCorpus: null, nombre: 0, nombreRor: 0 }; }
 }
 
-// Ce que le panneau doit connaître de l'export OJS : la configuration effective, la liste
-// des champs par revue avec le libellé et l'endroit où relever la valeur, et les types
-// d'article. Les listes viennent de lib/export-ojs.js et de lib/yaml.js — le panneau n'en
-// recopie aucune.
+// L'export OJS pour le panneau : configuration effective, champs par revue avec leur
+// libellé et l'endroit où relever la valeur, types d'article. Tirés de lib/export-ojs.js et
+// lib/yaml.js.
 function donneesOjs() {
   const langue = langueCockpit();
   const revues = {};
@@ -117,8 +112,8 @@ function donneesOjs() {
     config: configOjs(),
     locales: LOCALES_REVUE,
     revues: revues,
-    // Les clés des rubriques livrées ne se renomment pas : une clé changée laisserait
-    // l'ancienne en place et le type d'article pointerait dans le vide.
+    // Les clés des rubriques livrées ne se renomment pas : le type d'article pointerait
+    // vers une clé disparue.
     clesDefaut: RUBRIQUES_DEFAUT.map((r) => r.cle),
     champs: CHAMPS_REVUE.map((c) => ({
       cle: c.cle, requis: c.requis, libelle: T(c.libelle), ou: T(c.ou)
@@ -157,10 +152,8 @@ function ecrireLocaleArgv(langue) {
   }
 }
 
-// La langue d'affichage de VSCodium, réduite aux deux que nous connaissons. '' quand un
-// pack de langue n'est pas installé — l'anglais des postes d'ici — auquel cas il n'y a rien
-// à comparer : c'est l'état normal d'une rédaction francophone, dont les menus sont en
-// anglais et les formulaires en français.
+// La langue d'affichage de VSCodium, fr ou de. '' sans pack de langue (menus en anglais) :
+// il n'y a alors rien à comparer.
 function langueEditeur() {
   const brut = String((vscode.env && vscode.env.language) || '').toLowerCase();
   if (brut.indexOf('de') === 0) { return 'de'; }
@@ -168,11 +161,9 @@ function langueEditeur() {
   return '';
 }
 
-// Le mot à poser sous le choix de la langue quand les menus de VSCodium et les textes du
-// cockpit ne parlent pas la même langue. Deux mécanismes indépendants les décident (voir
-// l'en-tête de lib/i18n.js), et rien ne les oblige à s'accorder : un réglage posé à la
-// main, une variable d'essai restée dans l'environnement, un choix effacé par une mise à
-// jour, et l'écran se retrouve à moitié dans chaque langue. -> '' quand tout va bien.
+// Le message affiché sous le choix de la langue quand les menus de VSCodium et les textes
+// du cockpit ne sont pas dans la même langue : deux mécanismes indépendants les décident
+// (voir l'en-tête de lib/i18n.js). -> '' quand ils concordent.
 function avertissementLangue() {
   const cockpit = langueCockpit();
   const editeur = langueEditeur();
@@ -182,11 +173,10 @@ function avertissementLangue() {
 
 // ---- Les réglages protégés : relais, état, et fichier à transmettre --------------
 //
-// Le fichier déployé par la mise à jour est la référence ; config.json est ce que le poste
-// emploie, et le seul que la chaîne de compilation sache lire. Le relais recopie l'un dans
-// l'autre — mais SEULEMENT quand la référence a changé, jamais à chaque démarrage : une
-// modification faite ici après un déverrouillage doit tenir jusqu'à la prochaine mise à
-// jour, et un relais à chaque ouverture l'effacerait le lendemain matin.
+// Le fichier déployé par la mise à jour est la référence ; config.json est celui que le
+// poste et la chaîne de compilation lisent. Le relais recopie la référence dans config.json
+// seulement quand elle a changé : une modification faite après déverrouillage tient ainsi
+// jusqu'à la mise à jour suivante.
 const CLE_EMPREINTE_PROTEGES = 'szh.reglagesProteges.empreinte';
 
 async function relayerReglagesProteges(context) {
@@ -201,10 +191,8 @@ async function relayerReglagesProteges(context) {
   await context.globalState.update(CLE_EMPREINTE_PROTEGES, empreinte);
 }
 
-// L'état des réglages protégés, tel que le formulaire en a besoin : verrouillés ou non, et
-// la liste des blocs où ce poste s'écarte de la version déployée. Le déverrouillage ne vit
-// que le temps du panneau ouvert — il se redemande à chaque fois, et c'est voulu : c'est un
-// geste d'exception, pas un mode dans lequel on s'installe.
+// L'état des réglages protégés pour le formulaire : verrouillés ou non, et les blocs où le
+// poste s'écarte de la version déployée. Le déverrouillage ne dure que le temps du panneau.
 let protegesDeverrouilles = false;
 
 // Le verrou se referme de lui-même quand la personne quitte l'onglet ou ferme la page.
@@ -222,8 +210,7 @@ function etatProteges() {
 }
 
 // « Télécharger les réglages protégés » : l'état courant du poste, au format du fichier
-// déployé, à transmettre à l'administrateur. Offert même verrouillé — lire et transmettre
-// ne modifie rien, et c'est justement ce qu'on demande à quelqu'un qui signale un problème.
+// déployé, à transmettre à l'administrateur. Possible même verrouillé.
 async function telechargerReglagesProteges() {
   const contenu = proteges.fichierATelecharger(lireConfigPoste(), T('regl.proteges.lisezmoi'));
   let cible;
@@ -233,7 +220,7 @@ async function telechargerReglagesProteges() {
       defaultUri: vscode.Uri.file(path.join(await dossierBureau(), proteges.NOM_FICHIER))
     });
   } catch (e) { cible = null; }
-  if (!cible) { return null; }                     // annulé : rien à dire
+  if (!cible) { return null; }                     // annulé
   try {
     ecrireAtomique(cible.fsPath, contenu);
     return T('regl.proteges.telecharge', [path.basename(cible.fsPath)]);
@@ -242,11 +229,9 @@ async function telechargerReglagesProteges() {
   }
 }
 
-// Les titres de commandes et le tutoriel : ils ne passent pas par lib/i18n.js mais par
-// package.nls*.json, que VSCodium résout selon SA langue d'affichage. Ils s'affichent
-// pourtant à l'écran, et les laisser hors du fichier de langue laisserait la moitié des
-// menus hors de la relecture. Lus à côté de cette extension, jamais ailleurs ; un fichier
-// absent ou illisible rend une table vide plutôt que de faire échouer tout l'export.
+// Les titres de commandes et le tutoriel viennent de package.nls*.json, que VSCodium
+// résout selon sa propre langue ; ils entrent aussi dans le fichier de langue. Lus à côté
+// de l'extension ; un fichier absent ou illisible rend une table vide.
 function nlsCommandes() {
   const paire = {};
   for (const [langue, nom] of [['fr', 'package.nls.json'], ['de', 'package.nls.de.json']]) {
@@ -259,10 +244,9 @@ function nlsCommandes() {
   return paire;
 }
 
-// « Télécharger le fichier de langue » : tous les libellés de l'interface, français et
-// allemand côte à côte, dans un JSON qu'on envoie à qui relit. Les deux phrases de _lire
-// passent par TL() et non par T() : le fichier porte les deux langues, quelle que soit
-// celle dans laquelle le cockpit s'affiche à cet instant.
+// « Télécharger le fichier de langue » : tous les libellés de l'interface, fr et de côte à
+// côte, dans un JSON pour relecture. Les phrases de _lire passent par TL(), pour être dans
+// les deux langues quelle que soit celle de l'interface.
 async function telechargerFichierLangue() {
   const version = rapportErreur.versionCockpit() || '';
   const contenu = exportLangue.serialiser(exportLangue.construire({
@@ -279,14 +263,13 @@ async function telechargerFichierLangue() {
       defaultUri: vscode.Uri.file(path.join(await dossierBureau(), exportLangue.nomFichier(version)))
     });
   } catch (e) { cible = null; }
-  if (!cible) { return null; }                     // annulé : rien à dire
+  if (!cible) { return null; }                     // annulé
   try {
     ecrireAtomique(cible.fsPath, contenu);
   } catch (e) {
     return { erreur: T('regl.exportLangue.echec', [path.basename(cible.fsPath), String((e && e.message) || e)]) };
   }
-  // Révélé dans l'Explorateur : le but du fichier est d'être glissé dans un courriel, et
-  // un chemin affiché dans un message ne se glisse nulle part.
+  // Montré dans l'Explorateur, d'où il se glisse dans un courriel.
   await ctx.revelerDansExplorateur(cible);
   return { message: T('regl.exportLangue.faite', [path.basename(cible.fsPath)]) };
 }
@@ -322,23 +305,19 @@ function lireReglagesActuels() {
     warnings: ctx.reduireWarningsImpressionActif() ? 'reduits' : 'complets',
     liensReferences: ctx.desactiverLiensReferencesActif() ? 'desactives' : 'actifs',
     langue: langueCockpit(),
-    // Lu dans config.json, comme la langue : c'est le seul exemplaire, il n'y a rien à
-    // recouper avec un réglage d'éditeur.
+    // Lu dans config.json, comme la langue.
     verifTrad: lireVerifTraduction() ? 'actif' : 'inactif',
-    // Même fichier, même lecture : le mode « Trad » vit à côté du vérificateur.
+    // Le mode « Trad », lu au même endroit.
     modeTrad: lireModeTrad() ? 'actif' : 'inactif',
     // Déclaré par l'onglet Préprocessing : tant qu'il ne l'est pas, null masque la ligne.
     formatTravail: lireFormatTravail()
-    // Le mode développeur (dossiers de test) ne fait plus partie de cet état : il se lit
-    // et s'écrit dans lib/accueil-reglages-hote.js.
+    // Le mode développeur (dossiers de test) est géré par lib/accueil-reglages-hote.js.
   };
 }
 
-// Les quatre blocs « Auteur·e·s publiés » (OJS), « Bibliographie », « Tâches par
-// article » et « Export OJS » n'ont de sens que pour une revue/Zeitschrift : pas
-// d'export OJS pour un livre, donc rien de tout cela à régler. On ne les envoie même
-// pas — media/accueil.js (montrer) ne révèle leur <section> que si la donnée arrive, et
-// une donnée absente la laisse masquée, titre compris.
+// Les blocs « Auteur·e·s publiés » (OJS), « Bibliographie », « Tâches par article » et
+// « Export OJS » ne concernent que la revue. Pour un livre, ils ne sont pas envoyés, et
+// media/accueil.js (montrer) laisse leur <section> masquée.
 function messageValeursReglages() {
   const msg = {
     type: MSG.VALEURS, valeurs: lireReglagesActuels(),
@@ -360,10 +339,8 @@ function messageValeursReglages() {
 async function traiterMessage(msg, repondre, rafraichirTout) {
   // ---- Les réglages protégés ----
   //
-  // Déverrouiller n'est pas un réglage mais un geste, et il se redemande à chaque
-  // ouverture du panneau : c'est une exception, pas un mode dans lequel on s'installe.
-  // La question modale est posée ICI et non dans la page : une webview ne peut pas
-  // bloquer, et un avertissement qu'on peut ignorer d'un clic à côté n'avertit personne.
+  // Le déverrouillage se redemande à chaque ouverture du panneau. La question est posée ici
+  // en fenêtre modale, ce qu'une webview ne peut pas faire.
   if (msg.type === MSG.DEVERROUILLER) {
     if (!msg.valeur) {
       protegesDeverrouilles = false;
@@ -383,11 +360,8 @@ async function traiterMessage(msg, repondre, rafraichirTout) {
     if (dit) { vscode.window.showInformationMessage(dit); }
     return true;
   }
-  // Le fichier de langue de l'interface. Annulé, rien ne se dit : la personne vient de
-  // refermer la boîte, elle sait ce qu'elle a fait.
-  // Le dossier des suggestions sur les textes de l'outil. Créé s'il n'existe pas : un
-  // bouton qui ne fait rien la première fois passerait pour cassé, et un dossier vide dit
-  // au moins où elles atterriront.
+  // Le fichier de langue de l'interface ; une annulation n'affiche rien.
+  // Le dossier des suggestions sur les textes de l'interface, créé s'il n'existe pas.
   if (msg.type === MSG.SUGGESTIONS_INTERFACE) {
     const dossier = suggestionTraduction.dossierSuggestionsInterface();
     try { fs.mkdirSync(dossier, { recursive: true }); }
@@ -402,9 +376,8 @@ async function traiterMessage(msg, repondre, rafraichirTout) {
     else if (dit && dit.message) { vscode.window.showInformationMessage(dit.message); }
     return true;
   }
-  // Verrouillé, ces deux blocs ne s'écrivent pas. Le formulaire les grise déjà et
-  // n'enverrait rien, mais un message qui arriverait quand même — page restée ouverte
-  // pendant un reverrouillage, envoi automatique en vol — ne doit pas passer.
+  // Verrouillés, ces deux blocs ne s'écrivent pas. Le formulaire les désactive déjà ; ceci
+  // couvre un message envoyé pendant un reverrouillage.
   const BLOC_DE_MSG = {};
   BLOC_DE_MSG[MSG.REGLER_OJS] = 'ojs';
   BLOC_DE_MSG[MSG.REGLER_BIBLIO] = 'biblio';
@@ -415,20 +388,18 @@ async function traiterMessage(msg, repondre, rafraichirTout) {
     });
     return true;
   }
-  // La configuration de l'export OJS va dans config.json, comme le mode développeur :
-  // ce sont des réglages de poste, partagés avec les scripts PowerShell.
+  // La configuration de l'export OJS va dans config.json, partagé avec les scripts
+  // PowerShell.
   if (msg.type === MSG.REGLER_OJS) {
     const erreur = ecrireConfigOjs(msg.ojs || {});
     if (erreur) {
       const message = T('ojs.err.ecriture', [erreur]);
       vscode.window.showErrorMessage(message);
-      // Sinon l'auto-enregistrement du panneau (enVol) reste bloqué : plus rien ne
-      // s'enregistre jamais après le premier échec.
+      // Sans réponse, l'enregistrement automatique du panneau (enVol) resterait bloqué.
       repondre({ type: MSG.ERREUR, bloc: 'ojs', message: message });
     } else {
       repondre({ type: MSG.ENREGISTRE, bloc: 'ojs' });
-      // Le poste vient peut-être de s'écarter de la version déployée : le bandeau
-      // doit le dire tout de suite, pas au prochain rechargement du panneau.
+      // Le poste a pu s'écarter de la version déployée : le bandeau se met à jour.
       repondre(Object.assign({ type: MSG.PROTEGES }, etatProteges()));
     }
     return true;
@@ -442,16 +413,14 @@ async function traiterMessage(msg, repondre, rafraichirTout) {
       repondre({ type: MSG.ERREUR, bloc: 'biblio', message: message });
     } else {
       repondre({ type: MSG.ENREGISTRE, bloc: 'biblio' });
-      // Le poste vient peut-être de s'écarter de la version déployée : le bandeau
-      // doit le dire tout de suite, pas au prochain rechargement du panneau.
+      // Le poste a pu s'écarter de la version déployée : le bandeau se met à jour.
       repondre(Object.assign({ type: MSG.PROTEGES }, etatProteges()));
     }
     return true;
   }
-  // Les tâches éditoriales, dans le même config.json. Écrites revue par revue —
-  // configAvecTaches n'en touche qu'une à la fois, et c'est ce qui garantit qu'une revue
-  // absente du message ne soit pas effacée. L'arbre et la vue « Articles » portent ces
-  // intitulés : ils se refont, sans quoi les cases cocheraient des noms d'avant.
+  // Les tâches éditoriales, dans le même config.json, écrites revue par revue
+  // (configAvecTaches) pour ne pas effacer une revue absente du message. L'arbre et la vue
+  // « Articles », qui affichent ces intitulés, sont rafraîchis.
   if (msg.type === MSG.TACHES_ENREGISTRER) {
     const table = (msg.taches && typeof msg.taches === 'object') ? msg.taches : {};
     const erreur = modifierConfigPoste((avant) => {
@@ -469,8 +438,8 @@ async function traiterMessage(msg, repondre, rafraichirTout) {
       return true;
     }
     repondre({ type: MSG.ENREGISTRE, bloc: CLE_TACHES });
-    // Les identifiants viennent d'être dérivés pour les tâches neuves : la page doit les
-    // recevoir, sinon la rangée suivante en fabriquerait un second sur le même intitulé.
+    // La page reçoit les identifiants créés pour les nouvelles tâches, sinon elle en
+    // créerait un second pour le même intitulé.
     repondre({ type: MSG.VALEURS, valeurs: lireReglagesActuels(),
       taches: donneesTaches(), proteges: etatProteges() });
     repondre(Object.assign({ type: MSG.PROTEGES }, etatProteges()));
@@ -518,39 +487,31 @@ async function traiterMessage(msg, repondre, rafraichirTout) {
       await vscode.workspace.getConfiguration('szh')
         .update('reduireWarningsImpression', msg.valeur === 'reduits', Global);
     } else if (msg.cle === 'liensReferences') {
-      // Deux écritures : le réglage VSCodium, pour le panneau et la palette de commandes ;
-      // et config.json, seul fichier que pipeline/filters/szh-citations.lua peut lire
-      // depuis WSL — même relais que le titre de la bibliographie, juste en dessous.
+      // Deux écritures : le réglage VSCodium, pour le panneau et la palette ; et
+      // config.json, seul fichier que pipeline/filters/szh-citations.lua lit depuis la WSL.
       const desactiver = msg.valeur === 'desactives';
       await vscode.workspace.getConfiguration('szh')
         .update('desactiverLiensReferences', desactiver, Global);
       const erreur = modifierConfigPoste((avant) => configAvecLiensDesactives(avant, desactiver));
       if (erreur) { vscode.window.showErrorMessage(T('err.ecriture', [path.basename(cheminConfigPoste()), erreur])); }
     } else if (msg.cle === 'verifTrad') {
-      // Une seule écriture, et pas dans les réglages de l'éditeur : trois panneaux
-      // lisent ce mode — fiches, vérification de l'import, traduction — et la mise à
-      // jour du poste réécrit en entier les réglages de VSCodium, si bien que le mode
-      // s'y éteindrait à chaque mise à jour. Même raison, et même fichier, que la langue
-      // juste en dessous.
+      // Écrit dans config.json, lu par les panneaux des fiches, de la vérification de
+      // l'import et de la traduction.
       const erreur = modifierConfigPoste((avant) => configAvecVerifTraduction(avant, msg.valeur === 'actif'));
       if (erreur) { vscode.window.showErrorMessage(T('err.ecriture', [path.basename(cheminConfigPoste()), erreur])); }
     } else if (msg.cle === 'modeTrad') {
-      // Même fichier et même précaution que le vérificateur juste au-dessus. Les panneaux
-      // ouverts sont prévenus tout de suite : sans cela, allumer le mode ne se verrait
-      // qu'à la réouverture de chacun, et l'éteindre laisserait les autres bloqués.
+      // Même fichier que le vérificateur. Les panneaux ouverts sont prévenus tout de suite.
       const erreur = modifierConfigPoste((avant) => configAvecModeTrad(avant, msg.valeur === 'actif'));
       if (erreur) { vscode.window.showErrorMessage(T('err.ecriture', [path.basename(cheminConfigPoste()), erreur])); }
       else { ctx.diffuserModeTrad(); }
     } else if (msg.cle === 'langue') {
       const langue = msg.valeur === 'de' ? 'de' : 'fr';
       await vscode.workspace.getConfiguration('szh').update('langue', langue, Global);
-      // Deux écritures, comme pour les liens des références juste au-dessus — et pour une
-      // raison de plus : la mise à jour du poste réécrit entièrement les réglages de
-      // l'éditeur, et le choix de la langue partait avec eux. Le second exemplaire vit
-      // hors de leur portée, et c'est lui que le cockpit relit sur un poste remis à jour.
+      // Deux écritures : le réglage VSCodium et config.json, que le cockpit relit si les
+      // réglages de l'éditeur ont été remplacés.
       const erreur = modifierConfigPoste((avant) => configAvecLangue(avant, langue));
       if (erreur) { vscode.window.showErrorMessage(T('err.ecriture', [path.basename(cheminConfigPoste()), erreur])); }
-      oublierLanguePoste();                      // le fichier vient de changer sous nous
+      oublierLanguePoste();                      // config.json vient de changer
       ecrireLocaleArgv(langue);                  // langue native : au prochain démarrage
       vscode.window.showInformationMessage(T('info.redemarrer'));
       if (rafraichirTout) { rafraichirTout(); }  // libellés de l'arbre tout de suite

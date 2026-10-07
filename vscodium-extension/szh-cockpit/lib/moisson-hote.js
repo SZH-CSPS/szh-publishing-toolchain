@@ -1,6 +1,7 @@
-// « Moisson mensuelle » et « Données FNS », dans Paramètres de l'Accueil : l'état partagé lu dans
-// _Moissons, la durée estimée, puis moisson.py dans le moteur, ses événements relayés à la page,
-// et Arrêter. La passe survit à la fermeture du panneau, pas à celle de l'éditeur.
+// « Moisson mensuelle » et « Données FNS », dans les Paramètres de l'Accueil : lit l'état
+// partagé dans _Moissons, estime la durée, lance moisson.py dans le moteur, relaie ses
+// événements à la page et gère Arrêter. La passe continue si le panneau se ferme, pas si
+// l'éditeur se ferme.
 'use strict';
 
 const vscode = require('vscode');
@@ -23,11 +24,11 @@ const QUEUE_ERREURS = 600;
 let ctx = {
   envoyer: () => {},
   racineMoissons: () => inventaire.baseRevuesPour(archivage.lireEmplacementRevues()),
-  // La racine de test (Revues-TESTING) moissonne hors ligne : elle userait sinon la politesse envers les sources.
+  // La racine de test (Revues-TESTING) moissonne hors ligne, pour ne pas solliciter les sources.
   racineTest: () => archivage.lireEmplacementRevues() === archivage.EMPLACEMENT_TEST,
   poste: () => { try { return os.hostname(); } catch (e) { return ''; } },
   compte: () => { try { return os.userInfo().username; } catch (e) { return process.env.USERNAME || ''; } },
-  // Le moteur, par -e : la racine OneDrive porte des espaces.
+  // Lancé par -e, car le chemin OneDrive contient des espaces.
   executer: (argv) => moteur.executer(argv, { stdio: ['ignore', 'pipe', 'pipe'], sansShell: true }),
   versMoteur: (chemin) => moteur.versMoteur(chemin),
   script: () => moteur.toolkitMoteur('moissonneurs', 'moisson.py'),
@@ -62,8 +63,8 @@ function argsCommuns() {
   return ctx.racineTest() ? a.concat(['--racine-test']) : a;
 }
 function argvMoisson(commande, args) { return ['python3', '-B', ctx.script(), commande].concat(args); }
-// La demande d'arrêt : un fichier du poste, passé par --arret ; moisson.py et le moissonneur le lisent avant
-// chaque requête. Le cockpit le crée pour arrêter ; il ne tue jamais wsl.exe.
+// Demande d'arrêt : un fichier du poste passé par --arret, que moisson.py et le moissonneur
+// lisent avant chaque requête. Le cockpit crée ce fichier plutôt que de tuer wsl.exe.
 function nouveauFichierArret() { return path.join(ctx.dossierArret(), Date.now() + '-' + process.pid + '.arret'); }
 
 // ---- Libellés -------------------------------------------------------------------------------
@@ -132,7 +133,7 @@ function etatPartage() {
   return { disponible: true, moissonneurs: moissonneurs, creneau: creneau, raison: raison };
 }
 
-// Sans socle de la recherche, un import n'aurait pas d'état où se noter : moisson.py le refuserait.
+// Sans socle de la recherche, moisson.py refuse un import : il n'aurait pas où noter son état.
 function etatFns(partage) {
   const dernier = moisson.dernierImportFns(cheminMoissons());
   const prochaine = moisson.prochaineFns(dernier ? dernier.date : ctx.maintenant());
@@ -168,7 +169,7 @@ function vuePasse() {
     avertissements: p.avertissements.slice(-3).map((a) => (a.moissonneur ? libelle(a.moissonneur) + ' · ' : '') + a.message) };
 }
 
-// Pendant une passe, chaque événement renvoie l'état : _Moissons n'est relu qu'au début et à la fin.
+// Pendant une passe, l'état vient des événements ; _Moissons n'est relu qu'au début et à la fin.
 let partageFige = null;
 function etat() {
   const partage = passe && partageFige ? partageFige : etatPartage();
@@ -258,7 +259,7 @@ async function preparerMensuelle() {
     duree_s: Object.keys(estimations).length === avecSocle.length ? moisson.dureeEstimee(estimations, sommes, horsLigne) : null };
 }
 
-// Un chemin que le moteur lit sur place : pas d'UNC, un disque du poste.
+// Le fichier doit être sur un disque du poste (pas de chemin UNC) pour que le moteur le lise.
 function fichierLisible(chemin) { return /^[A-Za-z]:[\\/]/.test(String(chemin || '')); }
 
 async function preparerFns() {
@@ -415,7 +416,8 @@ function surOnglet() { envoyerEtat(); demanderBudgets(); }
 
 function finPasse() { return derniereFin; }
 
-// À la désactivation de l'extension : la demande d'arrêt part, au mieux ; wsl.exe meurt avec l'éditeur.
+// À la désactivation de l'extension, la demande d'arrêt est posée si possible ; wsl.exe
+// s'arrête avec l'éditeur.
 function arreter() { demanderArret(); }
 
 module.exports = { configurer, surMessage, surOnglet, envoyerEtat, etat, finPasse, arreter, URL_FNS };

@@ -1,25 +1,16 @@
-// L'écrivain de rapports d'erreur automatiques côté cockpit (docs/RAPPORTS-ERREUR.md,
-// §2 et §4 à §6). Construit un rapport conforme au schéma v1, résout l'ancrage
-// SharePoint PASSIVEMENT (jamais de balayage de disque, jamais de fenêtre), applique
-// l'anti-inondation et la file d'attente hors ligne, et écrit le fichier — ou n'écrit rien,
-// mais ne lève jamais (D5).
+// Écrit les rapports d'erreur automatiques du cockpit (docs/RAPPORTS-ERREUR.md). Construit
+// un rapport au schéma v1, résout l'ancrage SharePoint sans balayer le disque ni ouvrir de
+// fenêtre, applique l'anti-inondation et la file d'attente hors ligne, puis écrit le
+// fichier. Ne lève jamais : un rapport ne doit pas gêner l'action en cours.
 //
-// Ce module RÉUTILISE lib/codes-erreur.js (la table des codes, les constantes du schéma, et
-// les fonctions pures de masquage/plafonds/validation/id/signature) : il ne le réécrit pas,
-// il ne le modifie pas. Tout ce qui est ICI concerne la construction du rapport à partir du
-// contexte du cockpit et l'ÉCRITURE (résolution de l'ancrage, anti-inondation, file
-// d'attente, disque) — la moitié impure que codes-erreur.js n'a pas.
+// Les codes, le schéma, le masquage, les plafonds, la validation, l'id et la signature
+// viennent de lib/codes-erreur.js ; ce module ajoute la construction et l'écriture.
 //
-// Dépendances volontairement limitées à fs/path/os (plus codes-erreur.js, le contrat déjà livré,
-// et poste.js, qui ne dépend lui aussi que de fs/path/os) : jamais `require('vscode')`,
-// jamais un autre module de lib/ (archivage.js, yaml.js…). Deux raisons : ce module doit rester
-// chargeable par le banc de test hors de l'éditeur (test/js/rapport-erreur.test.js le requiert
-// directement), et un futur écrivain PowerShell doit pouvoir reproduire cette moitié-ci comme il
-// reproduit déjà codes-erreur.js — sans avoir à traduire des dépendances propres au cockpit
-// (mailsTraduction, emplacementRevues…) qui n'ont rien à voir avec un rapport d'erreur. Là où un
-// motif du dépôt est réutile (lecture tolérante de config.json, écriture atomique), il est repris
-// ICI localement plutôt que requis depuis lib/archivage.js — voir les commentaires plus bas à
-// chaque endroit concerné.
+// Dépendances limitées à fs, path, os, codes-erreur.js et poste.js, sans vscode : le module
+// se charge hors de l'éditeur (test/js/rapport-erreur.test.js), et l'écrivain PowerShell
+// (windows/szh-rapport.ps1) peut en reproduire la logique. La lecture tolérante de
+// config.json et l'écriture atomique sont donc reprises ici plutôt que requises de
+// lib/archivage.js ou lib/yaml.js.
 'use strict';
 
 const fs = require('fs');
@@ -29,36 +20,21 @@ const codesErreur = require('./codes-erreur');
 const { basePoste, racineUtilisateur, dossierProfil } = require('./poste');
 
 // ---------------------------------------------------------------------------------------
-// 1. Racines et chemins — dérivés, jamais en dur, surchargeables pour les tests
+// 1. Racines et chemins, surchargeables pour les tests
 // ---------------------------------------------------------------------------------------
 //
-// Quatre surcharges, jamais mélangées :
-//   SZH_ANCRAGE    -> le niveau « essai » de la résolution de l'ANCRAGE (3 ci-dessous) —
-//                     la MÊME variable que Resolve-SzhAncrage côté PowerShell (D10) : il
-//                     n'existe qu'UNE SEULE surcharge d'ancrage dans tout le produit,
-//                     honorée identiquement par les deux langages.
-//   SZH_RAPPORTS   -> le DOSSIER DE RAPPORTS, directement (D10, amendement du 09.09.2026).
-//                     Orthogonale à SZH_ANCRAGE : remplace la DÉRIVATION depuis l'ancrage,
-//                     mais ne remplace pas la résolution de l'ancrage elle-même — le champ
-//                     `ancrage` du rapport garde son sens, les chemins relatifs aussi ; seul
-//                     le dossier D'ÉCRITURE change. Voir resoudreDossierRapports() plus bas.
-//                     ⚠ Piège vécu (Robin, en éprouvant ce module) : avant D10, cette
-//                     variable désignait l'ancrage, et un dossier de rapports qu'on lui
-//                     passait directement se retrouvait avec un `2_Produkte\…` de trop en
-//                     dessous de lui. Les deux variables sont maintenant strictement
-//                     séparées : chacune ne fait qu'une chose, celle que son nom dit.
-//   SZH_BASE       -> remplace C:\ProgramData\SZH (config.json, l'état du poste, le
-//                     toolkit installé) — même nom et même rôle que $env:SZH_BASE côté
-//                     PowerShell (windows/szh-common.ps1), pour qu'un même geste de test
-//                     se comprenne des deux côtés du lot, même si les deux processus ne se
-//                     parlent pas.
-//   LOCALAPPDATA   -> la vraie variable Windows : %LOCALAPPDATA%\SZH porte déjà
-//                     etat-utilisateur.json (par compte) dans toute la chaîne ; la
-//                     redéfinir dans l'environnement du test suffit, aucune variable
-//                     SZH_* dédiée n'est nécessaire ici.
-// Toujours des FONCTIONS, jamais des constantes figées au chargement : une surcharge posée
-// après le require (comme le fait chaque test) doit être vue au prochain appel (même motif
-// que lib/archivage.js#cheminConfigPoste).
+// Quatre variables, indépendantes :
+//   SZH_ANCRAGE    -> le niveau « essai » de la résolution de l'ancrage (section 3). Même
+//                     variable que Resolve-SzhAncrage côté PowerShell.
+//   SZH_RAPPORTS   -> le dossier de rapports lui-même. Elle remplace seulement le dossier
+//                     d'écriture : l'ancrage du rapport et les chemins relatifs restent
+//                     calculés depuis l'ancrage (voir resoudreDossierRapports()).
+//   SZH_BASE       -> remplace C:\ProgramData\SZH (config.json, état du poste, toolkit
+//                     installé), comme $env:SZH_BASE côté PowerShell.
+//   LOCALAPPDATA   -> la variable Windows ; %LOCALAPPDATA%\SZH contient
+//                     etat-utilisateur.json.
+// Des fonctions plutôt que des constantes, pour qu'une variable posée après le require
+// soit vue au prochain appel.
 function racineProgramData() {
   return basePoste();
 }
@@ -67,29 +43,19 @@ function cheminStatePoste() { return path.join(racineProgramData(), 'state.json'
 function cheminVersionToolkit() { return path.join(racineProgramData(), 'toolkit', 'VERSION'); }
 function cheminEtatUtilisateur() { return path.join(racineUtilisateur(), 'SZH', 'etat-utilisateur.json'); }
 function cheminDossierAttente() { return path.join(racineUtilisateur(), 'SZH', 'rapports-en-attente'); }
-// La file des compteurs d'usage (lib/compteurs.js) : à côté de celle des rapports, jamais mêlée.
+// La file des compteurs d'usage (lib/compteurs.js), distincte de celle des rapports.
 function cheminDossierCompteursAttente() { return path.join(racineUtilisateur(), 'SZH', 'compteurs-en-attente'); }
 
 // =======================================================================================
-// ⚠ LE SEUL ENDROIT JAVASCRIPT QUI PORTE LE NOM DU DOSSIER DE L'APPLICATION ⚠
-// =======================================================================================
-// L'outil s'appelle Pronto, et la ligne ci-dessous nomme son dossier de production. Tout
-// notre arbre de production pend sous ce segment : numéros, archives, magasin de fiches,
-// rapports, journaux. Il est écrit ICI et NULLE PART AILLEURS côté JavaScript — si le
-// dossier devait un jour être renommé, c'est la seule chaîne à corriger dans ce fichier.
-// Son jumeau PowerShell porte le même rôle et le même avertissement :
-// $script:SzhSegmentApplication, dans windows/szh-ancrage.ps1. Les deux se changent
-// ENSEMBLE — test/js/rapport-erreur-ps.test.js compare les deux dérivations.
+// Le nom du dossier de production de Pronto, seul endroit où il est écrit côté JavaScript.
+// Numéros, archives, fiches, rapports et journaux sont sous ce dossier. Son pendant
+// PowerShell est $script:SzhSegmentApplication (windows/szh-ancrage.ps1) : les deux
+// changent ensemble, et test/js/rapport-erreur-ps.test.js compare les deux dérivations.
 const SEGMENT_APPLICATION = '54_Pronto';
 // =======================================================================================
 
-// Le dossier des rapports, DÉRIVÉ de l'ancrage — jamais un chemin absolu en dur (D4).
-// Il a DÉMÉNAGÉ le 15.09.2026 dans notre propre arbre, sous `_Systeme\rapports` : il vivait
-// jusque-là dans un dossier appartenant à une autre équipe (« Edition SZH CSPS allgemein\
-// _AutoReportToolbox… », dont on reproduisait jusqu'à la faute de frappe SharePoint).
-// Aucune période de transition, aucune relecture de l'ancien chemin : deux postes, mis à
-// jour ensemble, et un rapport d'erreur n'a pas d'historique à préserver.
-// Jumeau littéral : $script:SzhDeriveDossierRapports (windows/szh-ancrage.ps1).
+// Le dossier des rapports, relatif à l'ancrage. Pendant PowerShell :
+// $script:SzhDeriveDossierRapports (windows/szh-ancrage.ps1).
 const SEGMENTS_DOSSIER_RAPPORTS = ['2_Produkte', SEGMENT_APPLICATION, '_Systeme', 'rapports'];
 
 function dossierRapportsDepuisAncrage(ancrage) {
@@ -106,12 +72,9 @@ function dossierSystemeDepuisAncrage(ancrage, sousDossier) {
   return path.join.apply(path, [ancrage].concat(segments));
 }
 
-// D10 : le dossier D'ÉCRITURE effectif, une fois l'ancrage résolu par ailleurs.
-// `SZH_RAPPORTS`, quand elle est posée, l'emporte SANS CONDITION sur la dérivation depuis
-// l'ancrage — c'est la surcharge la plus spécifique (« le dossier de rapports, directement,
-// tel quel ») : elle ne dérive rien, elle NE FAIT AUCUN JOIN. Sans elle, on retombe sur la
-// dérivation habituelle depuis l'ancrage résolu (ou `null` si l'ancrage lui-même est
-// introuvable — pas de dossier de rapports sans ancrage ET sans surcharge explicite).
+// Le dossier d'écriture des rapports. `SZH_RAPPORTS`, si elle est posée, est prise telle
+// quelle. Sinon, le dossier se déduit de l'ancrage résolu ; null si l'ancrage est
+// introuvable.
 function resoudreDossierRapports(ancrage) {
   const surcharge = String(process.env.SZH_RAPPORTS || '').trim();
   if (surcharge) { return surcharge; }
@@ -119,20 +82,19 @@ function resoudreDossierRapports(ancrage) {
   return dossierRapportsDepuisAncrage(ancrage.chemin);
 }
 
-// Plafonds de la file d'attente hors ligne (§4.4) — distincts des plafonds de contenu d'un
-// rapport (codesErreur.PLAFONDS), qui portent sur un rapport déjà construit.
+// Plafonds de la file d'attente hors ligne, distincts des plafonds de contenu d'un rapport
+// (codesErreur.PLAFONDS).
 const PLAFONDS_ATTENTE = Object.freeze({ fichiers: 50, jours: 30 });
 // Les compteurs sont petits et nombreux : plafonds plus larges, même mécanique.
 const PLAFONDS_ATTENTE_COMPTEURS = Object.freeze({ fichiers: 200, jours: 90 });
 
 // ---------------------------------------------------------------------------------------
-// 2. Lecture tolérante et écriture atomique — motif de lib/archivage.js, repris ici en
-//    local (voir l'en-tête : pas de dépendance sur ce module pour rester indépendant).
+// 2. Lecture tolérante et écriture atomique (reprises de lib/archivage.js, voir l'en-tête)
 // ---------------------------------------------------------------------------------------
 
-// JSON.parse tolérant : BOM retiré (Save-SzhState et certains éditeurs Windows en posent
-// un, que JSON.parse refuse), fichier absent ou illisible -> objet vide, jamais une
-// exception. Utilisé pour config.json comme pour etat-utilisateur.json.
+// JSON.parse tolérant, pour config.json et etat-utilisateur.json : BOM retiré
+// (Save-SzhState et certains éditeurs Windows en posent un, que JSON.parse refuse) ;
+// fichier absent ou illisible -> objet vide.
 function lireJsonTolerant(chemin) {
   try {
     const brut = String(fs.readFileSync(chemin, 'utf8')).replace(/^\uFEFF/, '');
@@ -141,29 +103,19 @@ function lireJsonTolerant(chemin) {
   } catch (e) { return {}; }
 }
 
-// Le nom du fichier temporaire d'une écriture atomique, dans LE MÊME dossier que la cible
-// (un renommage n'est atomique qu'à l'intérieur d'un volume).
-//
-// ⚠ Le préfixe « ~$ » n'est pas décoratif : c'est le motif que OneDrive IGNORE, et c'est
-// pour cette raison précise que tout le reste du dépôt l'emploie (ecrireAtomique de
-// lib/yaml.js, Write-SzhCheckinCsv de windows/szh-checkin.ps1). Les deux écrivains de ce
-// fichier nommaient leur temporaire « <cible>.tmp-… » : chaque écriture faisait donc voyager
-// un fichier de plus vers tous les postes, et chaque écriture ratée y abandonnait un
-// orphelin qui s'y répliquait ensuite indéfiniment.
+// Le nom du fichier temporaire d'une écriture atomique, dans le même dossier que la cible
+// (un renommage n'est atomique qu'à l'intérieur d'un volume). Le préfixe « ~$ » est ignoré
+// par OneDrive, qui ne synchronise donc pas ces fichiers (même règle que ecrireAtomique de
+// lib/yaml.js).
 function cheminTemporaire(cible) {
   const jeton = process.pid + '.' + Date.now().toString(36) + '.' + Math.random().toString(36).slice(2, 8);
   return path.join(path.dirname(cible), '~$' + path.basename(cible) + '.' + jeton);
 }
 
-// Écrit un JSON UTF-8 SANS BOM, indenté 2 espaces (§4, en-tête du schéma — appliqué ici
-// aussi à etat-utilisateur.json par cohérence). Écrit dans un fichier temporaire puis
-// renomme : une lecture concurrente ne voit jamais un fichier à moitié écrit.
-//
-// Le `finally` manquait, et c'est exactement le défaut qu'ecrireAtomique (lib/yaml.js) avait
-// déjà corrigé de son côté : un renommage qui échoue (cible verrouillée par le
-// synchroniseur, disque plein, dossier disparu) laissait le temporaire sur place pour
-// toujours. Le nettoyage est silencieux — après un renommage réussi le temporaire n'existe
-// plus, ce qui n'est pas une erreur mais le cas normal.
+// Écrit un JSON UTF-8 sans BOM, indenté de 2 espaces, dans un fichier temporaire puis
+// renommé : une lecture concurrente ne voit jamais un fichier à moitié écrit. Le `finally`
+// retire le temporaire si le renommage échoue (cible verrouillée, disque plein…) ; après un
+// renommage réussi, il n'existe plus.
 function ecrireJsonAtomique(chemin, valeur) {
   fs.mkdirSync(path.dirname(chemin), { recursive: true });
   const tmp = cheminTemporaire(chemin);
@@ -177,11 +129,8 @@ function ecrireJsonAtomique(chemin, valeur) {
 
 function lireEtatUtilisateur() { return lireJsonTolerant(cheminEtatUtilisateur()); }
 
-// Lecture-modification-écriture, comme lib/archivage.js#ecrireConfigPoste : `fn` reçoit
-// l'objet lu (jamais null) et rend l'objet à écrire. Ne lève jamais — un échec d'écriture
-// des compteurs anti-inondation n'est déjà, en soi, qu'une dégradation silencieuse (au pire
-// l'anti-inondation « oublie » d'une exécution à l'autre, jamais un crash ni un rapport en
-// boucle).
+// Lecture-modification-écriture : `fn` reçoit l'objet lu (jamais null) et rend l'objet à
+// écrire. Ne lève jamais : au pire, l'anti-inondation oublie ses compteurs.
 function ecrireEtatUtilisateur(fn) {
   try {
     const avant = lireEtatUtilisateur();
@@ -193,35 +142,20 @@ function ecrireEtatUtilisateur(fn) {
 }
 
 // ---------------------------------------------------------------------------------------
-// 3. Résolution PASSIVE de l'ancrage (amendement du 09.09.2026 : Resolve, jamais Initialize)
+// 3. Résolution passive de l'ancrage
 // ---------------------------------------------------------------------------------------
 //
-// Trois niveaux SEULEMENT (essai, config, cache) : la détection automatique et la demande
-// à l'utilisateur·trice (niveaux 4 et 5 de la spec complète) sont le lanceur PowerShell,
-// un autre jalon. Ici, JAMAIS de fs.readdirSync pour chercher un dossier, JAMAIS de
-// fenêtre : chaque niveau ne fait qu'une sonde ciblée (fs.statSync sur un chemin déjà
-// connu), et rend `origine: 'absent'` en silence si rien n'aboutit — exactement la garde
-// que l'amendement exige d'une fonction appelable depuis un accesseur de chemin sans
-// console (ici, l'écrivain de rapports).
+// Trois niveaux : essai (SZH_ANCRAGE), config, cache. Chacun ne fait qu'un fs.statSync sur
+// un chemin connu, sans parcourir de dossier ni ouvrir de fenêtre, et rend
+// `origine: 'absent'` si rien n'aboutit.
 //
-// Volontairement plus ÉTROIT que Resolve-SzhAncrage côté PowerShell (qui, lui, ajoute la
-// détection automatique — niveau 4) : décision actée avec Robin, pas un raccourci. Deux
-// raisons, pas une seule :
-//   1. Le lanceur tourne TOUJOURS avant le cockpit (VSCodium ne s'ouvre que depuis lui) et
-//      met déjà l'ancrage résolu en cache dans etat-utilisateur.json — le niveau « auto »
-//      ne manque donc à personne ici : par le temps où un rapport peut partir du cockpit,
-//      le niveau 3 (cache) a presque toujours déjà la réponse.
-//   2. Appeler Resolve-SzhAncrage reviendrait à lancer un processus PowerShell depuis le
-//      cockpit rien que pour écrire un rapport d'erreur : lent, fragile (dépend de
-//      powershell.exe, d'un profil qui charge, d'un antivirus qui l'inspecte…), et
-//      directement contraire à D5 (« un rapport ne doit jamais ralentir l'action en
-//      cours »). Une résolution en process, en quelques appels fs.statSync, est la seule
-//      qui tienne cette promesse.
+// La détection automatique et la question à l'utilisateur·trice restent au lanceur
+// (Resolve-SzhAncrage). Le lanceur s'exécute avant le cockpit et met l'ancrage en cache
+// dans etat-utilisateur.json : le cache suffit presque toujours. Lancer PowerShell depuis
+// le cockpit pour un rapport serait lent et fragile.
 
-// [Environment]::ExpandEnvironmentVariables côté PowerShell -> son équivalent : les jetons
-// %NOM% d'une valeur venant de config.json sont développés depuis process.env. Sur Windows,
-// la casse des noms de variables d'environnement n'est pas significative (Node aligne déjà
-// process.env là-dessus sous win32).
+// Équivalent de [Environment]::ExpandEnvironmentVariables : développe les %NOM% d'une
+// valeur de config.json depuis process.env (insensible à la casse sous win32).
 function etendreVariablesEnvironnement(texte) {
   return String(texte === null || texte === undefined ? '' : texte).replace(/%([^%]+)%/g, (m, nom) => {
     const v = process.env[nom];
@@ -234,23 +168,13 @@ function dossierExiste(p) {
   try { return fs.statSync(p).isDirectory(); } catch (e) { return false; }
 }
 
-// Un chemin d'ancrage peut arriver en barres obliques (habitude de shell : SZH_ANCRAGE
-// tapée à la main, ou une valeur de config.json écrite ainsi) — tout comme
-// codesErreur.versCheminRelatif() et masquer() acceptent déjà l'un ou l'autre séparateur
-// en ENTRÉE pour reconnaître une racine (vérifié par l'exécution, pas supposé : les deux
-// traitent une racine « C:/…/Daten_Allgemein - General » exactement comme sa forme en
-// antislash). Mais le champ `ancrage.chemin` du rapport, lui, n'est PAS masqué (§4.1) :
-// c'est un simple recopiage de la valeur résolue, et rien ne le passait par un
-// normalisateur de séparateur. Deux conséquences concrètes, relevées en comparant les
-// rapports des deux écrivains sur un même incident : le champ ne se collait plus
-// proprement avec `fichiers[].chemin` (toujours en antislash) dans l'Explorateur, et
-// PowerShell (qui normalise déjà côté Resolve-SzhAncrage) rendait une chaîne différente
-// pour le MÊME ancrage — deux rapports du même incident cessaient d'être comparables.
+// Un chemin d'ancrage peut arriver avec des barres obliques (SZH_ANCRAGE ou config.json).
+// Le champ `ancrage.chemin` du rapport est recopié tel quel : on le passe en antislashs,
+// comme `fichiers[].chemin` et comme le fait Resolve-SzhAncrage, pour que les rapports des
+// deux écrivains soient comparables.
 //
-// Simple remplacement de séparateur, pas une résolution de chemin (jamais path.normalize,
-// qui collapserait aussi les « .. ») — même esprit que les remplacements déjà faits dans
-// codes-erreur.js. Le séparateur final est retiré (sauf sur une racine de lecteur nue,
-// improbable ici mais gardée par précaution).
+// Simple remplacement de séparateur : path.normalize réduirait aussi les « .. ». Le
+// séparateur final est retiré, sauf sur une racine de lecteur nue.
 function normaliserSeparateursAncrage(chemin) {
   if (!chemin) { return chemin; }
   let c = String(chemin).replace(/\//g, '\\');
@@ -259,16 +183,9 @@ function normaliserSeparateursAncrage(chemin) {
 }
 
 // Résolution passive : rend { trouve, origine, chemin }. `origine` ∈ 'essai' | 'config' |
-// 'cache' | 'absent' — jamais 'auto' ni 'utilisateur' ni 'defaut', réservés au lanceur.
-// `chemin` est TOUJOURS normalisé en antislash (voir normaliserSeparateursAncrage
-// ci-dessus), quelle que soit la forme reçue en entrée — variable d'environnement,
-// config.json ou cache.
-//
-// D10 (amendement du 09.09.2026) : le niveau « essai » lit `SZH_ANCRAGE`, PAS
-// `SZH_RAPPORTS` — cette dernière ne concerne QUE le dossier de rapports
-// (resoudreDossierRapports() ci-dessus), jamais l'ancrage. `SZH_ANCRAGE` est la MÊME
-// variable que Resolve-SzhAncrage côté PowerShell : une seule surcharge d'ancrage dans
-// tout le produit, honorée identiquement par les deux langages.
+// 'cache' | 'absent' ('auto', 'utilisateur' et 'defaut' sont réservés au lanceur).
+// `chemin` est toujours en antislashs (normaliserSeparateursAncrage). Le niveau « essai »
+// lit `SZH_ANCRAGE`, comme Resolve-SzhAncrage.
 function resoudreAncrage() {
   const essai = String(process.env.SZH_ANCRAGE || '').trim();
   if (essai && dossierExiste(essai)) {
@@ -293,29 +210,18 @@ function resoudreAncrage() {
   return { trouve: false, origine: 'absent', chemin: null };
 }
 
-// Vrai si CETTE émission a une destination explicitement fournie par le test — via
-// `SZH_ANCRAGE` (origine 'essai') OU via `SZH_RAPPORTS` (qui l'emporte de toute façon sur
-// la dérivation, D10) : dans les deux cas, le dossier où l'écriture va réellement se
-// produire est un dossier que le test a lui-même choisi, jamais un dossier réel du poste.
+// Vrai si le dossier d'écriture a été choisi par le test, via `SZH_ANCRAGE` (origine
+// 'essai') ou `SZH_RAPPORTS`.
 function destinationExplicitementFournieParEssai(ancrage) {
   return !!String(process.env.SZH_RAPPORTS || '').trim() || ancrage.origine === 'essai';
 }
 
-// Filet de sécurité propre au banc de test JS (celui-ci, pas une exigence de la spec) :
-// test/js/hote-factice.js pose SZH_RESEAU_INTERDIT='1' pour TOUT test qui active
-// l'extension, précisément pour empêcher un effet de bord réel pendant un test (son
-// en-tête dit explicitement vouloir couvrir « n'importe quel futur module qui s'y
-// brancherait »). Plusieurs fichiers de test déjà écrits, hors du périmètre de ce jalon
-// (controles.test.js, interaction.test.js, pdfua.test.js), déclenchent une tâche de
-// compilation avec un code de sortie non nul SANS jamais poser ni SZH_ANCRAGE ni
-// SZH_RAPPORTS : sans cette garde, une simple exécution de ces tests écrirait pour de vrai
-// dans le vrai %LOCALAPPDATA%\SZH\rapports-en-attente (ancrage introuvable sur un poste où
-// ancrageSharePoint n'est pas encore configuré), ou pire, dans le vrai dossier SharePoint
-// si un poste avait un ancrage déjà résolu. Une destination explicitement fournie par le
-// test (voir ci-dessus) reste toujours honorée : c'est exactement ainsi que
-// test/js/rapport-erreur.test.js éprouve l'écriture réelle, dans un dossier jetable.
-// Aucune incidence en production : SZH_RESEAU_INTERDIT n'est jamais posé hors du banc de
-// test. Nom de fonction gardé stable (ne pas renommer) : d'autres tests s'y réfèrent.
+// Garde des tests : test/js/hote-factice.js pose SZH_RESEAU_INTERDIT pour tout test qui
+// active l'extension. Certains de ces tests font échouer une compilation sans poser
+// SZH_ANCRAGE ni SZH_RAPPORTS ; sans cette garde, ils écriraient un rapport dans le vrai
+// dossier d'attente ou sur SharePoint. Un dossier choisi par le test reste honoré.
+// SZH_RESEAU_INTERDIT n'est jamais posée en production. Des tests appellent cette fonction
+// par son nom.
 function ecritureReelleEviteeParHarnaisTest(ancrage) {
   return !!process.env.SZH_RESEAU_INTERDIT && !destinationExplicitementFournieParEssai(ancrage);
 }
@@ -324,9 +230,8 @@ function ecritureReelleEviteeParHarnaisTest(ancrage) {
 // 4. Contexte — versions, produit, horodatage local, extrait de journal, constats
 // ---------------------------------------------------------------------------------------
 
-// Version du toolkit installé sur le poste : le fichier VERSION du toolkit déployé, puis
-// state.json en repli — même ordre que lib/archivage.js#versionInstallee(), rejoué ici en
-// local pour ne pas dépendre de ce module (voir l'en-tête).
+// Version du toolkit installé : le fichier VERSION du toolkit déployé, sinon state.json
+// (même ordre que lib/archivage.js#versionInstallee()).
 function versionToolkit() {
   try {
     const v = String(fs.readFileSync(cheminVersionToolkit(), 'utf8')).trim();
@@ -337,8 +242,7 @@ function versionToolkit() {
   return v || null;
 }
 
-// Version du cockpit lui-même : celle que VSCodium a chargée, dans le package.json à côté
-// de ce module (lib/../package.json) — une lecture statique, jamais celle d'un autre poste.
+// Version du cockpit chargé, lue dans son package.json (lib/../package.json).
 function versionCockpit() {
   try {
     const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
@@ -347,10 +251,8 @@ function versionCockpit() {
   } catch (e) { return null; }
 }
 
-// L'emplacement courant (test|production), lu dans config.json — même clé et même ordre de
-// repli que lib/archivage.js#resoudreEmplacementRevues, rejoués ici en local (voir l'en-
-// tête : cette fonction-ci n'a besoin que d'une lecture, pas de toute l'écriture qui va
-// avec côté archivage.js).
+// L'emplacement courant (test|production), lu dans config.json, avec le même repli que
+// lib/archivage.js#resoudreEmplacementRevues.
 function emplacementCourant() {
   const cfg = lireJsonTolerant(cheminConfigPoste());
   const v = String(cfg.emplacementRevues || '').trim().toLowerCase();
@@ -364,10 +266,8 @@ function emplacementCourant() {
   return 'test';
 }
 
-// Best-effort, jamais bloquant : un ausgabe.yaml/buch.yaml illisible ou absent rend un
-// produit partiel (numero: null), jamais une exception. Une regex suffit ici — ce module
-// ne dépend pas de lib/yaml.js (voir l'en-tête) — pour extraire deux clés simples d'un
-// fichier YAML à plat, tel que ces deux fichiers le sont toujours dans ce dépôt.
+// Un ausgabe.yaml ou buch.yaml illisible ou absent rend un produit partiel (numero: null).
+// Une expression régulière suffit pour lire deux clés de premier niveau.
 function produitDepuisRacine(racine, profilCle) {
   if (!racine) { return null; }
   const estLivre = profilCle === 'livre';
@@ -380,17 +280,14 @@ function produitDepuisRacine(racine, profilCle) {
     if (mNumero) { numero = mNumero[1].trim(); }
     const mLang = texte.match(/^\s*lang\s*:\s*["']?([a-z]{2})["']?\s*$/mi);
     if (mLang) { lang = mLang[1].trim().toLowerCase(); }
-  } catch (e) { /* fiche illisible : produit partiel, jamais une exception (D5) */ }
-  // Revue et Zeitschrift partagent le même moteur (lib/profil.js) ; seule la langue de
-  // rédaction (lang: de) distingue laquelle des deux maisons est concernée.
+  } catch (e) { /* fiche illisible : produit partiel */ }
+  // Revue et Zeitschrift ne se distinguent que par la langue (lang: de).
   const type = estLivre ? 'livre' : (lang === 'de' ? 'zeitschrift' : 'revue');
   return { type: type, numero: numero, emplacement: emplacementCourant() };
 }
 
-// horodatageLocal (§4) : le même instant que `horodatage`, à l'heure DU POSTE, décalage
-// inclus — pour la personne qui relit, jamais pour le tri (qui reste sur l'UTC de l'id,
-// voir codesErreur.calculerId). Getters locaux de `date`, donc dépendant du fuseau du
-// poste qui écrit le rapport — c'est le but.
+// horodatageLocal : le même instant que `horodatage`, à l'heure du poste avec son
+// décalage, pour la lecture. Le tri se fait sur l'UTC de l'id (codesErreur.calculerId).
 function formaterHorodatageLocal(date) {
   const p2 = (n) => String(n).padStart(2, '0');
   const decalageMin = -date.getTimezoneOffset();
@@ -401,12 +298,10 @@ function formaterHorodatageLocal(date) {
     + signe + p2(Math.floor(abs / 60)) + ':' + p2(abs % 60);
 }
 
-// Lit un fichier texte et en rend un extrait exploitable par le champ `journal` (§4) :
-// chemin ABSOLU (la mise en chemin relatif et le masquage se font dans construireRapport,
-// avec les racines du poste), nombre de lignes réel, et les lignes elles-mêmes — le
-// plafonnage aux 200 dernières / 40 000 caractères est fait par
-// codesErreur.appliquerPlafonds(), pas ici. Fichier absent ou illisible -> null : pas de
-// journal à joindre n'est pas une panne.
+// L'extrait d'un fichier texte pour le champ `journal` : chemin absolu (rendu relatif et
+// masqué par construireRapport), nombre de lignes et lignes. La limite (200 dernières
+// lignes, 40 000 caractères) est appliquée par codesErreur.appliquerPlafonds(). Fichier
+// absent ou illisible -> null.
 function lireExtraitFichier(chemin) {
   if (!chemin) { return null; }
   let texte;
@@ -418,8 +313,7 @@ function lireExtraitFichier(chemin) {
 }
 
 // Réduit un constat de lib/journal.js (source, code, ton, cle, args, slug, brut…) aux
-// quatre champs que le schéma v1 attend (§4, exemple) — un rapport n'a pas besoin de la clé
-// i18n ni des arguments de mise en forme, seulement de quoi identifier le constat.
+// quatre champs du schéma v1.
 function normaliserConstats(constats) {
   return (constats || []).map((c) => ({
     source: (c && c.source !== undefined && c.source !== null) ? c.source : null,
@@ -430,14 +324,12 @@ function normaliserConstats(constats) {
 }
 
 // ---------------------------------------------------------------------------------------
-// 5. Construction du rapport — pure : tout le disque et l'environnement sont déjà résolus
-//    par l'appelant (emettreRapport, §8) et passés en paramètres.
+// 5. Construction du rapport, à partir de valeurs déjà résolues par emettreRapport
 // ---------------------------------------------------------------------------------------
 
-// { chemin, relatifA } pour un chemin ABSOLU quelconque : ancrage d'abord (D3, l'ordre
-// compte, voir codes-erreur.js), programData ensuite, et si aucun des deux ne s'applique,
-// un chemin absolu passé au masquage (§4.1, règle 2 : %USERPROFILE% -> ~\…) plutôt que
-// laissé tel quel en clair.
+// { chemin, relatifA } pour un chemin absolu : relatif à l'ancrage d'abord (l'ordre compte,
+// voir codes-erreur.js), puis à programData ; sinon le chemin absolu masqué
+// (%USERPROFILE% -> ~\…).
 function cheminRelatifAvecRepli(cheminAbsolu, racines) {
   let r = codesErreur.versCheminRelatif(cheminAbsolu, racines.ancrage, 'ancrage');
   if (r.relatifA === 'absolu' && racines.programData) {
@@ -450,14 +342,13 @@ function cheminRelatifAvecRepli(cheminAbsolu, racines) {
   return r;
 }
 
-// `p` porte tout ce qu'il faut, déjà calculé par emettreRapport : id, horodatage(s),
-// gravite/source/code/signature, poste, versions, produit, ancrage (déjà résolu), fichiers
-// et journal en chemins ABSOLUS (mis en relatif ici), constats déjà normalisés,
-// environnement, et `racines` pour le masquage (ancrage/userProfile/programData).
+// `p` vient d'emettreRapport : id, horodatages, gravite/source/code/signature, poste,
+// versions, produit, ancrage résolu, fichiers et journal en chemins absolus, constats
+// normalisés, environnement, et `racines` pour le masquage (ancrage/userProfile/programData).
 //
-// Construit l'objet dans l'ordre EXACT de codesErreur.ORDRE_CLES_RAPPORT (validerRapport()
-// le contrôle), passe message/pile/journal.extrait par le masquage, `fichiers`/`journal`
-// par la mise en chemin relatif, puis délègue à codesErreur.appliquerPlafonds().
+// Construit l'objet dans l'ordre de codesErreur.ORDRE_CLES_RAPPORT (contrôlé par
+// validerRapport()), masque message, pile et journal.extrait, rend relatifs les chemins de
+// `fichiers` et `journal`, puis applique codesErreur.appliquerPlafonds().
 function construireRapport(p) {
   const racines = p.racines || {};
 
@@ -510,7 +401,7 @@ function construireRapport(p) {
 }
 
 // ---------------------------------------------------------------------------------------
-// 6. Anti-inondation (§4.3) — pur, étant donné les compteurs et l'horloge.
+// 6. Anti-inondation, à partir des compteurs et de l'horloge
 // ---------------------------------------------------------------------------------------
 
 function formaterJourLocal(date) {
@@ -518,9 +409,8 @@ function formaterJourLocal(date) {
   return date.getFullYear() + '-' + p2(date.getMonth() + 1) + '-' + p2(date.getDate());
 }
 
-// Retire du compteur toute signature vue il y a plus de 7 jours (§4.3). `_jour` et
-// `_compte` sont traités à part par decisionAntiInondation() : ce ne sont pas des
-// signatures, ils portent le jour courant et son compte.
+// Retire du compteur toute signature vue il y a plus de 7 jours. `_jour` et `_compte`
+// (le jour courant et son compte) sont traités par decisionAntiInondation().
 function purgerCompteursRapports(rapports, maintenant) {
   const seuil = maintenant.getTime() - codesErreur.ANTI_INONDATION.purgeCompteursJours * 24 * 3600 * 1000;
   const sortie = {};
@@ -533,14 +423,13 @@ function purgerCompteursRapports(rapports, maintenant) {
   return sortie;
 }
 
-// Rend { autorise, motif, rapports } : `rapports` est TOUJOURS la valeur à réécrire dans
-// etat-utilisateur.json (purge appliquée, compteur du jour tenu à jour), que la décision
-// autorise ou non l'écriture — un rapport étouffé n'est pas mis en attente (il est perdu),
-// mais les compteurs, eux, doivent survivre pour que le prochain appel voie juste.
+// Rend { autorise, motif, rapports } : `rapports` est la valeur à réécrire dans
+// etat-utilisateur.json (purge faite, compteur du jour à jour), que l'écriture soit
+// autorisée ou non. Un rapport étouffé n'est pas mis en attente : il est perdu.
 //
 //   - Une signature revue avant le délai (24 h par défaut) : étouffé, motif
-//     'signature-recente'. Ne compte PAS dans le plafond du jour (seul un rapport
-//     réellement écrit incrémente `_compte` — voir plus bas).
+//     'signature-recente'. Ne compte pas dans le plafond du jour, que seul un rapport
+//     écrit incrémente.
 //   - Sinon, le plafond quotidien atteint (20 par défaut, compteur remis à 0 à chaque
 //     nouveau jour local) : étouffé, motif 'plafond-jour'.
 //   - Sinon, autorisé : la signature et le compteur du jour sont mis à jour.
@@ -573,19 +462,16 @@ function decisionAntiInondation(rapports, signature, maintenant) {
 }
 
 // ---------------------------------------------------------------------------------------
-// 7. File d'attente hors ligne (§4.4)
+// 7. File d'attente hors ligne
 // ---------------------------------------------------------------------------------------
 
-// Écrit un rapport (déjà construit et validé) en <dossier>\<id>.json, UTF-8 sans BOM,
-// indenté 2 espaces (§4). Crée le dossier au besoin ; lève si l'écriture échoue — c'est
-// l'appelant (emettreRapport) qui décide quoi faire d'un échec (repli sur la file, puis
-// abandon silencieux), jamais cette fonction-ci.
+// Écrit un rapport construit et validé en <dossier>\<id>.json, UTF-8 sans BOM, indenté de
+// 2 espaces. Crée le dossier au besoin. Lève si l'écriture échoue : emettreRapport se
+// replie alors sur la file d'attente.
 //
-// Temporaire préfixé « ~$ » et nettoyé par un `finally` (cheminTemporaire, plus haut) : ce
-// dossier-ci est le DOSSIER PARTAGÉ, celui que tous les postes synchronisent — un orphelin
-// laissé ici ne gêne pas un poste, il se réplique sur tous. Le nom composé ne finit jamais
-// par « .json », ce qui le tient hors de listerFileAttente() et de son homologue PowerShell,
-// qui ne listent que cette extension.
+// Le temporaire (préfixe « ~$ », voir cheminTemporaire) est retiré par un `finally`, car ce
+// dossier est synchronisé sur tous les postes. Son nom ne finit pas par « .json » :
+// listerFileAttente() et son pendant PowerShell l'ignorent.
 function ecrireRapportSurDisque(dossier, rapport) {
   fs.mkdirSync(dossier, { recursive: true });
   const cible = path.join(dossier, rapport.id + '.json');
@@ -599,10 +485,8 @@ function ecrireRapportSurDisque(dossier, rapport) {
   return cible;
 }
 
-// Les fichiers .json de la file d'attente, du plus ancien au plus récent (mtime) — pour
-// que « les plus anciens sont effacés » (§4.4) et « vidée » (le vidage tente les plus
-// anciens d'abord) traitent toujours dans le même ordre. Dossier absent -> liste vide,
-// jamais une exception (D5) : une file jamais utilisée n'a pas de dossier.
+// Les fichiers .json de la file d'attente, du plus ancien au plus récent (mtime) : la purge
+// et le vidage traitent les plus anciens d'abord. Dossier absent -> liste vide.
 function listerFileAttente(dossierFile, extension) {
   const dossier = dossierFile || cheminDossierAttente();
   const ext = extension || '.json';
@@ -620,10 +504,9 @@ function listerFileAttente(dossierFile, extension) {
   return fichiers;
 }
 
-// Applique les deux plafonds de la file (§4.4) : fichiers de plus de 30 jours effacés SANS
-// être transmis, puis, au-delà de 50 fichiers restants, les plus anciens effacés. Rend la
-// liste (déjà purgée) qui subsiste, pour que viderFileAttente() n'ait pas à relire le
-// dossier une seconde fois.
+// Applique les deux plafonds de la file : fichiers de plus de 30 jours effacés sans être
+// transmis, puis les plus anciens au-delà de 50. Rend la liste restante, pour que
+// viderFileAttente() n'ait pas à relire le dossier.
 function purgerFileAttente(maintenant) {
   return purgerDossierAttente(cheminDossierAttente(), '.json', PLAFONDS_ATTENTE, maintenant);
 }
@@ -644,17 +527,13 @@ function purgerDossierAttente(dossierFile, extension, plafonds, maintenant) {
   return fichiers;
 }
 
-// Vidée « au démarrage du lanceur » côté PowerShell ; côté cockpit, à l'activation de
-// l'extension (accroche minimale dans extension.js, qui ne fait qu'appeler cette
-// fonction). Chaque fichier restant après les plafonds est déplacé vers le vrai dossier de
-// rapports ; un échec (dossier toujours injoignable) le laisse en place pour la prochaine
-// tentative — jamais une exception qui remonterait jusqu'à activate().
+// Appelée à l'activation de l'extension (côté PowerShell, au démarrage du lanceur). Chaque
+// fichier restant après les plafonds est déplacé vers le dossier des rapports ; en cas
+// d'échec, il reste pour la fois suivante. Ne lève pas.
 function viderFileAttente() {
   try {
     const ancrage = resoudreAncrage();
-    // D10 : le dossier d'écriture peut venir de SZH_RAPPORTS même si l'ancrage lui-même
-    // reste introuvable — resoudreDossierRapports() porte cette règle, ici comme dans
-    // emettreRapport().
+    // Le dossier peut venir de SZH_RAPPORTS même sans ancrage (resoudreDossierRapports()).
     const dossier = resoudreDossierRapports(ancrage);
     if (!dossier) { return { deplaces: 0, restes: 0 }; }
     if (ecritureReelleEviteeParHarnaisTest(ancrage)) { return { deplaces: 0, restes: 0 }; }
@@ -665,26 +544,25 @@ function viderFileAttente() {
         fs.mkdirSync(dossier, { recursive: true });
         fs.renameSync(f.chemin, path.join(dossier, f.nom));
         deplaces++;
-      } catch (e) { /* dossier toujours injoignable : on laisse en place (§4.4) */ }
+      } catch (e) { /* dossier injoignable : le fichier reste en place */ }
     }
     if (deplaces > 0 || fichiers.length > 0) {
       console.log('[rapport-erreur] file d’attente : ' + deplaces + '/' + fichiers.length + ' déplacé(s).');
     }
     return { deplaces: deplaces, restes: fichiers.length - deplaces };
   } catch (e) {
-    // D5 : le vidage de la file ne doit jamais empêcher l'activation de l'extension.
+    // Le vidage ne doit pas empêcher l'activation de l'extension.
     console.log('[rapport-erreur] vidage de la file d’attente impossible : ' + ((e && e.message) || e));
     return { deplaces: 0, restes: 0 };
   }
 }
 
 // ---------------------------------------------------------------------------------------
-// 8. L'orchestrateur — la seule fonction que les accroches d'extension.js appellent.
+// 8. emettreRapport, seule fonction appelée par extension.js
 // ---------------------------------------------------------------------------------------
 
-// codesErreur.calculerId lève si on ne lui passe pas 6 hex — délibérément (voir son en-
-// tête) : genererAleatoireHex() en rend toujours 6, donc cela ne devrait jamais arriver,
-// mais D5 interdit qu'une exception, fût-elle improbable, s'échappe d'ici.
+// codesErreur.calculerId lève sans 6 caractères hexadécimaux ; genererAleatoireHex() en
+// rend toujours 6.
 function genererId(horodatage, poste) {
   try { return codesErreur.calculerId(horodatage, poste, codesErreur.genererAleatoireHex()); }
   catch (e) { return null; }
@@ -700,10 +578,10 @@ function genererId(horodatage, poste) {
 //   environnement  objet | null
 //   langueInterface, vscodiumVersion                       -- ce que seul l'appelant (extension.js) connaît
 //
-// Rend TOUJOURS { ecrit, enAttente, etouffe, id, motif } — jamais ne lève (D5). `motif`
-// documente pourquoi rien n'a été écrit (mal-forme, signature-recente, plafond-jour,
-// ecriture-impossible, exception-interne), ou reste null sur un succès. `chemin`, le
-// fichier écrit, s'ajoute quand le rapport est écrit ou mis en attente.
+// Rend toujours { ecrit, enAttente, etouffe, id, motif } et ne lève jamais. `motif` dit
+// pourquoi rien n'a été écrit (mal-forme, signature-recente, plafond-jour,
+// ecriture-impossible, exception-interne), ou vaut null. `chemin`, le fichier écrit,
+// s'ajoute quand le rapport est écrit ou mis en attente.
 function emettreRapport(champs) {
   try {
     const c = champs || {};
@@ -776,8 +654,7 @@ function emettreRapport(champs) {
       return { ecrit: false, enAttente: false, etouffe: false, id: id, motif: 'mal-forme' };
     }
 
-    // Anti-inondation : les compteurs sont réécrits que la décision autorise ou non, pour
-    // que le prochain appel voie l'état à jour (§4.3).
+    // Anti-inondation : les compteurs sont réécrits, que l'écriture soit autorisée ou non.
     const etatAvant = lireEtatUtilisateur();
     const rapportsAvant = (etatAvant.rapports && typeof etatAvant.rapports === 'object') ? etatAvant.rapports : {};
     const decision = decisionAntiInondation(rapportsAvant, signature, maintenant);
@@ -787,8 +664,7 @@ function emettreRapport(champs) {
       return { ecrit: false, enAttente: false, etouffe: true, id: id, motif: decision.motif };
     }
 
-    // D10 : SZH_RAPPORTS, quand elle est posée, donne le dossier D'ÉCRITURE directement —
-    // sans condition sur l'ancrage. Sans elle, on retombe sur la dérivation habituelle.
+    // SZH_RAPPORTS, si elle est posée, donne directement le dossier d'écriture.
     const dossierCible = resoudreDossierRapports(ancrage);
     if (dossierCible) {
       try {
@@ -809,14 +685,13 @@ function emettreRapport(champs) {
       console.log('[rapport-erreur] ' + id + ' mis en attente.');
       return { ecrit: false, enAttente: true, etouffe: false, id: id, motif: null, chemin: chemin };
     } catch (e2) {
-      // D5, la règle absolue : un échec d'écriture ne produit PAS un second rapport (pas de
-      // boucle sur RAPPORT-ECHEC-ECRITURE, jamais écrit en JSON — voir codes-erreur.js) ;
-      // seule cette ligne locale le dit.
+      // Un échec d'écriture ne produit pas de second rapport (RAPPORT-ECHEC-ECRITURE n'est
+      // jamais écrit en JSON, voir codes-erreur.js) : seule cette ligne le signale.
       console.log('[rapport-erreur] écriture impossible, y compris en attente (' + ((e2 && e2.message) || e2) + ') — abandon silencieux.');
       return { ecrit: false, enAttente: false, etouffe: false, id: id, motif: 'ecriture-impossible' };
     }
   } catch (e) {
-    // Garde absolue (D5) : quoi qu'il arrive, cette fonction ne lève jamais.
+    // Cette fonction ne lève jamais.
     console.log('[rapport-erreur] échec interne inattendu : ' + ((e && e.message) || e));
     return { ecrit: false, enAttente: false, etouffe: false, id: null, motif: 'exception-interne' };
   }
