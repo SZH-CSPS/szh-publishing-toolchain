@@ -52,7 +52,7 @@ La sortie `out/<slug>/<slug>.html` : source de WeasyPrint, et galley HTML de l'e
 
 | Limite | Norme | Gravité | Cause | État |
 |---|---|---|---|---|
-| Une note est un `<span class="szh-note">` à l'endroit de son appel, sans rôle ni lien : elle est lue au milieu de la phrase. | WCAG 1.3.1 | majeure | maquette : le balisage des notes sert le `float: footnote` du PDF | à corriger avec une sortie web propre ([`SORTIES.md`](SORTIES.md)) |
+| Une note est un `<span class="szh-note">` à l'endroit de son appel, sans rôle ni lien : elle est lue au milieu de la phrase. | WCAG 1.3.1 | majeure | maquette : le balisage des notes sert le `float: footnote` du PDF | à corriger avec une sortie web propre ([`A-FAIRE.md`](A-FAIRE.md#sortie-web-de-la-revue)) |
 | Une figure numérotée déclarée décorative est un fond CSS, sans texte alternatif (même cas que dans le PDF). | WCAG 1.1.1 | majeure pour le contenu touché | contenu, et règle de Pronto | à corriger |
 | Pas de repère `<main>`. | WCAG 1.3.1 | mineure | maquette | sans objet tant que le site intègre le contenu dans sa propre page |
 

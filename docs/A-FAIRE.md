@@ -72,12 +72,24 @@ est faite. Les questions à trancher sont marquées « À décider ».
 - `lib/cantons.js` n'a plus d'appelant : le supprimer ou le rebrancher.
 - Piste : ranger `lib/` en sous-dossiers par domaine, si les tests suivent sans réécriture.
 
+## Sortie web de la revue
+
+- Créer une sortie HTML de la revue pensée pour l'écran (gabarit et `web.css`, sans page A4
+  ni en-tête courant), qui remplacerait le galley HTML d'OJS. Définir son balisage et poser
+  un millésime de maquette avant le premier article publié. L'analyse de départ est dans
+  l'historique git de `docs/SORTIES.md`.
+- Portage Linux et macOS, si on le décide : voir [`MULTIPLATEFORME.md`](MULTIPLATEFORME.md).
+  Les pistes « au-delà du poste » (serveur de compilation, code-server) sont dans
+  l'historique git de ce fichier.
+
 ## Livres
 
 - Relier `--fond-perdu` (`styles/livre/imprimeur.css`, fixé à 3 mm) à
   `impression.fond-perdu-mm` de `buch.yaml`, que la couverture lit déjà.
 - Produire le deuxième livre FALC (allemand) depuis l'interface, et « Diagnostische Reisen »
   depuis l'export Word, vérifié contre le PDF d'origine.
+- `livre-template/buch.yaml` propose une main de papier de 1,22, alors que le calcul du dos
+  prend 1,27 par défaut (`couverture.py`) : choisir une valeur.
 - Reconfirmer le profil ICC avec l'imprimerie.
 - À décider : convertir les images EMF côté Windows.
 - À décider : corps du titre de la page de titre (19 ou 20 pt) ; auteurs d'une partie ;
@@ -99,6 +111,17 @@ est faite. Les questions à trancher sont marquées « À décider ».
   titre anglais de référence.
 - Lexique des noms : vérifier que la forme « Nom, Prénom » est bien prise en compte ; ajouter
   des sources allemandes, autrichiennes et italiennes.
+
+- Valider la sortie avec la rédaction sur une dizaine de documents ; trouver un manuscrit
+  réel déjà au gabarit pour l'éprouver.
+- Apparier un auteur institutionnel cité par son sigle.
+- Un appel peut lever à la fois `APA.CitationAbsente` et `APA.ReferenceNonVerifiee` : le
+  premier est alors faux.
+- `RE_NIVEAU_TITRE` ne reconnaît pas « Überschrift 1 ».
+- Un titre de bibliographie répété en fin de document est mal repéré.
+- Fusionner les deux `_requete()` (ROR/ORCID), et les lecteurs `pronto_docx` /
+  `manuscrit_docx` une fois le lecteur Pronto validé. `normaliser()` est copiée dans
+  quatre fichiers.
 
 ## Moissonneurs et Documentation
 

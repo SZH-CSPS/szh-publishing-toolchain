@@ -1,202 +1,112 @@
-# Les sorties de la chaîne
+# Les sorties de la compilation
 
-Qui produit quoi, ce que chaque sortie garantit, et les deux endroits où l'on se trompe.
-Ce qu'elles ne garantissent pas encore en accessibilité est dans
-[LIMITES-ACCESSIBILITE.md](LIMITES-ACCESSIBILITE.md).
+Cette page dit ce que produit une compilation, ce que chaque sortie garantit, et dans quel
+ordre les feuilles de style s'empilent. Les limites d'accessibilité de chaque sortie sont
+dans [`LIMITES-ACCESSIBILITE.md`](LIMITES-ACCESSIBILITE.md).
 
-## En une phrase
+## Le principe
 
-Une source Markdown, une seule chaîne de filtres, plusieurs rendus. Ce qui porte le **sens**
-— numéros de section, ancres de bibliographie, textes alternatifs — est produit une fois et
-partagé ; ce qui porte la **forme** diffère par sortie.
+Une source Markdown passe par une seule chaîne de filtres et donne plusieurs rendus. Ce qui
+porte le sens (numéros de section et de figure, ancres de bibliographie, textes alternatifs)
+est produit une fois par les filtres, et partagé par toutes les sorties. Ce qui porte la
+forme (page, polices, marges) diffère d'une sortie à l'autre, par la feuille de style.
 
-## Deux compilations par article
+## Ce que produit un article
 
-| Sortie | Lecteur pandoc | Gabarit | Sert à |
+Toutes les sorties d'un article sont dans `out/<slug>/`.
+
+| Fichier | Lecteur pandoc | Gabarit | Sert à |
 |---|---|---|---|
-| `out/<slug>/<slug>.html` | `markdown` | `szh-article.html` | source de WeasyPrint (le PDF) et du galley DOCX |
-| `out/<slug>/<slug>.apercu.html` | `commonmark_x+sourcepos` | aucun | la colonne de droite de l'éditeur |
+| `<slug>.html` | `markdown` | `szh-article.html` | source du PDF ; galley HTML et source du galley Word de l'export OJS |
+| `<slug>.pdf` | | | le PDF de l'article, mis en page par WeasyPrint depuis `<slug>.html` |
+| `<slug>.apercu.html` | `commonmark_x+sourcepos` | aucun | l'aperçu à côté de l'éditeur ; jamais publié |
+| `<slug>.docx` | `html` | | galley Word de l'export OJS (cible `docx`) |
 
-Les deux passent par la même suite de filtres Lua, dans le même ordre (`CHAINE_ARTICLE` et
-`CHAINE_APERCU` de `pipeline/filtres.mk`, la seconde sans `szh-maquette` ni `szh-exergue`).
-Le PDF sort du premier ; le second n'est jamais publié. Le galley DOCX de l'export OJS est
-tiré du HTML d'impression par `szh-galley-docx.lua`.
+Le HTML et l'aperçu passent par la même suite de filtres Lua, dans le même ordre :
+`CHAINE_ARTICLE` et `CHAINE_APERCU` de `pipeline/filtres.mk`. L'aperçu n'a ni
+`szh-maquette` (couverture, en-têtes) ni `szh-exergue`, et commence par `szh-sourcepos.lua`
+et `szh-ancres.lua`. Le lecteur `commonmark_x+sourcepos` pose un attribut `data-pos` sur
+chaque bloc, ce qui permet de cliquer de l'aperçu vers le texte source ; il ajoute aussi
+des enveloppes, si bien que ce HTML ne convient pas à la publication.
 
-## La sortie web de la revue : trois compilations, et pourquoi pas deux
+Ce que chaque sortie garantit :
 
-Une sortie web est prévue pour la revue (le livre a déjà la sienne, `livre-html-web`) : un
-HTML pensé pour l'écran, sans page A4, sans en-tête courant, sans couverture. Elle
-**remplacera** le galley HTML dans l'export OJS : le HTML d'impression redeviendra alors un
-simple fichier de compilation.
-
-| Sortie | Lecteur pandoc | Gabarit | Feuille |
-|---|---|---|---|
-| HTML d'impression | `markdown` | gabarit d'impression | `socle.css` + `print.css` |
-| HTML web | `markdown` | gabarit web | `socle.css` + `web.css` |
-| Aperçu du cockpit | `commonmark_x+sourcepos` | gabarit web | `socle.css` + `web.css` |
-
-L'aperçu et la sortie web partagent gabarit et feuille : le rédacteur relit son article dans
-la maquette du site, ce qui a du sens dans une webview étroite — une feuille A4 n'en a aucun.
-Le PDF et la sortie web partagent le lecteur et les filtres : c'est là que la divergence
-serait dangereuse, et c'est là que le test de parité regarde.
-
-### La question qui revient : pourquoi pas deux ?
-
-Puisque le site nettoie le HTML avant de l'injecter, on pourrait n'en compiler qu'un seul,
-avec `sourcepos`, et le laisser servir l'aperçu **et** la publication. L'idée est
-séduisante — et la mesure la tue.
-
-`sourcepos` n'est pas un attribut de plus : c'est un mode du lecteur `commonmark_x`, qui
-**enveloppe** les blocs pour pouvoir leur accrocher une position. Sur un article réel du
-numéro 2027-01 :
-
-| | HTML d'impression | Aperçu (`sourcepos`) |
-|---|---|---|
-| attributs `data-pos` | 0 | **8 380** |
-| `<div>` | 34 | 55 |
-
-Vingt et un `div` d'enveloppe qui n'existent pas dans le document, et huit mille attributs
-de machine à bâtir. Publier ce fichier-là, ce serait publier l'outil avec l'œuvre, et donner
-au parseur du site huit mille occasions de se tromper. Le balisage publié doit être celui
-qu'on a décidé, pas celui qu'un mode de lecteur a produit en passant.
-
-Trois compilations, donc. Une passe pandoc de plus par article se compte en secondes ; un
-balisage publié qu'on ne contrôle plus se paie pendant des années.
-
-## Ce que devient le HTML sur le site
-
-Le HTML web n'est **pas** affiché tel quel. Un analyseur, côté site, le nettoie et en
-réinjecte le contenu dans la page de l'article — pas d'iframe, pas de fichier autonome
-téléchargé par le lecteur. C'est plus propre et plus accessible qu'un cadre : le texte de
-l'article est du texte de la page, dans le même document que la navigation.
-
-Trois conséquences, et la troisième est celle qu'on oublie.
-
-### 1. Ce que la chaîne livre, c'est du contenu
-
-Tout ce qui appartient au document englobant — `<html>`, `<head>`, `<title>`, les métadonnées
-de page — est écarté à l'injection. Inutile d'y soigner quoi que ce soit ; et surtout,
-**rien d'important ne doit y être posé**. Le millésime, en particulier, ne se met pas sur
-`<html>` mais sur l'élément d'article, seul survivant :
-
-```html
-<article class="szh-article" data-szh-maquette="1" data-szh-numero="2027-01" data-szh-revue="revue">
-```
-
-### 2. La feuille de style peut se corriger sans rien republier
-
-Le fragment injecté hérite de la page qui l'accueille. Corriger l'apparence d'un article
-publié, c'est donc modifier une feuille — pas ré-exporter, pas re-téléverser, pas
-republier. C'était la question de départ, et elle se trouve résolue par la mécanique du
-site plutôt que par la chaîne.
-
-> **Où en est-on.** Tout reste local : la feuille est injectée dans le HTML à la
-> compilation, comme pour le PDF. L'hébergement de la feuille dans le thème du site se
-> décidera avec la sortie web. Le choix n'engage rien, à une chose près : le millésime doit
-> être posé **dès le premier article publié** (ci-dessous). Il ne l'est pas encore : aucun
-> gabarit ne pose `data-szh-maquette`.
-
-### 3. Le prix : le balisage devient un contrat
-
-Si la feuille vit d'un côté du mur et les articles de l'autre, alors ce qui les relie — les
-noms de classes, la structure qu'ils habillent — n'est plus un détail d'implémentation.
-C'est une interface publique entre deux choses qui n'évoluent pas au même rythme :
-
-* un article est **figé** le jour de sa publication ; son balisage est celui de ce jour-là,
-  pour toujours ;
-* la feuille est **vivante** ; elle sera réécrite, plusieurs fois, sur des années.
-
-Le jour où la chaîne renomme `.szh-tableau` ou enveloppe les figures autrement, les articles
-déjà en ligne gardent l'ancien balisage — et la feuille du moment ne les reconnaît plus. Ils
-perdent leur mise en forme **en silence**, et personne ne le remarque, parce que personne ne
-relit les numéros d'il y a quatre ans.
-
-D'où deux choses à tenir :
-
-* **le contrat de balisage**, écrit : quelles classes la chaîne émet, ce qu'elles
-  enveloppent, ce sur quoi une feuille a le droit de s'appuyer. Sans lui, personne côté
-  feuille ne sait ce qui est sûr à cibler, et personne côté chaîne ne sait ce qu'il n'a pas
-  le droit de renommer ;
-* **le millésime**, qui donne à la feuille de 2032 le moyen de garder une branche pour le
-  balisage de 2027 :
-
-```css
-article[data-szh-maquette="1"] .szh-tableau caption { /* l'ancienne forme */ }
-```
-
-Le millésime numérote **la maquette**, pas le logiciel. La version du cockpit s'incrémente
-pour des raisons sans rapport — un bouton corrigé créerait un millésime au balisage
-identique, et en quelques mois les sélecteurs deviendraient illisibles. Il s'incrémente à la
-main, quand le vocabulaire de classes ou la structure change.
-
-Et il doit exister **avant le premier article publié** : un article mis en ligne sans
-millésime ne peut plus être visé par une règle datée, sauf à le republier.
-
-## Le CSS : un socle, des feuilles de sortie
-
-Une variable se déclare à un seul endroit. Quatre fichiers, empilés dans cet ordre :
-
-| Fichier | Ce qu'il porte | Lu par |
-|---|---|---|
-| `styles/socle.css` | polices `@font-face`, jetons `:root` : familles, échelle, encres, filets, replis d'accent annuel | toutes les sorties, revue et livre |
-| `styles/print.css` | ce qui n'a de sens que sur une page : `@page`, couverture, en-têtes courants, zone `@footnote`, coupures | PDF de la revue |
-| `styles/partage-filtres.css` | le balisage posé par les filtres Lua communs à la revue et au livre (`szh-numerotation.lua`, `szh-citations.lua`, `szh-grille.lua`) : préfixe « Figure N — », crédits de légende, description longue d'un tableau, appel de citation non lié, grille d'images | PDF de la revue ; PDF numérique et PDF imprimeur du livre — ni le HTML web ni l'EPUB du livre, qui refont déjà tout ce qu'il faut à leur médium dans leurs propres unités d'écran |
-| `styles/web.css` *(prévue, revue)* | ce qui n'a de sens qu'à l'écran : grille fluide, tableaux qui défilent, bloc de métadonnées | web et aperçu de la revue |
-| `styles/livre/*.css` | les feuilles du livre : `base.css`, puis `normal.css` ou `falc.css`, et selon la sortie `imprimeur.css`, `couverture.css`, `web.css` ou `epub.css` | les sorties du livre ([`ARCHITECTURE-LIVRES.md`](ARCHITECTURE-LIVRES.md)) |
-| `out/.szh-accent.css` | la couleur annuelle du numéro, écrite à la compilation par `accent-css.py` | toutes les sorties |
-
-Ce qui a sa place au socle : une famille, une taille, une interligne, une encre, un filet —
-tout ce qui se nomme et se réutilise. Ce qui n'y a pas sa place : une règle qui met en page.
-Une boîte, une marge, un `@page`, une grille appartiennent à la feuille de leur média.
-
-Trois points d'exécution, tous vérifiés par `test/js/socle-css.test.js` :
-
-* **L'ordre est porteur.** `out/.szh-accent.css` surcharge les replis gris du socle. Empilé
-  avant lui, il n'aurait aucun effet : tout un numéro s'imprimerait en gris, sans qu'aucune
-  erreur ne soit levée.
-* **Pas d'`@import`.** Les feuilles s'empilent par des `--css=` successifs. `--embed-resources`
-  n'a pas à savoir suivre un import, et l'ordre de la cascade se lit dans le Makefile.
-* **Le socle vient toujours du toolkit**, même quand un dossier de revue porte son propre
-  `styles/print.css` — que le Makefile préfère alors. Une feuille locale hérite ainsi des
-  jetons sans les redéclarer, et ne peut pas dériver de la maquette.
-
-Les couleurs annuelles elles-mêmes vivent dans `styles/couleurs.css` : une échelle APCA à
-clarté fixe, six teintes × onze crans, vérifiée cran par cran par `test/apca-check.py`.
-
-Tout déplacement de règle entre feuilles se prouve par la comparaison au pixel de toutes les
-pages du banc, avant et après : l'égalité des règles ne suffit pas, l'ordre de la cascade
-compte ([`DEVELOPPEMENT.md`](DEVELOPPEMENT.md#le-banc-de-rendu-et-ses-empreintes)).
+- **Le HTML** est autonome (`--embed-resources`) : images, polices et feuilles de style y
+  sont incorporées. Il porte la feuille d'impression (`print.css`), y compris quand il sert
+  de galley HTML dans OJS.
+- **Le PDF** est balisé PDF/UA-1 quand WeasyPrint y parvient. Sinon, la cascade de
+  `define weasy_ua` (dans `pipeline/Makefile`) livre un PDF balisé simple, puis un PDF sans
+  balisage, pour que la rédaction ait toujours une épreuve. La conformité est contrôlée
+  après chaque compilation par veraPDF (`lib/pdfua-hote.js`), et exigée par la cible
+  `verifier-ua` avant un export (`tout-exporter`, `docx`). Le journal de WeasyPrint est
+  `out/<slug>/~weasyprint.err`.
+- **Le galley Word** est tiré du HTML final, et non du `.md`, pour garder les tableaux
+  fusionnés et les images. `szh-galley-docx.lua` en retire les blocs techniques (descriptions
+  longues masquées). La cible `docx` exige d'abord la conformité PDF/UA du numéro.
 
 ## Ce que produit un livre
 
-Un chapitre se compile comme un article ; ce qui diffère, ce sont les sorties assemblées par
-`livre-assembler.py` depuis les fragments de chapitre, et les tâches VSCodium qui les appellent
-(`vscodium-user/tasks.json`, catégorie « Livre : … »). Le détail de chaque cible est dans
-[`ARCHITECTURE-LIVRES.md`](ARCHITECTURE-LIVRES.md#42-les-sorties).
+Un chapitre se compile comme un article. Les sorties du livre sont assemblées par
+`livre-assembler.py` à partir des fragments de chapitre. Le détail de chaque cible est dans
+[`ARCHITECTURE-LIVRES.md`](ARCHITECTURE-LIVRES.md#les-sorties).
 
-| Sortie | Cible make | Tâche VSCodium | Fichier |
-|---|---|---|---|
-| PDF numérique | `livre-pdf` | *(build par défaut, Ctrl+S)* | `out/<nom-du-livre>.pdf` |
-| PDF imprimeur | `livre-imprimeur` | **Livre : PDF imprimeur** | `out/<nom-du-livre>-imprimeur.pdf` |
-| Couverture | `livre-couverture` | **Livre : couverture** | `out/<nom-du-livre>-couverture-impression.pdf` (à plat, CMJN) et `out/<nom-du-livre>-couverture.pdf` (écran) |
-| EPUB 3 | `livre-epub` | **Livre : EPUB** | `out/<nom-du-livre>.epub` |
-| HTML web | `livre-html-web` | **Livre : HTML web** | `out/web/<nom-du-livre>.html` |
+| Sortie | Cible make | Tâche VSCodium | Fichier | Garantie |
+|---|---|---|---|---|
+| PDF numérique | `livre-pdf` | build par défaut (`Ctrl+S`) | `out/<livre>.pdf` | RVB, PDF/UA-1, signets ; seul PDF du livre contrôlé par la porte PDF/UA |
+| PDF imprimeur | `livre-imprimeur` | Livre : PDF imprimeur | `out/<livre>-imprimeur.pdf` | fond perdu de 3 mm, traits de coupe ; CMJN avec texte en noir seul si `impression.profil-cmjn` est rempli |
+| Couverture | `livre-couverture` | Livre : couverture | `out/<livre>-couverture-impression.pdf` et `out/<livre>-couverture.pdf` | à plat en PDF/X-4 CMJN, sans aucun RVB ; version écran en PDF/UA-1 |
+| EPUB 3 | `livre-epub` | Livre : EPUB | `out/<livre>.epub` | vraies notes de fin, sommaire de navigation, structure vérifiée par `test/epub-check.py` |
+| HTML web | `livre-html-web` | Livre : HTML web | `out/web/<livre>.html` | un seul fichier, lisible hors ligne |
 
-Les quatre tâches vivent dans le panneau Export du cockpit, à côté des sorties de la revue,
-et n'apparaissent que pour un dossier de livre (`buch.yaml`).
+`<livre>` est le nom du dossier du livre. Les quatre tâches « Livre : … » sont aussi dans le
+panneau Export du cockpit, qui ne les montre que pour un livre.
 
-### L'aperçu par chapitre
+**L'aperçu d'un chapitre.** `out/chapitres/<slug>.apercu.html` joue pour un chapitre le
+rôle de l'aperçu d'un article : même lecteur `commonmark_x+sourcepos`, même suite de filtres
+que le fragment publié (sans `szh-exergue`). Il tient ses propres compteurs
+(`out/.szh-compteurs/apercu/`), pour ne pas décaler la numérotation continue des figures et
+des tableaux du livre.
 
-`out/chapitres/<slug>.apercu.html` est l'équivalent, pour un chapitre, de
-`out/<slug>/<slug>.apercu.html` pour un article : même lecteur `commonmark_x+sourcepos` (chaque bloc
-porte `data-pos`, pour le clic vers le texte source), même suite de filtres que le fragment
-publié. Il ne lit ni n'écrit dans les compteurs du fragment PDF ou EPUB — un aperçu ne doit
-pas décaler la numérotation continue des figures et des tableaux du livre publié.
+## La pile des feuilles de style
 
-### Fichiers intermédiaires
+Une variable CSS se déclare à un seul endroit. Les feuilles sont passées à pandoc par des
+`--css` successifs, dans cet ordre :
 
-| Fichier | Rôle |
-|---|---|
-| `out/.szh-ordre-chapitres` | l'ordre des chapitres, écrit une fois calculé (`ordre-chapitres` de `buch.yaml` puis tri alphabétique du reste), pour en faire un prérequis explicite des fragments — sans lui, retirer un chapitre du milieu du livre ne recompilait aucun des suivants |
-| `out/.szh-compteurs/<rang>.txt`, `epub/<rang>.txt`, `apercu/<rang>.txt` | le report de numérotation des figures et des tableaux d'un chapitre au suivant, un fichier par rang et par sortie (PDF, EPUB, aperçu ne se mélangent jamais) |
-| `~<cible>.weasyprint.err` | le journal WeasyPrint de chaque cible du livre (`livre-pdf`, `livre-imprimeur`, `livre-couverture`), un fichier par cible plutôt qu'un seul partagé — une compilation de la couverture n'écrase plus le journal du PDF intérieur |
+| Fichier | Ce qu'il porte | Lu par |
+|---|---|---|
+| `styles/socle.css` | polices (`@font-face`) et jetons `:root` : familles, tailles, encres, filets, replis gris de la couleur annuelle | toutes les sorties, revue et livre |
+| `styles/print.css` | ce qui n'a de sens que sur une page : `@page`, couverture, en-têtes courants, zone des notes, coupures | la revue (HTML, PDF, aperçu) |
+| `styles/livre/*.css` | `base.css`, puis `normal.css` ou `falc.css`, et selon la sortie `imprimeur.css`, `couverture.css`, `web.css` ou `epub.css` | les sorties du livre |
+| `styles/partage-filtres.css` | le balisage posé par les filtres communs à la revue et au livre (`szh-numerotation.lua`, `szh-citations.lua`, `szh-grille.lua`) : préfixe « Figure N — », crédits de légende, description longue d'un tableau, appel de citation non lié, grille d'images | la revue ; le PDF numérique et le PDF imprimeur du livre |
+| `styles/livre.css` du dossier du livre | les blocs propres à un livre (facultatif) | le PDF numérique et le PDF imprimeur de ce livre |
+| `out/.szh-accent.css` | la couleur annuelle, écrite à la compilation par `accent-css.py` | toutes les sorties |
+
+Les cas particuliers :
+
+- le HTML web et l'EPUB du livre ne lisent ni `partage-filtres.css` ni `base.css` et la
+  charte : `web.css` et `epub.css` redonnent leur forme aux mêmes classes, en unités d'écran ;
+- l'EPUB reçoit le socle sans ses `@font-face` (`out/.szh-socle-epub.css`), car les polices
+  ne sont pas dans l'archive ;
+- si un dossier de revue contient `styles/print.css`, le Makefile la prend à la place de
+  celle du toolkit. Le socle, lui, vient toujours du toolkit : la feuille locale hérite des
+  jetons sans les redéclarer.
+
+Ce qui va au socle : une famille, une taille, une interligne, une encre, un filet, tout ce
+qui se nomme et se réutilise. Une règle qui met en page (boîte, marge, `@page`, grille)
+appartient à la feuille de sa sortie.
+
+`test/js/socle-css.test.js` vérifie les règles d'empilement :
+
+- **L'ordre compte.** `out/.szh-accent.css` remplace les replis gris du socle. Placé avant
+  lui, il n'aurait aucun effet : tout un numéro s'imprimerait en gris, sans erreur.
+- **Pas d'`@import`.** L'ordre de la cascade se lit dans le Makefile, et `--embed-resources`
+  n'a pas à suivre d'import.
+- **Le socle vient du toolkit**, même quand la revue porte sa propre `print.css`.
+
+Les couleurs annuelles sont dans `styles/couleurs.css` : six teintes de onze crans chacune,
+sur une échelle de contraste APCA, vérifiées cran par cran par `test/apca-check.py`.
+`styles/couleurs-reference.json` est la table unique des couleurs de la maison (RVB et CMJN).
+
+Déplacer une règle d'une feuille à l'autre se vérifie par la comparaison au pixel de toutes
+les pages du banc, avant et après : l'égalité des règles ne suffit pas, l'ordre de la cascade
+compte ([`DEVELOPPEMENT.md`](DEVELOPPEMENT.md#le-banc-de-rendu-et-ses-empreintes)).

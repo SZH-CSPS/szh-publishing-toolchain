@@ -1,46 +1,34 @@
-# Métadonnées de l'ouvrage, lues par la chaîne de fabrication à chaque compilation — comme
-# ausgabe.yaml pour un numéro de revue, mais pour un livre. Il n'y a pas encore, dans
-# l'éditeur, de formulaire dédié à ce fichier : les champs qui suivent se corrigent ici, à
-# la main, en attendant.
+# Métadonnées d'un livre, lues à chaque compilation (l'équivalent d'ausgabe.yaml pour un
+# numéro de revue). La plupart se modifient dans le formulaire du livre, dans le cockpit.
 #
 #   titre, sous-titre : tels qu'ils s'impriment sur la couverture et la page de titre.
-#   type    : « monographie » ou « collectif ».
-#             Monographie : les auteur·e·s sont ci-dessous (`auteurs:`), et les chapitres
-#             n'ont pas de bloc auteurs à eux.
-#             Collectif : chaque chapitre porte les siens dans sa propre fiche
-#             (<slug>.meta.yaml, à côté de son .md — même schéma qu'un article de revue),
-#             et `auteurs:` reste vide ici.
-#   lang    : langue du TEXTE de ce livre (fr, de, it…) — propre à cet ouvrage, sans rapport
-#             avec la langue de l'interface : un livre n'a pas de langue de produit, à la
-#             différence d'une revue (toujours française) ou d'une Zeitschrift (toujours
-#             allemande).
-#   maquette: « normal » (la charte courante) ou « falc » (facile à lire et à comprendre).
-#   format  : « standard » (155×225 mm) ou « a4 » (210×297 mm, FALC seulement).
-#   collection, tome : la collection numérotée dans laquelle le livre paraît, si c'en est
-#             une ; laissés vides sinon.
-#   isbn-print, isbn-ebook, doi : posés par la rédaction quand ils sont attribués — un
-#             champ vide reste vide sur la page de colophon, jamais une valeur inventée.
-#   couleur : couleur d'accent de l'ouvrage (pastille de chapitre et onglet de tranche en
-#             maquette FALC).
+#   ouvrage : « monographie » ou « collectif ».
+#             Monographie : les auteurs sont listés ici, dans `auteurs:`.
+#             Collectif : chaque chapitre a ses auteurs dans sa fiche (<slug>.meta.yaml, à
+#             côté de son .md, même format qu'un article de revue), et `auteurs:` reste vide.
+#   lang    : langue du texte du livre (fr, de ou it).
+#   maquette: « normal » ou « falc » (facile à lire et à comprendre).
+#   format  : « standard » (155 × 225 mm) ou « a4 » (210 × 297 mm, FALC seulement).
+#   collection, tome : la collection et le numéro du volume, ou vides.
+#   isbn-print, isbn-ebook, doi : à remplir quand ils sont attribués ; vides, ils restent
+#             vides sur la page de colophon.
+#   couleur : couleur d'accent (pastille de chapitre, onglet de tranche en FALC).
 #   couverture.modele : « falc », « classique », « recherche » (Sonderpädagogische Forschung
 #             in der Schweiz) ou « prospectrum » ; vide, la maquette décide (falc ou
 #             classique). Un intertitre de 4e de couverture s'écrit « # Intertitre ».
-#   auteurs : monographie seulement — voir `type` ci-dessus.
-#   ordre-chapitres : vide = l'ordre des dossiers de chapitres/ (leurs préfixes 01-, 02-…).
-#   liminaires : les pièces liminaires, dans l'ordre où elles s'impriment. Les mots-clés
-#             « demi-titre », « colophon », « page-titre » et « sommaire » sont composés
-#             automatiquement ; un nom de fichier (« avant-propos.md ») renvoie à une pièce
-#             écrite à la main, dans le dossier liminaires/.
-#   impression : grammage et main du papier, pour calculer l'épaisseur du dos de la
-#             couverture — une valeur de départ, pas une vérité : le papier se choisit livre
-#             par livre, et c'est l'imprimeur qui donne sa main. `dos-mm` force la valeur
-#             quand elle est connue.
+#   auteurs : monographie seulement (voir `ouvrage`).
+#   ordre-chapitres : vide = l'ordre des dossiers de chapitres/ (préfixes 01-, 02-…).
+#   liminaires : les pièces liminaires, dans l'ordre d'impression. « demi-titre »,
+#             « colophon », « page-titre » et « sommaire » sont composés automatiquement ; un
+#             nom de fichier (« avant-propos.md ») désigne une pièce du dossier liminaires/.
+#   impression : grammage et main du papier, pour calculer l'épaisseur du dos. Ce sont des
+#             valeurs de départ : la main est donnée par l'imprimeur. `dos-mm` impose
+#             l'épaisseur quand elle est connue.
 #
-# Cycle de vie de l'ouvrage, comme pour un numéro de revue :
-#   locked   : ouvrage gelé — édition en lecture seule jusqu'au déverrouillage.
-#   archived : le dossier vit dans les archives.
-#   version-toolkit : version du logiciel qui a créé ce livre, posée par new-livre.ps1, de
-#             quoi le recomposer des années plus tard à l'identique.
+# État du livre, comme pour un numéro :
+#   locked   : livre gelé, en lecture seule jusqu'au déverrouillage.
+#   archived : le dossier est dans les archives.
+#   version-toolkit : version de Pronto qui a créé le livre (posée par new-livre.ps1).
 titre: ""
 sous-titre: ""
 ouvrage: monographie
@@ -64,18 +52,11 @@ impression:
   dos-mm:
   fond-perdu-mm: 3
   traits-de-coupe: true
-  # Profil de sortie CMJN du PDF imprimeur, cherché dans /opt/icc/ de l'image.
-  # PSO Uncoated v3 (FOGRA52) : papier NON COUCHÉ, standard ISO 12647-2:2013, encrage
-  # maximal 300 %. Le non couché ne renvoie pas de reflets, ce qui compte pour des lecteurs
-  # que la fatigue visuelle atteint vite.
-  # ⚠ Le profil n'existe dans l'image qu'à partir de la version 2026.09.2 : sur un poste
-  #   qui n'a pas été mis à jour, la cible « livre-imprimeur » S'ARRÊTE avec un message
-  #   explicite plutôt que de livrer un PDF RVB qu'on croirait CMJN. C'est voulu — l'erreur
-  #   se paie à l'impression, pas à la compilation. Les autres cibles (livre, couverture,
-  #   epub, web) ne sont pas concernées.
-  # ⚠ À reconfirmer auprès de l'imprimerie : le profil ICC est sa décision, pas celle du
-  #   logiciel. S'il en demande un autre, remplacer ce nom de fichier ici, livre par livre.
-  #   Vider la valeur remet le PDF imprimeur en RVB, avec fond perdu et traits de coupe.
+  # Profil CMJN du PDF imprimeur, cherché dans /opt/icc/ de l'image : PSO Uncoated v3
+  # (FOGRA52), papier non couché, ISO 12647-2:2013, encrage maximal 300 %.
+  # Le profil est choisi par l'imprimerie : s'il en demande un autre, changer ce nom de
+  # fichier. Vide, le PDF imprimeur sort en RVB, avec fond perdu et traits de coupe.
+  # Si le profil manque dans l'image, la cible « livre-imprimeur » s'arrête avec un message.
   profil-cmjn: "PSOuncoated_v3_FOGRA52.icc"
 locked: false
 archived: false
