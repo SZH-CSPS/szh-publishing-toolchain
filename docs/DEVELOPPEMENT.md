@@ -201,6 +201,74 @@ une passe de test ne fait aucune requête réseau.
 
 ---
 
+## Faire évoluer le gabarit d'article
+
+Le gabarit « Pronto – modèle d'article » existe en quatre fichiers, dans `revue-template/` :
+`Pronto - modele d'article_FR.docx` (Revue), `_DE.docx` (Zeitschrift), et leurs `.odt`. Deux
+programmes en dépendent : l'import (`pronto-lire.py`, qui lit un Word rempli) et le nettoyeur
+de manuscrit (`manuscrit-nettoyer.py`, qui écrit sa sortie **dans une copie du gabarit**). Le
+toolkit déployé en emporte une copie : un nouveau gabarit n'arrive sur les postes qu'avec une
+release. Il ne part plus dans les numéros neufs.
+
+### La clé cachée
+
+Un document est reconnu « au gabarit » par une **propriété personnalisée** du fichier,
+`SZH-Gabarit`, qui vaut aujourd'hui `pronto-article-4`. Elle se voit dans Word par Fichier →
+Informations → Propriétés → Propriétés avancées → Personnalisation, et dans LibreOffice par
+Fichier → Propriétés → Propriétés personnalisées. Dans le fichier : `docProps/custom.xml`
+pour un `.docx`, `meta.xml` (`meta:user-defined`) pour un `.odt`. Word et LibreOffice la
+gardent à l'enregistrement, et elle passe la conversion `.odt` → `.docx` de l'import.
+
+- **Qui la pose** : `outils-dev/marquer-gabarit.py`, et lui seul. Il la remplace si elle
+  existe déjà, et recopie le reste du fichier à l'octet. Personne ne la tape à la main.
+- **Qui la lit** : `pronto_modele.est_gabarit()`, la même règle pour l'import et le nettoyeur.
+  Seul le **préfixe** `pronto-article` compte ; le numéro qui suit dit la version du gabarit
+  et ne décide de rien. Un document rempli dans un gabarit plus ancien reste donc reconnu.
+- **Sans clé** (document parti d'un gabarit antérieur au 01.10.2026), le repli est la
+  présence des deux styles `SZH Cle` **et** `SZH Aide` dans `styles.xml`.
+
+### Ce qu'il faut faire quand le gabarit change
+
+1. **Remplacer le `.docx`** dans `revue-template/`, sous le même nom. Le dépôt versionne ;
+   pas de « V5 » dans le nom.
+2. **Régénérer le `.odt`** depuis le `.docx`, dans la WSL :
+   `soffice --headless --convert-to odt --outdir revue-template "revue-template/Pronto - modele d'article_FR.docx"`.
+   Un `.docx` modifié sans son `.odt` est exactement ce que `pronto-gabarits.test.js` détecte.
+3. **Monter la version de la clé** dans `pronto_modele.py` (`CLE_GABARIT_VALEUR`,
+   `pronto-article-5`…), puis **marquer les quatre fichiers**, dans la WSL :
+   `python3 outils-dev/marquer-gabarit.py revue-template/*.docx revue-template/*.odt`.
+   Un fichier venu de Word ou réenregistré par quelqu'un a pu la perdre : on remarque les
+   quatre à chaque fois.
+4. **Garder lisibles les documents déjà remplis.** C'est le point qui casse en silence : un
+   article rempli dans l'ancien gabarit arrive encore des mois plus tard.
+   - Une **étiquette renommée** (métadonnées, autrices et auteurs, blocs figure et tableau)
+     garde son ancienne forme comme alias dans `CANON_METADONNEES`, `CANON_AUTEUR` ou
+     `CANON_FIGURE` (`pronto_modele.py`) ; ajoutée à `FORMES_EXACTES_ANCIENNES` si elle était
+     tapée juste, pour ne pas avertir. Sans alias, l'import **refuse** l'article (étiquette
+     inconnue). Exemple : « Crédit », devenu « Copyright » le 30.09.2026.
+   - Une **étiquette retirée** reste reconnue sans destination (voir `langue` dans
+     `CANON_METADONNEES`), pour avertir au lieu de bloquer.
+   - Une **étiquette ajoutée** n'est lue nulle part tant qu'elle n'a pas sa clé dans les
+     tables `CANON_*` et sa branche dans le lecteur.
+5. **Un style renommé ou ajouté** se reporte partout où un nom de style est attendu :
+   `STYLES_GABARIT` (les deux styles du repli de reconnaissance, `pronto_modele.py`),
+   `_REPLI_STYLES_MAISON` (`manuscrit_gabarit.py`), `STYLES_BLOCS` (`docx-styles-corps.py`,
+   tenu en miroir dans `szh-styles-corps.lua`). Les titres et le corps se résolvent par leur
+   `w:name` (`heading 1`, `Body Text`), jamais par leur `styleId` : un Word allemand renomme
+   les `styleId`, pas les `w:name`.
+6. **Rejouer les contrôles du gabarit**, dans la suite exigeante : `pronto-gabarits.test.js`
+   (même fiche du `.docx` et du `.odt`), `cle-gabarit.test.js` (la clé sur les quatre
+   fichiers, et dans la sortie du nettoyeur), `manuscrit-gabarit.test.js` (le nettoyeur écrit
+   dans le nouveau gabarit et se relit), `styles-corps.test.js` et `import-odt.test.js`.
+7. **Passer un vrai document** rempli à la main dans le nouveau gabarit par l'import et par
+   le nettoyeur : un gabarit rempli par script ne dit rien de ce qu'une autrice saura remplir
+   ([`TODO/parser-v2.md`](TODO/parser-v2.md)).
+8. **Publier**, en medium : la rédaction doit savoir qu'il y a un nouveau gabarit. La copie
+   envoyée aux autrices et auteurs vit hors du dépôt ; c'est le `.docx` marqué du dépôt
+   qu'on leur transmet, jamais une copie retouchée à part, qui n'aurait pas la clé.
+
+---
+
 ## Publier une version
 
 ### Numéroter

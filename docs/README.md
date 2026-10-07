@@ -25,7 +25,7 @@ cockpit.
 
 | Document | Ce qu'il décrit |
 |---|---|
-| [`DEVELOPPEMENT.md`](DEVELOPPEMENT.md) | les environnements (tout Python dans la WSL), les tests et la suite exigeante, le banc et ses empreintes, l'instance de dev, la publication d'une version, les pièges |
+| [`DEVELOPPEMENT.md`](DEVELOPPEMENT.md) | les environnements (tout Python dans la WSL), les tests et la suite exigeante, le banc et ses empreintes, l'instance de dev, l'évolution du gabarit d'article et de sa clé cachée, la publication d'une version, les pièges |
 | [`MAINTENANCE.md`](MAINTENANCE.md) | le guide d'exploitation : installer, régler, surveiller et réparer un poste, symptôme par symptôme, désinstaller |
 | [`SECURITE.md`](SECURITE.md) | le modèle de confiance du déploiement et la liste à vérifier avec le prestataire |
 

@@ -32,8 +32,11 @@ Il tourne **à la réception**, avant toute relecture humaine.
 | **Cas B** — manuscrit quelconque | Restructuration complète : titres, styles, blocs figure et tableau, typographie. |
 | **Cas A** — manuscrit déjà au gabarit | **Aucune restructuration.** Typographie et style de corps seulement. Le rapport décrit ce qui a été vu, sans y toucher. |
 
-Reconnaissance du cas A : présence des styles `SZH Cle` **et** `SZH Aide` dans `word/styles.xml`.
-Rien d'autre ne sert de critère : ni un réglage de poste, ni le nom du fichier.
+Reconnaissance du cas A : la clé cachée `SZH-Gabarit` (propriété personnalisée du document),
+à défaut la présence des styles `SZH Cle` **et** `SZH Aide` dans `word/styles.xml` — la même
+règle que l'import, `pronto_modele.est_gabarit()`. Rien d'autre ne sert de critère : ni un
+réglage de poste, ni le nom du fichier. Faire évoluer le gabarit et poser la clé :
+[`DEVELOPPEMENT.md`](DEVELOPPEMENT.md#faire-évoluer-le-gabarit-darticle).
 
 Le cas A reste **délibérément conservateur** : aucun document réel au gabarit n'a encore validé
 ce chemin (voir `docs/TODO/nettoyeur-manuscrit.md` pour l'état de cette validation).
