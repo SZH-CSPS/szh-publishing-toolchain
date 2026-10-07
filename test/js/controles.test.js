@@ -549,6 +549,10 @@ test('hôte : une tâche étrangère au cockpit ne déclenche rien', async () =>
 });
 
 test('hôte : un avertissement d’import n’est plus une ligne brute dans « Word en attente »', async () => {
+  // L'article converti existe, comme après un vrai import (sinon son avertissement se tait).
+  const autre = path.join(REVUE, 'articles', '03-autre');
+  fs.mkdirSync(autre, { recursive: true });
+  fs.writeFileSync(path.join(autre, '03-autre.md'), '# Autre' + LF);
   fs.writeFileSync(path.join(REVUE, 'articles-word', '.import.log'), JOURNAL_IMPORT, 'utf8');
   await HOTE.executer('szh.vueWord');
   const p = HOTE.panneauDeType('szhVueWord');
@@ -566,7 +570,8 @@ test('hôte : un avertissement d’import n’est plus une ligne brute dans « W
   assert.ok(tableau, 'l’avertissement de tableau ne trouve pas son article');
   assert.strictEqual(tableau.pastilles[0].ton, 'attention',
     'un avertissement non bloquant est présenté comme un échec');
-  assert.match(tableau.notif.texte, /en-tête/);
+  assert.match(tableau.messages.map((m) => m.titre).join(' | '), /en-tête/);
+  fs.rmSync(autre, { recursive: true, force: true });
 });
 
 // La ligne réelle de szh-numerotation.lua (voir test/filtres-pandoc.test.js et
@@ -1090,6 +1095,9 @@ const JOURNAL_BIBLIO = [
 ].join(LF) + LF;
 
 test('hôte : la bibliographie récupérée se dit en français, en gris, et se ferme', async () => {
+  // Un constat d'import dont ni l'article ni le Word n'existent ne s'affiche plus : l'article
+  // existe, comme après un vrai import.
+  fs.mkdirSync(path.join(REVUE, 'articles', '01-inclusion'), { recursive: true });
   poserJournal(JOURNAL_BIBLIO);
   await HOTE.finirTache('Aperçu / Export PDF', 0);
   await HOTE.executer('szh.vueControles');
@@ -1134,12 +1142,67 @@ test('hôte : ce qui bloque ou mérite un regard n’a pas de croix', async () =
   await p._recepteur({ type: 'pret' });
   const dits = defauts(p.messages.filter((m) => m.type === 'valeurs').pop().lignes);
   for (const m of dits) {
-    assert.strictEqual(m.fermable, m.ton === 'info',
+    assert.strictEqual(m.fermable, m.ton === 'info' || m.carte.meta === 'Import Word',
       'un message « ' + m.ton + ' » se ferme d’un clic : ' + m.texte);
   }
   assert.ok(dits.some((m) => m.ton !== 'info'), 'le contrôle ne porte sur rien');
   poserJournal(JOURNAL_CITATIONS);
   await HOTE.finirTache('Aperçu / Export PDF', 0);
+});
+
+// Constaté par Robin (07.10.2026) : le Word refusé supprimé, ses messages restaient, rouges et
+// sans croix. Désormais tout message d'import se ferme, et disparaît avec son Word.
+const ligneRefus = (slug) => '[import-avertissement] etiquette-metadonnees-inconnue | article « '
+  + slug + ' » | etiquette « Étiquette X » | valeur « a » | Phrase. | [de] Satz.';
+
+test('hôte : un message d’import rouge se ferme, et le compteur l’oublie', async () => {
+  const word = path.join(REVUE, 'articles-word', 'Refuse.docx');
+  fs.writeFileSync(word, '');
+  poserJournal(ligneRefus('refuse') + LF);
+  try {
+    await HOTE.finirTache('Aperçu / Export PDF', 0);
+    await HOTE.executer('szh.vueControles');
+    const p = HOTE.panneauDeType('szhVueControles');
+    await p._recepteur({ type: 'pret' });
+    const refus = parTexte(p.messages.filter((m) => m.type === 'valeurs').pop().lignes, /Étiquette X/);
+    assert.ok(refus, 'le refus d’import n’arrive pas à l’écran');
+    assert.strictEqual(refus.ton, 'danger');
+    assert.strictEqual(refus.fermable, true, 'un message d’import sans croix');
+    assert.ok(HOTE.barreQuiDit('à corriger'), 'le refus ne compte pas');
+    await p._recepteur({ type: 'constat-fermer', empreinte: refus.empreinte });
+    await p._recepteur({ type: 'pret' });
+    assert.ok(!parTexte(p.messages.filter((m) => m.type === 'valeurs').pop().lignes, /Étiquette X/),
+      'le message fermé est resté');
+    assert.strictEqual(HOTE.barreQuiDit('à corriger'), null, 'la barre compte un message fermé');
+  } finally {
+    fs.rmSync(word, { force: true });
+    poserJournal(JOURNAL_CITATIONS);
+    await HOTE.finirTache('Aperçu / Export PDF', 0);
+  }
+});
+
+test('hôte : le Word d’un import refusé retiré du dépôt, ses messages disparaissent', async () => {
+  const word = path.join(REVUE, 'articles-word', 'Abandon.docx');
+  fs.writeFileSync(word, '');
+  poserJournal(ligneRefus('abandon') + LF);
+  try {
+    await HOTE.finirTache('Aperçu / Export PDF', 0);
+    await HOTE.executer('szh.vueControles');
+    const p = HOTE.panneauDeType('szhVueControles');
+    const lire = async () => {
+      await p._recepteur({ type: 'pret' });
+      return parTexte(p.messages.filter((m) => m.type === 'valeurs').pop().lignes, /Étiquette X/);
+    };
+    assert.ok(await lire(), 'tant que le Word attend, son refus se lit');
+    fs.rmSync(word);
+    await HOTE.executer('szh.cockpit.rafraichir');   // ce que fait la surveillance du dépôt
+    assert.strictEqual(await lire(), undefined, 'le Word supprimé, son refus est resté');
+    assert.strictEqual(HOTE.barreQuiDit('à corriger'), null, 'la barre compte encore le refus');
+  } finally {
+    fs.rmSync(word, { force: true });
+    poserJournal(JOURNAL_CITATIONS);
+    await HOTE.finirTache('Aperçu / Export PDF', 0);
+  }
 });
 
 test('page : la croix retire le message et prévient l’hôte, et elle seule', () => {

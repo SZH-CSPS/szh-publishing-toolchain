@@ -161,7 +161,7 @@ test('pronto-lire.py : le même gabarit ' + G.code + ' en .docx et en .odt (conv
   assert.strictEqual(vuOdt.bloquant, false,
     'le gabarit .odt (tapé juste, vide par nature) a pourtant bloqué l’import');
   const codesBloquants = ['etiquette-metadonnees-inconnue', 'auteur-etiquette-inconnue',
-    'bloc-etiquette-inconnue', 'cle-ambigue'];
+    'metadonnees-champ-hors-gabarit', 'bloc-etiquette-inconnue', 'cle-ambigue'];
   assert.deepStrictEqual(vuDocx.avertissements.filter((c) => codesBloquants.includes(c)), [],
     'le gabarit .docx déclenche pourtant un code bloquant : ' + vuDocx.avertissements.join(', '));
 });

@@ -1338,3 +1338,41 @@ test('classer_titres : hiérarchie portée par le gras seul, titres de 1 à 10 m
       'un seul groupe qualifiant (même gras, même taille, aucune autre distinction) : un seul niveau');
     assert.strictEqual(titres.stats.promus, 5);
   });
+
+// ---- Titres numérotés par leur style (07.10.2026) -------------------------------------
+//
+// Constaté par Robin sur un manuscrit réel de 2027 : la numérotation qu'un titre Word tient
+// de son style (« 1 », « 1.1 ») était lue comme une liste, et l'écrivain la reposait en
+// « 1. », « 2. » à la place de celle du gabarit ; deux sections numérotées par la même liste,
+// mais restées en corps de texte, sortaient en items de liste.
+const TITRES_DU_PLAN = [
+  'import json, sys',
+  'sys.path.insert(0, sys.argv[1])',
+  'import manuscrit_modele as mm',
+  'document = mm.document_depuis_json(json.loads(sys.stdin.read()))',
+  'for p in document.blocs: p.niveau_retenu = p.niveau_declare',
+  'n_promus, n_retires, trace = mm.titres_du_plan(document)',
+  'print(json.dumps({"n_promus": n_promus, "n_retires": n_retires, "trace": trace,',
+  '  "paras": [[p.niveau_retenu, p.liste] for p in document.blocs]}))'
+].join('\n');
+
+test('titres_du_plan : un titre perd la liste de son style, un paragraphe numéroté par elle devient titre', { skip: sansPython }, () => {
+  const doc = { blocs: [
+    para(0, 'Introduction', { style: 'heading 1', niveauDeclare: 1, liste: [1, 0, 'numero'] }),
+    para(1, 'Un corps.'),
+    para(2, 'Une sous-section', { style: 'heading 2', niveauDeclare: 2, liste: [1, 1, 'numero'] }),
+    para(3, 'Une section oubliée', { gras: true, liste: [1, 1, 'numero'] }),
+    para(4, 'Conclusion', { gras: true, liste: [1, 0, 'numero'] }),
+    para(5, 'Un vrai item de liste', { liste: [7, 0, 'numero'] })
+  ] };
+  const r = python(['-c', TITRES_DU_PLAN, path.join(RACINE, 'pipeline')],
+    { input: JSON.stringify(doc), encoding: 'utf8' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  const sortie = JSON.parse(r.stdout.trim().split('\n').pop());
+  assert.deepStrictEqual(sortie.paras, [
+    [1, null], [0, null], [2, null], [2, null], [1, null], [0, [7, 0, 'numero']]
+  ], 'niveaux et listes après coup');
+  assert.strictEqual(sortie.n_promus, 2);
+  assert.strictEqual(sortie.n_retires, 2);
+  assert.ok(sortie.trace.every((l) => l.decision === 'promue_plan'));
+});

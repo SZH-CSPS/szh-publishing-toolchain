@@ -73,6 +73,39 @@ test('vue-ensemble-hote seul : sans rapport d’import, rien à lire ; vue ferm�
   assert.equal(vu.panneaux.length, 0);
 });
 
+// Constaté par Robin (07.10.2026) : trois cartes « Article « x » » pour un même Word, des
+// titres sans l'étiquette en cause, aucun geste, et un seul « champ laissé vide » pour quatre.
+test('vue-ensemble-hote seul : le rapport d’import fait une carte par article, qui nomme ce qui est en cause et dit quoi faire', () => {
+  const m = charger();
+  const ligne = (code, champs) => '[import-avertissement] ' + code + ' | article « 01-essai » | '
+    + champs.join(' | ') + ' | Phrase. | [de] Satz.';
+  const journal = [
+    ligne('cle-attendue-absente', ['clé « Adresse »', 'clé-de « Anschrift »']),
+    ligne('type-article-non-reconnu', ['valeur « Rubrique libre »']),
+    ligne('metadonnees-champ-hors-gabarit', ['champ « Mots-clés (FR) »', 'valeur « un, deux »']),
+    ligne('cle-attendue-absente', ['clé « Photo »', 'clé-de « Porträt »'])
+  ].join('\n') + '\n';
+  const dossier = path.join(racine, 'articles-word');
+  fs.mkdirSync(dossier, { recursive: true });
+  // Le lecteur écrit chaque ligne deux fois : une seule doit compter.
+  fs.writeFileSync(path.join(dossier, '.import.log'), journal + journal, 'utf8');
+  try {
+    const entrees = m.lireRapportImport(racine);
+    assert.equal(entrees.length, 1, 'une carte par article : ' + JSON.stringify(entrees.map((e) => e.nom)));
+    const e = entrees[0];
+    assert.equal(e.ton, 'danger', 'la carte prend la gravité du pire de ses défauts');
+    const titres = e.messages.map((g) => g.titre);
+    assert.equal(titres.length, 3, JSON.stringify(titres));
+    assert.match(titres[0], /Mots-clés \(FR\)$/, 'le bloquant vient en premier, et nomme sa ligne');
+    assert.match(titres[1], /Rubrique libre$/, 'la valeur de type refusée n’est pas citée');
+    assert.match(titres[2], /^2 champs.*Adresse, Photo$/, 'les champs vides ne sont pas regroupés et nommés');
+    assert.match(e.messages[0].consigne, /Métadonnées des articles/, 'le geste manque');
+    assert.ok(e.messages.every((g) => g.infobulle !== ''), 'l’explication s’est perdue');
+  } finally {
+    fs.rmSync(dossier, { recursive: true, force: true });
+  }
+});
+
 test('vue-ensemble-hote seul : la vue des traductions s’ouvre une seule fois, avec l’accent de l’hôte', async () => {
   const m = charger();
   m.configurer({ lireCouleurAccent: () => '#123456' });

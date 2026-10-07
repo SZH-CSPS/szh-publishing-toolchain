@@ -436,9 +436,13 @@ test('docx-pronto.py : une étiquette inconnue mais PRÉSENTE (valeur réelle) b
   assert.strictEqual(cles[0].texte, 'Mots-clés', 'le texte de la clé bloquante n’est pas cité : ' + JSON.stringify(cles));
   assert.match(cles[0].lieu, /tableau metadonnees/, 'l’emplacement de la clé bloquante n’est pas cité : ' + JSON.stringify(cles));
 
-  const ligne = vu.avertissements.find((l) => l.indexOf('etiquette-metadonnees-inconnue') !== -1);
-  assert.ok(ligne, 'aucun avertissement pour l’étiquette inconnue : ' + vu.avertissements.join(' / '));
-  assert.ok(ligne.indexOf('Mots-clés') !== -1, 'l’étiquette inconnue n’est pas citée : ' + ligne);
+  // Reconnue mais sans case dans le gabarit : son propre code, qui dit où vont les mots-clés.
+  const ligne = vu.avertissements.find((l) => l.indexOf('metadonnees-champ-hors-gabarit') !== -1);
+  assert.ok(ligne, 'aucun avertissement pour la ligne Mots-clés : ' + vu.avertissements.join(' / '));
+  assert.ok(ligne.indexOf('Mots-clés') !== -1, 'l’étiquette n’est pas citée : ' + ligne);
+  assert.ok(ligne.indexOf('Métadonnées des articles') !== -1, 'le message ne dit pas où vont les mots-clés : ' + ligne);
+  assert.ok(!vu.avertissements.some((l) => l.indexOf('etiquette-metadonnees-inconnue') !== -1),
+    'une étiquette reconnue ne doit plus se dire inconnue : ' + vu.avertissements.join(' / '));
   assert.ok(ligne.indexOf('inclusion, école') !== -1, 'la valeur perdue n’apparaît pas dans l’avertissement : ' + ligne);
 });
 
@@ -1291,12 +1295,11 @@ test('pronto-lire.py : « Mots clefs / Keywords / Motsclés / Schlagwörter » s
       + vu.avertissements.join(' / '));
     assert.ok(approx[0].indexOf('Mots-clés') !== -1,
       '« ' + libelle + ' » : la clé reconnue « Mots-clés » n’est pas citée : ' + approx[0]);
-    // Mots-clés reste un champ SANS destination (voir CANON_METADONNEES) : la ligne reste
-    // signalée comme inconnue, exactement comme aujourd'hui — et surtout n'écrit JAMAIS de
-    // mot-clé dans la fiche (contrat existant, inchangé).
-    const inconnue = vu.avertissements.filter((l) => l.indexOf('etiquette-metadonnees-inconnue') !== -1);
+    // Mots-clés reste un champ SANS destination (voir CANON_METADONNEES) : la ligne est
+    // signalée hors gabarit — et n'écrit JAMAIS de mot-clé dans la fiche.
+    const inconnue = vu.avertissements.filter((l) => l.indexOf('metadonnees-champ-hors-gabarit') !== -1);
     assert.strictEqual(inconnue.length, 1,
-      '« ' + libelle + ' » devrait aussi rester une étiquette sans destination : '
+      '« ' + libelle + ' » devrait aussi rester un champ hors gabarit : '
       + vu.avertissements.join(' / '));
     // Reconnue (score 1,0) mais sans destination + une valeur réelle ("inclusion, école") :
     // c'est justement le contenu qui serait perdu si l'import continuait — ça bloque tout.

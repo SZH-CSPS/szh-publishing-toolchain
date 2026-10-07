@@ -246,22 +246,25 @@ const TABLE = Object.freeze({
   // `barrage: 'geste'` sur les quatre premiers : l'import a été REFUSÉ, l'article n'est pas
   // dans le numéro, et le Word attend toujours. C'est le même barrage que « import/echec ».
   'import/etiquette-metadonnees-inconnue': { barrage: 'geste', nature: D, lieu: 'word',
-    focusChamp: 'fichier', defaut: 'defaut.pronto-meta-inconnue' },
+    focusChamp: 'fichier', objetChamp: 'etiquette', defaut: 'defaut.pronto-meta-inconnue' },
+  // Mots-clés : reconnue, mais le gabarit n'a pas de case pour elle. Même barrage.
+  'import/metadonnees-champ-hors-gabarit': { barrage: 'geste', nature: D, lieu: 'word',
+    focusChamp: 'fichier', objetChamp: 'champ', defaut: 'defaut.pronto-meta-hors-gabarit' },
   'import/auteur-etiquette-inconnue': { barrage: 'geste', nature: D, lieu: 'word',
-    focusChamp: 'fichier', defaut: 'defaut.pronto-auteur-inconnue' },
+    focusChamp: 'fichier', objetChamp: 'ligne', defaut: 'defaut.pronto-auteur-inconnue' },
   // Champ RECONNU mais que le gabarit ne porte pas (adresse, biographie, téléphone, photo).
   // Même barrage que ci-dessus — l'import est refusé, sa valeur serait perdue — mais un
   // intitulé distinct : l'étiquette n'a rien de fautif, c'est le gabarit qui n'a pas de case.
   'import/auteur-champ-hors-gabarit': { barrage: 'geste', nature: D, lieu: 'word',
-    focusChamp: 'fichier', defaut: 'defaut.pronto-champ-hors-gabarit' },
+    focusChamp: 'fichier', objetChamp: 'champ', defaut: 'defaut.pronto-champ-hors-gabarit' },
   'import/bloc-etiquette-inconnue': { barrage: 'geste', nature: D, lieu: 'word',
-    focusChamp: 'fichier', defaut: 'defaut.pronto-bloc-inconnue' },
+    focusChamp: 'fichier', objetChamp: 'etiquette', defaut: 'defaut.pronto-bloc-inconnue' },
   'import/cle-ambigue': { barrage: 'geste', nature: D, lieu: 'word', focusChamp: 'fichier',
-    defaut: 'defaut.pronto-cle-ambigue' },
+    objetChamp: 'clé', defaut: 'defaut.pronto-cle-ambigue' },
   // L'article est importé : plus de barrage, mais un geste à faire dans le Word avant la
   // prochaine version.
   'import/cle-approximee': { barrage: null, nature: D, lieu: 'word', focusChamp: 'fichier',
-    defaut: 'defaut.pronto-cle-approximee' },
+    objetChamp: 'clé', defaut: 'defaut.pronto-cle-approximee' },
   'import/structure-inattendue': { barrage: null, nature: D, lieu: 'word',
     focusChamp: 'fichier', defaut: 'defaut.pronto-structure' },
   'import/bloc-ancienne-forme': { barrage: null, nature: D, lieu: 'word',
@@ -297,10 +300,10 @@ const TABLE = Object.freeze({
     focusChamp: 'fichier', defaut: 'defaut.pronto-biblio-tableau' },
   // Le type se choisit dans la fiche, pas dans le Word : c'est là qu'on l'y remet.
   'import/type-article-non-reconnu': { barrage: null, nature: D, lieu: 'fiche',
-    focusFixe: 'type', defaut: 'defaut.pronto-type-inconnu' },
+    focusFixe: 'type', objetChamp: 'valeur', defaut: 'defaut.pronto-type-inconnu' },
   // Les trois informations : rien n'est perdu, rien à faire tout de suite.
   'import/cle-attendue-absente': { barrage: null, nature: F, lieu: 'word',
-    focusChamp: 'fichier', defaut: 'defaut.pronto-cle-absente' },
+    focusChamp: 'fichier', objetChamp: 'clé', defaut: 'defaut.pronto-cle-absente' },
   'import/blocs-colles': { barrage: null, nature: F, lieu: 'word', focusChamp: 'fichier',
     defaut: 'defaut.pronto-blocs-colles' },
   // La langue se corrige dans la fiche — c'est même la seule façon de déclarer un article
@@ -531,6 +534,7 @@ const SECOND_ETAGE = Object.freeze({
   'import/etiquette-metadonnees-inconnue': { consigne: 'consigne.pronto-etiquette' },
   'import/auteur-etiquette-inconnue': { consigne: 'consigne.pronto-etiquette' },
   'import/auteur-champ-hors-gabarit': { consigne: 'consigne.pronto-champ-hors-gabarit' },
+  'import/metadonnees-champ-hors-gabarit': { consigne: 'consigne.pronto-meta-hors-gabarit' },
   'import/bloc-etiquette-inconnue': { consigne: 'consigne.pronto-etiquette' },
   'import/cle-ambigue': { consigne: 'consigne.pronto-cle-ambigue' },
   'import/cle-approximee': { consigne: 'consigne.pronto-cle-approximee' },
@@ -640,7 +644,13 @@ function ton(constat, contexte) {
 // demandent rien, et une vue qui les accumule finit par cacher ce qu'il reste à faire. Un
 // bloquant n'a pas de croix, et un avertissement non plus — les faire taire, c'est se
 // donner un numéro propre en le décidant, et le rouge doit se corriger, pas se refermer.
+//
+// Exception, décision de Robin (07.10.2026) : tout ce que dit l'import se ferme, quelle que
+// soit sa couleur. Un import refusé ne laisse aucun article à corriger dans le cockpit : le
+// message survivait au Word qu'on avait abandonné, sans moyen de le faire taire.
 function fermable(constat, contexte) {
+  const c = constat || {};
+  if (c.source === 'import' || c.origine === 'import') { return true; }
   return gravite(constat, contexte) === 'info';
 }
 

@@ -42,6 +42,7 @@ const rapportErreur = require('./rapport-erreur');
 const courriel = require('./courriel');
 const { analyserMeta, langueRevue } = require('./yaml');
 const { libelleArticle, prefixeDossier, titreFiche } = require('./articles');
+const { slugifierArticle } = require('./slug');
 
 // ---- Rappels vers l'hôte ----------------------------------------------------------
 // Posés par extension.js. Les valeurs par défaut ne servent qu'à ne pas planter un test qui
@@ -250,6 +251,21 @@ function slugsUnitesPresents(racine) {
   } catch (e) { return null; }
 }
 
+// Les slugs des Word du dépôt, tels que l'import les nommerait ; null s'il ne se lit pas.
+function slugsWordEnAttente(racine) {
+  try {
+    return new Set(fs.readdirSync(path.join(racine, profilCourant().depot), { withFileTypes: true })
+      .filter((e) => e.isFile() && /\.(docx|odt)$/i.test(e.name))
+      .map((e) => slugifierArticle(e.name)));
+  } catch (e) { return null; }
+}
+
+// Un constat de l'import dont l'article n'existe pas et dont le Word a quitté le dépôt :
+// l'import a été refusé, puis le Word abandonné. Plus rien à corriger nulle part.
+function importSansWord(c, words) {
+  return words !== null && (c.source === 'import' || c.origine === 'import') && !words.has(c.slug);
+}
+
 // Ce que « À corriger » et la barre d'état peuvent montrer d'une liste de constats. Deux
 // règles, appliquées au dernier moment — là où toutes les sources se rejoignent :
 //
@@ -269,8 +285,9 @@ function slugsUnitesPresents(racine) {
 function constatsAffichables(racine, constats) {
   const presents = slugsUnitesPresents(racine);
   const retires = presents === null ? null : slugsRetires(racine);
-  const vivants = (retires === null || retires.size === 0) ? constats
-    : constats.filter((c) => !c || !c.slug || presents.has(c.slug) || !retires.has(c.slug));
+  const words = presents === null ? null : slugsWordEnAttente(racine);
+  const vivants = constats.filter((c) => !c || !c.slug || presents === null || presents.has(c.slug)
+    || (!(retires && retires.has(c.slug)) && !importSansWord(c, words)));
   return sansResumePdfUaRedondant(vivants);
 }
 
@@ -661,6 +678,22 @@ function empreinteConstat(racine, constat, texte) {
           String(texte || '')].join(SEP_EMPREINTE);
 }
 
+// La phrase que l'empreinte retient : celle que la vue affiche.
+function texteConstat(c, langue) {
+  const detail = tableConstats.detail(c, langue);
+  return tableConstats.phrase(c, langue) + (detail === '' ? '' : ' ' + detail);
+}
+
+// Ce qui reste une fois retirés les constats fermés d'un clic : la barre d'état ne doit pas
+// compter ce que la vue ne montre plus.
+function sansFermes(racine, constats, contexte) {
+  const fermes = constatsFermes();
+  if (fermes.size === 0) { return constats; }
+  const langue = langueCockpit();
+  return constats.filter((c) => !(c && tableConstats.fermable(c, contexte)
+    && fermes.has(empreinteConstat(racine, c, texteConstat(c, langue)))));
+}
+
 function constatsFermes() {
   const etatPoste = ctx.etatPoste();
   if (!etatPoste) { return new Set(); }
@@ -678,6 +711,7 @@ async function fermerConstat(empreinte) {
   liste.push(cle);
   await etatPoste.globalState.update(CLE_CONSTATS_FERMES,
     liste.slice(Math.max(0, liste.length - MAX_CONSTATS_FERMES)));
+  majBarreControles();
   return true;
 }
 
@@ -704,10 +738,9 @@ function vueControles(fournisseur) {
     const cartes = new Map();
     for (const c of constats) {
       if (tableConstats.gravite(c, contexte) !== gravite) { continue; }
-      const detail = tableConstats.detail(c, langue);
       // La phrase est calculée avant la carte : c'est elle qui entre dans l'empreinte, et
       // un message fermé ne doit pas faire naître une carte vide à lui tout seul.
-      const texte = tableConstats.phrase(c, langue) + (detail === '' ? '' : ' ' + detail);
+      const texte = texteConstat(c, langue);
       const fermable = tableConstats.fermable(c, contexte);
       const empreinte = fermable ? empreinteConstat(racine, c, texte) : '';
       if (fermable && fermes.has(empreinte)) { continue; }
@@ -801,8 +834,9 @@ function majBarreControles() {
   if (fournisseurBarre && fournisseurBarre.racine && fournisseurBarre.racine === journal.racine) {
     constats = constatsPourControles(fournisseurBarre, constats);
   }
-  // Comptés par la gravité que la vue affiche, réglage PDF/UA compris.
-  const r = resumeJournal(constats, contexteConstats());
+  // Comptés par la gravité que la vue affiche, réglage PDF/UA compris, sans ce qu'on a fermé.
+  const contexte = contexteConstats();
+  const r = resumeJournal(sansFermes(journal.racine, constats, contexte), contexte);
   if (r.bloquants > 0) { barreControles.text = T('ctl.barre.bloquant', [r.bloquants]); }
   else if (r.avertissements > 0) { barreControles.text = T('ctl.barre.avert', [r.avertissements]); }
   else { barreControles.hide(); return; }
@@ -1129,6 +1163,7 @@ module.exports = {
   relireJournal, alignerDossiersSurOrdre, contexteConstats, constatsPourControles,
   // Vue « À corriger »
   vueControles, fermerConstat, ouvrirCible, actionControles,
+  empreinteConstat, constatsFermes, texteConstat,
   // Barre d'état
   installerBarres, majBarreControles, majBadgePdfUa, rafraichirPdfUa,
   // Voile « Analyse en cours… »

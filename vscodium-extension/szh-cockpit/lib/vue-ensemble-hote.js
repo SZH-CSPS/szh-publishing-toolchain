@@ -117,15 +117,19 @@ function vueTraductions(fournisseur) {
 function vueWord(fournisseur) {
   const racine = fournisseur.racine;
   const lignes = [];
+  const noms = fournisseur._docxEnAttente(path.join(racine, profilCourant().depot));
+  // Un import refusé dont le Word a été retiré du dépôt n'a plus rien à dire.
+  const words = new Set(noms.map(slugifierArticle));
   for (const entree of lireRapportImport(racine)) {
+    if (entree.slug && !words.has(entree.slug) && !fournisseur._articleExiste(entree.slug)) { continue; }
     lignes.push({
       cle: '', groupe: T('word.vue.rapport'), titre: entree.nom,
       pastilles: [{ texte: entree.libelle, ton: entree.ton, icone: entree.icone }],
       notif: entree.ligne === '' ? null : { ton: entree.ton === '' ? 'info' : entree.ton, texte: entree.ligne },
+      messages: entree.messages || [],
       ouvrir: false
     });
   }
-  const noms = fournisseur._docxEnAttente(path.join(racine, profilCourant().depot));
   for (const nom of noms) {
     const slug = slugifierArticle(nom);
     const deja = fournisseur._articleExiste(slug);
@@ -157,6 +161,55 @@ function vueWord(fournisseur) {
   };
 }
 
+const RANG_TON = { danger: 0, attention: 1, info: 2 };
+
+// Les avertissements de l'import, une carte par article : chaque défaut y dit ce qui est en
+// cause (« Étiquette inconnue dans les métadonnées : Mots-clés (FR) »), le geste à faire, et
+// l'explication complète derrière « Pourquoi ? » — la même forme que la vue Contrôles. Les
+// champs laissés vides n'en font qu'un, qui les nomme tous. Le lecteur écrit chaque ligne
+// deux fois dans le journal : une seule est gardée. Chacun se ferme d'une croix, comme dans
+// la vue Contrôles et avec la même mémoire (controlesHote.fermerConstat).
+function avertissementsImport(racine, texte, langue) {
+  const fermes = controlesHote.constatsFermes();
+  const vus = new Set();
+  const constats = analyserJournal(texte, langue).filter((c) => {
+    if (c.source !== 'import' || c.code === 'echec' || c.code === 'restes') { return false; }
+    const k = c.slug + '\u0001' + c.code + '\u0001' + JSON.stringify(c.args || []);
+    if (vus.has(k)) { return false; }
+    vus.add(k);
+    return true;
+  });
+  const parArticle = new Map();
+  for (const c of tableConstats.regrouper(constats, () => null)) {
+    const ton = c.ton || tableConstats.ton(c, {});
+    const noms = tableConstats.elements(c, langue).map((el) => el.libelle);
+    const titre = tableConstats.phrase(c, langue) + (noms.length > 0 ? (langue === 'de' ? ': ' : ' : ') + noms.join(', ') : '');
+    const consigne = tableConstats.consigne(c, langue);
+    const texteMsg = titre + (consigne ? ' ' + consigne : '');
+    // La même empreinte que dans la vue Contrôles : fermé ici, fermé là-bas.
+    const empreinte = controlesHote.empreinteConstat(racine, c, controlesHote.texteConstat(c, langue));
+    if (fermes.has(empreinte)) { continue; }
+    if (!parArticle.has(c.slug)) { parArticle.set(c.slug, []); }
+    parArticle.get(c.slug).push({
+      ton: ton, titre: titre, elements: [], consigne: consigne,
+      infobulle: tableConstats.infobulle(c, langue), pourquoi: T('ctl.pourquoi'),
+      texte: texteMsg, action: null, fermable: true, empreinte: empreinte
+    });
+  }
+  const entrees = [];
+  for (const [slug, messages] of parArticle) {
+    messages.sort((a, b) => (RANG_TON[a.ton] ?? 3) - (RANG_TON[b.ton] ?? 3));
+    const pire = messages[0].ton;
+    entrees.push({
+      nom: slug === '' ? T('ctl.numero') : T('ctl.article', [slug]),
+      slug: slug, ligne: '', messages: messages,
+      libelle: T(pire === 'danger' ? 'ctl.badge.bloquant' : 'ctl.badge.avert'),
+      ton: pire, icone: pire
+    });
+  }
+  return entrees;
+}
+
 // Le rapport de la dernière conversion, écrit par la cible `import` du Makefile.
 //
 // Les lignes « [import-avertissement] » ne passent pas par ici : elles portent un code
@@ -168,21 +221,7 @@ function lireRapportImport(racine) {
   let texte = '';
   try { texte = fs.readFileSync(path.join(racine, profilCourant().depot, '.import.log'), 'utf8'); }
   catch (e) { return []; }
-  const langue = langueCockpit();
-  const avertissements = new Map();
-  for (const c of analyserJournal(texte, langue)) {
-    if (c.source !== 'import' || c.code === 'echec' || c.code === 'restes') { continue; }
-    avertissements.set(c.code + ' ' + c.slug, c);
-  }
-  const entrees = [];
-  for (const c of avertissements.values()) {
-    entrees.push({
-      nom: c.slug === '' ? T('ctl.numero') : T('ctl.article', [c.slug]),
-      ligne: tableConstats.phrase(c, langue),
-      libelle: T(c.ton === 'danger' ? 'ctl.badge.bloquant' : 'ctl.badge.avert'),
-      ton: c.ton, icone: c.ton
-    });
-  }
+  const entrees = avertissementsImport(racine, texte, langueCockpit());
   for (const brute of texte.split(/\r?\n/)) {
     if (brute.indexOf('[import-avertissement]') === 0) { continue; }
     const ligne = brute.replace(/^\[import\]\s*/, '').trim();
@@ -266,7 +305,14 @@ async function ouvrirVueEnsemble(fournisseur, rafraichirTout, type, item) {
     // retirée de son côté, mais c'est l'hôte qui décide de ce qu'elle montre, et le lot
     // « Pour information » peut s'être vidé en entier.
     if (msg.type === MSG.CONSTAT_FERMER) {
-      if (await controlesHote.fermerConstat(msg.empreinte)) { envoyer(panneau); }
+      if (await controlesHote.fermerConstat(msg.empreinte)) {
+        envoyer(panneau);
+        // Un avertissement d'import se lit dans « Word en attente » ET dans « Contrôles » :
+        // fermé dans l'une, il quitte l'autre.
+        for (const autre of ['word', 'controles']) {
+          if (autre !== type) { rafraichirVueOuverte(fournisseur, autre); }
+        }
+      }
       return;
     }
     if (msg.type === MSG.OUVRIR) {

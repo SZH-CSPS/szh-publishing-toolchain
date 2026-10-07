@@ -691,6 +691,7 @@ GRAVITE_CODES = {
     'etiquette-metadonnees-inconnue': GRAVITE_BLOQUANT,
     'auteur-etiquette-inconnue': GRAVITE_BLOQUANT,
     'auteur-champ-hors-gabarit': GRAVITE_BLOQUANT,
+    'metadonnees-champ-hors-gabarit': GRAVITE_BLOQUANT,
     'bloc-etiquette-inconnue': GRAVITE_BLOQUANT,
     'cle-ambigue': GRAVITE_BLOQUANT,
     'cle-attendue-absente': GRAVITE_INFO,
@@ -762,11 +763,9 @@ CANON_METADONNEES = {
     # voir serialiser_meta(), les mots-clés sont choisis dans le cockpit, jamais lus dans le
     # document, et ÇA NE CHANGE PAS ICI. Gardée quand même reconnaissable (la demande la cite
     # explicitement, et la rédaction tape parfois ce champ par réflexe, venu d'un autre
-    # gabarit) : reconnue -> avertit « cle-approximee » (dit qu'on a compris l'intention), mais
-    # ne rejoint aucune branche de dispatch dans extraire_table_metadonnees() -> avertit AUSSI
-    # 'etiquette-metadonnees-inconnue', comme n'importe quelle étiquette sans destination. Les
-    # deux avertissements ensemble disent exactement ce qui s'est passé : compris, mais gardé
-    # nulle part.
+    # gabarit) : reconnue -> avertit « cle-approximee » si elle est mal tapée, puis
+    # 'metadonnees-champ-hors-gabarit' (bloquant), qui dit où vont les mots-clés : compris,
+    # mais gardé nulle part.
     'motscles': ('Mots-clés', 'Schlüsselwörter', 'mots cles', 'mots clefs', 'keywords',
                  'schlagworter', 'schlusselworter', 'schlagwörter'),
 }
@@ -963,6 +962,13 @@ def extraire_table_metadonnees(tableau, slug, bloquants=None):
         elif jeton == 'resume' and langue_champ:
             cles_vues.add('resume')
             valeurs['resume'][langue_champ] = valeur
+        elif jeton == 'motscles':
+            # Reconnue, mais le gabarit n'a pas de case pour elle : « étiquette inconnue »
+            # serait faux, et ne dirait pas où vont les mots-clés.
+            consommee = False
+            _avertir_motscles_hors_gabarit(etiquette, valeur, slug)
+            if bloquants is not None:
+                bloquants.append({'texte': etiquette, 'lieu': 'tableau metadonnees'})
         else:
             consommee = False
             avertir(
@@ -1342,6 +1348,25 @@ def _avertir_champ_hors_gabarit(champ, etiquette, valeur, slug):
         'Vorlage nicht kennt. Der Artikel wurde NICHT importiert, damit dieser Wert nicht '
         'verloren geht – es wurde nichts angelegt, und die Word-Datei bleibt in der '
         'Warteschlange. %s' % (etiquette, valeur, geste_de))
+
+
+def _avertir_motscles_hors_gabarit(etiquette, valeur, slug):
+    """Une ligne « Mots-clés » dans le tableau des métadonnées. Bloquant, comme une étiquette
+    inconnue (sa valeur serait perdue), mais le message dit où vont les mots-clés."""
+    avertir(
+        'metadonnees-champ-hors-gabarit',
+        ['article « %s »' % slug, 'champ « %s »' % etiquette, 'valeur « %s »' % valeur],
+        'Le tableau des métadonnées porte une ligne « %s » (« %s ») : le gabarit '
+        'n’en a pas, les mots-clés se choisissent dans le cockpit. L’article n’a PAS été '
+        'importé, pour ne pas perdre cette valeur – rien n’a été créé, et le fichier Word '
+        'reste en attente. Retirez cette ligne du document et enregistrez, puis reportez les '
+        'mots-clés dans « Métadonnées des articles ».' % (etiquette, valeur),
+        'Die Metadatentabelle enthält eine Zeile «%s» («%s»), die die Vorlage nicht hat: '
+        'Schlüsselwörter werden im Cockpit gewählt. Der Artikel wurde NICHT importiert, damit '
+        'dieser Wert nicht verloren geht – es wurde nichts angelegt, und die Word-Datei bleibt '
+        'in der Warteschlange. Entfernen Sie diese Zeile aus dem Dokument und speichern Sie, '
+        'dann tragen Sie die Schlüsselwörter unter «Metadaten der Artikel» ein.'
+        % (etiquette, valeur))
 
 
 def _avertir_etiquette_bloc_inconnue(etiquette, valeur, slug):

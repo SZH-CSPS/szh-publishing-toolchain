@@ -83,7 +83,7 @@ test('gravité : la bibliographie récupérée est une information, pas un défa
 
 // ---- 1 bis. La croix : ce qu'on a le droit d'effacer d'un clic --------------------
 
-test('fermable : les gris seulement, jamais un bloquant ni un avertissement', () => {
+test('fermable : les gris seulement, jamais un bloquant ni un avertissement — sauf ce que dit l’import', () => {
   // Un constat gris ne demande rien : il dit qu'une chose s'est bien passée. Le faire
   // taire ne cache aucun geste à faire — à l'inverse d'un ambre, qu'on refermerait pour se
   // donner un numéro propre sans l'avoir corrigé.
@@ -93,8 +93,16 @@ test('fermable : les gris seulement, jamais un bloquant ni un avertissement', ()
     constats.fermable(constat('pipeline', 'titre-manquant'), { pdfua: true }), false,
     'un bloquant se referme d’un clic : le défaut disparaît sans avoir été corrigé');
   assert.strictEqual(
-    constats.fermable(constat('import', 'restes'), { pdfua: true }), false,
-    'une attente se referme d’un clic');
+    constats.fermable(constat('rendu', 'image-manquante'), { pdfua: true }), false,
+    'un avertissement de la chaîne se referme d’un clic');
+  // Décision de Robin (07.10.2026) : tout ce que dit l'import se ferme, rouge compris — un
+  // import refusé ne laisse aucun article où corriger.
+  for (const code of ['restes', 'etiquette-metadonnees-inconnue', 'type-article-non-reconnu']) {
+    assert.strictEqual(constats.fermable(constat('import', code), { pdfua: true }), true,
+      'un message d’import sans croix : ' + code);
+  }
+  assert.strictEqual(constats.fermable({ source: 'cockpit', code: 'champs-gabarit-vides',
+    origine: 'import', champs: { elements: [] } }, {}), true, 'la carte regroupée de l’import');
   // Le réglage PDF/UA déplace la frontière du rouge, jamais celle de la croix : une image
   // muette reste un défaut là où la validation est éteinte, donc sans croix.
   const muette = constat('numerotation', 'figure-sans-alt', { image: 'media/fig-01.png' });

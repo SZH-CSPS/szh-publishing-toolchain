@@ -11,6 +11,26 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.10.5
+
+Mineure : des messages d’import qui nomment ce qui est en cause et se ferment, et des titres
+de manuscrit que le nettoyeur ne renumérote plus.
+
+**Production.**
+- Import : chaque message nomme ce qui est en cause (« Étiquette inconnue dans les
+  métadonnées : … », « Type d’article non reconnu : … »), dit quoi faire, et garde son
+  explication derrière « Pourquoi ? ». Dans « Word en attente », une carte par article, et les
+  champs du gabarit laissés vides en une seule ligne qui les nomme.
+- Import : une ligne « Mots-clés » dans le tableau des métadonnées a son propre message, qui
+  dit de la retirer du Word et de reporter les mots-clés dans « Métadonnées des articles ».
+- Import : tout message d’import se ferme d’une croix, rouge compris, dans « Contrôles » comme
+  dans « Word en attente » ; fermé dans l’une, il quitte l’autre, et le compteur de la barre
+  d’état ne le compte plus. Les messages d’un import refusé disparaissent quand son Word est
+  retiré du dépôt.
+- Nettoyeur : la numérotation qu’un titre Word tient de son style n’est plus reposée comme une
+  liste « 1. », « 2. » qui remplaçait celle du gabarit ; un paragraphe numéroté par la liste
+  des titres devient un titre du niveau correspondant.
+
 ## 3.10.4
 
 Mineure : une copie en conflit résolue disparaît d’elle-même, un numéro neuf part sans

@@ -3421,6 +3421,11 @@ function activate(context) {
     rechargerApercuHtmlSiChange(fournisseur);
     // Une copie en conflit déjà déposée par le synchroniseur ne doit pas rester muette.
     avertirCopiesConflit(fournisseur.racine);
+    // Un Word retiré du dépôt emporte les messages de son import refusé : compteur et vues
+    // ouvertes suivent.
+    controlesHote.majBarreControles();
+    vueEnsembleHote.rafraichirVueOuverte(fournisseur, 'controles');
+    vueEnsembleHote.rafraichirVueOuverte(fournisseur, 'word');
   };
 
   // Regroupe les rafales du système de fichiers : OneDrive en émet plusieurs.

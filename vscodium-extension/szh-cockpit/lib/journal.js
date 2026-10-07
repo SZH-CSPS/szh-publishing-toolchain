@@ -112,6 +112,7 @@ const TONS_IMPORT = {
   'etiquette-metadonnees-inconnue': 'danger',
   'auteur-etiquette-inconnue': 'danger',
   'auteur-champ-hors-gabarit': 'danger',
+  'metadonnees-champ-hors-gabarit': 'danger',
   'bloc-etiquette-inconnue': 'danger',
   'cle-ambigue': 'danger',
   //   AMBRE — l'article est importé, mais quelque chose demande un coup d'œil dans le Word.
@@ -194,6 +195,7 @@ const CLES_IMPORT = {
   'etiquette-metadonnees-inconnue': 'ctl.import.pronto-meta-inconnue',
   'auteur-etiquette-inconnue': 'ctl.import.pronto-auteur-inconnue',
   'auteur-champ-hors-gabarit': 'ctl.import.pronto-champ-hors-gabarit',
+  'metadonnees-champ-hors-gabarit': 'ctl.import.pronto-meta-hors-gabarit',
   'bloc-etiquette-inconnue': 'ctl.import.pronto-bloc-inconnue',
   'cle-ambigue': 'ctl.import.pronto-cle-ambigue',
   'cle-approximee': 'ctl.import.pronto-cle-approximee',
@@ -294,6 +296,7 @@ const ARGS = {
   'import/etiquette-metadonnees-inconnue': (ch) => [ch('etiquette')],
   'import/auteur-etiquette-inconnue': (ch) => [ch('ligne')],
   'import/auteur-champ-hors-gabarit': (ch) => [ch('champ')],
+  'import/metadonnees-champ-hors-gabarit': (ch) => [ch('champ')],
   'import/bloc-etiquette-inconnue': (ch) => [ch('etiquette')],
   'import/cle-ambigue': (ch) => [ch('clé')],
   'import/cle-approximee': (ch) => [ch('clé'), ch('reconnue')],

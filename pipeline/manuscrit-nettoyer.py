@@ -1010,6 +1010,12 @@ def _principal(argv):
     _etape('titres')
     progres('classement des titres...')
     stats_titres, trace_titres = _classer_titres_selon_le_cas(document, gabarit)
+    # Dans les deux cas : un titre ne garde pas la numérotation de son style comme une liste,
+    # et un paragraphe numéroté par la liste des titres en est un.
+    n_promus_plan, n_numeros_retires, trace_plan = mm.titres_du_plan(document)
+    stats_titres['promus_plan'] = n_promus_plan
+    stats_titres['numeros_titres_retires'] = n_numeros_retires
+    trace_titres = trace_titres + trace_plan
 
     _etape('formatage')
     progres('nettoyage de la mise en forme...')

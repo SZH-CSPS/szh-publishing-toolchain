@@ -1456,6 +1456,48 @@ def classer_titres(document):
     return stats, trace
 
 
+def titres_du_plan(document):
+    """Après classer_titres() (ou le cas A), sur les paragraphes de premier niveau. Rend
+    (n_promus, n_numeros_retires, trace).
+
+    La numérotation d'un titre Word (« 1 », « 1.1 ») vient de son style : le lecteur la lit
+    comme une liste (_liste_depuis remonte le numPr hérité), et l'écrivain la reposait comme
+    une liste « 1. », « 2. » qui remplaçait celle du gabarit. Un titre retenu perd donc sa
+    liste : c'est le gabarit qui le numérote.
+
+    Un paragraphe de corps numéroté par LA MÊME liste que les titres déclarés est un titre
+    dont l'autrice ou l'auteur n'a pas posé le style (mesuré sur un manuscrit réel de 2027 :
+    deux sections sur onze). Il prend le niveau que ce cran de liste porte chez les titres
+    déclarés, à défaut le cran + 1 — jamais au-delà de 3."""
+    paras = _paragraphes_premier_niveau(document)
+    niveau_par_cran = {}
+    for p in paras:
+        if p.niveau_declare in (1, 2, 3) and p.liste is not None:
+            niveau_par_cran.setdefault((p.liste[0], p.liste[1]), p.niveau_declare)
+    listes_du_plan = {numid for (numid, _ilvl) in niveau_par_cran}
+    trace = []
+    n_promus = n_retires = 0
+    for p in paras:
+        if p.liste is None:
+            continue
+        if p.niveau_retenu == 0 and p.liste[0] in listes_du_plan:
+            cran = p.liste[1] or 0
+            niveau = min(niveau_par_cran.get((p.liste[0], cran), cran + 1), MAX_NIVEAUX)
+            p.niveau_retenu = niveau
+            n_promus += 1
+            trace.append({'portee': 'paragraphe', 'source': p.source, 'style': p.style,
+                          'decision': 'promue_plan', 'niveau_declare': p.niveau_declare,
+                          'niveau_retenu': niveau,
+                          'motif': 'promu titre (niveau %d) : numéroté par la liste des titres '
+                                   'déclarés (numId %s, cran %d)' % (niveau, p.liste[0], cran)})
+        elif p.niveau_retenu == 0:
+            continue
+        else:
+            n_retires += 1
+        p.liste = None
+    return n_promus, n_retires, trace
+
+
 # ---------------------------------------------------------------------------------
 # Nettoyage de la mise en forme manuelle — §5.2. Ce qui reste est aussi important que ce
 # qui part : italique, exposant, indice et liens ne sont JAMAIS touchés ici.
