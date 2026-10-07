@@ -69,6 +69,11 @@ est faite. Les questions à trancher sont marquées « À décider ».
   `impressum:` et les réglages d'impression de `buch.yaml` n'y sont pas modifiables.
 - Désactiver un moissonneur demande aujourd'hui une release (`reglages.toml` est remplacé à
   chaque mise à jour). À décider : un interrupteur dans les réglages du cockpit.
+- Couverture du livre : fusionner le bloc « fond de couverture » avec le fond paramétrable
+  (`media/_numero.js`).
+- Documentation : l'édition d'une fiche archivée n'est pas branchée (icône grisée), et le
+  bouton « Publier sur le site web » n'a pas d'action.
+- La règle CSS `.szh-liste.szh-analyse-cible` de `media/vue-ensemble.css` semble inutilisée.
 - `lib/cantons.js` n'a plus d'appelant : le supprimer ou le rebrancher.
 - Piste : ranger `lib/` en sous-dossiers par domaine, si les tests suivent sans réécriture.
 
