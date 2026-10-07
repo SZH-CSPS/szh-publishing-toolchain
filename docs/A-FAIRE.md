@@ -128,9 +128,14 @@ est faite. Les questions à trancher sont marquées « À décider ».
 - Aucun déclenchement automatique de la moisson mensuelle : à décider qui la lance et quand.
 - OpenParlData : obtenir une réponse sur leur `robots.txt` (`Disallow: /v1/`).
 - Lexique parlementaire : droits civiques (droit de vote, curatelle, capacité de
-  discernement), italien pour le Tessin, sens de `Integration`.
+  discernement).
 - Annoter 200 à 300 objets parlementaires à la main pour mesurer précision et rappel.
-- Genève : identifier le préfixe `C`, vérifier `R`.
+- Genève : vérifier le préfixe `R`.
+- Le moissonneur parlementaire ne traite pas les demandes de lexique et n'écrit pas
+  `note_calibree` : ces demandes restent « en attente ».
+- Aucun panneau ne relit les suggestions d'article (`listerSuggestions`).
+- Le déclencheur `--declencheur raccourci` existe, mais aucun raccourci ne l'utilise : le
+  garder ou le retirer.
 - À décider : table des états par canton ; Vaud ; les villes ; profondeur historique ;
   gabarits de la liste mensuelle et de la synthèse trimestrielle ; mention « Source :
   OpenParlData.ch ».
@@ -155,7 +160,12 @@ est faite. Les questions à trancher sont marquées « À décider ».
   aller-retour.
 - Vérifier les blueprints sur la version de Kirby retenue, et que les rubriques se rendent
   pareil par pandoc et par KirbyText.
-- Masquer `ressources` côté allemand.
+- Vérifier sur la version de Kirby retenue : `fields.title.label`, `accept` à l'envoi
+  d'un fichier, suffixe de langue des fichiers.
+
+## Divers
+
+- Déplacer le dossier `traduction/` du vérificateur de traduction à son emplacement définitif.
 
 ## Accessibilité
 

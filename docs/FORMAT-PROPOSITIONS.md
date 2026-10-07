@@ -1,51 +1,64 @@
-# Format des propositions : le contrat des moissonneurs
+# Format des propositions
 
-Ce document vaut pour tous les moissonneurs (recherches, interventions parlementaires, et
-ceux qui viendront). Un moissonneur ne fabrique jamais de fiche. Il dépose des
-**propositions** ; la rédaction les accepte ou les refuse dans le cockpit, et seul le cockpit
-écrit la fiche, par `lib/kirby-contenu.js`. Le code qui lit ce format est
-`vscodium-extension/szh-cockpit/lib/propositions.js`.
+Un moissonneur cherche des nouveautés pour la Documentation (interventions parlementaires,
+projets de recherche). Il ne crée pas de fiche : il dépose des **propositions**. La rédaction
+les accepte ou les refuse dans la vue Propositions du cockpit, et seul le cockpit écrit la fiche
+(`lib/kirby-contenu.js`).
 
-Le contrat des champs reste `pipeline/kirby/champs-documentation.json`
-([`FORMAT-DOCUMENTATION-KIRBY.md`](FORMAT-DOCUMENTATION-KIRBY.md)). Un moissonneur le lit, en
-lecture seule, comme la bibliothèque `Fiches\`.
+Cette page décrit les fichiers échangés entre les moissonneurs et le cockpit. Elle vaut pour
+tous les moissonneurs, présents et à venir.
+
+| Côté | Code |
+|---|---|
+| moissonneurs | `moissonneurs/commun.py`, puis `parlement/` et `recherche/` ([`LISEZMOI.md`](../moissonneurs/LISEZMOI.md)) |
+| cockpit | `vscodium-extension/szh-cockpit/lib/propositions.js`, `lib/resumes.js` |
+
+Les champs d'une fiche, leurs types et leurs listes de valeurs viennent du contrat
+`pipeline/kirby/champs-documentation.json` ([`FORMAT-DOCUMENTATION-KIRBY.md`](FORMAT-DOCUMENTATION-KIRBY.md)).
+Un moissonneur le lit, comme la bibliothèque `Fiches\`, sans jamais y écrire. L'état que les
+moissonneurs gardent entre deux passes est décrit à part, dans [`FORMAT-MOISSONS.md`](FORMAT-MOISSONS.md).
 
 ## Arborescence
 
 ```
 <racine>\_NewsUndActu\
-├── Fiches\                         la bibliothèque : jamais écrite par un moissonneur
+├── Fiches\                          la bibliothèque : un moissonneur la lit, n'y écrit pas
 └── _Moissons\
-    ├── <moissonneur>\              un dossier par moissonneur, nom court en minuscules
-    │   ├── AAAA-MM-JJ-<n>.jsonl    un lot par exécution qui a trouvé quelque chose
-    │   └── etat.json               l'état de la dernière exécution
-    ├── _Decisions\
-    │   └── <empreinte>.txt         une décision de la rédaction par proposition
-    └── _Resumes\
-        └── <langue>\<empreinte>.json  un résumé généré par Mistral, écrit par le cockpit
+    ├── <moissonneur>\               un dossier par moissonneur, nom court en minuscules
+    │   ├── AAAA-MM-JJ-<n>.jsonl     un lot par exécution qui a trouvé quelque chose
+    │   ├── etat.json                l'état de la dernière exécution
+    │   └── demandes\<id>.json       les demandes sur le lexique (écrites par le cockpit)
+    ├── _Decisions\<empreinte>.txt   une décision de la rédaction par proposition (cockpit)
+    ├── _Resumes\<langue>\<empreinte>.json   un résumé généré par Mistral (cockpit)
+    └── _Reglages\<langue>.json      le réglage partagé de la finesse du tri (cockpit)
 ```
 
-- `<racine>` est la racine active : la production, ou `Revues-TESTING` en mode test.
-- Un nom de dossier qui commence par `_` n’est pas un moissonneur.
-- Un moissonneur n’écrit que dans son propre dossier. Il lit `_Decisions\` sans y écrire.
+- `<racine>` est la racine active : la production, ou `Revues-TESTING` en mode test
+  ([`EMPLACEMENTS.md`](EMPLACEMENTS.md)).
+- Un dossier dont le nom commence par `_` n'est pas un moissonneur.
+- Un moissonneur n'écrit que dans son propre dossier. Il lit `_Decisions\` sans y écrire.
+- Tous les fichiers s'écrivent d'un coup : sous un nom temporaire, puis renommés.
 
 ## Le lot
 
-- Nom : `AAAA-MM-JJ-<n>.jsonl`. La date est celle de l’exécution ; `<n>` vaut 1, 2, 3… dans
-  la journée. Le cockpit range les lots par date, puis par `<n>` lu comme un nombre : `-10`
-  vient après `-2`. Un `.jsonl` qui ne suit pas ce nom est signalé et ignoré.
-- Une proposition par ligne, en JSON sur une seule ligne, UTF-8, fin de ligne `\n`.
-- Écriture atomique : le lot s’écrit sous un nom temporaire qui ne finit pas par `.jsonl`
-  (`….jsonl.tmp`), puis il est renommé. Il n’est jamais modifié ensuite.
-- Pas de lot vide. Une exécution qui n’a rien trouvé n’écrit pas de lot.
+| Règle | Détail |
+|---|---|
+| Nom | `AAAA-MM-JJ-<n>.jsonl` : la date de l'exécution, puis 1, 2, 3… dans la journée. Le cockpit trie par date, puis par `<n>` lu comme un nombre (`-10` après `-2`). Un `.jsonl` à un autre nom est signalé et ignoré |
+| Contenu | une proposition par ligne, en JSON sur une ligne, UTF-8, fin de ligne `\n` |
+| Écriture | sous un nom qui ne finit pas par `.jsonl` (`….jsonl.tmp`), puis renommé. Un lot n'est jamais modifié ensuite |
+| Lot vide | il n'existe pas : une exécution qui n'a rien trouvé n'écrit pas de lot |
 
-Les pannes restent locales :
-- une ligne illisible écarte la ligne, pas le lot ;
-- un lot illisible est signalé et ignoré, les autres lots sont lus ;
-- une ligne d’un format inconnu, d’un type inconnu du contrat ou d’une langue inconnue est
-  signalée et ignorée.
+Une erreur reste locale :
 
-## Une proposition : `pronto-proposition/1`
+- une ligne illisible est écartée, pas le lot ;
+- un lot illisible est signalé et ignoré, les autres sont lus ;
+- une ligne d'un format, d'un type ou d'une langue inconnus est signalée et ignorée.
+
+Une même `cle` qui revient dans un lot plus récent remplace l'ancienne. Dans un même lot, la
+dernière ligne l'emporte. Une `cle` déjà décidée n'est pas reproposée, et le cockpit la masque
+de toute façon.
+
+## Une proposition : `pronto-proposition/1`
 
 ```json
 {
@@ -70,404 +83,448 @@ Les pannes restent locales :
 
 | Champ | Règle |
 |---|---|
-| `format` | toujours `pronto-proposition/1`. Une autre valeur fait ignorer la ligne |
-| `cle` | `<moissonneur>:<source>:<identifiant stable>`, sur une ligne. L’identité de la proposition, pour toujours : une décision s’y rattache. L’identifiant est celui de la source (`CHE`, par exemple), pas un jeton de Pronto |
+| `format` | `pronto-proposition/1`. Une autre valeur fait ignorer la ligne |
+| `cle` | `<moissonneur>:<source>:<identifiant stable>`. C'est l'identité de la proposition, pour toujours : une décision s'y rattache. L'identifiant est celui de la source (`CHE` par exemple), pas un jeton de Pronto |
 | `moissonneur` | le nom de son dossier sous `_Moissons\` |
-| `type` | un type du contrat (`intervention`, `recherche`…). Il choisit l’onglet de la vue |
-| `langue` | `fr` ou `de`, toujours renseignée (voir « Une proposition, une langue »), sauf sur une ligne multilingue, qui porte `langues` à la place |
-| `langues`, `titres` | une ligne multilingue seulement : voir « Une proposition pour les deux revues » |
+| `type` | un type du contrat (`intervention`, `recherche`…). Il choisit l'onglet de la vue |
+| `langue` | `fr` ou `de`. Toujours présent, sauf sur une ligne multilingue, qui porte `langues` à la place (voir [Les langues](#les-langues)) |
+| `langues`, `titres` | une ligne multilingue seulement |
 | `recolte` | date et heure de la lecture, ISO 8601 en UTC |
-| `lien_source` | la page d’origine, que la rédaction ouvre pour juger |
-| `valeurs` | les clés des champs du type, avec les jetons de Pronto (`canton: "CH"`). Une valeur n’y entre que si elle respecte la saisie du contrat ; sinon le champ reste vide et un doute le dit. Une clé vide s’omet. Une `liste_multiple` est un tableau de jetons ; un `suivi` est un tableau d’objets |
-| `doutes` | ce que le moissonneur sait avoir deviné ou n’a pas pu lire, champ par champ : `{ champ, code, detail, suggestion? }`. `detail` explique, il ne répète pas la valeur lue. `suggestion`, facultative, est une valeur conforme que la rédaction applique d’un clic |
-| `brut` | les valeurs telles que lues, avant normalisation (voir plus bas) |
-| `pertinence` | facultative : `{ verdict, raison }`, `verdict` valant `retenu` ou `a-relire`. Un objet `ecarte` ne s’exporte jamais. `score`, `categorie` et `termes` s’y ajoutent pour la finesse du tri (voir plus bas) |
-| `doublon` | facultatif : `{ uuid, slug, certitude: "probable" }`, une fiche existante qui semble la même. Un doublon sûr ne s’exporte pas |
-| `texte_depose` | facultatif, intervention seulement : le texte déposé, en clair, d’où le cockpit tire un résumé (voir « Les résumés générés »). Plusieurs documents se suivent, chacun annoncé par une ligne `[Document : <nom>]` : le texte déposé, puis la réponse de l’exécutif s’il y en a une. Au plus 20 000 caractères : le moissonneur coupe au-delà, et le cockpit coupe aussi un texte plus long avant l’envoi (doute `source-tronquee` du résumé). **Pas encore produit par le moissonneur `parlement`** |
+| `lien_source` | la page d'origine, que la rédaction ouvre pour juger |
+| `valeurs` | les champs du type, avec les jetons de Pronto (`canton: "CH"`). Une valeur n'y entre que si elle respecte la saisie du contrat ; sinon le champ reste vide et un doute le dit. Une clé vide s'omet. Une `liste_multiple` est un tableau de jetons ; un `suivi` est un tableau d'objets |
+| `doutes` | ce que le moissonneur a deviné ou n'a pas pu lire, champ par champ : `{ champ, code, detail, suggestion? }`. `detail` explique sans répéter la valeur lue. `suggestion`, facultative, est une valeur conforme que la rédaction applique d'un clic |
+| `brut` | les valeurs telles que lues, avant normalisation (voir [La règle de `brut`](#la-règle-de-brut)) |
+| `pertinence` | facultatif : `{ verdict, raison }`, avec `verdict` = `retenu` ou `a-relire`. Un objet écarté n'est jamais exporté. `score`, `categorie` et `termes` s'y ajoutent pour la finesse du tri |
+| `doublon` | facultatif : `{ uuid, slug, certitude: "probable" }`, une fiche existante qui semble la même. Un doublon sûr n'est pas exporté |
+| `texte_depose` | facultatif, intervention seulement : le texte déposé, d'où le cockpit tire un résumé (voir [Le texte déposé](#le-texte-déposé)) |
 
-Les dates suivent la saisie du contrat : `date` en `AAAA-MM-JJ`, `date_partielle` en `AAAA`,
+Formats de date, comme dans le contrat : `date` en `AAAA-MM-JJ`, `date_partielle` en `AAAA`,
 `AAAA-MM` ou `AAAA-MM-JJ`, `annee` en `AAAA`.
 
-Aucun nom de personne n’entre dans un lot hors des champs du contrat qui le demandent
-(`auteurs`, `realisateur`). Le `descriptif` fait exception : il est repris tel que la
-source le donne, dans `valeurs` comme dans `brut`, noms compris, sans doute
-`personne-nommee`, et la rédaction le reformule.
+Un nom de personne n'entre dans un lot que dans les champs du contrat qui en portent
+(`auteurs`, `realisateur`). Le `descriptif` fait exception : il est repris tel que la source le
+publie, dans `valeurs` comme dans `brut`, noms compris, sans doute `personne-nommee`. La
+rédaction le reformule.
 
 ### Codes de doute
 
-La liste est fermée. Un moissonneur qui a besoin d’un nouveau code le fait ajouter ici ; il ne
-l’invente pas.
+La liste est fermée (`CODES_DOUTE` dans `lib/propositions.js`). Un nouveau code s'ajoute ici et
+dans le cockpit avant qu'un moissonneur s'en serve.
 
 | Code | Sens |
 |---|---|
 | `date-illisible` | une date lue qui ne se ramène pas sûrement au format du champ |
-| `langue-devinee` | la langue de la proposition a été devinée ; `champ` vaut `langue` |
-| `correspondance-incertaine` | la valeur de la source ne correspond qu’approximativement à un jeton |
-| `valeur-hors-liste` | la valeur lue n’a aucun jeton dans la liste du champ |
+| `langue-devinee` | la langue de la proposition a été devinée ; `champ` vaut `langue` |
+| `correspondance-incertaine` | la valeur de la source ne correspond qu'approximativement à un jeton |
+| `valeur-hors-liste` | la valeur lue n'a aucun jeton dans la liste du champ |
 | `champ-introuvable` | la source ne donne pas ce champ |
 | `texte-tronque` | le texte a été coupé (titre ou descriptif trop long, page incomplète) |
-| `personne-nommee` | un nom de personne possible dans un champ texte (`title`, `descriptif`…, que `champ` désigne), qui n’est ni l’auteur ni un signataire ; `detail` le donne masqué (« F*** K*** »), jamais en clair. Ce doute signale sans bloquer l’acceptation |
+| `personne-nommee` | un nom de personne possible dans un champ texte (`title`, `descriptif`…, désigné par `champ`), qui n'est ni l'auteur ni un signataire. `detail` le donne masqué (« F\*\*\* K\*\*\* »). Ce doute signale sans bloquer l'acceptation |
 
 ### La règle de `brut`
 
-- Une clé de `brut` qui porte le nom d’un champ du contrat (`date`, `categorie`, `numero`…)
-  se rapporte à ce champ : le cockpit affiche cette valeur lue à côté du champ.
-- Un champ introuvable n’a rien dans `brut`.
-- Les autres clés sont libres. `brut` se réduit à ce qui sert à juger : jamais la page
-  entière.
+- Une clé de `brut` qui porte le nom d'un champ du contrat (`date`, `categorie`, `numero`…) se
+  rapporte à ce champ : le cockpit affiche la valeur lue à côté du champ.
+- Un champ introuvable n'a rien dans `brut`.
+- Les autres clés sont libres. `brut` se limite à ce qui sert à juger, jamais la page entière.
 
-## Les résumés générés
+### Le texte déposé
 
-Le bouton « Raccourcir les résumés » (Paramètres de l’Accueil, Moissonnage) fait écrire par
-Mistral le descriptif des propositions en attente de la langue active :
-- `recherche` : un `descriptif` de plus de 1 000 caractères est raccourci (plage 700 à 1 000,
-  cible 850, 150 mots au plus en fr et 135 en de) ;
-- `intervention` : le descriptif est créé depuis `texte_depose` (plage 400 à 700, cible 550,
-  80 mots au plus en fr et 70 en de).
+`texte_depose` porte le texte de l'intervention, en clair. Le moissonneur du parlement le
+remplit (`moissonneurs/parlement/texte.py`) :
 
-Un jet trop long (caractères ou mots) est relancé deux fois au plus ; s'il l'est encore, le doute
-`longueur-hors-plage` le dit. Un résumé enregistré qui dépasse la plage actuelle est périmé et se
-régénère.
+- il prend le document qui porte l'intervention elle-même, choisi sur son nom (texte déposé,
+  motion, interpellation…), jamais une décision ou un débat. Pour la Confédération : le texte
+  déposé, puis le développement ;
+- plusieurs documents se suivent, chacun annoncé par une ligne `[Document : <nom>]` ; la réponse
+  de l'exécutif vient en dernier s'il y en a une ;
+- le texte est nettoyé : sans balisage HTML, CSS, entités ni images, les lignes coupées en milieu
+  de phrase recollées. L'en-tête part, ainsi que l'adresse, la date, le numéro, le titre et tout
+  paragraphe du début qui nomme un auteur ou un signataire ;
+- il est plafonné à 20 000 caractères : au-delà, coupé à la dernière fin de phrase et suivi de
+  « […] » ;
+- le champ est absent quand aucun document n'a de texte utile.
 
-Les prompts sont versionnés dans `vscodium-extension/szh-cockpit/prompts/resume-descriptif.json`.
-Seuls les textes publics d’une proposition partent chez Mistral, jamais un manuscrit ni un fichier
-de revue. Le résultat n’est pas assez fidèle pour se passer de relecture : la vue Propositions
-l’affiche par défaut, marqué « Résumé généré (Mistral), à relire », à côté de l’original, et
-l’acceptation écrit dans la fiche le texte affiché.
+Un nom cité plus loin dans le corps reste : le texte est celui que la source a publié. Il ne sert
+que d'entrée au résumé, dont le prompt exclut tout nom de personne.
 
-Un fichier par proposition et par langue, `_Moissons\_Resumes\<langue>\<empreinte>.json`,
-l’empreinte étant celle de la décision (16 caractères du SHA-256 de la `cle`). Il est écrit
-d’un coup (nom temporaire, puis renommage) et une régénération l’écrase. Exemple :
-`test/js/fixtures/resume-exemple.json`.
+## Les langues
 
-| Champ | Règle |
+Chaque objet va vers une seule revue, et un moissonneur ne produit jamais deux propositions pour
+un même objet :
+
+| Origine | Langue |
 |---|---|
-| `format` | toujours `pronto-resume/1` ; une autre valeur fait ignorer le fichier |
-| `cle`, `langue` | la proposition et la langue du résumé |
-| `texte` | le résumé, un seul paragraphe de texte brut |
-| `modele`, `prompt` | le modèle Mistral et la version du prompt (`v6`) |
-| `date`, `poste` | ISO 8601 en UTC, et le nom du poste qui l’a demandé |
-| `source_empreinte`, `source_car` | le SHA-256 (hexadécimal) et la longueur du texte envoyé |
-| `mode` | `raccourcir` (un descriptif) ou `creer` (un texte déposé) |
-| `relance`, `jetons` | si une relance a suivi un premier jet trop long, et les jetons consommés |
-| `doutes` | `[{ code, detail }]` : `nombre-hors-source` (un nombre entier ou décimal de la sortie qui n’est pas, comme nombre entier, dans la source ou la fiche : « 20 » ne se lit pas dans « 2020 »), `longueur-hors-plage`, `source-tronquee` (la source a été coupée : par le cockpit à son plafond, ou déjà par le moissonneur, dont le texte déposé finit alors par « […] ») |
+| canton romand | `fr` (Revue) |
+| canton alémanique | `de` (Zeitschrift) |
+| Tessin | `fr`, titre gardé en italien |
+| Confédération, cantons bilingues (BE, FR, VS, GR) | la langue du texte déposé, ou une proposition multilingue (ci-dessous) |
+| recherche | la langue de la page, ou celle du titre |
 
-Un résumé dont `source_empreinte` ne correspond plus au texte actuel de la proposition est
-périmé : la vue ne l’affiche plus et la passe suivante le régénère. Un résumé valide est sauté.
+Quand la langue n'est pas sûre, le moissonneur choisit quand même et pose le doute
+`langue-devinee`.
 
-### `texte_depose` : ce que produit le moissonneur du parlement
-
-Le champ est facultatif, au niveau de la proposition. Le moissonneur du parlement le remplit ainsi
-(`moissonneurs/parlement/texte.py`) :
-- **le document** : celui qui porte l'intervention elle-même, choisi sur son nom (texte déposé,
-  motion, interpellation…), jamais la réponse du gouvernement, une décision ou un débat ; pour la
-  Confédération, le texte déposé puis le développement ;
-- **plusieurs documents** : chacun commence par la ligne `[Document : nom]` ;
-- **nettoyé** : sans balisage HTML, sans CSS, sans entités ni images, les lignes coupées au milieu
-  d'une phrase recollées, et sans en-tête. L'adresse, la date, le numéro, le titre et tout paragraphe
-  qui nomme un auteur ou un signataire partent, en tête et dans les premiers paragraphes du corps ;
-- **plafonné à 20 000 caractères** : au-delà, coupé à la dernière fin de phrase et suivi de « […] » ;
-- **absent** quand aucun document n'a de texte utile.
-
-Un nom cité plus loin dans le corps n'est pas retiré : comme le `descriptif`, le texte reste celui
-que la source a publié. Il ne sert que d'entrée au résumé, dont le prompt exclut tout nom de personne.
-
-## Une proposition, une langue
-
-Le moissonneur oriente chaque objet vers une seule revue et ne produit jamais deux
-propositions pour un même objet :
-- canton romand → `fr` (Revue) ; canton alémanique → `de` (Zeitschrift) ; Tessin → `fr`,
-  avec le titre gardé en italien ;
-- Confédération et cantons bilingues (BE, FR, VS, GR) → la langue du texte déposé ;
-- recherche : la langue de la page, ou celle du titre ;
-- quand la langue n’est pas sûre, le moissonneur choisit quand même et pose le doute
-  `langue-devinee`.
-
-L’autre revue reçoit l’objet à l’acceptation : la case « Proposer aussi à l’autre revue »
-écrit le statut `a-traduire` dans `_Statuts\<autre langue>\<uuid>.txt`.
+L'autre revue reçoit l'objet à l'acceptation, par la case « Proposer aussi à l'autre revue ».
 
 ### Une proposition pour les deux revues
 
-Une affaire fédérale (CH) donne une seule proposition, visible des deux rédactions. Les cantons
-bilingues (BE, FR, VS) suivent la même règle quand ils fournissent les deux titres ; sinon,
-la langue de leur titre. Une proposition n’est multilingue que si `titres` porte fr et de.
+Une affaire fédérale (CH) donne une seule proposition, visible des deux rédactions. Un canton
+bilingue (BE, FR, VS) suit la même règle quand il fournit les deux titres ; sinon, la langue de
+son titre. Une proposition est multilingue seulement si `titres` porte fr et de.
 
-- `langues: ["fr", "de"]` remplace `langue`. Une ligne porte l’un ou l’autre, jamais les deux,
-  et chaque langue est une langue du contrat, une seule fois. Une ligne qui enfreint cette règle
-  est signalée (`langues-invalides`) et ignorée.
-- `titres: { fr, de, it? }` contient les titres officiels, un titre non vide pour chaque langue
-  de `langues`. `valeurs.title` est omis : il n’y a qu’une source du titre. Le cockpit pose
-  `title` = `titres[langue de la vue]` ; `it` n’est qu’informatif.
-- La `cle` ne change pas : une seule décision vaut pour les deux vues.
-- Aucun doute `langue-devinee` sur une telle ligne.
-- Finesse du tri : la proposition compte dans les déciles de chaque langue qu’elle porte.
+- `langues: ["fr", "de"]` remplace `langue`. Une ligne porte l'un ou l'autre, jamais les deux.
+  Chaque langue est une langue du contrat, une seule fois. Sinon la ligne est signalée
+  (`langues-invalides`) et ignorée.
+- `titres: { fr, de, it? }` contient les titres officiels, un titre non vide par langue de
+  `langues`. `valeurs.title` est omis. Le cockpit pose `title` = `titres[langue de la vue]` ;
+  `it` est seulement informatif.
+- La `cle` est la même pour les deux vues : une seule décision vaut pour les deux.
+- Une telle ligne ne porte pas de doute `langue-devinee`.
+- Pour la finesse du tri, elle compte dans chaque langue qu'elle porte.
 
-À l’acceptation, la fiche nait dans la langue de la vue (le numéro ouvert). La case « Proposer
-aussi à l’autre revue » n’est cochée d’office que pour CH ; pour un canton bilingue, elle reste
-décochée. Quand elle est cochée :
-- si aucun champ `traduire: true` autre que le titre n’est rempli, les deux fichiers de langue
-  naissent d’un coup, avec le même Uuid : celui de la vue rattaché au numéro (ou orphelin pour
-  « Garder au réservoir »), celui de l’autre langue orphelin, avec son titre officiel et les
-  champs communs ;
-- sinon, un seul fichier nait, et l’autre langue reçoit le statut `a-traduire`. « Traduire dans
-  ce numéro » prend alors le titre officiel gardé dans la décision (champ `Titres`).
+## Accepter et refuser
 
-Annuler l’acceptation retire les deux fichiers tant que celui de l’autre langue n’est dans aucun
-numéro ; sinon, seul le fichier de la vue part, et la vue le dit.
+### Cas A et cas B
 
-## Une cle répétée
+Le cockpit classe chaque proposition en la revalidant contre le contrat du moment. Elle est
+**à vérifier** (cas B) dès que :
 
-Une même `cle` qui revient dans un lot plus récent remplace l’ancienne : le cockpit garde la
-ligne du lot le plus récent. Dans un même lot, la dernière ligne l’emporte. Une `cle` décidée
-n’est jamais reproposée, et le cockpit la masque de toute façon.
-
-## Cas A et cas B
-
-C’est le cockpit qui classe, en revalidant chaque proposition contre le contrat du moment. Une
-proposition est « à vérifier » (cas B) dès que :
-1. elle porte au moins un doute ;
-2. un champ requis est vide, une date est hors format, ou un jeton manque à sa liste ;
+1. elle porte au moins un doute ;
+2. un champ requis est vide, une date est hors format, ou un jeton manque à sa liste ;
 3. `doublon` est renseigné.
 
-Sinon elle est « prête » (cas A). Une proposition ancienne passe d’elle-même en cas B si le
-contrat change, sans que le moissonneur ait à le savoir. La pertinence est un autre axe : elle
-ne change pas le cas.
+Sinon elle est **prête** (cas A). Si le contrat change, une proposition ancienne passe d'elle-même
+en cas B. La pertinence est un autre axe : elle ne change pas le cas.
 
-À l’acceptation, un champ en doute bloque tant que la rédaction ne l’a pas touché, et une
-valeur hors format ou hors liste bloque. Un champ requis vide se laisse accepter : la fiche le
-signale ensuite, comme toute fiche incomplète.
+À l'acceptation :
+
+- un champ en doute bloque tant que la rédaction ne l'a pas touché ;
+- une valeur hors format ou hors liste bloque ;
+- un champ requis vide n'empêche pas d'accepter : la fiche le signale ensuite, comme toute fiche
+  incomplète ;
+- en lot, une proposition s'accepte telle quelle, et un cas B jamais.
+
+### Ce que fait l'acceptation
+
+La fiche nait dans la langue de la vue, c'est-à-dire celle du numéro ouvert. Les étapes, dans
+l'ordre (`accepter()` de `lib/propositions.js`) :
+
+1. le cockpit tire l'Uuid de la future fiche ;
+2. il écrit la décision, avec cet Uuid ;
+3. il crée la fiche avec ce même Uuid ;
+4. si la case « Proposer aussi à l'autre revue » est cochée, il prépare l'autre langue.
+
+Si la création de la fiche échoue, la décision désigne une fiche introuvable, et le cockpit le
+dit. On n'obtient jamais deux fiches pour une même proposition.
+
+La case « Proposer aussi à l'autre revue » est cochée d'office pour CH seulement. Cochée, elle
+fait l'une de ces deux choses, jamais les deux :
+
+- **proposition multilingue dont seul le titre se traduit** (aucun autre champ `traduire: true`
+  n'est rempli) : le fichier de l'autre langue nait tout de suite, avec le même Uuid, orphelin,
+  avec son titre officiel et les champs communs ;
+- **sinon** : un seul fichier nait, et l'autre langue reçoit le statut `a-traduire` dans
+  `_Statuts\<autre langue>\<uuid>.txt`. « Traduire dans ce numéro » prend alors le titre officiel
+  gardé dans la décision (champ `Titres`).
+
+La raison : un statut `a-traduire` posé à côté d'un fichier de langue existant serait ignoré.
+
+### Annuler
+
+- Annuler un refus supprime la décision.
+- Annuler une acceptation supprime, dans l'ordre : le fichier de langue de la fiche (et son
+  dossier s'il n'en reste aucun), le statut `a-traduire` posé avec elle, puis la décision.
+- Pour une proposition multilingue, le fichier de l'autre langue part aussi, sauf s'il est déjà
+  dans un numéro ; la vue le dit.
+- Depuis la vue, une fiche déjà rattachée à un numéro, ou à un numéro archivé, ne se retire pas.
+- La vue montre les acceptations des 30 derniers jours (`JOURS_ACCEPTEES`).
 
 ## Les décisions
 
-Un fichier par proposition décidée : `_Moissons\_Decisions\<empreinte>.txt`. L’empreinte est
-faite des 16 premiers caractères hexadécimaux du SHA-256 de la `cle` (UTF-8), parce qu’une
-`cle` contient des `:`, interdits dans un nom de fichier Windows. La `cle` est écrite en clair
-dans le fichier, au format des statuts de traduction :
+Un fichier par proposition décidée : `_Moissons\_Decisions\<empreinte>.txt`.
+
+L'**empreinte** est faite des 16 premiers caractères hexadécimaux du SHA-256 de la `cle`
+(UTF-8). Une `cle` contient des `:`, interdits dans un nom de fichier Windows. La `cle` est
+écrite en clair dans le fichier, au format d'un fichier Kirby (champs séparés par une ligne
+`----` entourée de lignes vides) :
 
 ```
 Cle: parlement:openparldata:CHE:2026-0412
+
 ----
+
 Decision: refuse
+
 ----
+
 Motif: hors-sujet
+
 ----
+
 Date: 2026-10-02
 ```
-
-Les champs sont séparés par une ligne `----` entourée de lignes vides, comme dans un fichier
-Kirby.
 
 | Champ | Règle |
 |---|---|
 | `Cle` | la `cle` de la proposition |
 | `Decision` | `accepte` ou `refuse` |
-| `Motif` | refus seulement, facultatif : `hors-sujet`, `doublon` ou `autre`. Ces motifs mesurent la précision des filtres |
-| `Fiche` | acceptation seulement : l’Uuid de la fiche créée |
-| `Titres` | acceptation d’une proposition multilingue seulement : ses `titres`, en JSON sur une ligne. La décision se retrouve par l’Uuid de sa fiche |
+| `Motif` | refus seulement, facultatif : `hors-sujet`, `doublon` ou `autre`. Ces motifs mesurent la précision des filtres |
+| `Fiche` | acceptation seulement : l'Uuid de la fiche créée |
+| `Titres` | acceptation d'une proposition multilingue seulement : ses `titres`, en JSON sur une ligne |
 | `Date` | `AAAA-MM-JJ`, le jour de la décision |
 
-- Le cockpit écrit le fichier d’un coup (nom temporaire, puis renommage). Il n’écrase jamais
-  une décision présente : on l’annule d’abord.
-- Ordre de l’acceptation : l’Uuid est tiré d’abord, la décision est écrite avec lui, puis la
-  fiche est créée avec ce même Uuid, puis le statut `a-traduire` de l’autre langue si la case
-  est cochée. Si la création échoue, la décision désigne une fiche introuvable, et le cockpit
-  le dit. On n’obtient jamais deux fiches pour une même proposition.
-- Annuler une acceptation supprime la fiche créée (le fichier de sa langue, et le dossier s’il
-  n’en reste aucun), le statut `a-traduire` posé avec elle, puis la décision. Annuler un refus
-  supprime la décision.
+- Le cockpit n'écrase jamais une décision présente : on l'annule d'abord.
 - Le moissonneur relit les décisions à chaque exécution. Un fichier illisible, sans `Cle` ou à
-  décision inconnue est ignoré sans casser les autres ; un motif inconnu se lit `autre`.
+  décision inconnue est ignoré sans gêner les autres. Un motif inconnu se lit `autre`.
 
 ## `etat.json`
 
-À côté des lots, `_Moissons\<moissonneur>\etat.json`, réécrit d’un coup à la fin de chaque
-exécution de `tout`, même en échec. La vue l’affiche en tête de l’onglet, et il dit quand
-chaque moissonneur est passé quand il n’y a rien à trier.
+`_Moissons\<moissonneur>\etat.json` est réécrit à la fin de chaque exécution de `tout`, même en
+échec. La vue l'affiche en tête de l'onglet : il dit quand le moissonneur est passé, même quand
+il n'y a rien à trier.
 
 | Champ | Règle |
 |---|---|
-| `format` | toujours `pronto-etat/1` ; une autre valeur fait ignorer le fichier |
+| `format` | `pronto-etat/1`. Une autre valeur fait ignorer le fichier |
 | `moissonneur` | son nom court |
 | `contrat` | la version de ce contrat que le moissonneur suit (1) |
-| `derniere_moisson` | date et heure de la fin d’exécution, ISO 8601 en UTC |
-| `duree_s` | durée de l’exécution, en secondes |
+| `derniere_moisson` | date et heure de la fin d'exécution, ISO 8601 en UTC |
+| `duree_s` | durée de l'exécution, en secondes |
 | `requetes` | requêtes réellement émises |
-| `propositions_ecrites`, `lot` | ce que l’exécution a déposé : `0` et `""` sans lot |
-| `sources_en_echec` | `[{ source, raison }]` : une source en échec n’arrête jamais les autres |
-| `interrompu` | `null`, `"budget"`, `"403"` ou `"configuration"` |
+| `propositions_ecrites`, `lot` | ce que l'exécution a déposé : `0` et `""` sans lot |
+| `sources_en_echec` | `[{ source, raison }]`. Une source en échec n'arrête pas les autres |
+| `interrompu` | `null`, `"budget"`, `"403"`, `"arret"` ou `"configuration"` |
 | `erreur` | ce qui a bloqué, quand `interrompu` vaut `"configuration"` |
-| `purge` | `{ lots: [noms], decisions: [empreintes] }` : ce que la purge a effacé |
+| `purge` | `{ lots: [noms], decisions: [empreintes] }` : ce que la purge a effacé |
 
-Un moissonneur peut ajouter ses propres champs (`nouvelles_affaires`, `retenues`…). Le cockpit
-ne lit que ceux-ci, et ceux de la finesse du tri, plus bas.
+Un moissonneur peut ajouter ses propres champs (`nouvelles_affaires`, `retenues`,
+`etapes_en_echec`…). Le cockpit ne lit que ceux de ce tableau et ceux de la finesse du tri.
 
-## La finesse du tri : champs facultatifs
+## La finesse du tri
 
-La rédaction règle la finesse du tri par un curseur à dix crans, de « Très large » (cran 1, tout
-est visible) à « Strict » (cran 10). Le cran par défaut du moissonneur (`cran_defaut`) se nomme
-« Large ». Tous les champs de cette section sont facultatifs, et le format reste
-`pronto-proposition/1`. Un moissonneur qui ne les remplit pas reste conforme : la vue cache alors
-le curseur, la vue Termes et le « Pourquoi » détaillé pour ses types, et tout ce qu’il propose est
-visible.
+La rédaction règle la finesse du tri par un curseur à dix crans, de « Très large » (cran 1, tout
+est visible) à « Strict » (cran 10). Tous les champs de cette section sont facultatifs. Un
+moissonneur qui ne les remplit pas reste conforme : la vue cache alors le curseur, la vue Termes
+et le « Pourquoi » détaillé pour ses types, et tout ce qu'il propose est visible. C'est le cas du
+moissonneur `recherche`, qui ne calcule pas de note.
 
 ### Dans une proposition, sous `pertinence`
 
 | Champ | Contenu |
 |---|---|
-| `score` | nombre de 0 à 100, propre au moissonneur ; par bandes chez le parlement (une catégorie = une plage) |
-| `categorie` | jeton de l’explication, documenté par le moissonneur (parlement : `titre`, `texte-dense`, `signal-faible`, `ecole`, `theme`, `texte-large`) |
-| `termes` | liste complète, sans plafond, de `{ terme, langue: fr\|de\|it, role: ancrage\|ambigu\|ecole\|theme, ou: titre\|texte\|extrait, note_sans }` ; un terme une seule fois, à son emplacement le plus fort |
+| `score` | nombre de 0 à 100, propre au moissonneur |
+| `categorie` | jeton qui explique la note, documenté par le moissonneur |
+| `termes` | liste complète de `{ terme, langue: fr\|de\|it, role: ancrage\|ambigu\|ecole\|theme, ou: titre\|texte\|extrait, note_sans }`. Un terme y figure une fois, à son emplacement le plus fort |
 
-`note_sans` est le score qu’aurait la proposition sans ce terme, tous les autres en place. Le
-cockpit en tire « seul à ramener » au cran courant : la proposition est visible, et ne le serait
-plus sans ce terme.
+`note_sans` est le score qu'aurait la proposition sans ce terme, les autres en place.
 
 Au cran k, une proposition est visible si son `score` atteint le seuil du cran k de sa langue.
-Les crans sont emboîtés : une proposition visible au cran k l’est à tous les crans plus larges.
-Sans `score`, ou sans crans pour sa langue, elle est visible à tous les crans.
+Les crans sont emboîtés : visible au cran k, elle l'est à tous les crans plus larges. Sans
+`score`, ou sans crans pour sa langue, elle est visible à tous les crans.
 
 ### Dans `etat.json`
 
 | Champ | Contenu |
 |---|---|
-| `crans` | `{ fr: [...], de: [...] }`, 10 entrées par langue : `{ cran: 1..10, seuil, par_mois, rappel, rappel_sur, identique_au_cran_precedent }` ; le cran 1 a le seuil 0 (Très large), le cran 10 est Strict |
-| `cran_defaut` | facultatif, entier de 1 à 10 : le cran que la vue regarde tant que la rédaction n’a pas de réglage partagé pour le type. Absent ou invalide (pas un entier, ou hors de 1 à 10), il vaut 1 |
-| `crans_calcules_le` | date AAAA-MM-JJ, recalcul trimestriel |
-| `note_calibree` | facultatif, `true` quand la note a été calibrée sur des jugements humains ; sinon la vue dit que le curseur coupe surtout par volume |
-| `crans_source` | `{ fr: "langue" \| "commun", de: … }` : une langue qui a moins de 200 propositions sur 12 mois, ou plus de 3 crans identiques, prend les déciles communs, et le champ le dit |
-| `crans_fenetre` | `{ du, au }`, la fenêtre du `par_mois` |
-| `termes` | `[{ terme, langue, role, ref, ref_seul }]`, avec `rappel_sur` à côté |
-| `demandes` | `[{ id, statut, effet: { rappel_avant, rappel_apres, par_mois_avant, par_mois_apres, complet }, fiches_perdues: [titres], mesure_le }]` ; `complet` vaut false tant qu’un ajout n’a pas été cherché sur le serveur |
-| `demandes_ignorees` | `[{ fichier, raison }]` : une demande dont l’`id` n’est pas un nom sûr (64 caractères au plus, `[A-Za-z0-9_-]`) ou ne correspond pas à son fichier |
+| `crans` | `{ fr: [...], de: [...] }`, 10 entrées par langue : `{ cran: 1..10, seuil, par_mois, rappel, rappel_sur, identique_au_cran_precedent }`. Le cran 1 a le seuil 0 |
+| `cran_defaut` | entier de 1 à 10 : le cran que la vue regarde tant que la rédaction n'a pas de réglage partagé pour le type. Absent ou invalide, il vaut 1 |
+| `crans_calcules_le` | date `AAAA-MM-JJ` du dernier calcul des crans |
+| `crans_source` | `{ fr: "langue" \| "commun", de: … }` : une langue qui a moins de 200 propositions sur 12 mois, ou plus de 3 crans identiques, prend les crans communs aux deux langues |
+| `crans_fenetre` | `{ du, au }`, la fenêtre sur laquelle `par_mois` est compté |
+| `note_calibree` | `true` quand la note a été calibrée sur des jugements humains. Absent, la vue dit que le curseur coupe surtout par volume |
+| `termes`, `rappel_sur` | `[{ terme, langue, role, ref, ref_seul }]`, et le nombre de fiches de référence. À défaut de `rappel_sur`, le cockpit prend celui du premier cran |
+| `demandes` | `[{ id, statut, effet: { rappel_avant, rappel_apres, par_mois_avant, par_mois_apres, complet }, fiches_perdues: [titres], mesure_le }]`. `complet` vaut `false` tant qu'un ajout n'a pas été cherché sur le serveur |
+| `demandes_ignorees` | `[{ fichier, raison }]` : une demande dont l'`id` n'est pas un nom sûr ou ne correspond pas à son fichier |
 
-- Les seuils sont les déciles de la distribution des scores du moissonneur, dans chaque langue :
-  un même cran garde ainsi un sens comparable d’un moissonneur à l’autre.
-- Il y a toujours 10 crans. Un cran identique au précédent garde son seuil et porte
-  `identique_au_cran_precedent: true` ; la vue le montre tel quel et le dit.
-- Il n’y a pas de clé `it` dans `crans` : les objets tessinois sont exportés en fr et comptent
-  dans les déciles fr.
-- Le cockpit ignore une langue dont la liste n’a pas exactement 10 crans numérotés de 1 à 10 avec
-  un `seuil` numérique.
-- `cran_defaut` permet d’ouvrir sous le réglage normal un vivier plus large, que la rédaction ne
-  voit qu’en descendant le curseur. Chez le parlement, ce vivier élargi porte
-  `pertinence.categorie: "texte-large"` et une bande de note à lui (0 à 4,99, sous la bande
-  `theme`), et `cran_defaut` vaut 2 : le cran 1 « Très large » ajoute ces propositions plus
-  incertaines, le cran 2 « Large » est le réglage normal. Aucun autre drapeau.
-- Le réglage effectif d’un type est le réglage partagé, sinon `cran_defaut`. Un aperçu du poste
-  égal au réglage effectif s’efface, et « Garder ce cran pour la rédaction » n’apparait que s’il
-  en diffère.
+Règles du cockpit :
 
-Statuts d’une demande :
-- `en-attente` ;
-- `applique` ;
-- `applique-partiel` : un ajout pas encore cherché sur le serveur ;
-- `refuse-perte` : une exclusion qui ferait perdre au moins une fiche de référence ;
-- `refuse-bruit` : un ajout qui donnerait plus de 20 « à relire » de plus par mois ;
-- `doublon` ;
-- `a-confirmer` ;
-- `retrait-en-attente`.
+- il y a toujours 10 crans par langue. Une langue dont la liste n'a pas exactement 10 crans
+  numérotés de 1 à 10, chacun avec un `seuil` numérique, est ignorée ;
+- un cran identique au précédent porte `identique_au_cran_precedent: true` ; la vue le montre
+  et le dit ;
+- `crans` n'a pas de clé `it` : les objets tessinois sont exportés en fr et comptent en fr ;
+- le réglage effectif d'un type est le réglage partagé de la rédaction, sinon `cran_defaut`.
 
-### Écrits par le cockpit, dans `_Moissons\`
+### Les crans du moissonneur `parlement`
 
+Le calcul est dans `moissonneurs/parlement/finesse.py`, refait chaque trimestre au poste de
+développement :
+
+| Cran | Seuil |
+|---|---|
+| 1 « Très large » | 0 : tout, y compris le vivier élargi |
+| 2 « Large » | le plus bas score du réglage normal. C'est le `cran_defaut` (2) |
+| 3 à 9 | des seuils choisis pour que le volume visible baisse par pas réguliers entre le cran 2 et le cran 10 (`[finesse] profil`) |
+| 10 « Strict » | le plus bas score qui laisse au plus 20 fiches de référence de la langue (`[finesse] rappel_strict`). Une langue sans assez de fiches de référence prend le seuil de `de` |
+
+La note se lit par bandes, une par `categorie` :
+
+| `categorie` | Note |
+|---|---|
+| `titre` | 80 à 100 |
+| `texte-dense` | 60 à 79 |
+| `signal-faible` | 40 à 59 |
+| `ecole` | 20 à 39 |
+| `theme` | 5 à 19 |
+| `texte-large` | 0 à 4,99 : le vivier élargi, visible au cran 1 seulement |
+
+Le moissonneur `parlement` n'écrit ni `note_calibree` ni `demandes` : ses demandes restent
+« en attente » dans la vue.
+
+### Les fichiers écrits par le cockpit
+
+**Le réglage partagé**, `_Moissons\_Reglages\<langue>.json` :
+
+```json
+{ "parlement": { "intervention": { "cran": 2, "par": "Anne", "le": "2026-10-02" } } }
 ```
-_Moissons\
-├── _Reglages\
-│   ├── fr.json                     le réglage partagé de la rédaction de la Revue
-│   └── de.json                     celui de la Zeitschrift
-└── <moissonneur>\
-    └── demandes\
-        └── <id>.json               une demande sur le lexique
+
+- Un fichier par langue : `fr.json` pour la rédaction de la Revue, `de.json` pour celle de la
+  Zeitschrift.
+- `cran` de 1 à 10 ; `par`, le nom d'affichage du poste qui l'a posé (celui que la co-édition
+  montre, « – » à défaut) ; `le`, la date `AAAA-MM-JJ`.
+- Un fichier illisible vaut « pas de réglage ».
+- Dans la vue Propositions, le curseur n'est qu'un aperçu propre au poste, jamais partagé.
+  « Garder ce cran pour la rédaction » l'écrit ici, comme les Paramètres de l'Accueil. Ce bouton
+  n'apparait que si l'aperçu diffère du réglage effectif.
+- Plusieurs moissonneurs sur un même type : chaque proposition se juge sur les crans de son
+  moissonneur, au même numéro de cran, et « Garder ce cran » écrit le réglage de chacun.
+
+**Une demande sur le lexique**, `_Moissons\<moissonneur>\demandes\<id>.json` :
+
+```json
+{ "id": "20261002-141200-3fa94c1e", "terme": "Sonderschule", "langue": "de", "sens": "ajout",
+  "par": "Anne", "le": "2026-10-02" }
 ```
 
-- `_Reglages\<langue>.json` contient `{ "<moissonneur>": { "<type>": { cran, par, le } } }`. C’est
-  le réglage partagé de la rédaction de cette langue : `cran` de 1 à 10, `par` le nom d’affichage
-  du poste qui l’a posé (celui que la co-édition montre, « – » à défaut), `le` la date AAAA-MM-JJ.
-  Le cockpit l’écrit d’un coup (nom temporaire, puis renommage). Un fichier illisible vaut « pas
-  de réglage » : le cran par défaut du moissonneur (`cran_defaut`, 1 à défaut). Dans la vue
-  Propositions, le curseur n’est qu’un aperçu propre au poste, gardé dans l’éditeur et jamais
-  partagé ; « Garder ce cran pour la rédaction » l’écrit ici, comme les Paramètres de l’Accueil.
-- `<moissonneur>\demandes\<id>.json` contient, pour une demande, `{ id, terme, langue, sens:
-  ajout|exclusion|retrait, par, le, confirme_par?, confirme_le? }`. Il y a un fichier par
-  demande, comme pour les décisions, pour que deux postes n’écrivent jamais le même fichier. Le
-  terme est validé : 60 caractères au plus, lettres, espaces, tirets et apostrophes, jamais
-  interprété comme une expression régulière.
+| Champ | Règle |
+|---|---|
+| `id` | `AAAAMMJJ-HHMMSS-<8 chiffres hexadécimaux>` : unique d'un poste à l'autre. Un nom sûr fait au plus 64 caractères `[A-Za-z0-9_-]` |
+| `terme` | normalisé (NFC, sans blancs autour), 60 caractères au plus : lettres, espaces, tirets et apostrophes. Jamais lu comme une expression régulière |
+| `sens` | `ajout`, `exclusion` ou `retrait` |
+| `par`, `le` | qui l'a demandée, et quand |
+| `confirme_par`, `confirme_le` | facultatifs : posés par « Appliquer quand même » |
 
-Le moissonneur ne lit ni ne garde `par` et `confirme_par` : la vue relit l’auteur dans le fichier
-de la demande.
+Un fichier par demande, pour que deux postes n'écrivent jamais le même fichier. Le moissonneur
+ne lit ni ne garde `par` et `confirme_par`.
 
-### Les termes et les demandes, côté cockpit
+Statuts d'une demande, dans `etat.demandes` :
 
-- **`rappel_sur`** des termes est une clé de `etat.json`, au même niveau que `termes` ; à défaut,
-  le cockpit prend le `rappel_sur` du premier cran. Un terme absent de `etat.termes` a « – » pour
-  réf. et réf. seul.
-- **« Seul à ramener »** se compte au cran que la vue regarde pour le type de la proposition :
-  l’aperçu du poste, sinon le réglage partagé de son moissonneur, sinon son `cran_defaut`. Une proposition y compte si elle
-  est visible et ne le serait plus avec `note_sans` pour score. Sans `note_sans`, seule une
-  proposition à un seul terme compte, et la vue marque le nombre d’un « ≈ ».
-- **Plusieurs moissonneurs sur un même type** : chaque proposition se juge sur les crans de son
-  moissonneur, au même numéro de cran (les crans sont les déciles de chacun) ; les comptes les
-  additionnent, et « Garder ce cran pour la rédaction » écrit le réglage de chacun.
-- **L’`id`** d’une demande vaut `AAAAMMJJ-HHMMSS-<8 chiffres hexadécimaux>` : un nom sûr, unique
-  d’un poste à l’autre. Le fichier s’écrit d’un coup (nom temporaire, puis renommage).
-- **Le terme** est gardé normalisé (NFC, sans blancs autour). La page reçoit la règle de saisie de
-  l’hôte (`regleTerme` : longueur et caractères interdits) pour signaler l’erreur pendant la
-  frappe ; l’hôte la revérifie à l’écriture.
+| Statut | Sens |
+|---|---|
+| `en-attente` | pas encore mesurée. C'est aussi le statut d'une demande absente de `etat.demandes` |
+| `applique` | appliquée |
+| `applique-partiel` | un ajout pas encore cherché sur le serveur |
+| `refuse-perte` | une exclusion qui ferait perdre au moins une fiche de référence |
+| `refuse-bruit` | un ajout qui donnerait plus de 20 « à relire » de plus par mois |
+| `doublon` | la même demande existe déjà |
+| `a-confirmer` | l'effet doit être confirmé par la personne qui a demandé |
+| `retrait-en-attente` | une demande appliquée dont le retrait attend sa mesure. Le cockpit le déduit seul |
+
+Dans la vue :
+
+- **« Seul à ramener »** compte, au cran que la vue regarde, les propositions visibles qui ne le
+  seraient plus avec `note_sans` pour score. Sans `note_sans`, seule une proposition à un terme
+  compte, et le nombre porte « ≈ ».
 - **Un doublon** (même terme sans tenir compte de la casse, même langue, même sens, encore en
-  attente) est refusé, et la vue nomme la demande qui attend déjà.
-- **Sans réponse** dans `etat.demandes`, une demande est `en-attente`. Une demande appliquée dont un
-  retrait attend sa mesure se montre `retrait-en-attente`, même si le moissonneur ne l’écrit pas.
-- **« Appliquer quand même »** n’est offert que pour `refuse-perte` ou `a-confirmer`, sous les
-  fiches perdues dépliées, et seulement à la personne qui a fait la demande (`par` égal au nom du
-  poste, jamais « – ») : le cockpit pose alors `confirme_par` et `confirme_le` dans le même
-  fichier. Tout le monde voit qui a confirmé et quand.
+  attente) est refusé ; la vue nomme la demande qui attend déjà.
+- **« Appliquer quand même »** n'est offert que pour `refuse-perte` ou `a-confirmer`, et
+  seulement à la personne qui a fait la demande (`par` égal au nom du poste, jamais « – »). Il
+  pose `confirme_par` et `confirme_le` dans le même fichier.
 - **Retirer** une demande en attente, refusée ou en doublon supprime son fichier. Retirer une
-  demande appliquée, même en partie, écrit une nouvelle demande de sens `retrait`, sur le même
-  terme et la même langue ; le moissonneur la mesure comme les autres. « Annuler », juste après,
-  remet le fichier retiré tel quel, ou retire la demande de retrait.
-- **`demandes_ignorees`**, et un fichier de demande illisible ou dont l’`id` ne correspond pas à son
-  nom, remontent comme avertissements dans Réglages > Moissonnage.
+  demande appliquée, même en partie, écrit une nouvelle demande de sens `retrait`. « Annuler »,
+  juste après, remet les choses comme avant.
+- `demandes_ignorees`, un fichier de demande illisible, ou dont l'`id` ne correspond pas au nom,
+  s'affichent comme avertissements dans Paramètres > Moissonnage.
 
-## Les commandes `estimer` et `tout`
+## Les résumés générés
 
-Un moissonneur offre ces deux commandes, que le cockpit pourra lancer de la même façon pour
-tous. Sur la sortie standard, une ligne JSON par évènement (UTF-8, `\n`, vidée à chaque
-ligne), et rien d’autre ; les messages pour une personne et les traces vont sur la sortie
-d’erreur. Chaque objet porte `type`.
+Le bouton « Raccourcir les résumés » (Paramètres de l'Accueil, Moissonnage) fait écrire par
+Mistral le descriptif des propositions en attente, dans la langue active :
 
-- **`estimer`** ne fait aucune requête et n’écrit rien. Il rend un seul objet
-  `type: "estimation"` : `moissonneur`, `contrat`, `pret` (faux si une condition bloque le
-  lancement), `etapes` avec leurs `requetes_prevues`, `requetes_prevues` au total, `budget`,
-  `depasse_le_budget`, `delai_s`, `duree_estimee_s`, `chemins` (`propositions`, `decisions`,
-  et ce qui est propre au moissonneur), et `avertissements`, des phrases pour la personne qui
-  confirme le lancement.
-- **`tout`** moissonne, dépose le lot, écrit `etat.json` et purge. Il rend des objets
-  `type: "progression"` (`etape`, `statut` : `ok`, `echec` ou `budget`), puis, en dernière
-  ligne, un objet `type: "resume"` qui reprend les champs de `etat.json`.
+| Type | Mode | Source | Longueur visée |
+|---|---|---|---|
+| `recherche` | `raccourcir` | un `descriptif` de plus de 1 000 caractères | 700 à 1 000 caractères (cible 850), au plus 150 mots en fr, 135 en de |
+| `intervention` | `creer` | `texte_depose` | 400 à 700 caractères (cible 550), au plus 80 mots en fr, 70 en de |
 
-Codes de sortie :
+- Les prompts, le modèle et ces longueurs sont dans
+  `vscodium-extension/szh-cockpit/prompts/resume-descriptif.json` (version `v6`). Changer un
+  texte, c'est monter la version.
+- Seuls les textes publics d'une proposition partent chez Mistral, jamais un manuscrit ni un
+  fichier de revue. La source est coupée à 20 000 caractères.
+- Un jet trop long (caractères ou mots) est relancé deux fois au plus ; s'il l'est encore, le
+  doute `longueur-hors-plage` le dit.
+- Le résumé doit être relu. La vue l'affiche par défaut, marqué « Résumé généré (Mistral), à
+  relire », à côté de l'original. L'acceptation écrit dans la fiche le texte affiché.
+
+Un fichier par proposition et par langue : `_Moissons\_Resumes\<langue>\<empreinte>.json`
+(l'empreinte des décisions). Une régénération l'écrase. Exemple :
+`test/js/fixtures/resume-exemple.json`.
+
+| Champ | Règle |
+|---|---|
+| `format` | `pronto-resume/1`. Une autre valeur fait ignorer le fichier |
+| `cle`, `langue` | la proposition et la langue du résumé |
+| `texte` | le résumé, un seul paragraphe de texte brut |
+| `modele`, `prompt` | le modèle Mistral et la version du prompt |
+| `date`, `poste` | ISO 8601 en UTC, et le nom du poste qui l'a demandé |
+| `source_empreinte`, `source_car` | le SHA-256 (hexadécimal) et la longueur du texte envoyé |
+| `mode` | `raccourcir` ou `creer` |
+| `relance`, `jetons` | si un premier jet trop long a été relancé, et les jetons consommés |
+| `doutes` | `[{ code, detail }]`, codes ci-dessous |
 
 | Code | Sens |
 |---|---|
+| `nombre-hors-source` | un nombre de la sortie qui ne se trouve pas, comme nombre entier, dans la source ou la fiche (« 20 » ne se lit pas dans « 2020 ») |
+| `longueur-hors-plage` | le résumé reste trop long après deux relances |
+| `source-tronquee` | la source a été coupée, par le cockpit ou déjà par le moissonneur (le texte déposé finit alors par « […] ») |
+
+Un résumé est périmé quand `source_empreinte` ne correspond plus au texte de la proposition, ou
+quand il dépasse la plage actuelle. La vue ne l'affiche plus, et la passe suivante le régénère.
+Un résumé valide est sauté.
+
+## Les commandes `estimer` et `tout`
+
+Chaque moissonneur offre ces deux commandes, que `moissonneurs/moisson.py` lance de la même façon
+pour tous. Sur la sortie standard : une ligne JSON par évènement (UTF-8, `\n`, vidée à chaque
+ligne), et rien d'autre. Chaque objet porte `type`. Les messages pour une personne et les traces
+vont sur la sortie d'erreur.
+
+- **`estimer`** ne fait aucune requête et n'écrit rien. Il rend un seul objet
+  `type: "estimation"` : `moissonneur`, `contrat`, `pret` (faux si une condition bloque le
+  lancement), `etapes` avec leurs `requetes_prevues`, `requetes_prevues` au total, `budget`,
+  `depasse_le_budget`, `delai_s`, `duree_estimee_s`, `chemins`, et `avertissements` (des phrases
+  pour la personne qui confirme le lancement).
+- **`tout`** moissonne, dépose le lot, écrit `etat.json` et purge. Il rend des objets
+  `type: "progression"` (`etape`, `statut` : `ok`, `echec`, `budget`…), puis, en dernière ligne,
+  un objet `type: "resume"` qui reprend les champs de `etat.json`.
+
+| Code de sortie | Sens |
+|---|---|
 | 0 | tout est bon |
 | 1 | terminé, avec des échecs signalés dans le résumé |
-| 2 | configuration invalide : rien n’est parti |
-| 3 | interrompu : budget épuisé, ou accès refusé par la source (403) |
+| 2 | configuration invalide : rien n'est parti |
+| 3 | interrompu : budget épuisé, demande d'arrêt, ou accès refusé par la source (403) |
 
-Si le dossier de `etat.json` est lui-même inaccessible, l’échec part sur la sortie d’erreur
-avec le code 2 : le cockpit n’a alors que le code.
+Si le dossier de `etat.json` est lui-même inaccessible, l'échec part sur la sortie d'erreur avec
+le code 2.
+
+Les options, les évènements que `moisson.py` en tire et ses propres codes sont dans
+[`moissonneurs/LISEZMOI.md`](../moissonneurs/LISEZMOI.md).
 
 ## La purge
 
-Rien ne s’accumule. Chaque moissonneur purge à la fin de `tout` :
-- les lots de plus de 6 mois, décidés ou non ;
-- les décisions de plus de 6 mois, une fois reportées dans sa propre base ;
+Chaque moissonneur purge à la fin de `tout` (`commun.py`, `MOIS = 6`) :
+
+- les lots de plus de 6 mois, décidés ou non ;
+- les décisions de plus de 6 mois, une fois reportées dans sa propre base ;
 - `etat.json` dit ce qui a été purgé (`purge`).
 
-Garde-fous :
-- l’âge se lit sur la date du nom du lot et sur le champ `Date` de la décision, jamais sur la
-  date de modification du fichier, que la synchronisation change ;
-- la purge ne touche que le dossier de ce moissonneur, et seulement les décisions dont la
-  `Cle` commence par `<moissonneur>:` ; le chemin résolu est contrôlé avant chaque
-  suppression ;
-- elle ne touche jamais à `Fiches\` ;
+Garde-fous :
+
+- l'âge se lit sur la date du nom du lot et sur le champ `Date` de la décision, jamais sur la
+  date de modification du fichier, que la synchronisation OneDrive change ;
+- la purge ne touche que le dossier de ce moissonneur, et seulement les décisions dont la `Cle`
+  commence par `<moissonneur>:`. Le chemin résolu est contrôlé avant chaque suppression ;
+- elle ne touche pas à `Fiches\` ;
 - ses tests se jouent sur une arborescence jetable.

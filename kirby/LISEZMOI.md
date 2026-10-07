@@ -1,70 +1,79 @@
 # kirby/
 
-Blueprints du site Kirby de la Documentation (« Actualité et ressources » /
-« News & Ressourcen »), générés depuis le contrat unique
-`pipeline/kirby/champs-documentation.json`. Voir `docs/FORMAT-DOCUMENTATION-KIRBY.md` pour le
-format de l'arborescence que Pronto écrit, et `docs/TODO/kirby-cms.md` pour ce que le site Kirby
-doit encore reprendre — les deux font foi, pas ce fichier.
+Les blueprints du site Kirby de la Documentation (« Actualité et ressources » / « News &
+Ressourcen »). Un blueprint est le fichier YAML qui décrit, dans Kirby, les champs d'une page et
+le formulaire du Panel.
+
+Ces fichiers sont générés depuis le contrat des champs, `pipeline/kirby/champs-documentation.json`.
+Le format des fiches que Pronto écrit, et ce que le site doit en faire, sont dans
+[`docs/FORMAT-DOCUMENTATION-KIRBY.md`](../docs/FORMAT-DOCUMENTATION-KIRBY.md).
 
 ## Contenu
 
-- `generer-blueprints.js` — le générateur (Node, zéro dépendance).
-- `site/blueprints/pages/<type>.yml` — un blueprint par clé de `types` du JSON (horizon,
-  recherche, intervention, livre, film, reprise, agenda) : une FICHE de la bibliothèque
-  partagée `_NewsUndActu\Fiches\` (docs/FORMAT-DOCUMENTATION-KIRBY.md). Chaque blueprint porte
-  en plus deux champs système `ausgabe`/`ordre` (`hidden`, traduisibles — voir plus bas).
-- `site/blueprints/pages/<dossier en minuscules>.yml` (`rundschau`, `forschung`, `vorstoesse`,
-  `buecher`, `filme`, `revueblick`, `weiterbildung`) — depuis 8e89548, un blueprint par
-  sous-dossier `types[].dossier` de `Fiches\` : la page PARENTE des fiches d'UN type. Titre =
-  `types[].libelle`, une seule section `pages` (`template: <clé de type>`, `sortable: false`)
-  listant les fiches de ce type. Nom en minuscules du dossier plutôt que la clé de type
-  elle-même (ex. `buecher`, pas `livre`) : la page dossier et les fiches qu'elle contient sont
-  deux pages Kirby différentes (parent/enfant), donc deux gabarits différents — voir le
-  commentaire de `blueprintDossierType()`.
-- `site/blueprints/pages/actualites.yml` — la page PARENTE de la bibliothèque entière : plus de
-  champ `fields` du tout (les rubriques de texte libre restent dans le numéro, elles ne
-  partent jamais sur Kirby), seulement une section `pages` unique dont `templates:` (pluriel)
-  liste les sept pages dossier ci-dessus, dans l'ordre `ordreTypes`. Avant la bibliothèque
-  partagée, cette page était la Documentation d'UN numéro et portait aussi les rubriques ;
-  avant 8e89548, sa section listait les fiches de chaque type directement (une section par
-  type). Ce n'est plus le cas (voir le commentaire de `blueprintActualites()`).
-- `site/blueprints/files/<cle>.yml` — un gabarit de fichier par CLÉ de champ `fichier` du JSON
-  (aujourd'hui : `couverture`, partagé par `livre` et `film`). Porte le `accept: extension:
-  […]` ; le champ `files` correspondant le référence via `uploads: <cle>`. Pas de champ
-  `alt` : l'image est décorative (couverture, affiche — docs/TODO/kirby-cms.md §10), le site doit
-  rendre `alt=""` de lui-même.
+| Fichier | Rôle |
+|---|---|
+| `generer-blueprints.js` | le générateur (Node, sans dépendance) |
+| `site/blueprints/pages/<type>.yml` | une fiche, un fichier par type du contrat : `horizon`, `recherche`, `intervention`, `livre`, `film`, `reprise`, `agenda` |
+| `site/blueprints/pages/<dossier>.yml` | la page parente des fiches d'un type, un fichier par `types[].dossier` : `rundschau`, `forschung`, `vorstoesse`, `buecher`, `filme`, `revueblick`, `weiterbildung` |
+| `site/blueprints/pages/actualites.yml` | la page parente de toute la bibliothèque |
+| `site/blueprints/files/couverture.yml` | le gabarit du fichier image d'un livre ou d'un film |
 
-### Traductibilité (`translate`)
+**Une fiche** (`livre.yml`…) porte les champs de son type, plus les trois champs système
+`ausgabe`, `ordre` et `origine`, cachés (`hidden`).
 
-docs/FORMAT-DOCUMENTATION-KIRBY.md distingue les champs **traduisibles** (`"traduire": true`
-dans le JSON — propres à chaque fichier de langue de la fiche) des champs **communs**
-(recopiés par Pronto dans les deux fichiers de langue à l'enregistrement). Le générateur pose
-`translate: false` (vérifié sur getkirby.com : propriété de base de tout champ, défaut `true`,
-`false` désactive l'édition hors de la langue par défaut du site) sur tout champ SANS
-`traduire: true`, pour que le Panel ne puisse pas le faire diverger entre les deux fichiers.
-Les champs `traduire: true` n'ont pas de `translate` (le défaut Kirby, `true`, est déjà le
-bon). Cas particulier : le champ `structure` `suivi` (intervention) n'a pas de `translate` à
-son propre niveau — la règle s'applique à CHAQUE sous-champ (`date`/`genre`/`lien` communs,
-`libelle` traduisible), incertitude commentée dans `generer-blueprints.js` (la doc du champ
-structure ne documente `translate` qu'au niveau du champ entier).
+**Une page dossier** (`buecher.yml`…) a pour titre `types[].libelle` et une seule section
+`pages` qui liste les fiches de son type (`template: <type>`, `sortable: false`). Son nom est
+celui du dossier, pas celui du type : la page dossier et ses fiches sont deux pages Kirby
+différentes, avec deux gabarits différents.
 
-Les champs système `ausgabe`/`ordre` sont l'exception inverse : jamais recopiés d'une langue à
-l'autre (une fiche appartient à un numéro par langue), donc `translate: true` explicite.
+**`actualites.yml`** n'a pas de champ. Sa section `pages` liste les sept pages dossier
+(`templates:`), dans l'ordre de `ordreTypes`. Les rubriques des numéros ne vont pas sur le site :
+il n'y a pas de blueprint pour elles.
 
-**Ces `.yml` sont générés : ne jamais les éditer à la main.** Toute retouche se fait dans
-`pipeline/kirby/champs-documentation.json`, puis on régénère. Une modification manuelle serait
-écrasée à la prochaine régénération, et diverge en attendant du formulaire de Pronto et des
-filtres du PDF qui lisent le même JSON.
+**`couverture.yml`** porte la liste des extensions acceptées (`accept: extension:`). Le champ
+`files` de la fiche y renvoie par `uploads: couverture`, car le champ `files` de Kirby n'a pas
+d'option `accept`. Il n'a pas de champ `alt` : l'image est décorative, et le site rend `alt=""`.
+
+Le libellé du champ natif `title` est redéclaré dans `fields.title.label`, sans `type`.
+
+## Champs traduisibles ou communs
+
+Dans le contrat, un champ `"traduire": true` est propre à chaque fichier de langue ; les autres
+sont communs, et Pronto les recopie dans les deux fichiers à l'enregistrement. Le générateur
+traduit cette règle pour le Panel :
+
+| Champ | `translate` |
+|---|---|
+| commun (sans `traduire: true`) | `false` : le Panel ne le modifie que dans la langue par défaut, et il ne peut pas diverger entre les deux fichiers |
+| traduisible | absent : le défaut de Kirby, `true` |
+| `suivi` (structure) | rien au niveau du champ ; la règle s'applique à chaque sous-champ (`date`, `genre`, `lien` communs, `libelle` traduisible) |
+| `ausgabe`, `ordre`, `origine` | `true` explicite : une fiche appartient à un numéro différent dans chaque langue |
+
+Autres correspondances : une saisie `derive` (`curia`) devient un champ `hidden`, une
+`liste_multiple` un `multiselect`, une liste un `select` dont les options portent les libellés
+fr et de.
 
 ## Régénérer
 
+Les `.yml` ne s'éditent pas à la main : une retouche serait écrasée à la régénération suivante,
+et divergerait d'ici là du formulaire du cockpit et du PDF, qui lisent le même contrat.
+
+1. Modifier `pipeline/kirby/champs-documentation.json`.
+2. Régénérer :
+
+   ```sh
+   node kirby/generer-blueprints.js
+   ```
+
+3. Committer les `.yml` qui ont changé.
+
+Pour contrôler sans rien écrire :
+
 ```sh
-node kirby/generer-blueprints.js            # écrit les fichiers
-node kirby/generer-blueprints.js --verifier # ne rien écrire ; code 1 si un fichier committé
-                                             # diffère (le nomme) — utilisé par le test
+node kirby/generer-blueprints.js --verifier
 ```
 
-Après une modification du JSON, régénérer puis committer les `.yml` qui changent.
+Il sort en code 1, en nommant le fichier, si un blueprint committé diffère de la génération.
 
 ## Test
 
@@ -72,29 +81,13 @@ Après une modification du JSON, régénérer puis committer les `.yml` qui chan
 node --test test/js/blueprints-kirby.test.js
 ```
 
-Contrôle que les blueprints committés égalent la génération, que chaque liste du JSON porte
-ses deux langues, qu'aucun champ généré n'a un nom hors `[a-z0-9_]` ou ne s'appelle `image`
-(méthode réservée de Kirby, voir `docs/TODO/kirby-cms.md` §10), que `translate` suit la règle
-ci-dessus champ par champ (y compris dans `suivi`), qu'`ausgabe`/`ordre` sont bien présents en
-`hidden` traduisibles sur chaque fiche, qu'il n'y a plus de blueprint de rubriques, que chaque
-`types[].dossier` est bien en ASCII `[A-Za-z]+`, que chaque type a sa page parente (titre =
-`types[].libelle`, section `pages` sur le gabarit de sa fiche, sans collision de nom entre les
-deux), et qu'`actualites.yml` liste bien les sept pages dossier (`templates:`, pas de champ
-`fields`).
+Le test vérifie que :
 
-## Incertitudes Kirby restant à vérifier sur une vraie instance
-
-Voir les commentaires de `generer-blueprints.js` pour le détail et les pages
-getkirby.com consultées le 23.09.2026 ; résumé :
-
-- Le libellé du champ `title` natif (pas le nom du gabarit, réglé lui via le `title:` à la
-  racine du blueprint) est redéclaré dans `fields.title.label` sans `type:`. C'est la
-  pratique Kirby usuelle pour ce champ précis, mais pas trouvée noir sur blanc dans la doc
-  récupérée — à confirmer.
-- Le champ `files` n'a pas d'option `accept` documentée (vérifié via la liste complète de ses
-  options) : la restriction par extension passe par un gabarit de fichier séparé, référencé
-  via `uploads: <cle>` — c'est ce que fait ce générateur (`site/blueprints/files/<cle>.yml`).
-  Syntaxe de `accept.extension` sur un gabarit de fichier également vérifiée sur
-  getkirby.com. Reste à confirmer sur une vraie instance (`docs/TODO/kirby-cms.md` §6) : la
-  version de Kirby retenue applique bien cette restriction au moment de l'upload dans le
-  Panel.
+- les blueprints committés égalent la génération ;
+- chaque liste du contrat a ses deux langues ;
+- aucun champ n'a un nom hors `[a-z0-9_]`, ni ne s'appelle `image` (méthode réservée de Kirby) ;
+- `translate` suit la règle ci-dessus, champ par champ, y compris dans `suivi` ;
+- chaque fiche porte `ausgabe` et `ordre`, cachés et traduisibles ;
+- chaque `types[].dossier` est en ASCII et a sa page dossier, dont le titre et la section sont
+  ceux attendus ;
+- `actualites.yml` liste les sept pages dossier et n'a pas de champ.
