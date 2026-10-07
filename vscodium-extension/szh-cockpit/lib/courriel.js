@@ -1,6 +1,5 @@
-// Les courriels du cockpit : gabarits Twig (mail-templates/*.twig, lib/gabarits.js) plutôt
-// que des chaînes {0}/{1} noyées dans lib/i18n.js. Pas de vscode ici — comme le reste de
-// lib/, pour rester éprouvable en ligne de commande.
+// Les courriels du cockpit, rendus par les gabarits Twig de mail-templates/ (lib/gabarits.js).
+// Sans vscode, pour rester testable en ligne de commande.
 'use strict';
 
 const fs = require('fs');
@@ -12,8 +11,7 @@ const { COURRIEL_SUPPORT } = require('./codes-erreur');
 
 const DOSSIER_GABARITS = path.join(__dirname, '..', 'mail-templates');
 
-// Un gabarit compilé par fichier lu, jamais recompilé : le texte ne change pas en cours
-// de route, et refaire l'analyse à chaque envoi serait du gâchis.
+// Un gabarit compilé par fichier, gardé en mémoire : le texte ne change pas en cours de route.
 const COMPILES = new Map();
 
 function chargerGabarit(nom, langue) {
@@ -34,15 +32,12 @@ function chargerGabarit(nom, langue) {
   return compile;
 }
 
-// Convention de rendu, à la charge de ce module et non du moteur (lib/gabarits.js) : le
-// sujet est débarrassé de ses blancs de bord, le corps perd exactement un retour à la
-// ligne après l'ouverture du bloc `corps` et un avant sa fermeture — le gabarit les porte
-// pour rester lisible en édition, ce ne sont pas des blancs du message.
+// Convention de rendu, propre à ce module et non au moteur (lib/gabarits.js) : le sujet perd
+// ses blancs de bord, le corps perd exactement un retour à la ligne après l'ouverture du
+// bloc `corps` et un avant sa fermeture, que le gabarit porte pour rester lisible.
 //
-// Exportée pour que qui compare un AUTRE moteur (le Get-SzhCourriel PowerShell, qui rejoue
-// lib/gabarits.js via VSCodium-en-Node — voir test/js/courriel-support.test.js) applique la
-// même règle sans la recopier une troisième fois : PowerShell, lui, ne peut pas la require,
-// mais le test JS le peut.
+// Exportée pour que test/js/courriel-support.test.js applique la même règle au rendu de
+// Get-SzhCourriel (PowerShell, qui passe par lib/gabarits.js via VSCodium-en-Node).
 function normaliserRenduCourriel(blocs) {
   const sujet = String((blocs && blocs.sujet) || '').trim();
   const corps = String((blocs && blocs.corps) || '').replace(/^\n/, '').replace(/\n$/, '');
@@ -54,11 +49,10 @@ function rendreCourriel(nom, langue, variables) {
   return normaliserRenduCourriel(compile.rendre(variables || {}));
 }
 
-// ---- Les quatre fabriques, déplacées depuis extension.js ------------------------------
+// ---- Les quatre brouillons ---------------------------------------------------------------
 
-// Les destinataires : toutes les adresses de la fiche, dans l'ordre des auteur·e·s. La
-// version finale part à tout le monde, et une fiche sans adresse laisse le champ vide
-// plutôt que d'inventer une adresse.
+// Les destinataires : toutes les adresses de la fiche, dans l'ordre des auteurs. Sans
+// adresse dans la fiche, le champ reste vide.
 function adressesAuteurs(meta) {
   const vues = [];
   for (const a of ((meta && meta.author) || [])) {
@@ -69,11 +63,10 @@ function adressesAuteurs(meta) {
   return vues;
 }
 
-// Le brouillon : destinataires, sujet et corps. Séparé de son ouverture pour être
-// éprouvable sans client de messagerie. La langue est celle de l'article — sa fiche le dit,
-// à défaut le numéro — et jamais celle de l'interface : on écrit à un auteur, pas à soi.
-// `nomsAuteurs` est optionnel : le gabarit le porte pour un usage futur, aucun texte
-// actuel ne s'en sert.
+// Le brouillon : destinataires, sujet et corps, séparé de son ouverture pour être testable
+// sans client de messagerie. La langue est celle de l'article (sa fiche, à défaut le
+// numéro), pas celle de l'interface. `nomsAuteurs` est facultatif : le gabarit le reçoit,
+// aucun texte ne s'en sert encore.
 function brouillonAuteur(langue, adresses, titreArticle, titreDuNumero, nomsAuteurs) {
   const rendu = rendreCourriel('envoi-auteur', langue, {
     titre: titreArticle, numero: titreDuNumero, auteurs: nomsAuteurs || [], langue
@@ -81,8 +74,8 @@ function brouillonAuteur(langue, adresses, titreArticle, titreDuNumero, nomsAute
   return { destinataire: adresses.join(','), sujet: rendu.sujet, corps: rendu.corps };
 }
 
-// Langue de l'e-mail : celle de l'équipe qui va traduire, jamais celle de l'interface. Un
-// numéro de la Zeitschrift part vers les traducteurs francophones, une Revue vers les
+// Langue du courriel : celle de l'équipe qui traduit, pas celle de l'interface. Un numéro
+// de la Zeitschrift part vers les traducteurs francophones, une Revue vers les
 // germanophones ; les gabarits de mail-templates/ nomment la revue et le sens en conséquence.
 const LANGUE_MAIL_TRADUCTION = { zeitschrift: 'fr', revue: 'de' };
 

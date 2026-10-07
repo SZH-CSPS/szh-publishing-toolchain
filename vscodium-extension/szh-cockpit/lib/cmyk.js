@@ -1,11 +1,10 @@
 // Conversion des JPEG CMJN en RVB : détection ici, conversion dans la WSL.
 //
 // Un JPEG CMJN sort d'une chaîne d'imprimerie. Ni les navigateurs ni WeasyPrint ne
-// l'affichent correctement — couleurs inversées au mieux, image absente au pire — et le
-// défaut ne se voit qu'au PDF, une fois l'article composé. La détection est faite ici, sans
-// dépendance, en lisant l'en-tête : un JPEG dont le marqueur SOF déclare quatre composantes
-// est en CMJN (ou YCCK). La conversion, elle, demande Pillow : elle passe par
-// `pipeline/cmyk-rgb.py` dans le venv du rootfs, comme le détourage des portraits.
+// l'affichent correctement (couleurs inversées, ou image absente), et le défaut ne se voit
+// qu'au PDF. La détection lit l'en-tête, sans dépendance : un marqueur SOF à quatre
+// composantes signale du CMJN (ou YCCK). La conversion demande Pillow : elle passe par
+// `pipeline/cmyk-rgb.py` dans le venv de la WSL, comme le détourage des portraits.
 //
 // Le fichier est réécrit sous son propre nom : les références du .md restent valides.
 'use strict';
@@ -16,12 +15,12 @@ const { cheminVersWsl, INTERPRETE_DEFAUT } = require('./portraits');
 const { sofJpeg } = require('./medias');
 
 const SCRIPT_DEFAUT = moteur.toolkitMoteur('pipeline', 'cmyk-rgb.py');
-// Pillow est déjà chargé par le venv : sans le réveil de la VM, quelques secondes suffisent.
+// Pillow est déjà installé dans le venv ; hors réveil de la VM, quelques secondes suffisent.
 const TIMEOUT_DEFAUT = 60000;
 
 // Nombre de composantes déclaré par le marqueur SOF d'un JPEG, ou 0 si indéterminable.
-// Délègue à lib/medias.js#sofJpeg, qui parcourt le fichier segment par segment (jamais
-// sur une fenêtre de tête — voir son en-tête pour le profil ICC volumineux que ça attrape).
+// lib/medias.js#sofJpeg parcourt le fichier segment par segment, ce qui trouve le SOF même
+// derrière un gros profil ICC.
 function composantesJpeg(chemin) {
   const sof = sofJpeg(chemin);
   return sof ? sof.composantes : 0;
@@ -33,9 +32,9 @@ function estJpegCmyk(chemin) {
 }
 
 // -> Promise<[{chemin, ok, converti, mode, profil, erreur}]>, une entrée par fichier
-// converti. Les chemins qui ne sont pas des JPEG CMJN ne sont même pas envoyés : le tableau
-// rendu est vide et aucun processus n'est lancé. Rejette si wsl.exe est introuvable
-// (erreur marquée .wsl), si le délai est dépassé, ou si stdout ne porte aucune ligne JSON.
+// converti. Seuls les JPEG CMJN sont envoyés ; s'il n'y en a aucun, le tableau est vide et
+// aucun processus n'est lancé. Rejette si wsl.exe est introuvable (erreur marquée .wsl), si
+// le délai est dépassé, ou si stdout ne porte aucune ligne JSON.
 function convertirCmykEnRgb(options) {
   const o = options || {};
   const candidats = (Array.isArray(o.chemins) ? o.chemins : [])

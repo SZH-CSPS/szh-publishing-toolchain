@@ -1,11 +1,10 @@
-// Détection des copies en conflit créées par OneDrive/SharePoint quand deux postes
-// modifient le même fichier : le synchroniseur ne fusionne pas, il place la version
-// perdante à côté de l'original avec un marqueur (« copie en conflit », etc.).
+// Détecte les copies en conflit que OneDrive/SharePoint crée quand deux postes modifient le
+// même fichier : il ne fusionne pas, il place la version perdante à côté de l'original avec
+// un marqueur (« copie en conflit », etc.).
 //
-// Les doublons numérotés (fichier (1).yaml) sont aussi détectés — on demande donc à
-// l'appelant de vérifier que l'original existe dans le même dossier, pour distinguer une
-// vraie copie en conflit d'un nom intentionnel comme « essai (1).yaml ». Pur (fs et path
-// seulement) : estCopieConflit() ne juge qu'un nom, chercherCopies() parcourt et ne lève jamais.
+// Les doublons numérotés (« fichier (1).yaml ») sont aussi détectés, à condition que
+// l'original existe dans le même dossier : « essai (1).yaml » peut être un nom voulu.
+// estCopieConflit() juge un nom ; chercherCopies() parcourt un dossier et ne lève pas.
 'use strict';
 
 const fs = require('fs');
@@ -34,26 +33,23 @@ function nettoyerNom(nom) {
 // `nom` est un nom de fichier seul, pas un chemin.
 // `existe` optionnelle : fonction (nomVoisin) => bool pour vérifier les doublons.
 function estCopieConflit(nom, existe) {
-  // Un nom vide ne peut pas être une copie.
   if (!nom || typeof nom !== 'string') { return null; }
 
-  // Temporaire d'écriture atomique du cockpit : jamais une copie en conflit.
+  // Temporaire d'écriture atomique du cockpit : pas une copie en conflit.
   if (nom.startsWith('~$')) { return null; }
 
-  // Extrait l'extension et le nom sans extension.
   const dernierPoint = nom.lastIndexOf('.');
   if (dernierPoint <= 0) { return null; }
   const ext = nom.slice(dernierPoint);
   const nomSansExt = nom.slice(0, dernierPoint);
 
-  // Extension doit être surveillée (case-insensitive).
+  // L'extension doit être surveillée (casse ignorée).
   if (!EXTENSIONS.some((e) => e.toLowerCase() === ext.toLowerCase())) { return null; }
 
-  // Cherche les marqueurs textuels (case-insensitive).
+  // Cherche les marqueurs textuels (casse ignorée).
   //
-  // ⚠ La casse du nom reconstitué est celle du fichier examiné, jamais minusculisée : ce
-  // nom sert à ouvrir le fichier d'origine dans le comparateur, et une revue posée sur un
-  // système sensible à la casse — la compilation passe par WSL — ne le retrouverait pas.
+  // Le nom reconstitué garde la casse du fichier examiné : il sert à ouvrir le fichier
+  // d'origine, et la compilation passe par la WSL, sensible à la casse.
   const marqueursLc = MARQUEURS.map((m) => m.toLowerCase());
   for (const marqueur of marqueursLc) {
     const idx = nomSansExt.toLowerCase().indexOf(marqueur);
@@ -84,28 +80,26 @@ function estCopieConflit(nom, existe) {
   return null;
 }
 
-// Le parcours, borné à `profondeurMax` niveaux SOUS la racine. Rend un tableau de copies en
+// Parcourt la racine sur `profondeurMax` niveaux au plus. Rend un tableau de copies en
 // conflit :
 // - chemin : chemin absolu du fichier suspect
 // - dossier : chemin absolu de son dossier parent
 // - nom : nom du fichier
 // - original : nom du fichier d'origine reconstitué (peut ne pas exister)
-// - cheminOriginal : chemin absolu du fichier d'origine (pour vérifier son existence)
-// - marqueur : le marqueur ou 'doublon' qui l'a identifié
+// - cheminOriginal : chemin absolu du fichier d'origine
+// - marqueur : le marqueur, ou 'doublon'
 //
-// La profondeur est un paramètre depuis qu'il y a DEUX arborescences à surveiller, et
-// qu'elles n'ont rien de comparable : le dossier d'un numéro est profond et large (d'où le
-// 6 de chercherCopies, un garde-fou), le dossier partagé de l'outil est plat et se balaie
-// en un readdir (chercherCopiesPlat).
+// Deux arborescences s'y balaient : le dossier d'un numéro, profond et large
+// (chercherCopies, 6 niveaux au plus), et le dossier partagé de l'outil, plat
+// (chercherCopiesPlat).
 function balayer(racine, profondeurMax) {
   const resultats = [];
   const dossierAIgnorer = new Set([
     'out', '.szh-avant-reimport', '.szh-edition', '.vscode', '.git', 'node_modules'
   ]);
 
-  // withFileTypes : le type vient avec l'entrée, sans un stat par fichier. Le dossier d'un
-  // numéro tient des centaines de fichiers sur OneDrive, et ce parcours est refait à chaque
-  // balayage ; un stat par fichier sur des fichiers « à la demande » se paierait à l'écran.
+  // withFileTypes donne le type avec l'entrée, sans un stat par fichier : sur OneDrive, un
+  // stat par fichier « à la demande » ralentirait chaque balayage.
   function parcourir(dossierCourant, profondeur) {
     if (profondeur > profondeurMax) { return; }    // garde-fou : arborescence inattendue
     let entrees;
@@ -135,10 +129,9 @@ function balayer(racine, profondeurMax) {
   }
 
   try { parcourir(racine, 0); }
-  catch (e) { /* même une exception à la racine reste silencieuse : jamais bloquant */ }
+  catch (e) { /* une exception à la racine reste silencieuse */ }
 
-  // Trie par chemin pour une stabilité d'ordre d'un rafraîchissement à l'autre.
-  // Comparaison lexicographique case-sensitive pour prévisibilité.
+  // Tri par chemin, sensible à la casse, pour un ordre stable d'un rafraîchissement à l'autre.
   resultats.sort((a, b) => a.chemin < b.chemin ? -1 : a.chemin > b.chemin ? 1 : 0);
 
   return resultats;
@@ -150,16 +143,11 @@ function chercherCopies(racine) {
   return balayer(racine, 6);
 }
 
-// Le dossier PARTAGÉ de l'outil (`_Systeme` : rapports d'erreur, journaux, suggestions de
-// traduction, inventaire des postes). Il est plat — un niveau de sous-dossiers, aucun
-// au-delà — et c'est pour ça qu'il a sa propre porte d'entrée plutôt qu'un appel à
-// chercherCopies : relancer un balayage profond sur lui à chaque rafraîchissement du cockpit
-// coûterait plus cher que le service rendu, sur un dossier synchronisé de surcroît.
-//
-// Pourquoi le surveiller du tout : une copie en conflit déposée là par le synchroniseur
-// n'appartient à aucun numéro, donc personne ne la voyait — ni l'avertissement du cockpit
-// (borné au numéro ouvert), ni un humain, puisque ce dossier ne s'ouvre jamais à la main.
-// `niveaux` vaut 1 par défaut : le dossier partagé lui-même, plus ses sous-dossiers directs.
+// Le dossier partagé de l'outil (`_Systeme` : rapports d'erreur, journaux, suggestions de
+// traduction, inventaire des postes). Il est plat (un niveau de sous-dossiers) : un balayage
+// court suffit. Une copie en conflit déposée là n'appartient à aucun numéro, et personne
+// n'ouvre ce dossier à la main : sans ce balayage, elle passerait inaperçue.
+// `niveaux` vaut 1 par défaut : le dossier lui-même et ses sous-dossiers directs.
 function chercherCopiesPlat(racine, niveaux) {
   if (!racine || typeof racine !== 'string') { return []; }
   const profondeur = (typeof niveaux === 'number' && niveaux >= 0) ? Math.floor(niveaux) : 1;
@@ -167,11 +155,10 @@ function chercherCopiesPlat(racine, niveaux) {
 }
 
 // La copie en conflit d'un fichier donné, ou null. Un seul readdir, sur le dossier du
-// fichier : l'éditeur appelle ceci pour chaque onglet ouvert (fournisseur de diff rapide),
-// il n'est pas question de parcourir le numéro à chaque fois.
+// fichier : l'éditeur appelle cette fonction pour chaque onglet ouvert.
 //
-// La comparaison des noms ignore la casse : Windows ne la distingue pas, et le
-// synchroniseur ne conserve pas toujours celle du fichier d'origine.
+// La comparaison des noms ignore la casse : Windows ne la distingue pas, et OneDrive ne
+// conserve pas toujours celle du fichier d'origine.
 function copieConflitPour(chemin) {
   if (!chemin || typeof chemin !== 'string') { return null; }
   const dossier = path.dirname(chemin);
@@ -192,8 +179,8 @@ function copieConflitPour(chemin) {
 }
 
 // Deux versions qui ne diffèrent que par le BOM, les fins de ligne ou les sauts de ligne
-// finaux disent la même chose : l'éditeur ne marque pas ces écarts, et l'enregistrement
-// peut en remettre un de lui-même (files.insertFinalNewline).
+// finaux sont égales : l'éditeur ne montre pas ces écarts, et l'enregistrement peut en
+// ajouter un (files.insertFinalNewline).
 function memeContenu(a, b) {
   const norme = (t) => String(t === undefined || t === null ? '' : t)
     .replace(/^﻿/, '').replace(/\r\n?/g, '\n').replace(/\n+$/, '');
@@ -208,21 +195,19 @@ function copieRedondante(original, copie) {
 
 // ---- Résoudre une copie en conflit, bloc par bloc --------------------------------
 //
-// C'est l'éditeur qui calcule les blocs de divergence : il les passe aux commandes du menu
-// « scm/change/title » sous la forme (uri, blocs, index). Ici on ne fait que les appliquer,
-// donc aucun algorithme de comparaison à écrire ni à maintenir.
+// L'éditeur calcule les blocs de divergence et les passe aux commandes du menu
+// « scm/change/title » sous la forme (uri, blocs, index). Ce module les applique.
 //
-// Un bloc est un LineChange de VS Code : quatre numéros de ligne comptés à partir de 1, et
-// deux conventions à connaître —
-//   originalEndLineNumber === 0  « rien du côté original » : c'est une insertion, qui vient
-//                                 juste après la ligne originalStartLineNumber ;
-//   modifiedEndLineNumber === 0  « rien du côté modifié » : c'est une suppression.
-// Tout le reste est un remplacement de originalStart..originalEnd par modifiedStart..End.
-
-// ⚠ Le découpage garde la ligne vide finale d'un fichier qui se termine par un saut de
-// ligne : c'est le modèle de document de l'éditeur — lineCount la compte — et les numéros
-// des blocs s'y réfèrent. Retirer cette ligne décalerait le dernier bloc d'un cran.
-// « a\nb\n » donne donc ['a', 'b', ''], et le join() rend le texte à l'octet.
+// Un bloc est un LineChange de VS Code : quatre numéros de ligne comptés à partir de 1, avec
+// deux conventions :
+//   originalEndLineNumber === 0  rien du côté original : insertion juste après la ligne
+//                                originalStartLineNumber ;
+//   modifiedEndLineNumber === 0  rien du côté modifié : suppression.
+// Sinon, remplacement de originalStart..originalEnd par modifiedStart..End.
+//
+// Le découpage garde la ligne vide finale d'un fichier terminé par un saut de ligne, comme
+// le modèle de document de l'éditeur (lineCount la compte) auquel les numéros se réfèrent.
+// « a\nb\n » donne ['a', 'b', ''], et join() rend le texte à l'octet.
 function decouperLignes(texte) {
   const t = String(texte === undefined || texte === null ? '' : texte);
   return { lignes: t.split(/\r?\n/), eol: t.indexOf('\r\n') !== -1 ? '\r\n' : '\n' };
@@ -230,8 +215,8 @@ function decouperLignes(texte) {
 
 function assemblerLignes(doc) { return doc.lignes.join(doc.eol); }
 
-// Le même bloc vu de l'autre côté : ce qui était l'original devient le modifié. C'est ce
-// qui permet d'écrire les deux sens de résolution avec une seule fonction.
+// Le même bloc vu de l'autre côté : l'original devient le modifié. Une seule fonction sert
+// ainsi aux deux sens de résolution.
 function inverserBloc(bloc) {
   return {
     originalStartLineNumber: bloc.modifiedStartLineNumber,
@@ -241,15 +226,13 @@ function inverserBloc(bloc) {
   };
 }
 
-// Le texte de `texteOriginal` où les blocs demandés ont été remplacés par ceux de
-// `texteModifie`. Les blocs doivent être dans l'ordre croissant et ne pas se chevaucher —
-// c'est le cas de ceux que l'éditeur fournit.
+// Le texte de `texteOriginal` où les blocs demandés sont remplacés par ceux de
+// `texteModifie`. Les blocs sont en ordre croissant et ne se chevauchent pas, comme ceux que
+// fournit l'éditeur.
 //
-// Les fins de fichier se règlent d'elles-mêmes par le découpage en lignes : une insertion en
-// fin de document a originalStartLineNumber égal au nombre de lignes, donc les lignes
-// ajoutées se posent après tout le reste, et une suppression finale laisse le curseur au
-// bout. Aucun calcul de caractère n'est nécessaire, contrairement à la même opération faite
-// sur des positions de texte.
+// Les fins de fichier se règlent par le découpage en lignes : une insertion en fin de
+// document a originalStartLineNumber égal au nombre de lignes, et ses lignes se posent après
+// tout le reste. Aucun calcul de position en caractères n'est nécessaire.
 function appliquerBlocs(texteOriginal, texteModifie, blocs) {
   const original = decouperLignes(texteOriginal);
   const modifie = decouperLignes(texteModifie);

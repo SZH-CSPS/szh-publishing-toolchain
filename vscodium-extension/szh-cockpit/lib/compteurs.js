@@ -1,16 +1,15 @@
-// L'écrivain des compteurs d'usage (docs/RAPPORTS-ERREUR.md, « Les compteurs ne sont pas des
+// Écrit les compteurs d'usage (docs/RAPPORTS-ERREUR.md, « Les compteurs ne sont pas des
 // rapports »). Un fichier CSV par événement dans `_Systeme\compteurs`, fait de mesures
-// nommées et d'entiers : jamais un nom de fichier, un slug, un titre, un nom, un e-mail, un
-// chemin ni un message d'exception. La finalité est la qualité du logiciel (quelle règle du
-// nettoyeur crie pour rien, quel avertissement de l'import revient partout), jamais
-// l'évaluation d'une personne : la date est locale et SANS heure, et rien ne relie un fichier
-// à un compte Windows.
+// nommées et d'entiers : ni nom de fichier, ni slug, ni titre, ni nom, ni e-mail, ni chemin,
+// ni message d'exception. Ils servent à la qualité du logiciel (quelle règle du nettoyeur
+// signale pour rien, quel avertissement de l'import revient partout), pas à évaluer une
+// personne : la date est locale et sans heure, et rien ne relie un fichier à un compte
+// Windows.
 //
-// Ce module réutilise lib/rapport-erreur.js (ancrage résolu passivement, dossier `_Systeme`,
-// file d'attente hors ligne, lecture tolérante de config.json) et ne le recopie pas.
-// Dépendances : fs/path/os/crypto, comme lui ; il se charge hors de l'éditeur. Aucune
-// fonction d'écriture ne lève : un compteur raté est une perte silencieuse, jamais une
-// panne de l'interface.
+// Réutilise lib/rapport-erreur.js (ancrage, dossier `_Systeme`, file d'attente hors ligne,
+// lecture tolérante de config.json). Dépend seulement de fs/path/os/crypto : il se charge
+// hors de l'éditeur. Les fonctions d'écriture ne lèvent pas : un compteur raté est perdu
+// sans bruit.
 'use strict';
 
 const fs = require('fs');
@@ -84,7 +83,7 @@ function contexteCompteurs() {
   try {
     const toolkit = path.join(rapport.racineProgramData(), 'toolkit');
     if (fs.lstatSync(toolkit).isSymbolicLink()) { return 'dev'; }
-  } catch (e) { /* pas de toolkit lisible : on ne devine pas */ }
+  } catch (e) { /* pas de toolkit lisible : config.json décide */ }
   const cfg = rapport.lireJsonTolerant(rapport.cheminConfigPoste());
   if (String(cfg.compteurs || '').trim().toLowerCase() === 'dev') { return 'dev'; }
   return 'prod';
@@ -109,8 +108,8 @@ function versionRootfsCompteurs() {
 }
 
 // ---------------------------------------------------------------------------------------
-// 2. Validation — pure. Tout ce qui ne suit pas le contrat est écarté, jamais réécrit,
-//    sauf un Id de règle inconnu (devenu `Autre`).
+// 2. Validation, pure. Ce qui ne suit pas le contrat est écarté, pas réécrit, sauf un Id
+//    de règle inconnu (devenu `Autre`).
 // ---------------------------------------------------------------------------------------
 
 // Rend la mesure telle qu'elle sera écrite, ou null si elle doit être écartée. Avec `source`, la
@@ -184,8 +183,8 @@ function construireCsv(ctx, lignes) {
 }
 
 // ---------------------------------------------------------------------------------------
-// 3. Lecture — pour l'outil de synthèse. Tolérante : un fichier qui ne suit pas le contrat
-//    est compté, jamais une exception.
+// 3. Lecture, pour l'outil de synthèse. Tolérante : un fichier hors contrat est compté,
+//    sans exception.
 // ---------------------------------------------------------------------------------------
 
 // -> { ok, lignes: [{date, poste, contexte, version_toolkit, version_rootfs, source, passage,
@@ -209,18 +208,18 @@ function analyserCsvCompteurs(texte) {
 }
 
 // ---------------------------------------------------------------------------------------
-// 4. Écriture — atomique, file d'attente, garde de banc. Ne lève jamais.
+// 4. Écriture — atomique, avec file d'attente et garde de test. Ne lève pas.
 // ---------------------------------------------------------------------------------------
 
-// Ni SZH_LANCEUR_SIMULE=1 ni SZH_RESEAU_INTERDIT ne doivent écrire dans un vrai dossier du
-// poste ; SZH_COMPTEURS (un dossier jetable choisi par le test) lève la garde.
+// Sous SZH_LANCEUR_SIMULE=1 ou SZH_RESEAU_INTERDIT, rien ne s'écrit dans un vrai dossier du
+// poste ; SZH_COMPTEURS (un dossier jetable choisi par le test) lève cette garde.
 function ecritureEviteeParHarnais() {
   if (String(process.env.SZH_COMPTEURS || '').trim()) { return false; }
   return process.env.SZH_LANCEUR_SIMULE === '1' || !!process.env.SZH_RESEAU_INTERDIT;
 }
 
 // Le dossier des compteurs : SZH_COMPTEURS tel quel, sinon `_Systeme\compteurs` sous l'ancrage
-// (jamais sous la racine active : `_Systeme` ne suit pas Revues-TESTING). null si rien n'aboutit.
+// (et non sous la racine active : `_Systeme` ne suit pas Revues-TESTING). null si rien n'aboutit.
 function resoudreDossierCompteurs(ancrage) {
   const surcharge = String(process.env.SZH_COMPTEURS || '').trim();
   if (surcharge) { return surcharge; }
@@ -245,8 +244,8 @@ function ecrireFichierAtomique(dossier, nom, contenu) {
   return cible;
 }
 
-// Un fichier jamais réécrit : si le nom existe déjà (6 hex : quasi impossible), on retire un
-// autre jeton.
+// Un fichier n'est pas réécrit : si le nom existe déjà (6 hex, presque impossible), un autre
+// jeton est tiré.
 function choisirNom(dossier, date, poste, source, hexImpose) {
   for (let i = 0; i < 8; i++) {
     const nom = nomFichierCompteurs(date, poste, source, (i === 0 && hexImpose) ? hexImpose : aleatoireHex(6));
@@ -258,7 +257,7 @@ function choisirNom(dossier, date, poste, source, hexImpose) {
 // `champs` : { source: 'nettoyeur'|'import', mesures: {nom: entier}|[[nom, entier]],
 //   passage?: 12 hex (le SHA-256 tronqué du fichier d'entrée pour le nettoyeur ; tiré au hasard
 //   sinon), maintenant?: Date, hex?: 6 hex (tests) }.
-// Rend TOUJOURS { ecrit, enAttente, motif, fichier, lignes } :
+// Rend toujours { ecrit, enAttente, motif, fichier, lignes } :
 //   motif  null sur un succès, sinon 'harnais-test' | 'source-inconnue' | 'vide' | 'mal-forme' |
 //          'ecriture-impossible' | 'exception-interne'.
 function ecrireCompteurs(champs) {
@@ -316,7 +315,7 @@ function ecrireCompteurs(champs) {
 }
 
 // Vide la file d'attente vers le dossier partagé (au démarrage du cockpit ; le lanceur fait de
-// même de son côté). Un fichier qui ne part pas reste en place. Ne lève jamais.
+// même). Un fichier qui ne part pas reste en place. Ne lève pas.
 function viderFileCompteurs() {
   const vide = { deplaces: 0, restes: 0 };
   try {
@@ -342,16 +341,15 @@ function viderFileCompteurs() {
 // 5. Les compteurs de l'import (source `import`), écrits par le cockpit
 // ---------------------------------------------------------------------------------------
 //
-// Jamais à chaque compilation : l'import rejoue à chaque Ctrl+S tant qu'un Word attend, et
+// Pas à chaque compilation : l'import se rejoue à chaque Ctrl+S tant qu'un Word attend, et
 // compterait `word-redepose` à chaque fois. Un fichier naît d'une conversion réussie
-// (`[import] converti`), d'un réimport réussi, et de rien d'autre.
+// (`[import] converti`) ou d'un réimport réussi, seulement.
 
-// Les avertissements propres à un article convertis dans la tâche : ceux qui PRÉCÈDENT la ligne
-// « [import] converti ». Seul le code — le second jeton — est lu ; tout le reste de la ligne
-// (nom de fichier, slug, phrase) est libre et n'est jamais regardé. Les deux refus qui ne
-// créent rien (`word-redepose`, `origine-inconnue`) et un échec de conversion remettent
-// le compte à zéro : ils ne sont pas ceux d'un article converti.
-// -> [{ cible, codes: [code…] }] ; `cible` ne sert qu'à retrouver la fiche, jamais écrite.
+// Les avertissements propres à un article converti dans la tâche : ceux qui précèdent la
+// ligne « [import] converti ». Seul le code (second jeton) est lu, le reste de la ligne
+// (nom de fichier, slug, phrase) est ignoré. Les deux refus qui ne créent rien
+// (`word-redepose`, `origine-inconnue`) et un échec de conversion remettent le compte à zéro.
+// -> [{ cible, codes: [code…] }] ; `cible` sert à retrouver la fiche et n'est pas écrite.
 const CODES_SANS_CONVERSION = ['word-redepose', 'origine-inconnue'];
 
 function evenementsImportDepuisJournal(texte) {
@@ -435,8 +433,8 @@ function mesuresImport(codes, auteurs) {
 // (il n'a pas changé) sans qu'un article soit compté deux fois.
 const derniersJournaux = new Map();
 
-// À la fin d'une tâche : un fichier `import` par article converti dans CETTE tâche, aucun
-// sinon. -> { ecrits, evenements }. Ne lève jamais.
+// À la fin d'une tâche : un fichier `import` par article converti dans cette tâche, aucun
+// sinon. -> { ecrits, evenements }. Ne lève pas.
 function enregistrerImportDepuisJournal(racine, options) {
   const vide = { ecrits: 0, evenements: 0 };
   try {

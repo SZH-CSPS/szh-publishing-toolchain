@@ -1,16 +1,15 @@
 // Liage manuel d'un appel de citation à une référence. Le liage automatique se fait à la
-// compilation, dans pipeline/filters/szh-citations.lua ; ce module ne sert qu'aux appels
-// que le filtre laisse de côté — un nom mal orthographié dans le texte, une parenthèse
-// déséquilibrée, un appel ambigu entre deux références de même auteur et de même année.
+// compilation, dans pipeline/filters/szh-citations.lua ; ce module sert aux appels que le
+// filtre ne lie pas : nom mal orthographié, parenthèse déséquilibrée, appel ambigu entre
+// deux références de même auteur et de même année.
 //
-// Le rédacteur sélectionne l'appel dans le texte, choisit la référence dans la liste, et
-// l'appel devient un lien markdown « [(Shaw et al., 2023)](#ref-shaw-2023) » — que pandoc
-// rend nativement et que le filtre respecte tel quel.
+// Le rédacteur sélectionne l'appel, choisit la référence, et l'appel devient un lien
+// markdown « [(Shaw et al., 2023)](#ref-shaw-2023) », que pandoc rend et que le filtre garde.
 //
-// ⚠ Contrat avec le filtre Lua : referencesDuTexte() doit découper la liste et calculer les
-// identifiants exactement comme lui, sinon le lien posé ici pointerait dans le vide. Le repli
-// des lettres accentuées n'est donc pas recopié ici : il est lu dans le filtre lui-même.
-// test/js/ancrages.test.js exécute les deux côtés sur la même liste de noms et compare.
+// referencesDuTexte() doit découper la liste et calculer les identifiants exactement comme
+// le filtre, sinon le lien pointe vers une ancre absente. Les tables (repli des lettres
+// accentuées, titres de bibliographie) sont donc lues dans le filtre lui-même.
+// test/js/ancrages.test.js compare les deux côtés sur la même liste de noms.
 'use strict';
 
 const fs = require('fs');
@@ -19,25 +18,16 @@ const { REVUES, LANGUES_META } = require('./yaml');
 const { lireConfigPoste } = require('./archivage');
 const { basePoste } = require('./poste');
 
-// Les deux revues et les trois langues du titre de bibliographie, dans l'ordre où le
-// panneau les affiche. Une seule définition des unes et des autres, celle des fiches.
+// Les revues et les langues du titre de bibliographie, dans l'ordre du panneau ; ce sont
+// celles des fiches (lib/yaml.js).
 const REVUES_BIBLIO = REVUES.map((r) => r.cle);
 const LANGUES_BIBLIO = LANGUES_META.slice();
 
-// ---- identifiants : le repli des lettres est lu dans le filtre, pas recopié ici ----
+// ---- identifiants : tables lues dans le filtre ----
 
-// Le filtre du pipeline porte les tables de repli, et il est seul à les porter : elles sont
-// relues ici. Une table courte d'un côté et normalize('NFD') de l'autre, c'étaient deux
-// identifiants — « Zieliński » donnait « zielinski » au cockpit et « zieliski » à la
-// compilation, et le lien posé par « Lier à une référence » désignait une ancre que le PDF
-// n'a jamais portée. Le rédacteur n'en voyait rien : un lien mort ne se signale pas.
-//
-// Deux emplacements, dans cet ordre : le dépôt (développement et tests), puis le toolkit
-// installé — celui qui compilera vraiment l'article, donc celui dont les identifiants font
-// loi sur un poste de rédaction. SZH_FILTRE_CITATIONS impose un fichier, ce dont le test
-// se sert pour éprouver un filtre d'un autre format sans toucher à l'installation.
-//
-// Mêmes chemins que lib/archivage.js et windows/szh-common.ps1.
+// Où lire szh-citations.lua, dans cet ordre : le dépôt (développement et tests), puis le
+// toolkit installé, qui compile les articles sur un poste de rédaction.
+// SZH_FILTRE_CITATIONS impose un fichier, pour les tests.
 const FILTRES = [
   path.resolve(__dirname, '..', '..', '..', 'pipeline', 'filters', 'szh-citations.lua'),
   path.join(basePoste(), 'toolkit', 'pipeline', 'filters', 'szh-citations.lua')
@@ -47,30 +37,19 @@ function emplacements() {
   return process.env.SZH_FILTRE_CITATIONS ? [process.env.SZH_FILTRE_CITATIONS] : FILTRES;
 }
 
-// La liste telle qu'elle est écrite, sans l'override d'environnement. Exposée pour que le
-// test en vérifie la forme : un chemin Windows dont les contre-obliques ne sont pas doublées
-// reste une chaîne JavaScript valide, mais « C:\ProgramData\SZH » y perd ses séparateurs
-// — \P et \S ne sont pas des échappements reconnus — et vaut « C:ProgramDataSZH ». La faute
-// est invisible à la lecture, et elle ne se voit nulle part tant que le dépôt répond en
-// premier : sur un poste de rédaction, où l'extension vit sous .vscode-oss, c'est pourtant
-// le seul emplacement qui mène quelque part.
+// La liste FILTRES, sans la variable d'environnement. Exposée pour que le test vérifie la
+// forme des chemins : dans un littéral JavaScript, une contre-oblique simple disparaît
+// (« \P » vaut « P »), et le chemin du toolkit deviendrait faux sans erreur.
 function emplacementsDuFiltre() { return FILTRES.slice(); }
 
 let tables = null;
 
-// Deux pannes, deux causes, deux messages. Les confondre, c'était dire au rédacteur qu'une
-// table Lua manquait alors que ses deux moitiés de logiciel n'allaient simplement pas
-// ensemble : le format des tables a changé une fois, il changera encore.
-//
-//   'absent'      : aucun emplacement ne porte le filtre — poste non préparé.
-//   'discordant'  : le filtre est là, mais sans les tables attendues. Le cockpit et l'outil
-//                   de composition ne sont pas de la même version — et rien ici ne dit
-//                   lequel des deux est en avance, ni n'a besoin de le dire : la mise à
-//                   jour règle les deux sens.
-//
-// Le détail technique — chemin, nom de table, compte de jetons — part dans le journal de
-// l'hôte. Il n'a rien à faire dans une boîte de dialogue, et tout à faire dans un rapport
-// de panne.
+// Deux pannes, deux messages :
+//   'absent'      : aucun emplacement ne porte le filtre (poste non préparé) ;
+//   'discordant'  : le filtre est là, sans les tables attendues : le cockpit et le filtre
+//                   ne sont pas de la même version, une mise à jour règle le problème.
+// Le détail technique (chemin, nom de table, nombre de jetons) va dans le journal de
+// l'hôte ; l'interface affiche le message de `messageCle`.
 function erreurRepli(cause, detail) {
   const e = new Error(detail);
   e.szhRepli = cause;
@@ -81,7 +60,7 @@ function erreurRepli(cause, detail) {
 }
 
 // Le corps d'un `local NOM = { … }` du filtre : de l'en-tête jusqu'à l'accolade en début de
-// ligne. Les données du filtre sont toutes indentées, aucune n'est prise pour la fin.
+// ligne. Les données étant indentées, aucune n'est prise pour la fin.
 function blocLua(src, nom, chemin) {
   const i = src.indexOf('local ' + nom + ' = {');
   const j = i === -1 ? -1 : src.indexOf('\n}', i);
@@ -122,9 +101,8 @@ function chargerTables() {
       }
     }
   }
-  // Le latin fait 656 points de code à lui seul. Sous ce seuil, la table lue est tronquée
-  // ou d'un format qu'on ne comprend plus : même conclusion qu'une table absente, plutôt
-  // que des ancres que la compilation ne posera pas.
+  // Le latin compte 656 points de code. Sous ce seuil, la table lue est tronquée ou d'un
+  // autre format : elle est traitée comme absente.
   if (nb < 600) {
     throw erreurRepli('discordant', 'REPLI_BLOCS de ' + chemin + ' ne porte que ' + nb
       + ' jetons sur 656 attendus.');
@@ -136,8 +114,7 @@ function chargerTables() {
     ignores.push([parseInt(m[1], 16), parseInt(m[2], 16)]);
   }
   // Le lexique des titres de bibliographie, et les titres que la compilation pose au-dessus
-  // de la bibliographie détachée : mêmes tables, même fichier, même raison. Un lexique vide
-  // n'est pas un lexique : c'est un filtre d'un autre format.
+  // de la bibliographie détachée. Un lexique presque vide signale un filtre d'un autre format.
   const titres = (blocLua(src, 'TITRES_BIB', chemin).match(/'([a-z]+)'/g) || [])
     .map((t) => t.slice(1, -1));
   if (titres.length < 10) {
@@ -168,7 +145,7 @@ function chargerTables() {
   return tables;
 }
 
-// Relâche les tables mémoïsées : le test change de filtre en cours de processus.
+// Oublie les tables en mémoire : un test change de filtre en cours de processus.
 function oublierTables() { tables = null; }
 
 // Le fichier d'où viennent les tables, pour un message d'erreur ou un diagnostic.
@@ -176,9 +153,8 @@ function cheminDuFiltre() { return chargerTables().chemin; }
 
 const signales = new Map();
 
-// Un caractère hors des tables est retiré, jamais avalé : il part dans le journal de l'hôte,
-// comme le filtre l'écrit sur stderr à la compilation. Une ligne par caractère, pas une par
-// occurrence.
+// Un caractère hors des tables est retiré et signalé dans le journal de l'hôte, comme le
+// filtre l'écrit sur stderr. Une ligne par caractère, pas par occurrence.
 function signaler(cp) {
   if (signales.has(cp)) { return; }
   const msg = '[citations] ⚠ caractère sans repli ASCII, retiré des identifiants : « '
@@ -188,7 +164,7 @@ function signaler(cp) {
   try { console.warn(msg); } catch (e) { /* hôte sans console */ }
 }
 
-// Ce que le repli a laissé tomber depuis le chargement, pour un test ou un diagnostic.
+// Les caractères retirés depuis le chargement, pour un test ou un diagnostic.
 function caracteresSansRepli() { return Array.from(signales.values()); }
 
 // Replie les lettres accentuées sur leur base ASCII et laisse le reste tel quel : miroir de
@@ -233,17 +209,13 @@ function normaliser(t) {
   return assainir(t).replace(/\s+/g, ' ').trim();
 }
 
-// Le lexique n'est plus recopié ici : il est relu dans le filtre, comme les tables de repli
-// juste au-dessus. Deux listes identiques ne disaient rien de deux résultats identiques —
-// c'est précisément par là que l'écart de repli avait pu vivre — et une liste qu'il faut
-// tenir à jour des deux côtés finit par diverger.
+// Le lexique des titres de bibliographie, lu dans le filtre.
 function titresBib() {
   return chargerTables().titres;
 }
 
-// Comparaison exacte, comme est_titre_bib() du filtre. Le préfixe faisait de
-// « Literaturhinweise für die Praxis » un titre de bibliographie, et tout ce qui suivait
-// cessait d'être regardé.
+// Comparaison exacte, comme est_titre_bib() du filtre : un préfixe ne suffit pas
+// (« Literaturhinweise für die Praxis » n'est pas un titre de bibliographie).
 function estTitreBib(texte) {
   const p = aplatir(texte);
   return titresBib().indexOf(p) !== -1;
@@ -259,9 +231,8 @@ function anneeDeReference(texte) {
   return null;
 }
 
-// Nom qui nomme l'identifiant : même calcul que nom_pour_id() du filtre, sur la même table
-// de repli. Le premier mot de deux lettres au moins, sans aucune détection de majuscule —
-// c'est ce qui permet aux deux langages de tomber sur le même identifiant.
+// Le nom qui forme l'identifiant, comme nom_pour_id() du filtre : le premier mot de deux
+// lettres au moins, sans détection de majuscule, pour que les deux côtés concordent.
 function nomPourId(entete) {
   const jetons = replier(assainir(entete)).toLowerCase().match(/[a-z0-9]+/g) || [];
   for (const j of jetons) {
@@ -270,11 +241,10 @@ function nomPourId(entete) {
   return 'ref';
 }
 
-// Une entrée commence-t-elle ici, ou continue-t-elle la précédente ? Même règle que
-// est_continuation() du filtre Lua, et pour la même raison : une suite est une ligne d'URL
-// seule, ou une ligne qui commence par une minuscule ASCII sans porter d'année. Une
-// initiale accentuée, un astérisque, un chiffre ou « insieme Schweiz (2024) » ouvrent donc
-// une entrée.
+// Vrai si le paragraphe continue l'entrée précédente, comme est_continuation() du filtre :
+// une URL seule, ou une ligne qui commence par une minuscule ASCII sans porter d'année.
+// Une initiale accentuée, un astérisque, un chiffre ou « insieme Schweiz (2024) » ouvrent
+// donc une entrée.
 function estContinuation(texte) {
   if (/^(https?:|www\.)/i.test(texte)) { return true; }
   if (!/^[a-z]/.test(texte)) { return false; }
@@ -284,11 +254,9 @@ function estContinuation(texte) {
 // Découpe le markdown d'un article : les paragraphes qui suivent le dernier titre de
 // bibliographie, groupés en entrées, chacune avec son identifiant.
 //
-// Lève si les tables de repli sont inaccessibles, et dès la première ligne : reconnaître
-// « Références » comme titre de bibliographie en a besoin autant que calculer un
-// identifiant. Rien à sauver ici, donc échouer tôt : lister des références pour échouer
-// ensuite au moment de poser l'ancre ferait perdre son choix au rédacteur, et lui offrir
-// des identifiants calculés sans la table reviendrait à lui proposer des ancres mortes.
+// Lève dès le début si les tables du filtre sont inaccessibles : sans elles, ni le titre
+// de bibliographie ni les identifiants ne sont fiables, et le rédacteur choisirait une
+// référence pour rien.
 function referencesDuTexte(md) {
   const paras = String(md || '').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
   let coupe = -1;
@@ -301,15 +269,14 @@ function referencesDuTexte(md) {
 }
 
 // Des paragraphes de markdown aux entrées identifiées. Sert au fichier de bibliographie
-// comme au repli sur le corps : un seul groupement, un seul calcul d'identifiant.
+// comme à la bibliographie du corps.
 function entreesDesParagraphes(paragraphes) {
   const entrees = [];
   for (const p of paragraphes) {
     const brut = String(p).trim();
     if (!brut) { continue; }
     if (/^#+\s/.test(brut)) { break; }
-    // Le .md porte des échappements et des italiques : on les retire pour lire, jamais
-    // pour écrire.
+    // Liens, échappements et italiques retirés pour la lecture ; le fichier n'est pas modifié.
     const texte = normaliser(brut.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
       .replace(/[*\\]/g, ''));
     if (!texte) { continue; }
@@ -337,27 +304,23 @@ function entreesDesParagraphes(paragraphes) {
 
 // ---- la bibliographie détachée ----
 //
-// Depuis que l'import met la bibliographie à part, c'est ce fichier qui fait foi : il ne
-// porte que les références, sans titre, une par paragraphe. Plus de découpage à deviner
-// dans le corps de l'article — juste des paragraphes à grouper en entrées, comme le filtre.
+// L'import écrit la bibliographie dans un fichier à part : les références seules, sans
+// titre, une par paragraphe. Ses paragraphes sont groupés en entrées, comme dans le filtre.
 
-// Le nom du fichier, à un seul endroit. Même règle que <slug>.meta.yaml et
-// <slug>.taches.yaml : un fichier singulier de l'article est son voisin, nommé
-// <slug>.<rôle>.<extension>.
+// <slug>.biblio.md, sur le modèle de <slug>.meta.yaml et <slug>.taches.yaml.
 function nomFichierBiblio(slug) {
   return String(slug) + '.biblio.md';
 }
 
-// dossierUnites : 'articles' pour un numéro, 'chapitres' pour un livre (profilCourant().
-// unites.dossier côté extension.js) ; par défaut 'articles', pour les appelants qui
-// ignorent encore le profil (export OJS, mise en forme).
+// dossierUnites : 'articles' pour un numéro, 'chapitres' pour un livre
+// (profil.unites.dossier) ; 'articles' par défaut, pour les appelants propres à la revue
+// (export OJS, mise en forme).
 function cheminBiblio(racine, slug, dossierUnites) {
   return path.join(racine, dossierUnites || 'articles', slug, nomFichierBiblio(slug));
 }
 
-// Les entrées du fichier de bibliographie, ou null si l'article n'en a pas — ce qui n'est
-// pas la même chose qu'une liste vide : sans fichier, la liste est peut-être encore dans le
-// corps, et l'appelant a un repli à tenter.
+// Les entrées du fichier de bibliographie, ou null si l'article n'en a pas : l'appelant
+// cherche alors la bibliographie dans le corps.
 function referencesDuFichier(racine, slug) {
   let brut;
   try { brut = fs.readFileSync(cheminBiblio(racine, slug), 'utf8'); }
@@ -367,13 +330,11 @@ function referencesDuFichier(racine, slug) {
 
 // ---- le titre de la bibliographie : un réglage de poste ----
 //
-// La bibliographie n'a plus de titre dans le texte : la compilation le pose, dans la langue
-// de l'article. Ces intitulés sont donc un réglage, comme la configuration OJS — même
-// fichier (config.json), même règle de fusion clé par clé, et le panneau « Réglages SZH »
-// les corrige sans republier l'extension.
+// La compilation pose le titre de la bibliographie dans la langue de l'article. Ces
+// intitulés sont un réglage de config.json (clé `biblio`), fusionné clé par clé comme la
+// configuration OJS, et modifiable dans les réglages.
 //
-// Les valeurs par défaut ne sont pas ici : elles sont dans le filtre, seul endroit où elles
-// vivent, et relues avec les autres tables (voir chargerTables).
+// Les valeurs par défaut sont lues dans le filtre (voir chargerTables).
 function titresBiblioDefaut() {
   return chargerTables().titresBiblio;
 }
@@ -382,9 +343,8 @@ function texteTitre(v) {
   return String(v === undefined || v === null ? '' : v).replace(/\s+/g, ' ').trim();
 }
 
-// Défauts + surcharge du poste, clé par clé. « La clé présente gagne, même vide » : c'est la
-// règle de la configuration OJS, et vider un champ dans le panneau doit avoir un effet —
-// ici, une bibliographie sans titre du tout.
+// Défauts et surcharge du poste, clé par clé. Une clé présente l'emporte même vide : vider
+// le champ donne une bibliographie sans titre.
 function normaliserConfigBiblio(brut) {
   const defauts = titresBiblioDefaut();
   const src = (brut && typeof brut.biblio === 'object' && brut.biblio) ? brut.biblio : {};
@@ -408,9 +368,8 @@ function configBiblio() {
   return normaliserConfigBiblio(lireConfigPoste());
 }
 
-// Pose les intitulés sur une configuration sans toucher au reste du fichier (emplacement
-// des revues, OJS, tâches). Pure, pour être éprouvable sans écrire dans C:\ProgramData ;
-// c'est l'appelant qui appelle ecrireConfigPoste.
+// Pose les intitulés sans toucher au reste de la configuration ; l'appelant écrit le
+// résultat avec ecrireConfigPoste.
 function configAvecTitresBiblio(cfg, titres) {
   const sortie = Object.assign({}, (cfg && typeof cfg === 'object') ? cfg : {});
   const biblio = Object.assign({}, (sortie.biblio && typeof sortie.biblio === 'object')
@@ -420,12 +379,10 @@ function configAvecTitresBiblio(cfg, titres) {
   return sortie;
 }
 
-// Pose l'interrupteur szh.desactiverLiensReferences sur une configuration sans toucher au
-// reste du fichier (emplacement des revues, OJS, titres de bibliographie). Pure, pour être
-// éprouvable sans écrire dans C:\ProgramData ; c'est l'appelant qui appelle ecrireConfigPoste.
-// C'est le seul pont vers pipeline/filters/szh-citations.lua, qui relit la même clé dans le
-// même fichier (lire_config_poste) : le réglage vit dans VSCodium, la compilation tourne
-// dans WSL, et les deux ne partagent que ce fichier monté.
+// Pose desactiverLiensReferences sans toucher au reste de la configuration ; l'appelant
+// écrit le résultat avec ecrireConfigPoste. Le filtre szh-citations.lua relit cette clé
+// dans le même config.json (lire_config_poste) : c'est par ce fichier que le réglage de
+// VSCodium atteint la compilation dans la WSL.
 function configAvecLiensDesactives(cfg, desactiver) {
   const sortie = Object.assign({}, (cfg && typeof cfg === 'object') ? cfg : {});
   sortie.desactiverLiensReferences = desactiver === true;
@@ -443,8 +400,8 @@ function lienVersReference(appel, id) {
   return '[' + texte + '](#' + id + ')';
 }
 
-// Sélection vide : on prend l'appel autour du curseur, c'est-à-dire la parenthèse qui
-// l'entoure — ou le lien déjà posé, pour permettre de le recibler.
+// Sélection vide : l'appel autour du curseur, c'est-à-dire le lien déjà posé (pour le
+// recibler), sinon la parenthèse qui l'entoure.
 function plageDeLAppel(ligne, colonne) {
   const l = String(ligne || '');
   const lien = /\[[^\]]*\]\(#[^)]*\)/g;

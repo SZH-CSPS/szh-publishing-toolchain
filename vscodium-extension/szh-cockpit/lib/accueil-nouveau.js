@@ -1,6 +1,7 @@
-// Créer un numéro ou un livre depuis l'Accueil : les refus et la création restent ceux du
-// socle PowerShell (Find-SzhNumeroVolume, Find-SzhLivreReference, new-revue.ps1, new-livre.ps1),
-// appelés en un processus qui rend son verdict en une ligne JSON.
+// Crée un numéro ou un livre depuis l'Accueil. Les contrôles et la création sont ceux des
+// scripts PowerShell du toolkit (Find-SzhNumeroVolume, Find-SzhLivreReference, new-revue.ps1,
+// new-livre.ps1), lancés dans un processus qui rend son verdict en une ligne JSON préfixée
+// par MARQUE.
 'use strict';
 
 const fs = require('fs');
@@ -20,7 +21,7 @@ function litteral(v) {
 }
 function entier(v) { const n = Number(v); return Number.isInteger(n) ? n : NaN; }
 
-// L'en-tête commun : sortie en UTF-8, socle chargé, et une seule fonction pour rendre le verdict.
+// En-tête commun : sortie en UTF-8, szh-common.ps1 chargé, et la fonction qui rend le verdict.
 function entete(toolkit) {
   return [
     '[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false',
@@ -80,7 +81,7 @@ function scriptCreation(demande, toolkit) {
     ['} catch { Out-SzhVerdict @{ ok = $false; refus = \'erreur\'; texte = $_.Exception.Message } }']).join('\n');
 }
 
-// L'année zéro du volume de chaque revue, telle que le socle la déclare.
+// L'année zéro du volume de chaque revue, telle que szh-common.ps1 la déclare.
 function scriptAnnees(toolkit) {
   return entete(toolkit || toolkitPoste()).concat([
     'Out-SzhVerdict @{ revue = (Get-SzhPremiereAnnee \'revue\') - 1; zeitschrift = (Get-SzhPremiereAnnee \'zeitschrift\') - 1 }'
@@ -93,8 +94,9 @@ function cheminPowerShell() {
   return 'powershell.exe';
 }
 
-// Lance le script et rend son verdict, ou { ok: false, refus: 'erreur', texte } : ne rejette
-// jamais. -EncodedCommand évite tout échappement de guillemets sur la ligne de commande.
+// Lance le script et rend son verdict, ou { ok: false, refus: 'erreur' | 'delai', texte } :
+// la promesse ne rejette pas. -EncodedCommand évite d'échapper les guillemets sur la ligne
+// de commande.
 function executer(script, opts) {
   const o = opts || {};
   return new Promise((resolve) => {

@@ -1,36 +1,29 @@
-// Ce qu'un défaut ferme, où on va le corriger, et comment il s'écrit.
+// Pour chaque défaut : ce qu'il bloque, où on le corrige, et comment il s'écrit.
 //
-// Données pures et fonctions pures : ni `vscode`, ni `fs`, aucun accès disque — comme
-// lib/codes-erreur.js, et pour la même raison, ce module est lu par l'extension comme par
-// les tests. Il ne produit aucun constat : il décide de ceux que lib/journal.js lui passe.
+// Données et fonctions pures, sans `vscode` ni accès disque, comme lib/codes-erreur.js :
+// l'extension et les tests le chargent. Le module ne produit aucun constat ; il décide de
+// l'affichage de ceux que lib/journal.js lui passe. Trois décisions :
 //
-// Trois décisions vivaient éparpillées, et c'est ce qui a fait diverger l'interface.
+//  1. La couleur se calcule. Un constat porte la barrière qu'il ferme (la compilation, la
+//     validation PDF/UA, l'export, ou l'opération qu'on venait de demander), et la couleur
+//     s'en déduit : rouge si quelque chose refuse vraiment, sur ce poste et pour ce numéro.
+//     La validation PDF/UA étant un réglage, une image sans description est rouge là où
+//     elle tourne et ambre là où elle est éteinte : la couleur dit ce que la machine va
+//     faire.
 //
-//  1. LA COULEUR. Elle se calcule, elle ne se déclare pas. Un constat porte la BARRIÈRE
-//     qu'il ferme — la compilation, la validation PDF/UA, l'export, ou le geste qu'on
-//     venait de demander — et la couleur s'en déduit : rouge si quelque chose refuse
-//     vraiment, sur ce poste et pour ce numéro. La validation PDF/UA étant un réglage, une
-//     image muette est rouge là où elle tourne et ambre là où elle est éteinte : la
-//     couleur dit ce que la machine va faire, jamais ce qu'on estime grave.
-//
-//  2. LE BOUTON. Cinquante codes, mais huit destinations seulement — le texte d'un
+//  2. Le bouton. Une cinquantaine de codes, mais huit destinations (LIEUX) : le texte d'un
 //     article, sa fiche, ses images, les métadonnées du numéro, les réglages, le dépôt
-//     Word, la Documentation, l'aperçu. Un constat porte donc une CIBLE, jamais un bouton,
-//     et une seule fonction fabrique le bouton depuis LIEUX. Pas de cible quand aucun
-//     geste n'existe dans l'application : renommer un dossier se fait dans l'explorateur
-//     de Windows, et un bouton qui mènerait « quelque part » serait un mensonge.
+//     Word, la Documentation, l'aperçu. Un constat porte une cible, et une seule fonction
+//     fabrique le bouton depuis LIEUX. Pas de cible quand l'application n'offre aucune
+//     action (renommer un dossier se fait dans l'explorateur de Windows).
 //
-//  3. LA PHRASE. « {défaut} : {objet} », et rien de plus. L'intitulé est un groupe nominal
-//     court ; l'objet vient des champs que le constat porte déjà ; le geste est dans le
-//     bouton, plus dans le texte. Les explications de la version précédente disaient trois
-//     fois la même chose et se traduisaient mal. Depuis le 29.09.2026, une carte a un
-//     second étage (SECOND_ETAGE) : UNE phrase qui commence par le geste, et le pourquoi —
-//     ce qui a été gardé ou perdu, la cause, le repère ISO — dans une infobulle. Rien n'est
-//     retiré des explications d'avant ; elles ont seulement quitté la ligne.
+//  3. La phrase : « {défaut} : {objet} ». L'intitulé est un groupe nominal court ; l'objet
+//     vient des champs du constat ; l'action est dans le bouton. Une carte a un second
+//     étage (SECOND_ETAGE) : une phrase qui commence par l'action, et l'explication (ce qui
+//     a été gardé ou perdu, la cause, le repère ISO) dans une infobulle.
 //
-// Règle de tenue : tout code que lib/journal.js sait produire a sa ligne dans TABLE.
-// test/js/constats.test.js lit la source de journal.js et tombe si un code y apparaît sans
-// décision ici — un défaut nouveau ne doit pas arriver gris et sans bouton à l'écran.
+// Tout code que lib/journal.js sait produire a sa ligne dans TABLE :
+// test/js/constats.test.js lit la source de journal.js et échoue sur un code sans ligne ici.
 'use strict';
 
 const { TL } = require('./i18n');
@@ -39,9 +32,9 @@ const { TL } = require('./i18n');
 // 1. Les huit destinations
 // ---------------------------------------------------------------------------------------
 //
-// `commande` est appelée avec { slug, focus } : les commandes qui ignorent l'un ou l'autre
-// s'en accommodent déjà. `focus` désigne, dans la page visée, ce qu'il faut amener à
-// l'écran — une image pour le formulaire des médias, un champ pour une fiche.
+// `commande` est appelée avec { slug, focus }. `focus` désigne, dans la page visée, ce
+// qu'il faut amener à l'écran : une image pour le formulaire des médias, un champ pour une
+// fiche.
 const LIEUX = Object.freeze({
   article: Object.freeze({ commande: 'szh.ouvrirArticle', icone: 'fleche',
     libelle: 'action.article', tip: 'action.article.tip' }),
@@ -49,10 +42,10 @@ const LIEUX = Object.freeze({
     libelle: 'action.fiche', tip: 'action.fiche.tip' }),
   medias: Object.freeze({ commande: 'szh.mediasArticle', icone: 'camera',
     libelle: 'action.medias', tip: 'action.medias.tip' }),
-  // L'éditeur HTML d'un tableau de l'article. `focus` y nomme le FICHIER (table-01.html) ;
-  // vide, ouvrirEditeurTable (extension.js) retombe sur le seul tableau de l'article, sur
-  // une liste quand il y en a plusieurs, et sur l'article quand il n'y en a aucun. C'est là,
-  // et nulle part ailleurs, qu'un en-tête se déclare : le .md ne porte que la référence.
+  // L'éditeur HTML d'un tableau de l'article. `focus` y nomme le fichier (table-01.html).
+  // Sans focus, ouvrirEditeurTable (extension.js) ouvre le seul tableau de l'article, une
+  // liste s'il y en a plusieurs, l'article s'il n'y en a aucun. C'est là que se déclare un
+  // en-tête : le .md ne porte que la référence au tableau.
   table: Object.freeze({ commande: 'szh.editerTable', icone: 'tableau',
     libelle: 'action.table', tip: 'action.table.tip' }),
   numero: Object.freeze({ commande: 'szh.metadonnees', icone: 'gear',
@@ -66,15 +59,12 @@ const LIEUX = Object.freeze({
   apercu: Object.freeze({ commande: 'szh.basculerApercu', icone: 'oeil',
     libelle: 'action.apercu', tip: 'action.apercu.tip' }),
   // Le PDF déjà produit d'un article précis, révélé dans l'Explorateur (szh.voirPdfArticle,
-  // extension.js). Distinct d'« apercu » : basculerApercu est un INTERRUPTEUR sur l'article
-  // en aperçu courant (session.apercuCourantSlug()) et ne prend même pas de slug — il ne
-  // peut pas viser « tel » article. voirPdfArticle, lui, accepte déjà { slug, focus } sans
-  // rien y changer (cibleTraduction lit cible.slug) : c'est lui qui doit recevoir la flèche
-  // de pipeline/pdf-verrouille (revue F03, 22.09.2026).
+  // extension.js). Distinct d'« apercu » : basculerApercu bascule l'article en aperçu
+  // courant et ne reçoit pas de slug, alors que voirPdfArticle accepte { slug, focus }.
+  // Sert à pipeline/pdf-verrouille.
   pdf: Object.freeze({ commande: 'szh.voirPdfArticle', icone: 'oeil',
     libelle: 'action.pdf', tip: 'action.pdf.tip' }),
-  // Le remède EST le bouton : on corrige depuis là où on a lu l'avertissement, sans aller
-  // chercher le panneau d'export.
+  // On corrige depuis l'avertissement, sans passer par le panneau d'export.
   pagination: Object.freeze({ commande: 'szh.rafraichirPagination', icone: 'imprimante',
     libelle: 'action.pagination', tip: 'action.pagination.tip' })
 });
@@ -84,14 +74,13 @@ const LIEUX = Object.freeze({
 // ---------------------------------------------------------------------------------------
 //
 //   barrage    'compilation' | 'pdfua' | 'export' | 'geste' | null
-//              La porte que ce défaut ferme. `geste` = l'opération demandée n'a pas eu
-//              lieu ; elle ne bloque aucune publication, mais elle a refusé, et le rouge
-//              le dit aussi.
+//              La barrière que ce défaut ferme. 'geste' : l'opération demandée n'a pas eu
+//              lieu ; aucune publication n'est bloquée, mais c'est un refus, donc rouge.
 //   nature     'defaut'  quelque chose est faux ;
-//              'attente' rien n'est faux, le travail n'a pas commencé — jamais rouge, même
+//              'attente' rien n'est faux, le travail n'a pas commencé ; jamais rouge, même
 //                        quand la chaîne s'arrête faute de matière ;
-//              'fait'    une information, rien à corriger — gris.
-//   lieu       une clé de LIEUX, ou '' quand aucun geste n'existe ici.
+//              'fait'    une information, rien à corriger ; gris.
+//   lieu       une clé de LIEUX, ou '' quand l'application n'offre aucune action.
 //   focusChamp le champ du constat qui désigne l'objet à atteindre dans ce lieu.
 //   focusFixe  la même chose, quand l'objet est toujours le même.
 //   defaut     la clé de l'intitulé court.
@@ -104,10 +93,9 @@ const F = 'fait';
 
 // Où se corrige une règle PDF/UA, par son repère ISO 14289-1 (la ligne « ISO 14289-1
 // 7.1-9 » de pipeline/rapport-ua.py). Seules les règles qu'un rédacteur peut corriger ont
-// une cible : les autres sont des défauts de la chaîne (« signalez-le »), et une flèche
-// qui mènerait quelque part serait un mensonge. Les tableaux s'éditent dans leur éditeur :
-// veraPDF ne nomme que des pages, jamais le tableau — c'est regrouper() plus bas qui
-// retrouve lesquels, et une carte sans tableau identifié retombe sur la liste des tableaux.
+// une cible ; les autres sont des défauts de la chaîne (« signalez-le »). Les tableaux
+// s'éditent dans leur éditeur : veraPDF ne nomme que des pages, regrouper() retrouve les
+// tableaux, et une carte sans tableau identifié mène à la liste des tableaux.
 const CIBLES_REGLE_PDFUA = Object.freeze({
   '7.1-9': Object.freeze({ lieu: 'fiche', focus: 'title' }),
   '7.2-29': Object.freeze({ lieu: 'fiche', focus: 'lang' }),
@@ -122,7 +110,7 @@ const TABLE = Object.freeze({
   // ---- La compilation ------------------------------------------------------------
   'pipeline/titre-manquant': { barrage: 'compilation', nature: D, lieu: 'fiche',
     focusFixe: 'title', defaut: 'defaut.titre-manquant' },
-  // Un dossier se renomme dans l'explorateur de Windows : le cockpit n'a pas ce geste.
+  // Un dossier se renomme dans l'explorateur de Windows : pas de bouton.
   'pipeline/dossier-espaces': { barrage: 'compilation', nature: D, lieu: '',
     defaut: 'defaut.dossier-espaces', detail: 'detail.dossier-espaces' },
   'pipeline/aucun-article': { barrage: 'compilation', nature: A, lieu: 'word',
@@ -136,8 +124,8 @@ const TABLE = Object.freeze({
   'pipeline/profil-inconnu': { barrage: 'compilation', nature: D, lieu: 'numero',
     defaut: 'defaut.profil-inconnu' },
   // Le PDF est tenu ouvert par un lecteur : WeasyPrint a produit le fichier, c'est le
-  // déplacement final qui a refusé. Le bouton révèle CE PDF dans l'Explorateur (lieu
-  // 'pdf' -> szh.voirPdfArticle) : Adobe, lui, se ferme à la main — le détail le dit.
+  // déplacement final qui a échoué. Le bouton révèle ce PDF dans l'Explorateur (lieu 'pdf',
+  // szh.voirPdfArticle) ; le lecteur se ferme à la main, le détail le dit.
   'pipeline/pdf-verrouille': { barrage: 'compilation', nature: D, lieu: 'pdf',
     focusChamp: 'fichier', defaut: 'defaut.pdf-verrouille', detail: 'detail.pdf-verrouille' },
   // ---- Le balisage du PDF --------------------------------------------------------
@@ -146,8 +134,7 @@ const TABLE = Object.freeze({
   'pipeline/balisage-aucun': { barrage: 'pdfua', nature: D, lieu: '',
     defaut: 'defaut.balisage-aucun' },
   // ---- La mise en page -----------------------------------------------------------
-  // Une image introuvable ne ferme aucune porte : le PDF sort, l'image manque. Ambre,
-  // donc, là où elle était rouge — la couleur suit la chaîne, pas l'agacement.
+  // Une image introuvable ne bloque rien : le PDF sort, sans l'image. Ambre.
   'rendu/image-manquante': { barrage: null, nature: D, lieu: 'medias',
     focusChamp: 'image', defaut: 'defaut.image-manquante' },
   'rendu/niveaux-ecrases': { barrage: null, nature: D, lieu: 'article',
@@ -155,9 +142,8 @@ const TABLE = Object.freeze({
   'rendu/police-manquante': { barrage: null, nature: D, lieu: '',
     defaut: 'defaut.police-manquante' },
   // ---- La typographie (szh-typographie.lua) ---------------------------------------
-  // Les trois codes n'écrivent pas encore de champ « mot » : deux chantiers parallèles
-  // l'ajoutent à l'émetteur. En attendant, focusChamp lit un champ absent et la flèche se
-  // dégrade proprement (focus '') — voir valeurChamp() ci-dessus.
+  // Le champ « mot » est omis quand le filtre n'a pas retrouvé le mot : la flèche mène alors
+  // à l'article sans position (focus '', voir valeurChamp()).
   'typo/eszett': { barrage: null, nature: D, lieu: 'article', focusChamp: 'mot',
     defaut: 'defaut.typo-eszett', detail: 'detail.typo-eszett' },
   'typo/guillemets-droits': { barrage: null, nature: D, lieu: 'article', focusChamp: 'mot',
@@ -167,8 +153,8 @@ const TABLE = Object.freeze({
   // ---- Les images natives Word (szh-metafichier.lua) ------------------------------
   'metafichier/image-native-word': { barrage: null, nature: D, lieu: 'medias',
     focusChamp: 'image', defaut: 'defaut.metafichier-image-native' },
-  // Le toolkit déployé sur ce poste n'a pas le placeholder : un défaut de déploiement,
-  // aucun geste dans l'application.
+  // Le toolkit de ce poste n'a pas l'image de remplacement : un défaut de déploiement, que
+  // l'application ne corrige pas.
   'metafichier/placeholder-introuvable': { barrage: null, nature: D, lieu: '',
     defaut: 'defaut.metafichier-placeholder-introuvable' },
   // ---- Les métadonnées et la langue ----------------------------------------------
@@ -183,19 +169,19 @@ const TABLE = Object.freeze({
   'meta/langue-inconnue': { barrage: 'compilation', nature: D, lieu: 'fiche',
     focusFixe: 'lang', defaut: 'defaut.langue-inconnue' },
   // ---- Les figures ---------------------------------------------------------------
-  // Rouge : une image qui porte de l'information sans texte alternatif fait échouer la
-  // validation PDF/UA, donc l'export. Ambre sur un poste où cette validation est éteinte.
+  // Rouge : une image informative sans texte alternatif fait échouer la validation PDF/UA,
+  // donc l'export. Ambre sur un poste où cette validation est éteinte.
   'numerotation/figure-sans-alt': { barrage: 'pdfua', nature: D, lieu: 'medias',
     focusChamp: 'image', defaut: 'defaut.figure-sans-alt' },
   // ---- L'accessibilité du PDF ----------------------------------------------------
   'pdfua/aucun-pdf': { barrage: null, nature: A, lieu: '', defaut: 'defaut.aucun-pdf' },
   'pdfua/non-conforme': { barrage: 'pdfua', nature: D, lieu: '',
     defaut: 'defaut.pdfua-non-conforme', detail: 'detail.pdfua-non-conforme' },
-  // La règle se nomme dans la phrase, sa cause et son geste en seconde ligne : sans eux, la
-  // carte disait « Règle PDF/UA non respectée » sans jamais dire laquelle.
-  // objetSeul : le titre de la carte EST la règle (« Le document n'a pas de titre (1 fois,
-  // page 3) ») — le préfixe « Règle PDF/UA non respectée » que la source de la carte dit
-  // déjà. Le geste et la cause viennent du champ `explication` (consigne(), infobulle()).
+  // La règle se nomme dans la phrase ; sa cause et l'action à faire viennent du champ
+  // `explication` (consigne(), infobulle()).
+  // objetSeul : le titre de la carte est la règle elle-même (« Le document n'a pas de titre
+  // (1 fois, page 3) »), sans le préfixe « Règle PDF/UA non respectée » que la source de
+  // la carte dit déjà.
   'pdfua/regle': { barrage: 'pdfua', nature: D, lieu: '', objetChamp: 'regle', objetSeul: true,
     detailChamp: 'explication', ciblesRepere: CIBLES_REGLE_PDFUA, defaut: 'defaut.pdfua-regle' },
   'pdfua/outillage': { barrage: null, nature: D, lieu: '', defaut: 'defaut.pdfua-outillage' },
@@ -218,51 +204,49 @@ const TABLE = Object.freeze({
   'import/fichier-illisible': { barrage: 'geste', nature: D, lieu: 'word',
     defaut: 'defaut.fichier-illisible' },
   'import/restes': { barrage: null, nature: A, lieu: 'word', defaut: 'defaut.import-restes' },
-  // La flèche vise un extrait repérable de la première cellule (« debut », que l'autre
-  // chantier ajoute à docx-tables.py) ; la phrase continue de nommer le tableau
-  // (« tableau », déjà écrit) — objetChamp passe désormais avant focusChamp dans objet(),
-  // pour ce cas précis où cible et objet ne doivent plus être le même champ.
+  // La flèche vise un extrait repérable de la première cellule (« debut », écrit par
+  // docx-tables.py) ; la phrase nomme le tableau (« tableau ») : objetChamp passe avant
+  // focusChamp dans objet(), pour que cible et objet soient deux champs distincts.
   // Un en-tête se déclare dans l'éditeur du tableau, pas dans le texte : la flèche y mène,
-  // sur le fichier que docx-tables.py a écrit pour ce numéro (table-02.html pour
-  // « tableau 2 » — focusTable). `debut` reste lu par la carte regroupée.
+  // sur le fichier que docx-tables.py a écrit (table-02.html pour « tableau 2 », focusTable).
+  // `debut` reste lu par la carte regroupée.
   'import/tableau-sans-entete': { barrage: null, nature: D, lieu: 'table',
     focusTable: 'tableau', objetChamp: 'tableau', defaut: 'defaut.tableau-sans-entete' },
   'import/langue-deduite': { barrage: null, nature: F, lieu: 'fiche', focusFixe: 'lang',
     defaut: 'defaut.langue-deduite' },
   // Titre et sous-titre sont voisins dans le formulaire : la carte ouvre le premier, et
-  // la coupe se defait d'un copier-coller.
+  // la coupe se défait d'un copier-coller.
   'import/sous-titre-deduit': { barrage: null, nature: F, lieu: 'fiche', focusFixe: 'title',
     objetChamp: 'soustitre', defaut: 'defaut.sous-titre-deduit' },
   'import/word-redepose': { barrage: null, nature: F, lieu: 'word', focusChamp: 'fichier',
     defaut: 'defaut.word-redepose' },
-  // ---- Le lecteur du gabarit « Pronto » (branché le 22.09.2026) -------------------
+  // ---- Le lecteur du gabarit « Pronto » -------------------------------------------
   //
-  // La destination se décide sur UNE question : où va-t-on corriger ? Presque toujours dans
-  // le document Word — c'est lui qui porte l'étiquette mal tapée, le bloc mal formé, le champ
-  // laissé vide — donc `word`, et jamais `article` : le .md n'existe même pas quand l'import
-  // a été refusé. Les deux exceptions sont des champs de la fiche, où la correction se fait
-  // sans rouvrir Word.
+  // La correction se fait presque toujours dans le Word, qui porte l'étiquette mal tapée,
+  // le bloc mal formé ou le champ vide : lieu `word`, pas `article` (le .md n'existe pas
+  // quand l'import est refusé). Les deux exceptions sont des champs de la fiche.
   //
-  // `barrage: 'geste'` sur les quatre premiers : l'import a été REFUSÉ, l'article n'est pas
-  // dans le numéro, et le Word attend toujours. C'est le même barrage que « import/echec ».
+  // `barrage: 'geste'` sur les quatre premiers : l'import a été refusé, l'article n'est pas
+  // dans le numéro, et le Word attend toujours. Même barrage que « import/echec ».
   'import/etiquette-metadonnees-inconnue': { barrage: 'geste', nature: D, lieu: 'word',
     focusChamp: 'fichier', objetChamp: 'etiquette', defaut: 'defaut.pronto-meta-inconnue' },
-  // Mots-clés : reconnue, mais le gabarit n'a pas de case pour elle. Même barrage.
+  // Étiquette reconnue (par exemple « Mots-clés »), mais le gabarit n'a pas de case pour
+  // elle. Même barrage.
   'import/metadonnees-champ-hors-gabarit': { barrage: 'geste', nature: D, lieu: 'word',
     focusChamp: 'fichier', objetChamp: 'champ', defaut: 'defaut.pronto-meta-hors-gabarit' },
   'import/auteur-etiquette-inconnue': { barrage: 'geste', nature: D, lieu: 'word',
     focusChamp: 'fichier', objetChamp: 'ligne', defaut: 'defaut.pronto-auteur-inconnue' },
-  // Champ RECONNU mais que le gabarit ne porte pas (adresse, biographie, téléphone, photo).
-  // Même barrage que ci-dessus — l'import est refusé, sa valeur serait perdue — mais un
-  // intitulé distinct : l'étiquette n'a rien de fautif, c'est le gabarit qui n'a pas de case.
+  // Champ reconnu que le gabarit ne porte pas (adresse, biographie, téléphone, photo). Même
+  // barrage (l'import est refusé, la valeur serait perdue), mais un intitulé distinct :
+  // l'étiquette est juste, c'est le gabarit qui n'a pas de case.
   'import/auteur-champ-hors-gabarit': { barrage: 'geste', nature: D, lieu: 'word',
     focusChamp: 'fichier', objetChamp: 'champ', defaut: 'defaut.pronto-champ-hors-gabarit' },
   'import/bloc-etiquette-inconnue': { barrage: 'geste', nature: D, lieu: 'word',
     focusChamp: 'fichier', objetChamp: 'etiquette', defaut: 'defaut.pronto-bloc-inconnue' },
   'import/cle-ambigue': { barrage: 'geste', nature: D, lieu: 'word', focusChamp: 'fichier',
     objetChamp: 'clé', defaut: 'defaut.pronto-cle-ambigue' },
-  // L'article est importé : plus de barrage, mais un geste à faire dans le Word avant la
-  // prochaine version.
+  // L'article est importé : pas de barrage, mais une correction à faire dans le Word avant
+  // la prochaine version.
   'import/cle-approximee': { barrage: null, nature: D, lieu: 'word', focusChamp: 'fichier',
     objetChamp: 'clé', defaut: 'defaut.pronto-cle-approximee' },
   'import/structure-inattendue': { barrage: null, nature: D, lieu: 'word',
@@ -273,20 +257,19 @@ const TABLE = Object.freeze({
     defaut: 'defaut.pronto-bloc-vide' },
   'import/bloc-cles-sans-contenu': { barrage: null, nature: D, lieu: 'word',
     focusChamp: 'fichier', defaut: 'defaut.pronto-cles-sans-contenu' },
-  // Le garde-fou : un tableau qui porte les étiquettes d'un bloc sans en avoir la forme. Il
-  // lève AUSSI une boîte de dialogue après l'import (lib/import-hote.js) — un avertissement
-  // qu'on lit plus tard ne ferait pas rouvrir le Word, et c'est pourtant ce qu'il faut faire.
+  // Un tableau qui porte les étiquettes d'un bloc sans en avoir la forme. L'import ouvre
+  // aussi une boîte de dialogue (lib/import-hote.js) : il faut rouvrir le Word.
   'import/bloc-mal-forme': { barrage: null, nature: D, lieu: 'word', focusChamp: 'fichier',
     defaut: 'defaut.pronto-bloc-mal-forme' },
-  // La garantie « rien ne disparaît » de l'import (29.09.2026) : ce qui n'a pas trouvé sa
-  // place est resté VISIBLE dans le texte — la flèche y mène (valeur, image), le geste est
-  // de le ranger. szh-legendes.lua et docx-controle-import.py les émettent sans entrée dans
-  // CLES_IMPORT : la phrase de la chaîne s'affiche en repli, comme bloc-mal-forme.
+  // Ce que l'import n'a pas su ranger est resté visible dans le texte : la flèche y mène
+  // (valeur, image), et il reste à le ranger. szh-legendes.lua et docx-controle-import.py
+  // émettent ces codes sans entrée dans CLES_IMPORT : la phrase de la chaîne s'affiche en
+  // repli, comme pour bloc-mal-forme.
   'import/bloc-valeur-non-reprise': { barrage: null, nature: D, lieu: 'article',
     focusChamp: 'valeur', defaut: 'defaut.bloc-valeur-non-reprise' },
   'import/image-absente-import': { barrage: null, nature: D, lieu: 'article',
     focusChamp: 'image', defaut: 'defaut.image-absente-import' },
-  // Une image d'un groupe sans texte alternatif : même couleur et même geste que la figure
+  // Une image d'un groupe sans texte alternatif : même couleur et même action que la figure
   // sans description de la compilation, mais dit dès l'import.
   'import/figure-alt-a-completer': { barrage: null, nature: D, lieu: 'medias',
     focusChamp: 'image', defaut: 'defaut.figure-alt-a-completer' },
@@ -298,7 +281,7 @@ const TABLE = Object.freeze({
     defaut: 'defaut.tableau-images-et-texte' },
   'import/biblio-tableau-apres-titre': { barrage: null, nature: D, lieu: 'word',
     focusChamp: 'fichier', defaut: 'defaut.pronto-biblio-tableau' },
-  // Le type se choisit dans la fiche, pas dans le Word : c'est là qu'on l'y remet.
+  // Le type se choisit dans la fiche, pas dans le Word.
   'import/type-article-non-reconnu': { barrage: null, nature: D, lieu: 'fiche',
     focusFixe: 'type', objetChamp: 'valeur', defaut: 'defaut.pronto-type-inconnu' },
   // Les trois informations : rien n'est perdu, rien à faire tout de suite.
@@ -306,22 +289,20 @@ const TABLE = Object.freeze({
     focusChamp: 'fichier', objetChamp: 'clé', defaut: 'defaut.pronto-cle-absente' },
   'import/blocs-colles': { barrage: null, nature: F, lieu: 'word', focusChamp: 'fichier',
     defaut: 'defaut.pronto-blocs-colles' },
-  // La langue se corrige dans la fiche — c'est même la seule façon de déclarer un article
-  // italien depuis que le champ a quitté le gabarit.
+  // La langue se corrige dans la fiche : c'est la seule façon de déclarer un article
+  // italien, le gabarit n'ayant pas ce champ.
   'import/langue-du-document-ignoree': { barrage: null, nature: F, lieu: 'fiche',
     focusFixe: 'lang', defaut: 'defaut.pronto-langue-ignoree' },
   'import/origine-inconnue': { barrage: null, nature: D, lieu: 'word', focusChamp: 'fichier',
     defaut: 'defaut.origine-inconnue' },
-  // Quatre codes de docx-meta.py restés sans ligne ici ni dans lib/journal.js : ils
-  // s'affichaient par le repli générique, sans flèche (revue F03, 22.09.2026).
+  // Quatre codes de docx-meta.py.
   'import/tableau-auteurs-non-lu': { barrage: null, nature: D, lieu: 'article',
     defaut: 'defaut.tableau-auteurs-non-lu' },
   'import/biblio-references-restees': { barrage: null, nature: D, lieu: 'article',
     defaut: 'defaut.biblio-references-restees' },
   'import/biblio-non-detachee': { barrage: null, nature: D, lieu: 'article',
     defaut: 'defaut.biblio-non-detachee' },
-  // Le crédit de photo n'a nulle part où aller : la fiche n'a pas de champ pour lui. Une
-  // information, pas un défaut à corriger dans l'application.
+  // Le crédit de photo n'a pas de champ dans la fiche : une information.
   'import/credit-photo-non-repris': { barrage: null, nature: F, lieu: '',
     defaut: 'defaut.credit-photo-non-repris' },
   // ---- Le réimport d'un Word corrigé ---------------------------------------------
@@ -367,32 +348,26 @@ const TABLE = Object.freeze({
   // ---- La bibliographie détachée à l'import --------------------------------------
   //
   // szh-biblio-detacher.lua sort la liste des références du corps de l'article et
-  // l'enregistre à part. Le cas NOMINAL se disait aussi : il arrivait sans ligne ici, donc
-  // ambre, sous un triangle, et dans la prose du filtre — un succès déguisé en défaut.
-  // C'est une information, et rien d'autre.
+  // l'enregistre à part. Le cas normal est une simple information.
   'import/biblio-detachee': { barrage: null, nature: F, lieu: '',
     defaut: 'defaut.biblio-detachee' },
   // Des paragraphes sont restés dans le texte, juste après la liste. Rien n'est perdu et
-  // le PDF sort : ambre, avec le geste qui mène au texte de l'article.
-  // Le compte est dans le DÉTAIL, et non en objet : la phrase se lit « {intitulé} : {objet} »
-  // puis le détail, et un nombre nu coincé entre deux points et une majuscule ne se lisait
-  // pas (« restés dans le texte : 2 Rien n'est perdu »).
+  // le PDF sort : ambre, avec un bouton vers le texte de l'article. Le compte est dans le
+  // détail et non en objet : « restés dans le texte : 2 Rien n'est perdu » se lisait mal.
   'import/biblio-incomplete': { barrage: null, nature: D, lieu: 'article',
     defaut: 'defaut.biblio-incomplete', detail: 'detail.biblio-incomplete' },
   'import/biblio-bornes-perdues': { barrage: null, nature: D, lieu: 'article',
     defaut: 'defaut.biblio-bornes-perdues', detail: 'detail.biblio-bornes-perdues' },
-  // Le dossier du numéro refuse l'écriture : aucun geste du cockpit n'y change quelque
-  // chose, et un bouton qui mènerait « quelque part » serait un mensonge.
+  // Le dossier du numéro refuse l'écriture : le cockpit n'y peut rien, pas de bouton.
   'import/biblio-fichier-refuse': { barrage: null, nature: D, lieu: '',
     defaut: 'defaut.biblio-fichier-refuse', detail: 'detail.biblio-fichier-refuse' },
   // ---- La scission d'un manuscrit de livre (livre-scinder.py) --------------------
   // Préfixe « [scission-avertissement] » pour tous, mais deux d'entre eux appellent
-  // sys.exit(1) juste après avoir écrit leur constat : ils arrêtent bel et bien la
-  // compilation (barrage réel vérifié dans le code, pas seulement dans le préfixe).
+  // sys.exit(1) juste après : ils arrêtent la compilation.
   'scission/aucun-titre-niveau-1': { barrage: 'compilation', nature: D, lieu: 'article',
     defaut: 'defaut.scission-aucun-titre' },
   // Un dossier de chapitre porte déjà ce nom, sans rapport avec ce manuscrit : à renommer
-  // dans l'explorateur de Windows, le cockpit n'a pas ce geste.
+  // dans l'explorateur de Windows, le cockpit ne le fait pas.
   'scission/chapitre-cible-existe': { barrage: 'compilation', nature: D, lieu: '',
     defaut: 'defaut.scission-chapitre-existe' },
   'scission/image-introuvable': { barrage: null, nature: D, lieu: 'medias',
@@ -417,9 +392,9 @@ const TABLE = Object.freeze({
   'livre/chapitre-introuvable': { barrage: 'compilation', nature: D, lieu: 'numero',
     focusChamp: 'chapitre', defaut: 'defaut.chapitre-introuvable' },
   // ---- Ce que le cockpit voit sans compiler ---------------------------------------
-  // Ces quatre-là ne viennent pas du journal de la chaîne : le cockpit les calcule en
-  // lisant le numéro. Ils suivent la même table, pour que la carte d'un article et la
-  // liste « À corriger » ne puissent plus diverger.
+  // Ces constats ne viennent pas du journal : le cockpit les calcule en lisant le numéro.
+  // Ils suivent la même table, pour que la carte d'un article et la liste « À corriger »
+  // concordent.
   'cockpit/sans-fiche': { barrage: 'compilation', nature: D, lieu: 'fiche',
     focusFixe: 'title', defaut: 'defaut.sans-fiche' },
   // La chaîne s'est arrêtée sans qu'aucun constat du journal ne dise pourquoi : posé par
@@ -430,47 +405,41 @@ const TABLE = Object.freeze({
   'cockpit/doi-double': { barrage: 'export', nature: D, lieu: 'fiche', focusFixe: 'doi',
     defaut: 'defaut.doi-double' },
   // Pagination continue du numéro (pipeline/pagination.py, émis par `make pdf` dès qu'un
-  // numéro a été paginé). Un défaut — les folios imprimés sont faux — mais sans barrage,
-  // donc orange : on continue d'écrire et de compiler. La porte existe bien, et elle est à
-  // l'export : lib/export-ojs.js refuse un numéro à la pagination périmée, et ce refus
-  // arrive en rouge sous export/refus au moment où l'on exporte. Avec barrage: 'export' ici,
-  // chaque article décalé passerait au rouge pendant toute la rédaction. Posé sur l'article
+  // numéro a été paginé) : les folios imprimés sont faux. Sans barrage, donc ambre : on
+  // continue d'écrire et de compiler. Le refus est à l'export (lib/export-ojs.js refuse un
+  // numéro à la pagination périmée, en rouge sous export/refus) ; avec barrage: 'export'
+  // ici, chaque article décalé serait rouge pendant toute la rédaction. Posé sur l'article
   // dont la longueur ou la place a changé, et sur tous ceux qui le suivent.
   'pagination/perimee': { barrage: null, nature: D, lieu: 'pagination',
     defaut: 'defaut.pagination-perimee', detail: 'detail.pagination-perimee' },
   'cockpit/image-sans-alt': { barrage: 'pdfua', nature: D, lieu: 'medias',
     focusChamp: 'image', defaut: 'defaut.figure-sans-alt' },
-  // L'export refuse, et chaque raison devient une carte. Le lieu n'est pas dans la table :
-  // il depend de la raison -- les reglages OJS pour un champ de configuration, la fiche de
-  // l'article nomme pour le reste -- et c'est donc le constat qui le porte.
+  // L'export refuse, et chaque raison devient une carte. Le lieu dépend de la raison (les
+  // réglages OJS pour un champ de configuration, la fiche de l'article sinon) : c'est le
+  // constat qui le porte.
   'export/refus': { barrage: 'export', nature: D, lieu: '',
     defaut: 'defaut.export-refus', objetChamp: 'raison' },
   'cockpit/image-sans-legende': { barrage: null, nature: D, lieu: 'medias',
     focusChamp: 'image', defaut: 'defaut.image-sans-legende' },
   // ---- Les cartes regroupées (regrouper(), plus bas) --------------------------------
-  // Un même défaut arrivait par deux ou trois voies — la règle PDF/UA 7.3-1 du validateur,
-  // une ligne par image de szh-numerotation.lua — et faisait autant de cartes pour les
-  // mêmes images. Il n'en reste qu'une : le compte dans le titre (`compte`), un lien par
-  // objet (champs.elements), une phrase, un bouton.
+  // Une seule carte pour un défaut arrivé par plusieurs voies : le compte dans le titre
+  // (`compte`), un lien par objet (champs.elements), une phrase, un bouton.
   'cockpit/images-sans-description': { barrage: 'pdfua', nature: D, lieu: 'medias', compte: true,
     defaut: 'defaut.images-sans-description' },
   // Deux gravités pour les tableaux : rouge quand le validateur PDF/UA a refusé (7.5-1,
-  // 7.5-2), ambre quand seul l'import a douté — un tableau sans en-tête est légitime.
+  // 7.5-2), ambre quand seul l'import a douté (un tableau sans en-tête peut être légitime).
   'cockpit/tableaux-entete': { barrage: 'pdfua', nature: D, lieu: 'table', compte: true,
     defaut: 'defaut.tableaux-entete' },
   'cockpit/tableaux-sans-entete': { barrage: null, nature: D, lieu: 'table', compte: true,
     defaut: 'defaut.tableaux-sans-entete' },
   // Une case d'en-tête (th) sans intitulé : un lecteur d'écran annonce une colonne sans nom.
-  // Le cockpit la voit en lisant les tableaux de l'article (constatEnteteVide). Ambre, et
-  // jamais plus : la validation PDF/UA ne la refuse pas, l'export non plus — décision de
-  // Robin, 29.09.2026 (article massie, table-01.html, la case du coin en haut à gauche).
+  // Le cockpit la voit en lisant les tableaux de l'article (constatEnteteVide). Ambre
+  // seulement : ni la validation PDF/UA ni l'export ne la refusent.
   'cockpit/entete-vide': { barrage: null, nature: D, lieu: 'table', compte: true,
     defaut: 'defaut.entete-vide' },
   // Les champs du gabarit « Pronto » laissés vides (import/cle-attendue-absente) : une carte
-  // par article, un lien par champ, là où il se remplit — la fiche pour l'en-tête et les
-  // autrices et auteurs, Médias pour les clés d'une figure. Une carte par champ, jusqu'au
-  // 30.09.2026 : vingt cartes identiques pour un article à trois auteurs sans ORCID, sans le
-  // nom du champ, et un bouton vers les Word en attente, où le document n'était plus.
+  // par article, un lien par champ, là où il se remplit (la fiche pour l'en-tête et les
+  // auteurs, Médias pour les clés d'une figure).
   'cockpit/champs-gabarit-vides': { barrage: null, nature: F, lieu: 'fiche', compte: true,
     defaut: 'defaut.champs-gabarit-vides' }
 });
@@ -479,15 +448,14 @@ const TABLE = Object.freeze({
 // 2 bis. Le second étage d'une carte : une phrase d'action, et le pourquoi en infobulle
 // ---------------------------------------------------------------------------------------
 //
-// Une carte « À corriger » se lit en quatre temps : un titre court et concret (defaut.* et
-// son objet), l'objet en cause (un lien par objet quand il y en a plusieurs), UNE phrase
-// qui commence par le geste (consigne), un bouton. Tout ce qui explique — pourquoi c'est un
-// défaut, ce qui a été gardé ou perdu, le repère ISO — passe dans l'infobulle : rien n'est
-// retiré, tout est déplacé.
+// Une carte « À corriger » se lit en quatre temps : un titre court (defaut.* et son objet),
+// l'objet en cause (un lien par objet s'il y en a plusieurs), une phrase qui commence par
+// l'action (consigne), un bouton. L'explication (pourquoi c'est un défaut, ce qui a été
+// gardé ou perdu, le repère ISO) va dans l'infobulle.
 //
 // `consigne` : la clé de la phrase d'action. Ses arguments sont ceux du constat.
 // `infobulle` : la clé d'une explication, quand ni le message ctl.* du constat ni la
-// phrase de la chaîne n'en portent une (voir infobulle() pour l'ordre des repli).
+// phrase de la chaîne n'en portent une (voir infobulle() pour l'ordre des replis).
 // Une information (nature 'fait') peut n'avoir aucune consigne : elle ne demande rien.
 const SECOND_ETAGE = Object.freeze({
   'pipeline/titre-manquant': { consigne: 'consigne.titre-manquant' },
@@ -613,18 +581,16 @@ function cleDe(constat) {
 
 function entree(constat) { return TABLE[cleDe(constat)] || null; }
 
-// Une porte n'est fermée que si elle est ouverte : la validation PDF/UA est un réglage de
-// poste, et un numéro qui ne produit pas de PDF n'a rien à valider. Les deux autres portes
-// sont toujours là — on compile toujours, on exporte toujours un jour.
+// Une barrière n'est fermée que si elle existe : la validation PDF/UA est un réglage de
+// poste, et un numéro sans PDF n'a rien à valider. Compilation et export existent toujours.
 function porteActive(barrage, contexte) {
   const ctx = contexte || {};
   if (barrage === 'pdfua') { return ctx.pdfua !== false; }
   return true;
 }
 
-// -> 'bloquant' | 'avert' | 'info'. Un code inconnu vaut 'avert' : une source neuve doit se
-// voir, sans rien arrêter — c'est le même parti que lib/journal.js, qui la laisse passer
-// avec la phrase du pipeline.
+// -> 'bloquant' | 'avert' | 'info'. Un code inconnu vaut 'avert' : visible, sans rien
+// arrêter, comme lib/journal.js qui l'affiche avec la phrase de la chaîne.
 function gravite(constat, contexte) {
   const e = entree(constat);
   if (!e) { return 'avert'; }
@@ -634,46 +600,41 @@ function gravite(constat, contexte) {
   return 'avert';
 }
 
-// Le ton d'affichage, tel que .szh-notif et .szh-pastille le connaissent depuis toujours.
+// Le ton d'affichage, tel que .szh-notif et .szh-pastille le connaissent.
 function ton(constat, contexte) {
   const g = gravite(constat, contexte);
   return g === 'bloquant' ? 'danger' : (g === 'avert' ? 'attention' : 'info');
 }
 
-// Ce qu'on a le droit d'effacer d'un clic. Les gris seulement : ils constatent, ils ne
-// demandent rien, et une vue qui les accumule finit par cacher ce qu'il reste à faire. Un
-// bloquant n'a pas de croix, et un avertissement non plus — les faire taire, c'est se
-// donner un numéro propre en le décidant, et le rouge doit se corriger, pas se refermer.
+// Ce qui peut s'effacer d'un clic : les gris, qui ne demandent rien et finiraient par cacher
+// ce qui reste à faire. Rouges et ambres n'ont pas de croix : ils se corrigent.
 //
-// Exception, décision de Robin (07.10.2026) : tout ce que dit l'import se ferme, quelle que
-// soit sa couleur. Un import refusé ne laisse aucun article à corriger dans le cockpit : le
-// message survivait au Word qu'on avait abandonné, sans moyen de le faire taire.
+// Exception : tout ce que dit l'import se ferme, quelle que soit sa couleur. Un import
+// refusé ne laisse aucun article à corriger, et son message survivrait au Word abandonné.
 function fermable(constat, contexte) {
   const c = constat || {};
   if (c.source === 'import' || c.origine === 'import') { return true; }
   return gravite(constat, contexte) === 'info';
 }
 
-// Les focusChamp qui désignent vraiment un fichier sur le disque — les seuls dont le
-// formulaire ne veut que le nom. Une donnée, pas un `if` au milieu de cible() : objet()
-// lit le même ensemble, pour que le bouton et la phrase désignent toujours la même chose.
-// « média » : le même chemin qu'« image » (livre-scinder.py, un média de pièce liminaire),
-// vers le même formulaire des médias — le nom seul, pas le chemin.
+// Les focusChamp qui désignent un fichier sur le disque, dont le formulaire ne veut que le
+// nom. objet() lit le même ensemble que cible(), pour que le bouton et la phrase désignent
+// la même chose. « média » : comme « image » (un média de pièce liminaire de
+// livre-scinder.py), vers le formulaire des médias.
 const CHAMPS_FICHIER = new Set(['fichier', 'image', 'média']);
 
-// Un chemin ne sert à personne dans un formulaire : seul le nom du fichier y désigne une
-// image ou un Word. Ne s'applique qu'aux champs de CHAMPS_FICHIER : un appel de citation,
-// une référence (son DOI est une URL) ou une fourchette d'années portent parfois un « / »
-// sans être un chemin, et les couper au dernier séparateur mutilerait le texte affiché.
+// Dans un formulaire, seul le nom du fichier désigne une image ou un Word. Réservé aux
+// champs de CHAMPS_FICHIER : un appel de citation, un DOI ou une fourchette d'années peuvent
+// porter un « / » sans être un chemin.
 function dernierSegment(valeur) {
   const v = String(valeur === undefined || valeur === null ? '' : valeur);
   const i = Math.max(v.lastIndexOf('/'), v.lastIndexOf('\\'));
   return i === -1 ? v : v.slice(i + 1);
 }
 
-// La valeur d'un focusChamp telle qu'elle doit se lire : rognée au nom de fichier pour
-// CHAMPS_FICHIER, entière pour tous les autres. cible() (le bouton) et objet() (la phrase)
-// appellent tous deux celle-ci — jamais chacun sa règle.
+// La valeur d'un focusChamp telle qu'elle se lit : réduite au nom de fichier pour
+// CHAMPS_FICHIER, entière pour les autres. cible() (le bouton) et objet() (la phrase)
+// l'appellent tous deux.
 function valeurChamp(nomChamp, valeur) {
   if (CHAMPS_FICHIER.has(nomChamp)) { return dernierSegment(valeur); }
   return String(valeur === undefined || valeur === null ? '' : valeur);
@@ -686,12 +647,12 @@ function fichierTable(numero) {
   return 'table-' + (n < 10 ? '0' : '') + n + '.html';
 }
 
-// -> { lieu, slug, focus } ou null quand aucun geste n'existe pour ce défaut.
+// -> { lieu, slug, focus } ou null quand l'application n'offre aucune action pour ce défaut.
 //
 // `champs.focusCalcule` : l'extrait que l'hôte a retrouvé dans le .md pour un constat qui
-// n'en citait aucun (lib/reperage-focus.js, focusDeRepli) — il ne sert que de repli, un
-// focus que le constat porte lui-même passe toujours avant.
-// `champs.elements` (cartes regroupées) : un seul objet, et le bouton y mène tout droit.
+// n'en citait aucun (lib/reperage-focus.js, focusDeRepli). Repli seulement : le focus que
+// porte le constat passe avant.
+// `champs.elements` (cartes regroupées) : un seul objet, et le bouton y mène directement.
 function cible(constat) {
   const e = entree(constat);
   if (!e) { return null; }
@@ -711,7 +672,7 @@ function cible(constat) {
              focus: c.focus || (c.lieu === 'article' ? String(champs.focusCalcule || '') : '') };
   }
   // Un constat peut nommer sa cible quand la table ne peut pas la deviner : les raisons
-  // d'un refus d'export ne menent pas toutes au meme endroit.
+  // d'un refus d'export ne mènent pas toutes au même endroit.
   const lieu = (constat && constat.lieu) || e.lieu;
   if (!lieu) { return null; }
   let focus = '';
@@ -738,9 +699,9 @@ function objet(constat, langue) {
   const e = entree(constat);
   if (!e) { return ''; }
   const champs = (constat && constat.champs) || {};
-  // objetChamp d'abord : posé exprès quand l'objet de la phrase doit différer de la cible
-  // du bouton (import/tableau-sans-entete — la flèche vise un extrait repérable, la
-  // phrase continue de nommer le tableau). Sans lui, on retombe sur le champ de la cible.
+  // objetChamp d'abord : posé quand l'objet de la phrase doit différer de la cible du bouton
+  // (import/tableau-sans-entete : la flèche vise un extrait repérable, la phrase nomme le
+  // tableau). Sinon, le champ de la cible.
   if (e.objetChamp && champs[e.objetChamp] !== undefined) { return String(champs[e.objetChamp]); }
   if (e.focusChamp && champs[e.focusChamp] !== undefined) {
     return valeurChamp(e.focusChamp, champs[e.focusChamp]);
@@ -753,9 +714,9 @@ function objet(constat, langue) {
 // dictionnaire, le gabarit étant le même pour tous les défauts.
 const DEUX_POINTS = { fr: ' : ', de: ': ' };
 
-// « {défaut} : {objet} », ou le seul intitulé quand il n'y a pas d'objet à nommer. Jamais
-// un deux-points en l'air, jamais le geste — il est dans le bouton et dans la consigne.
-// Une carte regroupée (`compte`) dit son nombre d'objets : « 2 images sans description ».
+// « {défaut} : {objet} », ou l'intitulé seul quand il n'y a pas d'objet à nommer. L'action
+// est dans le bouton et la consigne, pas ici. Une carte regroupée (`compte`) dit son nombre
+// d'objets : « 2 images sans description ».
 function phrase(constat, langue) {
   const e = entree(constat);
   if (!e) { return String((constat && constat.brut) || ''); }
@@ -770,7 +731,7 @@ function phrase(constat, langue) {
 }
 
 // Les deux moitiés d'une explication de pipeline/rapport-ua.py : « En cause : … » (le
-// pourquoi) puis « À faire : … » (le geste), recollées par lib/journal.js en une ligne.
+// pourquoi) puis « À faire : … » (l'action), recollées par lib/journal.js en une ligne.
 const MARQUE_CAUSE = /^\s*(?:En cause|Ursache)\s*:\s*/;
 const MARQUE_GESTE = /\s*(?:À faire|Zu tun)\s*:\s*/;
 
@@ -782,14 +743,14 @@ function decouperExplication(texte) {
   return { cause: avant.replace(MARQUE_CAUSE, '').trim(), geste: apres.trim() };
 }
 
-// La phrase d'action : une seule, qui commence par le geste. Vide pour une information qui
-// ne demande rien. Les arguments du constat lui sont passés — c'est ainsi qu'elle porte un
-// compte (« 3 règle(s) en échec : recompilez… »).
+// La phrase d'action : une seule, qui commence par l'action. Vide pour une information qui
+// ne demande rien. Elle reçoit les arguments du constat, donc un compte éventuel
+// (« 3 règle(s) en échec : recompilez… »).
 function consigne(constat, langue) {
   const e = entree(constat);
   if (!e) { return ''; }
   // detailChamp : un texte déjà rédigé par la chaîne, dans la langue du cockpit (la cause
-  // et le geste d'une règle PDF/UA, écrits par pipeline/rapport-ua.py) ; seul le geste
+  // et l'action d'une règle PDF/UA, écrites par pipeline/rapport-ua.py) ; seule l'action
   // est une consigne.
   if (e.detailChamp) {
     return decouperExplication(((constat && constat.champs) || {})[e.detailChamp]).geste;
@@ -798,17 +759,16 @@ function consigne(constat, langue) {
   return s && s.consigne ? TL(langue, s.consigne, (constat && constat.args) || []) : '';
 }
 
-// La seconde ligne de la carte : désormais la consigne. Le nom reste, parce que la vue et
-// l'empreinte d'un message fermé (extension.js) composent leur texte de phrase() et de
-// detail() ; ce qui s'y lisait d'explicatif est passé dans l'infobulle.
+// La seconde ligne de la carte, c'est-à-dire la consigne. La vue et l'empreinte d'un message
+// fermé (extension.js) composent leur texte de phrase() et de detail().
 function detail(constat, langue) { return consigne(constat, langue); }
 
-// Ce qui explique le défaut, pour l'infobulle — jamais perdu, seulement déplacé. Le
-// premier texte non vide, et différent de la consigne, de :
+// L'explication du défaut, pour l'infobulle. Le premier texte non vide, et différent de la
+// consigne, parmi :
 //   1. l'explication que la table lui donne (SECOND_ETAGE.infobulle) ;
 //   2. la cause écrite par la chaîne (règle PDF/UA), suivie de son repère ISO ;
-//   3. le message complet de la maison (ctl.*, la clé que lib/journal.js a posée) ;
-//   4. l'ancienne seconde ligne de la table (`detail`) ;
+//   3. le message complet du cockpit (ctl.*, la clé que lib/journal.js a posée) ;
+//   4. la seconde ligne de la table (`detail`) ;
 //   5. la phrase de la chaîne elle-même (`brut`), dans la langue du cockpit.
 function infobulle(constat, langue) {
   const e = entree(constat);
@@ -855,20 +815,19 @@ function elements(constat, langue) {
 // 4. Le regroupement : une carte par défaut, et non une par voie d'arrivée
 // ---------------------------------------------------------------------------------------
 //
-// Une image muette arrivait par trois voies — la règle 7.3-1 du validateur PDF/UA, qui ne
-// connaît que des pages, et une ligne par image de szh-numerotation.lua ou du cockpit — et
-// faisait autant de phrases pour les mêmes images. Un tableau sans en-tête, par deux (7.5-1
-// ou 7.5-2, et l'import). Chaque famille devient UNE carte par article, dont les objets
-// viennent du .md et des tableaux de l'article, lus par l'hôte au moment de l'affichage :
-// c'est l'état d'aujourd'hui, pas celui de la dernière compilation, et c'est lui qui dit où
-// cliquer. veraPDF ne dit jamais quelle image ni quel tableau.
+// Une image sans description arrive par plusieurs voies : la règle 7.3-1 du validateur
+// PDF/UA, qui ne connaît que des pages, et une ligne par image de szh-numerotation.lua ou du
+// cockpit. Un tableau sans en-tête arrive par 7.5-1 ou 7.5-2 et par l'import. Chaque famille
+// devient une carte par article, dont les objets viennent du .md et des tableaux lus par
+// l'hôte au moment de l'affichage : c'est l'état actuel, et lui seul dit où cliquer
+// (veraPDF ne nomme ni l'image ni le tableau).
 //
 // `lire(slug)` -> { images: [{ nom, lieu, focus, precision? }],
 //                   tableaux: [{ nom, raison: 'sans-entete'|'fusion' }],   les suspects
 //                   tousTableaux: [nom] } | null                           tous, lus
 // Pure : l'hôte lit le disque, ce module décide. Les constats sans slug (le numéro entier)
-// ne se regroupent pas, et l'ordre de la liste est gardé : la carte prend la place du
-// premier constat qu'elle remplace.
+// ne se regroupent pas. L'ordre est gardé : la carte prend la place du premier constat
+// qu'elle remplace.
 const REPERES_IMAGES = new Set(['7.3-1']);
 const REPERES_TABLEAUX = new Set(['7.5-1', '7.5-2']);
 const CODES_IMAGES = new Set(['numerotation/figure-sans-alt', 'cockpit/image-sans-alt']);
@@ -913,7 +872,7 @@ function sansDoublon(liste) {
 function elementsImages(membres, lu) {
   const disque = (lu && Array.isArray(lu.images)) ? lu.images : [];
   if (disque.length > 0) { return sansDoublon(disque); }
-  // Rien d'identifié sur le disque : les noms que la chaîne a donnés, faute de mieux.
+  // Rien d'identifié sur le disque : les noms que la chaîne a donnés.
   return sansDoublon(membres
     .map((c) => valeurChamp('image', ((c.champs || {}).image)))
     .filter((n) => n !== '')
@@ -924,17 +883,16 @@ function elementsTableaux(membres, lu, avecPdfUa) {
   const suspects = (lu && Array.isArray(lu.tableaux)) ? lu.tableaux : null;
   const precision = (t) => ({ cle: t.raison === 'fusion' ? 'objet.tableau.fusion' : 'objet.tableau.sans-entete' });
   if (avecPdfUa && suspects) {
-    // Un en-tête fusionné est la cause que le validateur relève vraiment (mesuré sur
-    // l'article massie, 2025-02) : un tableau sans aucun en-tête, souvent un tableau de mise
-    // en page (le bloc des auteurs), ne lui fait pas refuser le PDF. Quand il y a des
-    // fusions, elles seules sont nommées ; sinon, les tableaux sans en-tête.
+    // Un en-tête fusionné est ce que le validateur refuse ; un tableau sans aucun en-tête
+    // (souvent un tableau de mise en page, comme le bloc des auteurs) ne lui fait pas
+    // refuser le PDF. Quand il y a des fusions, elles seules sont nommées ; sinon, les
+    // tableaux sans en-tête.
     const fusions = suspects.filter((t) => t.raison === 'fusion');
     return (fusions.length > 0 ? fusions : suspects)
       .map((t) => ({ nom: t.nom, lieu: 'table', focus: t.nom, precision: precision(t) }));
   }
-  // L'import seul a douté : les tableaux qu'il nomme, tant qu'ils sont encore sans en-tête
-  // (un tableau corrigé depuis ne se signale plus ; un tableau que l'hôte n'a pas pu lire
-  // reste nommé, dans le doute).
+  // L'import seul a douté : les tableaux qu'il nomme, tant qu'ils sont encore sans en-tête.
+  // Un tableau que l'hôte n'a pas pu lire reste nommé.
   const bas = (n) => String(n).toLowerCase();
   const suspect = new Set((suspects || []).map((t) => bas(t.nom)));
   const lus = new Set(((lu && lu.tousTableaux) || []).map(bas));
@@ -980,11 +938,10 @@ function regrouper(constats, lire) {
     sortie[g.index] = {
       source: 'cockpit', code: code, ton: '', slug: g.slug, cle: '', args: [],
       champs: { elements: els }, brut: '',
-      // La source du premier constat remplacé : c'est elle que le sous-titre de la carte
-      // nomme (« Figures », « Accessibilité du PDF »), « cockpit » ne disant rien à personne.
+      // La source du premier constat remplacé : le sous-titre de la carte la nomme
+      // (« Figures », « Accessibilité du PDF »).
       origine: g.membres[0].source,
-      // Ce que la carte remplace, pour qui voudrait encore le lire (rapport d'erreur,
-      // tests) : rien n'est jeté.
+      // Les constats remplacés restent lisibles (rapport d'erreur, tests).
       membres: g.membres
     };
   }
@@ -993,7 +950,7 @@ function regrouper(constats, lire) {
 
 // Le constat « case d'en-tête vide » d'un article, un lien par tableau fautif, ou null.
 // `noms` : les fichiers de tables/ dont une case d'en-tête n'a pas d'intitulé, lus par
-// l'hôte. Il ne vient d'aucun journal : c'est l'état du disque au moment où l'on regarde.
+// l'hôte au moment de l'affichage (aucun journal ne le produit).
 function constatEnteteVide(slug, noms) {
   const liste = (noms || []).map(String).filter(Boolean);
   if (!slug || liste.length === 0) { return null; }

@@ -4,33 +4,30 @@
 //
 // Formats OAI supportés : oai_dc (noms seulement), marcxml (ajoute affiliations et ROR).
 //
-// Endpoints relevés sur l'instance (OJS 3.5.0.4, verbe Identify) — le préfixe de locale est
-// celui de la redirection 302 qu'OJS impose, et le module https natif ne suit pas les
-// redirections tout seul :
+// Endpoints de l'instance (OJS 3.5). Ils portent le préfixe de locale vers lequel OJS
+// redirige (302), car le module https natif ne suit pas les redirections :
 //   https://ojs.szh.ch/index.php/revue/fr/oai        Revue suisse de pédagogie spécialisée
 //   https://ojs.szh.ch/index.php/zeitschrift/de/oai  Schweizerische Zeitschrift für Heilpädagogik
 // Surchargeables par config.json, clé `oai` : soit une liste d'URL, soit
 // { "oai": { "endpoints": ["…", "…"] } }.
 //
-// Le cache est un fichier séparé de config.json — modèle state.json — parce que
-// config.json est réécrit en entier à chaque réglage. Forme v2 :
+// Le cache est un fichier à part, car config.json est réécrit en entier à chaque réglage.
+// Forme v2 :
 //   { "version": 2, "dateFetch": "2026-08-25T12:00:00.000Z", "dateCorpus": null,
 //     "ror": { "01swzsf04": { "fr": "…", "de": "…", "en": "…" } },
 //     "vus": { "<chemin>": timestamp }, "auteurs": [...] }
 // v1 migre vers v2 en mettant dateFetch à null (moissonnage complet demandé).
 //
-// Rythme : au plus une fois par mois (dateFetch), incrémental (from = date du dernier fetch).
-// Hors ligne = normal : l'échec est silencieux. dateFetch n'avance que si les deux revues
-// ont répondu : sinon on réessaie, la fusion étant idempotente. Échec ROR n'empêche pas
-// dateFetch d'avancer — les libellés se rattraperont.
+// Rythme : au plus une fois par mois (dateFetch), en incrémental (from = date du dernier
+// moissonnage). Hors ligne, l'échec est silencieux. dateFetch n'avance que si les deux
+// revues ont répondu ; sinon le moissonnage se refait, la fusion étant idempotente. Un
+// échec ROR n'empêche pas dateFetch d'avancer : les libellés seront repris plus tard.
 //
-// SZH_AUTEURS_CACHE impose un autre fichier de cache : les harnais de test s'en servent,
-// comme SZH_CONFIG_OJS pour lib/export-ojs.js — aucun test ne touche C:\ProgramData, et
-// aucun ne fait de réseau (le moissonnage et ROR prennent leur `recuperer` en paramètre).
+// SZH_AUTEURS_CACHE impose un autre fichier de cache, pour les tests. Le moissonnage et ROR
+// reçoivent leur fonction `recuperer` en paramètre : les tests ne font pas de réseau.
 //
-// Client https, parseur XML minimal (resumptionToken, <error>, entités) et pliage de
-// chaîne : lib/oai-pmh.js, module commun avec lib/mots-cles-edudoc.js. Réexportés ici sous
-// les mêmes noms qu'avant l'extraction, pour ne rien changer aux appelants ni aux tests.
+// Le client https, le parseur XML minimal et plierNom viennent de lib/oai-pmh.js, partagé
+// avec lib/mots-cles-edudoc.js, et sont réexportés ici.
 'use strict';
 
 const fs = require('fs');
@@ -51,8 +48,8 @@ const ENDPOINTS_OAI_DEFAUT = [
 ];
 
 const JOURS_FRAICHEUR = 30;                // « une fois par mois »
-// Garde anti-boucle du suivi des resumptionToken. L'instance porte ~350 records par revue
-// et 100 par page : cent pages laissent un ordre de grandeur de marge.
+// Plafond de pages suivies par resumptionToken, contre une boucle. L'instance a environ
+// 350 records par revue, 100 par page.
 const PAGES_MAX = 100;
 
 function cheminCacheAuteurs() {
@@ -62,10 +59,8 @@ function cheminCacheAuteurs() {
 
 // ---- Parseur, spécifique OJS -------------------------------------------------------
 //
-// decoderTexteXml, extraireResumptionToken et erreurOai sont génériques OAI-PMH : voir
-// lib/oai-pmh.js. Ici, seulement ce qui lit le format propre à OJS — datestamp, statut
-// deleted, dc:creator. Tolérant, comme le reste du parseur : un XML tronqué ou hostile
-// rend simplement moins de records, jamais une exception.
+// Lit le format propre à OJS : datestamp, statut deleted, auteurs. Un XML tronqué ou
+// hostile rend moins de records, sans exception.
 
 // Les records d'une réponse ListRecords oai_dc : [{ datestamp, deleted, creators: [texte] }].
 function extraireRecords(xml) {
@@ -90,14 +85,12 @@ function extraireRecords(xml) {
 
 // Les records d'une réponse ListRecords marcxml :
 //   [{ datestamp, deleted, auteurs: [{ nomComplet, affiliations: [texte] }] }]
-// Tolère code="…" ET label="…" sur les sous-champs (incohérence du gabarit OJS).
-// Datafields 100/700/720 dans l'ordre du document.
+// Datafields 100/700/720 dans l'ordre du document. Les sous-champs portent code="…" ou
+// label="…" selon le gabarit OJS : les deux sont lus.
 //
-// `$u` est répétable, et l'instance s'en sert : trois auteur·e·s des deux revues portent
-// deux ou trois affiliations. Les recoller en une chaîne fabriquerait des valeurs comme
-// « https://ror.org/A https://ror.org/B », qu'aucun des deux camps ne reconnaîtrait — ni
-// ROR, ni texte lisible — et l'affiliation serait perdue en silence. La liste reste donc
-// une liste ; c'est recordsEnAuteurs qui décide quoi en garder.
+// `$u` (affiliation) est répétable, et des auteurs en ont plusieurs. Les affiliations
+// restent une liste : recollées, elles ne seraient ni un ROR ni un texte lisible.
+// recordsEnAuteurs choisit laquelle garder.
 function extraireRecordsMarc(xml) {
   const records = [];
   const source = String(xml === undefined || xml === null ? '' : xml);
@@ -110,14 +103,13 @@ function extraireRecordsMarc(xml) {
     for (const field of corps.matchAll(/<datafield\s+tag\s*=\s*["'](100|700|720)["'][^>]*>([\s\S]*?)<\/datafield>/g)) {
       const noms = [];
       const affiliations = [];
-      // Sous-champs : tolère code="a" ou label="a" (attribut sur plusieurs lignes).
       for (const sf of field[2].matchAll(/<subfield\s+(?:code|label)\s*=\s*["']([au])["'][^>]*>([\s\S]*?)<\/subfield>/g)) {
         const valeur = decoderTexteXml(sf[2]).replace(/\s+/g, ' ').trim();
         if (sf[1] === 'a') { noms.push(valeur); }
         else if (sf[1] === 'u' && valeur !== '') { affiliations.push(valeur); }
       }
       if (noms.length > 0 || affiliations.length > 0) {
-        // Un seul $a par personne dans le gabarit OJS ; le premier fait foi.
+        // Le gabarit OJS met un seul $a par personne ; le premier est retenu.
         auteurs.push({ nomComplet: noms[0] || '', affiliations: affiliations });
       }
     }
@@ -132,10 +124,9 @@ function extraireRecordsMarc(xml) {
 
 // ---- Normalisation et déduplication ----------------------------------------------
 
-// « Nom, Prénom » — la forme qu'OJS écrit dans dc:creator. Sans virgule, deviner
-// « dernier mot = nom » se tromperait sur les particules et les noms composés
-// (« Wood de Wilde », « von Arx ») : tout part dans `nom`, prénom vide — assumé et
-// suffisant pour une suggestion qu'on peut corriger d'une frappe.
+// « Nom, Prénom », la forme qu'OJS écrit dans dc:creator. Sans virgule, tout va dans `nom`
+// et le prénom reste vide : couper au dernier mot se tromperait sur les particules et les
+// noms composés (« Wood de Wilde », « von Arx »).
 function normaliserCreator(brut) {
   const plein = String(brut === undefined || brut === null ? '' : brut)
     .replace(/\s+/g, ' ').trim();
@@ -148,26 +139,19 @@ function normaliserCreator(brut) {
   return { prenom: prenom, nom: nom };
 }
 
-// plierNom (casse + accents pliés) vit dans lib/oai-pmh.js, importé plus haut : générique,
-// pas spécifique à un nom de personne.
+// Clé de déduplication : nom|prénom, casse et accents pliés.
 function cleAuteur(auteur) {
   return plierNom((auteur || {}).nom) + '|' + plierNom((auteur || {}).prenom);
 }
 
-// Les records d'un moissonnage aplatis en entrées d'auteur·e·s OAI-PMH.
-// Format oai_dc : records[].creators (noms seulement).
-// Format marcxml : records[].auteurs (noms + affiliations).
-// Records deleted ignorés — jamais de suppression côté cache.
-// Le format se lit sur le record lui-même — `auteurs` pour marcxml, `creators` pour
-// oai_dc — plutôt que sur un argument. Un argument oublié par un appelant rendrait zéro
-// auteur sans lever quoi que ce soit : le cache resterait vide et personne ne saurait
-// pourquoi. La forme du record, elle, ne peut pas mentir.
+// Les records d'un moissonnage aplatis en entrées d'auteurs. Le format se lit sur le
+// record : `auteurs` (marcxml, noms et affiliations) ou `creators` (oai_dc, noms seuls).
+// Les records deleted sont ignorés ; le cache ne supprime rien.
 function recordsEnAuteurs(records) {
   const auteurs = [];
   for (const r of Array.isArray(records) ? records : []) {
     if (!r || r.deleted) { continue; }
     if (Array.isArray(r.auteurs)) {
-      // Auteurs depuis les datafields 100/700/720.
       for (const a of r.auteurs) {
         const n = normaliserCreator((a || {}).nomComplet || '');
         if (!n) { continue; }
@@ -179,9 +163,7 @@ function recordsEnAuteurs(records) {
           datePublication: String(r.datestamp || ''),
           source: 'oai'
         };
-        // La fiche ne porte qu’une affiliation : d’un auteur qui en déclare plusieurs,
-        // on garde la première — l’ordre d’OJS est celui de l’auteur, et c’est une
-        // suggestion, que le rédacteur corrige d’une frappe.
+        // La fiche n'a qu'une affiliation : on garde la première, dans l'ordre d'OJS.
         for (const brute of (a || {}).affiliations || []) {
           const id = rorCanonique(brute);
           if (id !== '') { entree.ror = id; } else { entree.affiliation = brute; }
@@ -190,7 +172,7 @@ function recordsEnAuteurs(records) {
         auteurs.push(entree);
       }
     } else {
-      // oai_dc : le nom, et rien d’autre — le format n’expose pas l’affiliation.
+      // oai_dc : le nom seul, le format n'expose pas l'affiliation.
       for (const brut of Array.isArray(r.creators) ? r.creators : []) {
         const n = normaliserCreator(brut);
         if (n) { auteurs.push({ prenom: n.prenom, nom: n.nom, datePublication: String(r.datestamp || ''), source: 'oai' }); }
@@ -202,50 +184,40 @@ function recordsEnAuteurs(records) {
 
 // ---- ROR (Affiliation institutionnelle) -----------------------------------------------
 
-// Valide une URL ROR et rend la forme canonique « https://ror.org/<id> » en minuscules.
-// Rend '' si ce n'en est pas un.
-// L'URL et l'identifiant nu entrent tous les deux, et rendent la même forme canonique.
-// Accepter le nu n'est pas un confort : idRor() repasse par ici sur une valeur qu'il a
-// lui-même réduite à l'identifiant, et un canonique qui n'accepterait que l'URL renverrait
-// alors '' — annulant le premier passage, et laissant les 45 institutions sans libellé.
-// Même règle que rorCanonique() de lib/export-ojs.js, qui lit le champ saisi à la main.
+// Rend la forme « https://ror.org/<id> » en minuscules d'une URL ROR ou d'un identifiant
+// nu, ou '' si la valeur n'est pas un ROR. L'identifiant nu doit être accepté : idRor()
+// repasse par ici avec une valeur déjà réduite. Même règle que rorCanonique() de
+// lib/export-ojs.js.
 function rorCanonique(valeur) {
   const s = String(valeur === undefined || valeur === null ? '' : valeur).trim();
   const m = s.match(/^(?:https?:\/\/)?(?:ror\.org\/)?(0[0-9a-hj-km-np-tv-z]{6}[0-9]{2})$/i);
   return m ? 'https://ror.org/' + m[1].toLowerCase() : '';
 }
 
-// L'identifiant NU d'un ROR — « 01swzsf04 » — depuis une URL ou depuis lui-même ; '' si la
-// valeur n'est pas un ROR. C'est la clé de la table `cache.ror`, et le seul morceau que
-// l'API ROR accepte dans son chemin.
+// L'identifiant nu d'un ROR (« 01swzsf04 »), depuis une URL ou depuis lui-même ; '' si la
+// valeur n'est pas un ROR. C'est la clé de `cache.ror`, et ce que l'API ROR attend dans
+// son chemin.
 function idRor(valeur) {
   const canon = rorCanonique(valeur);
   return canon === '' ? '' : canon.slice('https://ror.org/'.length);
 }
 
-// Concurrence et échéance de resoudreRor : au plus 4 requêtes en vol à la fois (l'API ROR
-// n'a pas à voir 45 requêtes d'un coup depuis la même adresse), et 5 minutes au total —
-// un poste hors ligne ne doit pas laisser le rafraîchissement des auteurs tourner sans fin.
+// resoudreRor : au plus 4 requêtes simultanées vers l'API ROR, et 5 minutes au total, pour
+// qu'un poste hors ligne ne fasse pas tourner le rafraîchissement sans fin.
 const CONCURRENCE_ROR = 4;
 const DELAI_ROR_MS = 5 * 60 * 1000;
 
-// Résout les IDs ROR inconnus auprès de l'API ROR, range les libellés dans le cache.
-// `recuperer` est injecté (comme dans `moissonner`) pour que les tests ne fassent aucun réseau.
-// Les ids sont ceux du cache.ror (forme canonique). `connus` = Set des ids déjà en cache.
-// Un id qui échoue (404, réseau, JSON illisible) est sauté — on ne le met pas en cache,
-// il sera retenté le mois suivant, en silence : c'est individuel, ça arrive tous les mois
-// à quelques institutions. `opts.horloge`/`opts.delaiMs` sont injectables pour les tests,
-// comme balayerCorpus() de lib/auteurs-corpus.js.
-// Rend { <id>: { fr: "…", de: "…", en: "…" }, … } — seuls les succès sont présents.
-// Ne lève jamais.
+// Demande à l'API ROR les libellés des identifiants inconnus. `ids` : URL ou identifiants
+// nus ; `connus` : ids déjà résolus. Un id qui échoue (404, réseau, JSON illisible) n'est pas
+// mis en cache et sera retenté au prochain rafraîchissement. `recuperer`, `opts.horloge` et
+// `opts.delaiMs` se remplacent dans les tests.
+// Rend { <id>: { fr: "…", de: "…", en: "…" }, … }, les succès seuls. Ne lève pas.
 async function resoudreRor(recuperer, ids, connus, opts) {
   const o = opts || {};
   const horloge = o.horloge || Date.now;
   const delaiMs = o.delaiMs === undefined ? DELAI_ROR_MS : o.delaiMs;
   const debut = horloge();
-  // `connus` est tantôt le Set des ids déjà résolus, tantôt la table cache.ror elle-même :
-  // les deux appelants sont légitimes, et se tromper d'un des deux ferait soit une
-  // exception, soit 45 requêtes inutiles tous les mois.
+  // `connus` est soit un Set d'ids, soit la table cache.ror elle-même.
   const dejaVu = (id) => {
     if (!connus) { return false; }
     if (typeof connus.has === 'function') { return connus.has(id); }
@@ -253,9 +225,7 @@ async function resoudreRor(recuperer, ids, connus, opts) {
   };
   const aTraiter = [];
   for (const id of Array.isArray(ids) ? ids : []) {
-    // URL ou identifiant nu : les deux entrent, l'identifiant nu seul sort. Passer une URL
-    // à l'API donnerait un 404 pour les 45 institutions d'un coup, sans un mot — et la
-    // table resterait vide sans que rien ne signale pourquoi.
+    // L'API ROR attend l'identifiant nu ; une URL y donnerait un 404.
     const idStr = idRor(id);
     if (idStr === '' || dejaVu(idStr) || aTraiter.indexOf(idStr) !== -1) { continue; }
     aTraiter.push(idStr);
@@ -269,10 +239,8 @@ async function resoudreRor(recuperer, ids, connus, opts) {
       const rep = await recuperer(url);
       const json = JSON.parse(String(rep === undefined || rep === null ? '' : rep));
       if (json && typeof json === 'object' && Array.isArray(json.names)) {
-        // `en` est le libellé d'affichage de ROR, quelle que soit sa langue déclarée : il
-        // porte « lang: "en" » sur l'instance, et exiger lang absent le manquerait à tous
-        // les coups. C'est le seul repli quand une institution n'a ni libellé français ni
-        // libellé allemand — sans lui, l'affiliation sortirait vide.
+        // `en` reçoit le libellé d'affichage de ROR (ror_display), quelle que soit sa langue
+        // déclarée. C'est le repli quand une institution n'a ni libellé fr ni libellé de.
         const libelles = { fr: '', de: '', en: '' };
         for (const n of json.names) {
           if (!n || typeof n !== 'object' || !n.value) { continue; }
@@ -288,10 +256,8 @@ async function resoudreRor(recuperer, ids, connus, opts) {
       }
     } catch (e) { echecs++; }
   }
-  // `CONCURRENCE_ROR` travailleurs qui piochent dans la même file : chacun s'arrête dès
-  // que l'échéance est dépassée ou qu'il n'y a plus rien à traiter — jamais plus de 4
-  // requêtes en vol, sans jamais laisser une institution attendre son tour derrière 44
-  // autres traitées une par une.
+  // CONCURRENCE_ROR travailleurs piochent dans la même file ; chacun s'arrête quand la file
+  // est vide ou que le délai est dépassé.
   async function travailleur() {
     while (indexSuivant < aTraiter.length) {
       if (horloge() - debut > delaiMs) { return; }
@@ -302,9 +268,8 @@ async function resoudreRor(recuperer, ids, connus, opts) {
   const equipe = [];
   for (let i = 0; i < Math.min(CONCURRENCE_ROR, aTraiter.length); i++) { equipe.push(travailleur()); }
   await Promise.all(equipe);
-  // Un id qui échoue seul se retentera le mois prochain, en silence — mais une résolution
-  // qui échoue en entier (poste hors ligne, API ROR indisponible) ne doit plus se taire
-  // complètement : une ligne, pas une par institution qui noierait la console.
+  // Un échec isolé reste silencieux ; un échec complet (hors ligne, API indisponible)
+  // écrit une seule ligne dans la console.
   if (aTraiter.length > 0 && Object.keys(resultat).length === 0) {
     console.warn('[auteurs-ojs] résolution ROR : ' + aTraiter.length
       + ' institution(s) demandée(s), aucune résolue (' + echecs + ' échec(s)/reste(nt) hors délai).');
@@ -312,13 +277,12 @@ async function resoudreRor(recuperer, ids, connus, opts) {
   return resultat;
 }
 
-// Fusion incrémentale : les nouveaux venus s'ajoutent. Clé = nom|prénom pliés.
-// Règles sur les champs d'enrichissement (affiliation, ror, fonction, email, orcid) :
-// - source 'corpus' et valeur non vide → écrase toujours ;
-// - source 'oai' → remplit seulement si l'existant est vide ;
-// - valeur vide n'écrase jamais une valeur remplie.
-// Source = 'corpus' dès qu'une entrée corpus touche l'existant.
-// Jamais de suppression.
+// Fusion incrémentale : les nouveaux venus s'ajoutent, rien n'est supprimé. Clé : cleAuteur().
+// Champs d'enrichissement (affiliation, ror, fonction, email, orcid) :
+// - source 'corpus' et valeur non vide : écrase ;
+// - source 'oai' : remplit seulement un champ vide ;
+// - une valeur vide n'écrase pas une valeur remplie.
+// Une entrée touchée par le corpus passe en source 'corpus'.
 function fusionnerAuteurs(existants, nouveaux) {
   const parCle = new Map();
   const sortie = [];
@@ -344,13 +308,12 @@ function fusionnerAuteurs(existants, nouveaux) {
       sortie.push(entree);
       return;
     }
-    // Mise à jour : nom et prénom par la date la plus récente.
+    // Nom et prénom : ceux de la publication la plus récente.
     if (entree.datePublication > connue.datePublication) {
       connue.prenom = entree.prenom;
       connue.nom = entree.nom;
       connue.datePublication = entree.datePublication;
     }
-    // Enrichissements : règles de précédence.
     const enrichir = (champ) => {
       const nouveau = entree[champ];
       const existant = connue[champ];
@@ -385,16 +348,16 @@ function cacheVide() {
   };
 }
 
-// Lecture tolérante : fichier absent, JSON corrompu, BOM, forme inattendue — tout retombe
-// sur le cache vide. Migration v1 → v2 : dateFetch repasse à null, dateCorpus/ror/vus
-// partent vides (sinon le moissonnage incrémental oublierait 95 % des affiliations).
+// Lecture tolérante : fichier absent, JSON corrompu ou forme inattendue rendent le cache
+// vide ; le BOM est retiré. Migration v1 → v2 : dateFetch repasse à null pour forcer un
+// moissonnage complet (le v1 n'avait pas les affiliations), dateCorpus, ror et vus
+// partent vides.
 function lireCache() {
   let brut;
   try {
     brut = JSON.parse(String(fs.readFileSync(cheminCacheAuteurs(), 'utf8')).replace(/^\uFEFF/, ''));
   } catch (e) { return cacheVide(); }
   if (!brut || typeof brut !== 'object') { return cacheVide(); }
-  // Migration v1 → v2.
   if ((brut.version || 1) === 1) {
     return {
       version: 2,
@@ -405,7 +368,6 @@ function lireCache() {
       auteurs: fusionnerAuteurs(Array.isArray(brut.auteurs) ? brut.auteurs : [], [])
     };
   }
-  // v2 : préserve dateCorpus, ror, vus tels quels.
   return {
     version: 2,
     dateFetch: typeof brut.dateFetch === 'string' && brut.dateFetch !== '' ? brut.dateFetch : null,
@@ -432,8 +394,8 @@ function ecrireCache(cache) {
   } catch (e) { return String((e && e.message) || e); }
 }
 
-// Frais = moins de sept jours. Une dateFetch dans le futur (horloge repassée en arrière)
-// compte comme périmée : le cache se répare tout seul au prochain moissonnage.
+// Vrai si dateFetch a moins de JOURS_FRAICHEUR jours. Une dateFetch dans le futur (horloge
+// repassée en arrière) compte comme périmée.
 function cacheFrais(cache, maintenant) {
   if (!cache || !cache.dateFetch) { return false; }
   const t = Date.parse(cache.dateFetch);
@@ -444,8 +406,7 @@ function cacheFrais(cache, maintenant) {
 
 // ---- Endpoints -------------------------------------------------------------------
 
-// Pure — la config lui est passée — pour être éprouvable sans lire C:\ProgramData.
-// N'accepte que du https : un endpoint http recopié de travers retomberait en clair.
+// Les endpoints de config.json, ou ceux par défaut. Seules les URL https sont gardées.
 function endpointsOai(cfg) {
   const brut = cfg && cfg.oai;
   const liste = Array.isArray(brut) ? brut
@@ -457,15 +418,11 @@ function endpointsOai(cfg) {
   return propres.length > 0 ? propres : ENDPOINTS_OAI_DEFAUT.slice();
 }
 
-// resoudreRedirection, recupererHttps et recupererAvecRepli (client https, gardes réseau,
-// garde SZH_RESEAU_INTERDIT, repli sur un 503 « Retry after ») vivent dans lib/oai-pmh.js,
-// importés plus haut.
-
-// ListRecords sur un endpoint, resumptionToken suivis jusqu'au bout. `recuperer`
-// est injecté — recupererAvecRepli en vrai (voir rafraichir() plus bas), une table de
-// fixtures dans les tests. `from` au format YYYY-MM-DD rend le moissonnage incrémental.
-// `prefixe` = format métadonnées (défaut : marcxml pour les affiliations). Deux gardes
-// anti-infini : token déjà vu, plafond de pages.
+// ListRecords sur un endpoint, en suivant les resumptionToken. `recuperer` vaut
+// recupererAvecRepli en production, une table de fixtures dans les tests. `from`
+// (AAAA-MM-JJ) rend le moissonnage incrémental. `prefixe` : format des métadonnées
+// (marcxml par défaut, pour les affiliations). Un token déjà vu ou PAGES_MAX pages
+// atteintes lèvent une erreur.
 async function moissonner(recuperer, base, from, prefixe) {
   const records = [];
   const jonction = base.indexOf('?') === -1 ? '?' : '&';
@@ -494,14 +451,13 @@ async function moissonner(recuperer, base, from, prefixe) {
 
 // ---- Rafraîchissement --------------------------------------------------------------
 //
-// Ce que l'activation de l'extension appelle en tâche de fond. Rend toujours une valeur,
-// ne lève jamais vers l'appelant autre chose qu'une panne de programmation :
+// Appelé en tâche de fond à l'activation de l'extension. Ne lève que sur une erreur de
+// programmation ; sinon rend :
 //   { fait: false, raison: 'frais', … }          cache de moins d'un mois, aucun appel
 //   { fait: true, complet: true, … }             les deux revues ont répondu, dateFetch avancée
-//   { fait: true, complet: false, erreur, … }    au moins une revue muette (hors ligne ?) :
-//                                                ce qui a répondu est fusionné, dateFetch
-//                                                inchangée, on réessaiera
-// `opts` est réservé aux tests : { maintenant, recuperer, forcer, config }.
+//   { fait: true, complet: false, erreur, … }    au moins une revue n'a pas répondu : ce qui
+//                                                a répondu est fusionné, dateFetch inchangée
+// `opts` sert aux tests : { maintenant, recuperer, forcer, config }.
 async function rafraichir(opts) {
   const o = opts || {};
   const maintenant = o.maintenant === undefined ? Date.now() : o.maintenant;
@@ -509,11 +465,8 @@ async function rafraichir(opts) {
   if (!o.forcer && cacheFrais(cache, maintenant)) {
     return { fait: false, raison: 'frais', dateFetch: cache.dateFetch, nombre: cache.auteurs.length };
   }
-  // recupererAvecRepli, pas recupererHttps seul : le repli sur un 503 « Retry after »
-  // (lib/oai-pmh.js) a été extrait dans le module commun pour que les deux moissonneurs en
-  // profitent — rafraichirMotsCles() de lib/mots-cles-edudoc.js le câble déjà de même.
-  // ojs.szh.ch ne l'a pas montré en un an d'usage, mais d'autres serveurs OAI-PMH (dont
-  // edudoc.ch) le font, et rien ne garantit qu'il ne s'y mette pas un jour.
+  // recupererAvecRepli réessaie après un 503 « Retry after », que certains serveurs
+  // OAI-PMH renvoient.
   const recuperer = o.recuperer || recupererAvecRepli;
   const from = cache.dateFetch ? String(cache.dateFetch).slice(0, 10) : null;
   const endpoints = endpointsOai(o.config === undefined ? lireConfigPoste() : o.config);
@@ -525,9 +478,7 @@ async function rafraichir(opts) {
     try {
       const records = await moissonner(recuperer, base, from, 'marcxml');
       const nouveaux = recordsEnAuteurs(records);
-      // Les ROR encore sans libellé. La table est indexée par l'identifiant NU, pas par
-      // l'URL : c'est ce que l'API ROR attend dans son chemin, et ce que le cockpit relit
-      // pour afficher l'affiliation.
+      // Les ROR encore sans libellé, par identifiant nu (voir idRor).
       for (const a of nouveaux) {
         const id = idRor(a.ror);
         if (id !== '' && !cache.ror[id]) { rorIds.add(id); }
@@ -538,14 +489,14 @@ async function rafraichir(opts) {
       derniereErreur = String((e && e.message) || e);
     }
   }
-  // Résout les ROR inconnus. Échec ROR n'empêche pas dateFetch d'avancer.
+  // Un échec ROR n'empêche pas dateFetch d'avancer.
   let rorResolu = {};
   if (rorIds.size > 0) {
     try {
       rorResolu = await resoudreRor(recuperer, Array.from(rorIds), new Set(Object.keys(cache.ror)));
-    } catch (e) { /* silencieux : on réessaiera le mois prochain */ }
+    } catch (e) { /* retenté au prochain rafraîchissement */ }
   }
-  // Hors ligne complet : rien de neuf et rien à réécrire — le fichier reste tel quel.
+  // Hors ligne, sans rien de neuf : le fichier n'est pas réécrit.
   const inchange = !complet && JSON.stringify(auteurs) === JSON.stringify(cache.auteurs);
   const rorNouveau = Object.assign({}, cache.ror, rorResolu);
   const neuf = {
@@ -562,9 +513,7 @@ async function rafraichir(opts) {
     erreur: derniereErreur || erreurEcriture || null,
     dateFetch: neuf.dateFetch, nombre: auteurs.length,
     nombreRor: Object.keys(rorNouveau).length,
-    // Les ROR rencontrés que l’API n’a pas rendus : zéro sur zéro est le cas normal,
-    // mais 45 sur 45 veut dire que la résolution est cassée — et sans ce compte, une
-    // table vide ressemblerait à « rien de neuf ».
+    // Les ROR que l'API n'a pas résolus : si tous échouent, la résolution est cassée.
     rorRates: rorIds.size - Object.keys(rorResolu).length
   };
 }

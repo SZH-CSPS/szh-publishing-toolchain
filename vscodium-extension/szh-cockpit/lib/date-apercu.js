@@ -1,6 +1,6 @@
-// L'aperçu de la date imprimée d'une fiche de Documentation : le formateur de la chaîne
-// (szh-commun.lua), lancé par pandoc lua dans le moteur. La saisie part sur stdin, jamais
-// dans la ligne de commande, que wsl.exe confie au shell de la distro.
+// L'aperçu de la date imprimée d'une fiche de Documentation, calculé par le formateur de la
+// chaîne (szh-commun.lua) via pandoc lua dans la WSL. La saisie passe par stdin et non par
+// la ligne de commande, que wsl.exe confie au shell de la distribution.
 'use strict';
 
 const moteur = require('./moteur');
@@ -10,7 +10,7 @@ const MAX_EN_VOL = 4;
 let enVol = 0;
 
 // former({ saisie, lang, valeurs }, { delaiMs }) -> Promise<{ ok, forme, erreur? } |
-// { indisponible: true }>. Ne rejette jamais.
+// { indisponible: true }>. La promesse ne rejette pas. Au plus MAX_EN_VOL appels simultanés.
 function former(demande, options) {
   const delaiMs = (options && options.delaiMs) || 3000;
   const d = demande || {};

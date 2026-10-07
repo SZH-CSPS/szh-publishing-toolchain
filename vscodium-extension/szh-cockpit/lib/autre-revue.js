@@ -17,8 +17,8 @@ function selonLangue(fr, de, langue, langueArticle) {
 
 // articlesAutreRevue(racineArbreVal, revueCourante, langue) -> { numeros: [{ cle, libelle,
 // archive, articles: [{ cle, titreAffiche, signature, valeurs }] }], illisibles }. Un numéro
-// illisible est compté, jamais fatal. `valeurs` porte les champs de la fiche `reprise`. La
-// référence suit la forme du banc, « année, numéro » ; les pages ne sont pas lues.
+// illisible est compté et sauté. `valeurs` porte les champs de la fiche `reprise`. La
+// référence s'écrit « année, numéro » ; les pages ne sont pas lues.
 function articlesAutreRevue(racineArbreVal, revueCourante, langue) {
   const autre = kirby.autreRevue(revueCourante);
   const sortie = { numeros: [], illisibles: 0 };

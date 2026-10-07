@@ -24,13 +24,13 @@ const { ouvrirAvecSysteme } = require('./ouvrir-systeme');
 
 const VIEW_TYPE = 'szhAccueil';
 // Par compte : le dernier numéro ouvert depuis l'Accueil, qu'il propose en premier.
-// Valeur gardée du temps du « lanceur » : les postes l'ont déjà écrite.
+// La clé garde le préfixe « lanceur » : les postes l'ont déjà enregistrée sous ce nom.
 const CLE_DERNIER = 'szh.lanceur.dernier';
 
 let ctx = {
   repondreModeTrad: require('./traduction-hote').repondreModeTrad,
   rafraichirTout: null,    // posé par extension.js : l'arbre suit un réglage qui change ses libellés
-  // Après un openFolder qui n'a pas remplacé la fenêtre : le numéro était ouvert ailleurs.
+  // Délai avant de fermer cette fenêtre quand le numéro demandé était déjà ouvert ailleurs.
   delaiFermeture: 1500
 };
 function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
@@ -66,7 +66,7 @@ function jourLisible(date) {
   return p2(date.getDate()) + '.' + p2(date.getMonth() + 1) + '.' + date.getFullYear();
 }
 
-// Une fois par session : l'année zéro du volume ne change qu'avec le socle.
+// Lue une fois par session : l'année zéro du volume ne change qu'avec une mise à jour du poste.
 function anneesDuVolume() {
   if (!anneesZero) {
     anneesZero = nouveau.executer(nouveau.scriptAnnees())
@@ -130,7 +130,7 @@ async function ouvrirDossier(chemin) {
   if (fermeture.unref) { fermeture.unref(); }
 }
 
-// Le refus du socle, dit dans la langue de l'interface. Les numéros s'écrivent « 2026-03 ».
+// Le refus du script de création, dans la langue de l'interface.
 function texteRefus(r) {
   const v = r || {};
   if (v.refus === 'existe') { return T('accueil.nouveau.refus.existe', [v.nom]); }
@@ -184,7 +184,6 @@ function htmlAccueil(nonce) {
   });
 }
 
-// `onglet` : l'onglet à montrer d'emblée (la commande szh.reglages demande « reglages »).
 // Retour à l'Accueil : depuis un numéro, tout est enregistré puis le numéro se ferme ; la
 // fenêtre vide qui reste ouvre l'Accueil d'elle-même (demarrer). Sans numéro, il s'ouvre ici.
 async function retourAccueil() {
@@ -193,6 +192,7 @@ async function retourAccueil() {
   await vscode.commands.executeCommand('workbench.action.closeFolder');
 }
 
+// opts.onglet : l'onglet à montrer d'emblée (la commande szh.reglages demande « reglages »).
 function ouvrirAccueil(opts) {
   const onglet = (opts && opts.onglet) || '';
   if (onglet) { ongletDemande = onglet; }
@@ -219,7 +219,7 @@ function rechargerPage(onglet) {
   panneauActif.webview.html = htmlAccueil(crypto.randomBytes(16).toString('hex'));
 }
 
-// Les deux onglets parlent à la page par le panneau ouvert, et à l'éditeur par ces rappels.
+// Les onglets parlent à la page par le panneau ouvert, et à l'éditeur par ces rappels.
 function configurerOnglets() {
   const envoyer = (m) => { if (panneauActif) { repondre(panneauActif, m); } };
   const revelerFichier = (chemin) => vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(chemin));
@@ -258,8 +258,8 @@ function arreter() {
 }
 
 // À l'activation : la commande, et l'ouverture d'office dans une fenêtre sans dossier ni
-// onglet. La mesure la dit fiable dès l'activation ; une relecture à +500 ms couvre un
-// onglet qui se fermerait aussitôt.
+// onglet. L'état des onglets est fiable dès l'activation ; une relecture à +500 ms couvre
+// un onglet qui se fermerait aussitôt.
 function demarrer(context) {
   etatPoste = context;
   configurerOnglets();

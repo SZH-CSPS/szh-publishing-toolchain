@@ -1,6 +1,6 @@
-// L'onglet Préprocessing de l'Accueil : le nettoyeur de manuscrit (pipeline/manuscrit-nettoyer.py),
-// lancé dans le moteur comme par l'onglet WinForms, son rapport HTML et ses compteurs. Sans
-// panneau : lib/accueil-hote.js lui relaie les messages de la page.
+// L'onglet Préprocessing de l'Accueil : lance le nettoyeur de manuscrit
+// (pipeline/manuscrit-nettoyer.py) dans la WSL, rend son rapport HTML et écrit ses compteurs.
+// Sans panneau : lib/accueil-hote.js lui relaie les messages de la page.
 'use strict';
 
 const fs = require('fs');
@@ -30,10 +30,11 @@ const TAILLE_MAX = 50 * 1024 * 1024;
 const DOSSIER_SORTIE = 'Préprocessing';
 const RE_MANUSCRIT = /\.(docx|odt)$/i;
 // Par compte : le dossier du dernier manuscrit choisi, où la boîte de choix se rouvre.
-// Valeur gardée du temps du « lanceur » : les postes l'ont déjà écrite.
+// La clé garde le préfixe « lanceur » : les postes l'ont déjà enregistrée sous ce nom.
 const CLE_DOSSIER = 'szh.lanceur.preproc.dossier';
 const GABARIT = path.join(__dirname, '..', 'export-templates', 'rapport-manuscrit.twig');
-// Les étapes de la page, dans l'ordre, et celle où tombe chaque étape de la CLI (ETAPES).
+// Les étapes affichées par la page, dans l'ordre (LIBELLES), et l'étape de la page où tombe
+// chaque étape du nettoyeur (VERS_PAGE).
 const LIBELLES = {
   preparation: 'accueil.preproc.etape.preparation', lecture: 'accueil.preproc.etape.lecture',
   entete: 'accueil.preproc.etape.entete', identifiants: 'accueil.preproc.etape.identifiants',
@@ -110,8 +111,8 @@ function lireStats(sortie) {
   } catch (e) { return null; }
 }
 
-// La CLI dans le moteur : la progression sur stderr, une seule ligne JSON sur stdout à la
-// fin. Rend { code, stats, annule, lancement } et ne rejette jamais.
+// Lance le nettoyeur dans la WSL. Il écrit sa progression sur stderr et une ligne JSON sur
+// stdout à la fin. Rend { code, stats, annule, lancement } ; la promesse ne rejette pas.
 function executer(p, argv) {
   return new Promise((resolve) => {
     let sortie = '';
@@ -145,8 +146,8 @@ function executer(p, argv) {
   });
 }
 
-// Le rapport HTML à côté du manuscrit, par le moteur de gabarits et la vue que prépare
-// outils/rendre-gabarit.js pour l'onglet WinForms. Rend son chemin, ou '' s'il n'a pu s'écrire.
+// Écrit le rapport HTML à côté du manuscrit, avec la vue que prépare outils/rendre-gabarit.js.
+// Rend son chemin, ou '' s'il n'a pu s'écrire.
 function rendreRapport(p, stats, json) {
   try {
     const rapport = stats.refus ? stats : JSON.parse(fs.readFileSync(json, 'utf8'));
@@ -167,7 +168,7 @@ function libelleEtape(etapeCli) {
   return e ? T(LIBELLES[e]) : '';
 }
 
-// Le refus dit dans la langue de l'interface ; un code inconnu garde la phrase de la CLI.
+// Le refus dans la langue de l'interface ; un code inconnu garde la phrase du nettoyeur.
 function texteRefus(s) {
   const code = String(s.code_refus || '');
   if (code === 'fichier-verrou') { return T('accueil.preproc.refus.verrou'); }
@@ -183,8 +184,8 @@ function texteRefus(s) {
   return String(s.message || '');
 }
 
-// L'issue du passage, comme l'onglet WinForms la tranche : code 0, ou code 1 avec des
-// alertes error, est un nettoyage réussi ; un refus a son rapport ; le reste est un échec.
+// L'issue du passage : code 0, ou code 1 avec des alertes error, est un nettoyage réussi ;
+// un refus a son rapport ; le reste est un échec.
 function conclure(p, r, json) {
   const s = r.stats;
   if (r.annule) { return { issue: 'interrompu' }; }
@@ -212,9 +213,9 @@ function empreinte(chemin) {
 }
 const motif = (v, re, defaut) => (re.test(String(v || '')) ? String(v) : defaut);
 
-// Les compteurs du passage et, pour un défaut du logiciel seulement, un NETTOYEUR-ECHEC :
-// jamais un texte, un nom de fichier ni un chemin. Les refus attendus et l'interruption
-// n'en font aucun.
+// Écrit les compteurs du passage et, pour un défaut du logiciel seulement, un rapport
+// NETTOYEUR-ECHEC. Ni l'un ni l'autre ne contient de texte, de nom de fichier ou de chemin.
+// Les refus attendus et l'interruption ne font pas de rapport.
 function constats(p, r, fin) {
   const s = r.stats;
   try {
@@ -225,7 +226,7 @@ function constats(p, r, fin) {
       id = empreinte(p.chemin);
     }
     if (mesures) { ctx.compter({ source: 'nettoyeur', passage: id, mesures }); }
-  } catch (e) { /* un compteur est un confort */ }
+  } catch (e) { /* compteurs facultatifs */ }
   try {
     const envoyer = (etape, contenu) => ctx.signaler({
       gravite: 'erreur', source: 'lanceur', code: 'NETTOYEUR-ECHEC', etape: 'nettoyeur : ' + etape,
@@ -249,12 +250,12 @@ function constats(p, r, fin) {
       return;
     }
     if (fin.issue === 'echec') { envoyer('sortie-inattendue', code); }
-  } catch (e) { /* jamais vers l'interface */ }
+  } catch (e) { /* l'erreur ne remonte pas à l'interface */ }
 }
 
 // Le dossier du passage : <nom>, sinon <nom> (2), (3)… Un mkdir sans recursive échoue sur
-// un dossier qui existe : rien n'est jamais écrasé. La racine de Pronto doit déjà exister :
-// un partage absent n'est pas recréé en local.
+// un dossier qui existe : rien n'est écrasé. Le parent de la racine des exports doit déjà
+// exister, pour ne pas recréer en local un partage absent.
 function dossierPassage(exportsRacine, nom) {
   if (!path.isAbsolute(exportsRacine) || !fs.statSync(path.dirname(exportsRacine)).isDirectory()) { throw new Error('ENOENT'); }
   const base = path.join(exportsRacine, DOSSIER_SORTIE);
@@ -291,7 +292,7 @@ function finSansPassage(issue, texte) {
 
 // Nettoie un manuscrit, { source } choisi ou { nom, octets } déposé, sur sa copie dans les
 // exports : le document et le rapport s'écrivent à côté d'elle, le rapport s'ouvre dans le
-// navigateur, puis la page reçoit l'issue. L'original n'est jamais touché.
+// navigateur, puis la page reçoit l'issue. L'original reste intact.
 async function nettoyer(entree, produit, format) {
   const nom = path.basename(entree.source || entree.nom);
   let racine = '';
@@ -368,7 +369,7 @@ async function deposer(msg) {
 }
 
 // Tue le nettoyeur en cours : Interrompre, la fermeture du panneau, l'ouverture d'un dossier
-// et la désactivation. Tuer wsl.exe tue aussi le Python qu'il porte (mesuré).
+// et la désactivation. Tuer wsl.exe tue aussi le Python qu'il a lancé.
 function arreter() {
   if (!passage) { return; }
   passage.annule = true;

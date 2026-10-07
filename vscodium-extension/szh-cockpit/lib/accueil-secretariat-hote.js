@@ -24,7 +24,7 @@ const SOUS_DOSSIERS = {
   metadonnees: 'Contrôle des métadonnées'
 };
 const REVUES = ['revue', 'zeitschrift'];
-// L'ancien historique par compte, { edudoc: { <revue>: { <clé>: <date> } }, caracteres: … } :
+// Historique par compte, { edudoc: { <revue>: { <clé>: <date> } }, caracteres: … }. Il est
 // fusionné dans le fichier partagé au premier export réussi, puis retiré du globalState.
 const CLE_HISTORIQUE = 'szh.lanceur.historique';
 const HISTORISES = ['edudoc', 'caracteres'];
@@ -60,7 +60,7 @@ function cacheDe(revue) {
 function supprimer(chemin) { try { fs.rmSync(chemin, { force: true }); } catch (e) { /* déjà parti */ } }
 
 // Lance une commande du CLI et relaie chacune de ses lignes JSON. Rend { ok, texte, annule,
-// fichiers } à la fin du processus, et ne rejette jamais.
+// fichiers } à la fin du processus ; la promesse ne rejette pas.
 function executer(place, commande, args, surLigne) {
   return new Promise((resolve) => {
     const suivi = { commande, annule: false, proc: null };
@@ -115,8 +115,8 @@ function tuer(place) {
   try { e.proc.kill(); } catch (err) { /* déjà fini */ }
 }
 
-// Tue les deux enfants et oublie les numéros chargés : à la fermeture du panneau, à
-// l'ouverture d'un dossier et à la désactivation, rien ne doit survivre à l'Accueil.
+// Tue les deux enfants et oublie les numéros chargés. Appelé à la fermeture du panneau, à
+// l'ouverture d'un dossier et à la désactivation.
 function arreter() {
   if (tache) { tache.annule = true; }
   tuer('ojs');
@@ -124,9 +124,9 @@ function arreter() {
   for (const revue of Object.keys(caches)) { supprimer(caches[revue]); delete caches[revue]; }
 }
 
-// L'historique partagé : `_Systeme\exports\historique.json` sous l'ancrage, jamais sous la
-// racine active, et `historique-test.json` à côté en mode test. SZH_HISTORIQUE_EXPORTS donne
-// le dossier tel quel ; sous le banc de test, sans elle ni ancrage d'essai, aucun fichier.
+// L'historique partagé : `_Systeme\exports\historique.json` sous l'ancrage (et non sous la
+// racine active), `historique-test.json` en mode test. SZH_HISTORIQUE_EXPORTS donne le
+// dossier tel quel. Sous les tests, sans elle ni ancrage d'essai : null, aucun fichier.
 function cheminHistorique() {
   const nom = ctx.modeTest() ? 'historique-test.json' : 'historique.json';
   const surcharge = String(process.env.SZH_HISTORIQUE_EXPORTS || '').trim();
@@ -163,7 +163,7 @@ function lireHistorique() {
 }
 function ancienHistorique() { return (ctx.memoire && ctx.memoire.get(CLE_HISTORIQUE)) || null; }
 
-// Ce que la page reçoit : le fichier partagé, complété par l'ancienne clé du poste tant qu'elle existe.
+// Ce que la page reçoit : le fichier partagé, complété par CLE_HISTORIQUE tant qu'elle existe.
 function historique() { return fusionner(lireHistorique(), ancienHistorique()); }
 
 // Relit le fichier juste avant d'écrire, pour garder l'export qu'un autre poste a fait

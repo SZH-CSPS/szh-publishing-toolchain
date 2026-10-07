@@ -1,36 +1,28 @@
-// La table des codes d'erreur applicatifs et le schéma v1 des rapports automatiques
-// (docs/RAPPORTS-ERREUR.md, §2 et §7) : données pures et fonctions pures, sans dépendance — ni
-// `vscode`, ni `fs`, aucun accès disque. Chargeable en CommonJS aussi bien par l'extension
-// du cockpit que par les tests. Le futur écrivain PowerShell (lanceur) n'exécute pas ce
-// fichier — il ne sait pas lire du JS — mais doit reproduire à l'identique les algorithmes
-// qu'il décrit (format de l'id, calcul de la signature, ordre du masquage) : ce fichier en
-// est la référence exécutable et testée, les commentaires en sont la spécification pour
-// l'autre langage.
+// La table des codes d'erreur et le schéma v1 des rapports automatiques
+// (docs/RAPPORTS-ERREUR.md). Données et fonctions pures, sans `vscode` ni accès disque.
 //
-// Règle de stabilité : un CODE publié (clé de CODES) ne se renomme et ne se supprime
-// jamais — un outil déployé peut encore l'écrire des mois après qu'une version plus
-// récente a changé de vocabulaire. De même pour SCHEMA_VERSION et les valeurs des
-// énumérations closes ci-dessous : elles ne changent pas de sens, elles ne changent pas de
-// graphie. Un changement de forme du rapport (nouveau champ obligatoire, sens différent
-// d'un champ existant) passe par une NOUVELLE valeur de SCHEMA_VERSION
-// (« szh-rapport-erreur/2 », etc.), jamais par une modification silencieuse de la version 1.
+// Le module ne construit ni n'écrit aucun rapport. Il fournit la table des codes, les
+// constantes du schéma et les fonctions (masquage, chemin relatif, signature, id, plafonds,
+// validation) que les deux écrivains appliquent avant d'écrire un fichier : le cockpit, et
+// Write-SzhRapport (windows/szh-rapport.ps1). Ce dernier ne lit pas ce fichier ; il
+// reproduit à l'identique le format de l'id, le calcul de la signature et l'ordre du
+// masquage, que ce fichier et ses commentaires définissent.
 //
-// Ce module ne construit aucun rapport et n'écrit rien : il fournit la table des codes, les
-// constantes du schéma, et les fonctions pures (masquage, mise en chemin relatif, signature,
-// id, plafonds, validation) que les deux écrivains — Write-SzhRapportErreur côté
-// PowerShell, l'équivalent côté cockpit — appliquent chacun de leur côté avant d'écrire un
-// fichier. Voir docs/RAPPORTS-ERREUR.md pour la référence lisible du schéma.
+// Stabilité : un code publié (clé de CODES) ne se renomme ni ne se supprime, car un outil
+// déployé peut l'écrire longtemps après. SCHEMA_VERSION et les valeurs des énumérations
+// closes ne changent ni de sens ni de graphie. Un changement de forme du rapport (champ
+// obligatoire ajouté, sens d'un champ modifié) passe par une nouvelle SCHEMA_VERSION
+// (« szh-rapport-erreur/2 »).
 'use strict';
 
 const crypto = require('crypto');
 
 // ---------------------------------------------------------------------------------------
-// 1. La table des codes (§3)
+// 1. La table des codes
 // ---------------------------------------------------------------------------------------
 //
-// Un `resume` par langue : une phrase courte, factuelle, jamais alarmiste, lisible par une
-// personne qui ouvre le fichier JSON sans être technicienne. Elle ne remplace pas `message`
-// (le détail technique) : elle dit juste, en une ligne, ce qui s'est passé.
+// Un `resume` par langue : une phrase courte et factuelle, lisible par une personne qui
+// ouvre le fichier JSON sans être technicienne. Le détail technique est dans `message`.
 
 const CODES = Object.freeze({
   'LANCEUR-TRAP': Object.freeze({
@@ -87,22 +79,16 @@ const CODES = Object.freeze({
       de: 'In der Cockpit-Erweiterung ist ein unerwarteter Fehler aufgetreten; VSCodium bleibt geöffnet, nur eine einzelne Funktion kann betroffen sein.'
     })
   }),
-  // Jamais écrit en rapport (voir §3) : cette entrée existe pour que la table reste
-  // complète et que le code soit connu de validerRapport() si, un jour, quelqu'un se
-  // trompe et l'écrit quand même — l'écrivain, lui, ne doit jamais boucler sur son propre
-  // échec d'écriture.
-  // Le seul code qu'une PERSONNE déclenche, et non une panne : le bouton « Signaler une
-  // erreur… » de l'onglet « Journal » du lanceur. Sa gravité reste « erreur » — l'énumération
-  // est close et ne s'élargit qu'avec une nouvelle version de schéma —, ce qui se défend :
-  // quelqu'un signale bien que quelque chose ne va pas.
+  // Le seul code déclenché par une personne et non par une panne : le bouton « Signaler une
+  // erreur… » de l'onglet « Journal ». Sa gravité est « erreur », l'énumération étant close.
   'LANCEUR-SIGNALEMENT': Object.freeze({
     resume: Object.freeze({
       fr: 'Une personne a signalé elle-même un problème depuis l’onglet « Journal » du lanceur ; le message est celui qu’elle a écrit, et le journal joint celui qu’elle a choisi.',
       de: 'Eine Person hat ein Problem selbst über die Registerkarte «Protokoll» des Starters gemeldet; die Meldung ist ihr eigener Text, das beigefügte Protokoll das von ihr gewählte.'
     })
   }),
-  // Le même geste, depuis une carte de contrôle du cockpit qui dit « signalez-le » : le
-  // rapport porte le constat (son code, pas son texte), l'article et la fin du journal.
+  // Signalement depuis une carte de contrôle du cockpit : le rapport porte le code du
+  // constat (pas son texte), l'article et la fin du journal.
   'COCKPIT-SIGNALEMENT': Object.freeze({
     resume: Object.freeze({
       fr: 'Une personne a signalé elle-même un défaut depuis une carte de contrôle du cockpit ; le rapport nomme le contrôle et l’article, et joint la fin du journal de compilation.',
@@ -110,8 +96,8 @@ const CODES = Object.freeze({
     })
   }),
   // Le nettoyeur de manuscrit s'est arrêté sur un défaut du logiciel (plantage, lecture ou
-  // perte de contenu que rien du manuscrit n'explique, rendu du rapport, environnement
-  // inutilisable). Le rapport ne porte jamais de texte du manuscrit : type, lieu dans le dépôt,
+  // perte de contenu que le manuscrit n'explique pas, rendu du rapport, environnement
+  // inutilisable). Le rapport ne porte aucun texte du manuscrit : type, lieu dans le dépôt,
   // étape.
   'NETTOYEUR-ECHEC': Object.freeze({
     resume: Object.freeze({
@@ -120,6 +106,8 @@ const CODES = Object.freeze({
     })
   }),
 
+  // Jamais écrit en rapport : l'écrivain ne doit pas boucler sur son propre échec. Le code
+  // figure dans la table pour que validerRapport() le reconnaisse s'il était écrit par erreur.
   'RAPPORT-ECHEC-ECRITURE': Object.freeze({
     resume: Object.freeze({
       fr: 'L’écriture d’un rapport d’erreur a elle-même échoué ; par construction, cet échec n’est jamais transformé en nouveau rapport, seul le journal local le garde.',
@@ -129,7 +117,7 @@ const CODES = Object.freeze({
 });
 
 // ---------------------------------------------------------------------------------------
-// 2. Les constantes du schéma (§4)
+// 2. Les constantes du schéma
 // ---------------------------------------------------------------------------------------
 
 const SCHEMA_VERSION = 'szh-rapport-erreur/1';
@@ -140,28 +128,25 @@ const SOURCES = Object.freeze(['lanceur', 'maj', 'archivage', 'cockpit', 'chaine
 const RELATIFS = Object.freeze(['ancrage', 'programdata', 'absolu']);
 const ORIGINES_ANCRAGE = Object.freeze(['essai', 'config', 'cache', 'auto', 'utilisateur', 'defaut', 'absent']);
 
-// L'ordre exact des clés de premier niveau, tel que gelé au §4. C'est ce que l'écrivain
-// doit respecter en construisant l'objet avant sérialisation, et ce que validerRapport()
-// contrôle.
+// L'ordre exact des clés de premier niveau, que l'écrivain respecte en construisant l'objet
+// et que validerRapport() contrôle.
 const ORDRE_CLES_RAPPORT = Object.freeze([
   'schema', 'id', 'horodatage', 'horodatageLocal', 'gravite', 'source', 'code', 'signature',
   'resume', 'etape', 'message', 'pile', 'poste', 'versions', 'produit', 'ancrage', 'fichiers',
   'journal', 'constats', 'environnement'
 ]);
 
-// Racine ProgramData de la chaîne SZH (docs/EMPLACEMENTS.md) : invariante sur tous les
-// postes, donc un défaut raisonnable pour masquer() quand l'appelant ne la précise pas.
-// L'ancrage SharePoint et %USERPROFILE%, eux, dépendent du poste et doivent être fournis
-// par l'appelant (ce module ne lit ni le disque ni l'environnement).
+// Racine ProgramData de la chaîne (docs/EMPLACEMENTS.md), la même sur tous les postes :
+// défaut de masquer(). L'ancrage SharePoint et %USERPROFILE% dépendent du poste et sont
+// fournis par l'appelant.
 const RACINE_PROGRAMDATA = 'C:\\ProgramData\\SZH';
 
-// L'unique adresse qui survit au masquage des courriels (§4.1, règle 6) : celle du
-// support, déjà publique dans le dépôt (gabarits de courriel, README). Toute autre adresse
-// — et c'est là tout l'enjeu — est masquée, y compris celle de la personne qui utilise
-// l'outil : D3 l'exclut explicitement du rapport.
+// La seule adresse que le masquage laisse en clair : celle du support, déjà publique dans
+// le dépôt. Toutes les autres sont masquées, y compris celle de la personne qui utilise
+// l'outil.
 const COURRIEL_SUPPORT = 'robin.morand@szh.ch';
 
-// §4.2 — Plafonds non négociables.
+// Plafonds de taille.
 const PLAFONDS = Object.freeze({
   message: 4000,
   pile: 8000,
@@ -172,75 +157,46 @@ const PLAFONDS = Object.freeze({
   fichierOctets: 256 * 1024
 });
 
-// §4.3 — Anti-inondation.
+// Anti-inondation.
 const ANTI_INONDATION = Object.freeze({
   signaturePeriodeHeures: 24,
   rapportsParJourMax: 20,
   purgeCompteursJours: 7
 });
 
-// §4 — Format et longueur de l'id (voir calculerId ci-dessous pour la construction).
+// Format et longueur de l'id (voir calculerId).
 const ID_LONGUEUR_MAX = 120;
 const FORMAT_ID = /^\d{8}-\d{6}-[A-Za-z0-9-]+-[0-9a-f]{6}$/;
 
 // ---------------------------------------------------------------------------------------
-// 3. Masquage (§4.1)
+// 3. Masquage
 // ---------------------------------------------------------------------------------------
 //
-// Sept règles (la 5 s'est scindée en 5a/5b — voir l'AMENDEMENT du 09.09.2026 ci-dessous),
-// appliquées dans CET ordre à `message`, `pile`, `journal.extrait` (chaque ligne), et à
-// tout chemin destiné à rester en clair dans le rapport. L'ordre n'est pas arbitraire :
+// Règles appliquées dans cet ordre à `message`, `pile`, chaque ligne de `journal.extrait`,
+// et à tout chemin qui reste en clair dans le rapport :
+//   1. l'ancrage SharePoint retiré ;
+//   2. %USERPROFILE% remplacé par « ~\ » ;
+//   3. la racine ProgramData retirée ;
+//   4. un mot-clé de secret suivi d'une valeur (« token: XXXX ») : la valeur masquée ;
+//   5b. un JWT complet, points compris ;
+//   5a. un secret nu : ≥ 32 caractères de [A-Za-z0-9+=_-] mêlant majuscule, minuscule et
+//       chiffre, qui n'est pas une suite hexadécimale (tirets ignorés) ;
+//   6. toute adresse courriel sauf COURRIEL_SUPPORT.
 //
-//   1-2-3 (racines connues avant tout le reste) — chaque règle RACCOURCIT le texte avant
-//   que les règles génériques (5a/5b) ne s'appliquent. Traiter 1 avant 2 avant 3 fait aussi
-//   gagner la racine la plus spécifique : l'ancrage SharePoint est presque toujours SOUS
-//   %USERPROFILE%, donc si la règle 2 passait en premier, le préfixe utilisateur serait
-//   retiré avant que la règle 1 n'ait pu reconnaître l'ancrage, et le chemin retomberait
-//   sur « ~\… » au lieu du relatif à l'ancrage, qui porte davantage de sens (D3, D4).
+// Pourquoi cet ordre :
+// - 1 avant 2 : l'ancrage est presque toujours sous %USERPROFILE% ; le chemin doit rester
+//   relatif à l'ancrage, plus parlant que « ~\… ».
+// - 5b avant 5a : un segment de JWT pris seul peut ressembler à un secret nu ; 5a ne
+//   masquerait que ce segment et laisserait lisible la charge utile.
+// - 5a et 5b avant 6 : 6 cherche les adresses dans un texte déjà débarrassé des racines.
 //
-//   4 avant 5b avant 5a — un couple mot-clé/valeur (« token: XXXX ») est le plus précis :
-//   le traiter en premier documente l'intention exacte de ce qui a été trouvé. 5b (le motif
-//   d'un JWT complet, segments et points compris) doit passer AVANT 5a : un segment de JWT
-//   pris isolément (entre deux points) peut dépasser 32 caractères et mélanger casse et
-//   chiffres — 5a le masquerait seul, laissant les autres segments (et leurs points)
-//   intacts, exactement le défaut relevé (voir plus bas). 5b consomme le jeton ENTIER en un
-//   seul passage ; 5a, ensuite, ne trouve donc plus rien de ce jeton à mordre.
+// 5a exclut `/`, qui signale un chemin ou une URL, et les suites hexadécimales, pour garder
+// lisibles chemins relatifs, URL, empreintes et GUID. La règle 4 ne suffit pas pour un JWT :
+// dans « Authorization: Bearer eyJ… », la valeur capturée est « Bearer », pas le jeton.
 //
-//   5a/5b avant 6 — les règles génériques peuvent mordre sur la partie locale d'une adresse
-//   courriel si elle est longue ; la traiter avant l'email n'aggrave rien (le résultat
-//   reste illisible comme adresse), et la traiter après casserait le motif d'email que la
-//   règle 6 cherche à reconnaître dans le texte déjà modifié par 1-3.
-//
-// AMENDEMENT du 09.09.2026 (auteur de la spec, pas un défaut d'implémentation) — la règle 5
-// originale (« toute suite de ≥ 32 caractères de [A-Za-z0-9+/=_-] ») incluait `/` : mesurée
-// sur des lignes réelles de la chaîne, elle masquait donc exactement ce que D3 demande de
-// garder — un chemin relatif (`2_Produkte/…/03-inclusion.md` → `***.md`), une URL
-// (`https://www.szh-csps.ch/… ` → `https://www.szh-csps.***`), une empreinte SHA-256 (le
-// sujet même de `err.empreinte`). Remplacée par deux règles plus étroites :
-//
-//   5a — secret nu, resserré : ≥ 32 caractères de [A-Za-z0-9+=_-] (`/` RETIRÉ — un `/`
-//   signe presque toujours un chemin ou une URL, jamais un secret encodé dans ce dépôt),
-//   qui porte À LA FOIS une majuscule, une minuscule et un chiffre (la signature d'un jeton
-//   à haute entropie — un chemin, un slug ou une empreinte ne présentent pas ce mélange),
-//   ET qui n'est pas purement hexadécimale une fois les tirets de séparation ignorés (pour
-//   ne jamais toucher une empreinte SHA-1/SHA-256 ou un GUID, tirets compris).
-//
-//   5b — jeton en segments (JWT) : `eyJ[A-Za-z0-9_-]{8,}(\.[A-Za-z0-9_.-]+)+` en entier.
-//   La règle 4 seule ne suffit pas : sur « Authorization: Bearer eyJ…xxx.eyJ…yyy.zzz », le
-//   mot-clé reconnu est `authorization`, dont la valeur capturée (un seul jeton, jusqu'au
-//   prochain espace) est le mot « Bearer » — PAS le jeton qui le suit après son propre
-//   espace. Le jeton restait donc entier face à la règle 4, et l'ancienne règle 5 le
-//   redécoupait par ses points, ne masquant que les segments individuellement assez longs :
-//   la charge utile d'un JWT (souvent < 32 caractères pour un jeton de test) survivait,
-//   lisible en base64 — une vraie fuite d'identité, relevée sur le terrain.
-//
-// Limite assumée, à connaître : un secret nu SANS mot-clé qui l'annonce, et dont TOUTES les
-// lettres sont en minuscules (ou dans les deux cas mais sans jamais mélanger les trois
-// familles majuscule/minuscule/chiffre) échappe à 5a — une clé DeepL nue en est un exemple
-// réel (hexadécimal minuscule et tirets, sans majuscule). Rien dans la ligne ne la
-// distingue alors d'un slug ou d'un GUID sans lire sa provenance. Le filet de sécurité
-// reste la règle 4 : ces clés-là (DeepL notamment) sont censées apparaître précédées de
-// leur mot-clé dans un message construit par l'outil, pas nues dans une pile d'appel tierce.
+// Limite : un secret nu sans mot-clé, tout en minuscules (une clé DeepL : hexadécimal et
+// tirets) échappe à 5a, car rien ne le distingue d'un slug ou d'un GUID. Ces clés doivent
+// apparaître précédées de leur mot-clé, que la règle 4 reconnaît.
 function motifRacineSource(racine) {
   const segments = String(racine).split(/[\\/]+/).filter(Boolean);
   return segments
@@ -248,36 +204,28 @@ function motifRacineSource(racine) {
     .join('[\\\\/]+');
 }
 
-// Remplace, partout dans `texte`, la racine donnée (insensible à la casse, séparateurs \
-// et / interchangeables) et le séparateur qui la suit immédiatement par `remplacement`.
-// Sans racine, ne fait rien : c'est ce qui permet à masquer() d'ignorer une racine que
-// l'appelant ne connaît pas (ex. pas d'ancrage résolu sur ce poste) sans code particulier.
+// Remplace partout dans `texte` la racine donnée (casse ignorée, \ et / équivalents) et le
+// séparateur qui la suit par `remplacement`. Sans racine, ne fait rien.
 function remplacerRacine(texte, racine, remplacement) {
   if (!racine) { return texte; }
   const motif = new RegExp(motifRacineSource(racine) + '[\\\\/]?', 'gi');
   return texte.replace(motif, remplacement);
 }
 
-// Règle 4 : mots-clés de secret suivis d'une valeur (un seul jeton, jusqu'au prochain
-// espace — un mot de passe à espaces échappe à cette règle précise, mais reste exposé à
-// la règle 5 dès qu'il contient une suite assez longue sans espace).
+// Règle 4 : mots-clés de secret suivis d'une valeur (un seul jeton, jusqu'à l'espace
+// suivant).
 const MOTIF_SECRET_NOMME =
   /\b(api[-_ ]?key|token|secret|authorization|bearer|deepl|password|mot de passe|pwd)(\s*[:=]\s*|\s+)(\S+)/gi;
 
-// Règle 5b : un JWT complet (en-tête, charge utile, signature), points compris — voir
-// l'amendement ci-dessus. Doit s'appliquer avant 5a (raison donnée plus haut).
+// Règle 5b : un JWT complet (en-tête, charge utile, signature), points compris.
 const MOTIF_JWT = /eyJ[A-Za-z0-9_-]{8,}(?:\.[A-Za-z0-9_.-]+)+/g;
 
-// Règle 5a : candidates — suite de ≥ 32 caractères de [A-Za-z0-9+=_-] (`/` retiré : c'est
-// la marque d'un chemin ou d'une URL, jamais d'un secret ici). Chaque candidate est ensuite
-// filtrée par estSecretHauteEntropie() : la classe de caractères seule ne suffit pas à
-// distinguer un jeton d'un chemin sans séparateur ou d'une longue empreinte.
+// Règle 5a : candidates, ≥ 32 caractères de [A-Za-z0-9+=_-], filtrées ensuite par
+// estSecretHauteEntropie().
 const MOTIF_SUITE_CANDIDATE = /[A-Za-z0-9+=_-]{32,}/g;
 
-// Vrai si `s` porte les trois familles de caractères d'un secret à haute entropie
-// (majuscule ET minuscule ET chiffre) et n'est pas, une fois ses tirets ignorés, une pure
-// suite hexadécimale — auquel cas ce serait une empreinte (SHA-1/SHA-256) ou un GUID, que
-// le masquage ne doit jamais toucher (§4.1 amendé).
+// Vrai si `s` porte majuscule, minuscule et chiffre, et n'est pas une suite hexadécimale
+// (tirets ignorés), ce qui serait une empreinte SHA-1/SHA-256 ou un GUID.
 function estSecretHauteEntropie(s) {
   if (!/[A-Z]/.test(s) || !/[a-z]/.test(s) || !/[0-9]/.test(s)) { return false; }
   if (/^[0-9a-fA-F-]+$/.test(s)) { return false; }
@@ -287,12 +235,12 @@ function estSecretHauteEntropie(s) {
 // Règle 6 : une adresse courriel, sauf celle du support.
 const MOTIF_COURRIEL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 
-// Masque un texte quelconque (message, pile, une ligne de journal, un chemin) selon les
-// règles du §4.1 amendé, dans l'ordre justifié ci-dessus (1, 2, 3, 4, 5b, 5a, 6).
-//   racines.ancrage      — chemin absolu de l'ancrage résolu sur ce poste, ou null/absent.
-//   racines.userProfile  — %USERPROFILE%, ou null/absent (pas d'accès à l'environnement ici).
-//   racines.programData  — défaut RACINE_PROGRAMDATA ; à ne fournir que pour un poste où
-//                          la chaîne SZH vivrait ailleurs (tests, essentiellement).
+// Masque un texte (message, pile, ligne de journal, chemin) selon les règles ci-dessus, dans
+// l'ordre 1, 2, 3, 4, 5b, 5a, 6.
+//   racines.ancrage      — chemin absolu de l'ancrage du poste, ou absent.
+//   racines.userProfile  — %USERPROFILE%, ou absent.
+//   racines.programData  — RACINE_PROGRAMDATA par défaut ; à fournir seulement si la chaîne
+//                          vit ailleurs (tests).
 function masquer(texte, racines) {
   const opts = racines || {};
   let s = texte === null || texte === undefined ? '' : String(texte);
@@ -310,13 +258,12 @@ function masquer(texte, racines) {
 }
 
 // ---------------------------------------------------------------------------------------
-// 4. Mise en chemin relatif à une racine donnée (§4, règle `relatifA`)
+// 4. Chemin relatif à une racine
 // ---------------------------------------------------------------------------------------
 //
-// Différent de masquer() : ceci construit la PAIRE { chemin, relatifA } d'un champ
-// structuré (fichiers[].chemin, journal.chemin, ancrage.chemin), pas un remplacement dans
-// du texte libre. Le chemin rendu utilise toujours `\`, pour qu'on puisse coller
-// `<racine>\<chemin>` dans l'Explorateur Windows même si l'entrée mêlait les séparateurs.
+// Construit la paire { chemin, relatifA } d'un champ structuré (fichiers[].chemin,
+// journal.chemin, ancrage.chemin) ; masquer(), lui, remplace dans du texte libre. Le chemin
+// rendu utilise `\`, pour qu'on puisse coller `<racine>\<chemin>` dans l'Explorateur.
 function versCheminRelatif(chemin, racine, etiquette) {
   const brut = chemin === null || chemin === undefined ? '' : String(chemin);
   const normalise = brut.replace(/\//g, '\\');
@@ -329,17 +276,14 @@ function versCheminRelatif(chemin, racine, etiquette) {
 }
 
 // ---------------------------------------------------------------------------------------
-// 5. Signature anti-inondation (§4.3)
+// 5. Signature anti-inondation
 // ---------------------------------------------------------------------------------------
 //
 // signature = 12 premiers caractères hexadécimaux de SHA-256(source | code | etape |
-// 200 premiers caractères du message MASQUÉ | produit.numero), chaque champ manquant
-// (null/absent) valant chaîne vide. Le séparateur ' | ' est fixe : c'est ce texte-là,
-// caractère pour caractère, que l'écrivain PowerShell doit reproduire pour qu'un compte
-// qui reçoit le même rapport par les deux chemins (lanceur et cockpit) le regroupe de la
-// même façon. `messageMasque` doit déjà avoir passé masquer() : cette fonction ne masque
-// rien elle-même, pour rester indépendante du contexte (racines du poste) dont elle n'a
-// pas besoin.
+// 200 premiers caractères du message masqué | produit.numero), un champ absent valant ''.
+// Le séparateur ' | ' est fixe : l'écrivain PowerShell reproduit ce texte au caractère près,
+// pour que le même incident ait la même signature des deux côtés. `messageMasque` doit déjà
+// être passé par masquer().
 function versTexteSignature(v) {
   return v === null || v === undefined ? '' : String(v);
 }
@@ -358,19 +302,13 @@ function calculerSignature(champs) {
 }
 
 // ---------------------------------------------------------------------------------------
-// 6. L'identifiant du rapport (§4)
+// 6. L'identifiant du rapport
 // ---------------------------------------------------------------------------------------
 //
-// `<AAAAMMJJ-HHmmss>-<poste>-<6 hex>`, ASCII, ≤ 120 caractères, et c'est le nom du fichier
-// (`<id>.json`) : un tri alphabétique doit donc être un tri chronologique.
-//
-// Point gelé qu'une implémentation naïve manquerait facilement : l'exemple du §4 porte
-// "horodatage": "…08:15:30Z" et "horodatageLocal": "…10:15:30+02:00" (été, UTC+2), et
-// l'id, lui, porte "081530" — l'heure UTC, pas l'heure locale. C'est nécessaire pour que
-// le tri reste chronologique été comme hiver : l'heure locale recule d'une heure au
-// changement d'heure et briserait l'ordre alphabétique une fois par an. calculerId()
-// prend donc l'horodatage UTC (le paramètre `horodatage`, interprété comme instant absolu
-// — un Date ou une chaîne ISO — jamais l'heure locale déjà décalée).
+// `<AAAAMMJJ-HHmmss>-<poste>-<6 hex>`, ASCII, 120 caractères au plus. C'est aussi le nom du
+// fichier (`<id>.json`) : le tri alphabétique doit être chronologique. L'heure est donc
+// l'heure UTC, pas l'heure locale, qui recule d'une heure au changement d'heure.
+// `horodatage` est un instant absolu : un Date ou une chaîne ISO.
 function formaterHorodatageId(horodatage) {
   const d = horodatage instanceof Date ? horodatage : new Date(horodatage);
   if (Number.isNaN(d.getTime())) {
@@ -381,11 +319,9 @@ function formaterHorodatageId(horodatage) {
     + '-' + p2(d.getUTCHours()) + p2(d.getUTCMinutes()) + p2(d.getUTCSeconds());
 }
 
-// Rend le nom du poste ASCII et sans risque pour un nom de fichier : diacritiques
-// retirés (translittération NFD), tout le reste ramené à des majuscules, chiffres et
-// tirets. Un COMPUTERNAME Windows classique (≤ 15 caractères, déjà ASCII) traverse cette
-// fonction sans y perdre un caractère ; la borne à 40 n'est là que pour les noms
-// exotiques (DNS long, poste de test) et garde l'id entier très en dessous de 120.
+// Le nom du poste en ASCII sûr pour un nom de fichier : diacritiques retirés (NFD), le reste
+// ramené à des majuscules, chiffres et tirets, 40 caractères au plus. Un COMPUTERNAME
+// Windows ordinaire (15 caractères ASCII au plus) passe sans perte.
 function nettoyerPoste(nom) {
   const base = String(nom === null || nom === undefined ? '' : nom)
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -394,9 +330,8 @@ function nettoyerPoste(nom) {
   return nettoye.slice(0, 40);
 }
 
-// `aleatoireHex` : 6 caractères hexadécimaux, fournis par l'appelant (voir
-// genererAleatoireHex ci-dessous) — calculerId() reste ainsi une fonction pure et
-// déterministe, testable sans dépendre d'une source d'aléa.
+// `aleatoireHex` : 6 caractères hexadécimaux fournis par l'appelant (genererAleatoireHex),
+// pour que calculerId() reste pure et déterministe.
 function calculerId(horodatage, poste, aleatoireHex) {
   const hex = String(aleatoireHex === null || aleatoireHex === undefined ? '' : aleatoireHex).toLowerCase();
   if (!/^[0-9a-f]{6}$/.test(hex)) {
@@ -405,23 +340,19 @@ function calculerId(horodatage, poste, aleatoireHex) {
   return formaterHorodatageId(horodatage) + '-' + nettoyerPoste(poste) + '-' + hex;
 }
 
-// La seule fonction impure du module : une source d'aléa pour le suffixe de calculerId().
-// Isolée ici pour que tout le reste du fichier reste pur et testable sans mock.
+// Seule fonction impure du module : l'aléa du suffixe de calculerId().
 function genererAleatoireHex() {
   return crypto.randomBytes(3).toString('hex');
 }
 
 // ---------------------------------------------------------------------------------------
-// 7. Plafonds appliqués à un rapport déjà construit (§4.2)
+// 7. Plafonds appliqués à un rapport déjà construit
 // ---------------------------------------------------------------------------------------
 //
-// Rend un NOUVEAU rapport (ne modifie pas celui qu'on lui passe) où `message`, `pile`,
-// `fichiers`, `constats` et `journal.extrait` respectent leurs plafonds respectifs, puis,
-// si le fichier entier dépasserait quand même 256 Ko une fois sérialisé (§4, en-tête :
-// UTF-8 sans BOM, indenté 2 espaces), vide `journal.extrait` et pose `tronque: true` —
-// c'est le seul champ qu'on sacrifie entièrement, parce que c'est le seul de taille non
-// bornée par ailleurs (un `fichiers[].chemin` individuel, par exemple, n'a pas de plafond
-// de longueur : seul son NOMBRE est plafonné à 50).
+// Rend un nouveau rapport (celui reçu n'est pas modifié) où `message`, `pile`, `fichiers`,
+// `constats` et `journal.extrait` respectent leurs plafonds. Si le fichier sérialisé (UTF-8
+// sans BOM, indenté de 2 espaces) dépasse encore 256 Ko, `journal.extrait` est vidé et
+// `tronque` passe à true : c'est le seul champ de taille non bornée par ailleurs.
 function tronquerTexte(valeur, max) {
   if (typeof valeur !== 'string') { return valeur; }
   return valeur.length > max ? valeur.slice(0, max) : valeur;
@@ -433,10 +364,8 @@ function appliquerPlafonds(rapport) {
   r.message = tronquerTexte(r.message, PLAFONDS.message);
   r.pile = tronquerTexte(r.pile, PLAFONDS.pile);
 
-  // La spec ne dit pas quelle extrémité garder si la liste déborde ; on garde les
-  // PREMIÈRES entrées (celles que l'appelant a écrites en premier — typiquement la plus
-  // proche de l'action qui a échoué), symétriquement à `journal.extrait` qui garde les
-  // DERNIÈRES lignes (celles les plus proches, chronologiquement, du moment de l'erreur).
+  // Une liste trop longue garde ses premières entrées, écrites en premier par l'appelant ;
+  // `journal.extrait`, lui, garde ses dernières lignes, les plus proches de l'erreur.
   if (Array.isArray(r.fichiers) && r.fichiers.length > PLAFONDS.fichiers) {
     r.fichiers = r.fichiers.slice(0, PLAFONDS.fichiers);
   }
@@ -451,9 +380,8 @@ function appliquerPlafonds(rapport) {
       lignes = lignes.slice(lignes.length - PLAFONDS.journalExtraitLignes);
       tronque = true;
     }
-    // Les 200 dernières lignes peuvent encore dépasser 40 000 caractères (des lignes
-    // longues) : on continue de retirer depuis le DÉBUT de ce qui reste, pour garder la
-    // fin — la plus proche de l'erreur — le plus longtemps possible.
+    // Les 200 dernières lignes peuvent encore dépasser le plafond de caractères : on retire
+    // depuis le début, pour garder la fin, la plus proche de l'erreur.
     while (lignes.length > 1 && lignes.join('\n').length > PLAFONDS.journalExtraitCaracteres) {
       lignes = lignes.slice(1);
       tronque = true;
@@ -478,11 +406,9 @@ function appliquerPlafonds(rapport) {
 // 8. Validation contre le schéma v1
 // ---------------------------------------------------------------------------------------
 //
-// Rend la liste des écarts (chaînes lisibles), jamais ne lève. Un tableau vide veut dire
-// « conforme ». Portée assumée : l'ordre des clés n'est contrôlé qu'au premier niveau —
-// c'est le seul que le §4 gèle explicitement (« clés dans l'ordre ci-dessous ») ; les
-// objets imbriqués (poste, versions, ancrage…) sont vérifiés sur leur contenu (énumérations,
-// types), pas sur l'ordre de leurs propres clés.
+// Rend la liste des écarts (phrases lisibles) ; un tableau vide veut dire « conforme ». Ne
+// lève pas. L'ordre des clés n'est contrôlé qu'au premier niveau, le seul que le schéma
+// fixe ; les objets imbriqués sont vérifiés sur leur contenu (énumérations, types).
 function validerRapport(rapport) {
   const ecarts = [];
   if (!rapport || typeof rapport !== 'object' || Array.isArray(rapport)) {

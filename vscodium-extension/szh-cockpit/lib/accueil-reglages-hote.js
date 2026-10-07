@@ -1,7 +1,7 @@
 // L'onglet Paramètres de l'Accueil côté hôte : les valeurs que la page reçoit, les réglages propres
 // à l'Accueil (produit proposé, mise à jour silencieuse, mode développeur), les services en ligne
-// (adresse Shlink en réglage, clés Shlink et OJS dans SecretStorage) et la recopie, une seule
-// fois, des réglages d'avant. Les autres messages vont à lib/reglages-hote.js.
+// (adresse Shlink en réglage, clés Shlink et OJS dans SecretStorage) et la recopie unique des
+// réglages de etat-utilisateur.json. Les autres messages vont à lib/reglages-hote.js.
 'use strict';
 
 const vscode = require('vscode');
@@ -20,9 +20,9 @@ const propositions = require('./propositions');
 const kirby = require('./kirby-contenu');
 const { moiCoedition } = require('./coedition-hote');
 
-// Les clés du coffre : jamais écrites ailleurs, jamais envoyées à la page.
+// Les noms des clés dans le coffre. Leurs valeurs restent dans le coffre et ne vont pas à la page.
 const COFFRE = Object.freeze({ shlinkCle: 'szh.shlinkCle', ojsCle: 'szh.ojsCle' });
-// Valeur gardée du temps du « lanceur » : la renommer recopierait une seconde fois les réglages.
+// Le nom garde le préfixe « lanceur » : le changer relancerait la recopie des réglages.
 const CLE_RECOPIE = 'szh.lanceur.reglagesRecopies';
 const RE_HTTPS = /^https:\/\/[^\s/$.?#][^\s]*$/i;
 // Ceux de REGLER qui sont propres à l'Accueil ; les autres vont à lib/reglages-hote.js.
@@ -71,7 +71,7 @@ function majSilencieuse() {
   return v === true || String(v).toLowerCase() === 'true';
 }
 
-// Ce que la page affiche en plus du reste : jamais une clé, seulement « réglée » ou non.
+// Les valeurs propres à l'Accueil. D'une clé, la page reçoit seulement si elle est définie.
 function messageValeurs() {
   const msg = reglages.messageValeursReglages();
   const v = services.variables();
@@ -150,7 +150,7 @@ function textesMoissonnage() {
       'signal-faible': T('doc.prop.categorie.signal-faible'), ecole: T('doc.prop.categorie.ecole'),
       theme: T('doc.prop.categorie.theme'), 'texte-large': T('doc.prop.categorie.texte-large')
     },
-    // Un jeton que le cockpit ne connait pas se nomme ainsi, jamais tel quel.
+    // Libellé d'une catégorie que le cockpit ne connaît pas.
     categorieAutre: T('doc.prop.categorie.autre')
   };
 }
@@ -220,7 +220,8 @@ function reglerFinesse(msg, repondre) {
   if (ctx.rafraichirTout) { ctx.rafraichirTout(); }
 }
 
-// Le geste qui vient d'avoir lieu, rendu une fois avec les valeurs ; le dernier retrait, pour Annuler.
+// La dernière action sur une demande, envoyée une fois avec les valeurs ; le dernier retrait,
+// pour Annuler.
 let dernierGeste = null;
 let dernierRetrait = null;
 
@@ -284,8 +285,8 @@ async function regler(msg) {
   }
 }
 
-// Poser ou effacer l'adresse ou une clé. Un champ vide efface. La réponse est le message de
-// valeurs, où une clé n'est jamais qu'« définie » ou « absente ».
+// Pose ou efface l'adresse ou une clé ; un champ vide efface. La réponse est le message de
+// valeurs, où une clé est seulement « définie » ou « absente ».
 async function poserService(msg, repondre) {
   const valeur = String(msg.valeur === undefined || msg.valeur === null ? '' : msg.valeur).trim();
   const echec = (texte) => repondre({ type: MSG.ERREUR, bloc: 'service', service: msg.service, message: texte });
@@ -337,10 +338,10 @@ function surOnglet(onglet, repondre) {
 
 function arreter() { reglages.reverrouillerProteges(); }
 
-// Les réglages simples d'avant (produit proposé, langue) sont recopiés depuis
-// etat-utilisateur.json une seule fois : le drapeau du globalState interdit la seconde. La mise
-// à jour silencieuse et la langue y restent écrites aussi, car la tâche planifiée et les scripts
-// PowerShell les lisent là.
+// Recopie une seule fois le produit proposé et la langue de etat-utilisateur.json dans les
+// réglages de l'éditeur ; le drapeau CLE_RECOPIE du globalState empêche une seconde recopie.
+// La mise à jour silencieuse et la langue restent aussi écrites dans etat-utilisateur.json,
+// où la tâche planifiée et les scripts PowerShell les lisent.
 async function recopierUneFois(context) {
   if (!context.globalState || context.globalState.get(CLE_RECOPIE)) { return; }
   const etat = rapport.lireEtatUtilisateur() || {};

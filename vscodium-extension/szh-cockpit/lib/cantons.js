@@ -1,18 +1,11 @@
-// Les cantons suisses, et la Confédération — table maison, non branchée sur le formulaire
-// de Documentation depuis que celui-ci lit sa propre liste `canton` dans le contrat
-// (pipeline/kirby/champs-documentation.json, via lib/kirby-contenu.js : valeursListe/
-// optionsListe). Ce fichier n'a plus d'appelant dans le cockpit ; il reste au cas où un
-// autre formulaire aurait besoin de la même liste fermée, avec son tri alphabétique par
-// langue — ce que le contrat, lui, ne fournit pas (il liste les cantons dans l'ordre
-// d'impression : Confédération d'abord, puis alphabétique par CODE).
+// Les cantons suisses et la Confédération (code CH), avec leur nom en fr et en de, et une
+// liste triée par ordre alphabétique du nom dans chaque langue.
 //
-// C'est le code qui est stocké, jamais le nom : deux caractères stables, identiques dans
-// les deux langues.
+// Ce module n'a pas d'appelant dans le cockpit : le formulaire de Documentation lit sa liste
+// `canton` dans pipeline/kirby/champs-documentation.json (via lib/kirby-contenu.js), rangée
+// dans l'ordre d'impression (Confédération, puis par code).
 //
-// La Confédération (code CH) est dans la liste : la rubrique des interventions
-// parlementaires relève aussi bien les motions et postulats fédéraux que les objets
-// cantonaux, et sans cette entrée une motion du Conseil national n'aurait pas de case où
-// aller.
+// C'est le code qui est stocké : deux caractères, identiques dans les deux langues.
 'use strict';
 
 // Noms officiels, dans les deux langues de publication. `code` est la forme imprimée.
@@ -56,18 +49,16 @@ function estCode(code) {
   return CANTONS.some((x) => x.code === c);
 }
 
-// Le nom complet d'un code, dans la langue demandée. Un code inconnu se rend tel quel
-// plutôt que vide : une valeur saisie à la main avant cette liste reste lisible.
+// Le nom complet d'un code, dans la langue demandée. Un code inconnu est rendu tel quel.
 function nomCanton(code, langue) {
   const c = String(code === undefined || code === null ? '' : code);
   const trouve = CANTONS.find((x) => x.code === c);
   return trouve ? trouve[langueSaine(langue)] : c;
 }
 
-// La liste déroulante, prête pour le formulaire : [{ valeur, libelle }], rangée par ordre
-// alphabétique du nom dans la langue de l'interface — « Bâle-Campagne » avant « Berne », ce
-// qu'un tri par octets ne ferait pas. Le libellé porte le nom et le code, parce que c'est le
-// code qui s'imprimera : le rédacteur doit le voir au moment où il choisit.
+// La liste déroulante : [{ valeur, libelle }], par ordre alphabétique du nom dans la langue
+// de l'interface (localeCompare : « Bâle-Campagne » avant « Berne »). Le libellé montre
+// aussi le code, qui est ce qui s'imprime.
 function optionsCanton(langue) {
   const l = langueSaine(langue);
   return CANTONS.slice()

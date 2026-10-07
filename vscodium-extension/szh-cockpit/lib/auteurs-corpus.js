@@ -1,7 +1,7 @@
-// Enrichissement du cache des auteurs avec les données du corpus local : la fonction et
-// l'e-mail n'existent que dans les fiches <slug>.meta.yaml, qu'OJS n'expose pas. Contrainte
-// déterminante (revues sur OneDrive, Fichiers à la demande, qui télécharge à l'ouverture) :
-// on ouvre seulement les *.meta.yaml (quelques Ko), jamais un .md, out/, media/ ou .docx.
+// Enrichit le cache des auteurs avec les fiches <slug>.meta.yaml des numéros du poste : la
+// fonction et l'e-mail n'existent que là, OJS ne les expose pas. Les revues sont sur
+// OneDrive (Fichiers à la demande, qui télécharge un fichier à son ouverture) : seuls les
+// *.meta.yaml sont ouverts, quelques Ko chacun.
 'use strict';
 
 const fs = require('fs');
@@ -11,14 +11,12 @@ const { analyserMeta } = require('./yaml');
 const { TOOLKIT } = require('./archivage');
 const { lireCache, ecrireCache, JOURS_FRAICHEUR, fusionnerAuteurs } = require('./auteurs-ojs');
 
-// Le cache est celui du module frère — même fichier, mêmes lecteurs. Rien n'est recopié
-// ici : deux calculs du chemin finiraient par diverger sur un poste.
+// Le cache est celui de lib/auteurs-ojs.js, lu et écrit par ses fonctions.
 const SCRIPT_EMPLACEMENTS = path.join(TOOLKIT, 'windows', 'szh-common.ps1');
 
-// Lance PowerShell pour sourcer szh-common.ps1 et appeller Get-SzhEmplacements.
-// Retourne un objet { encours: [...], archives: [...] } en JSON, ou [] + erreur sur
-// panne. Aucune exception levée.
-// opts.executer est injectable pour les tests — aucun test ne doit lancer PowerShell.
+// Les racines des numéros (en cours et archives), lues par Get-SzhEmplacements de
+// szh-common.ps1. Rend { racines, erreur } ; erreur vaut null en cas de succès. Ne lève pas.
+// opts.executer remplace PowerShell dans les tests.
 async function racinesCorpus(opts) {
   const o = opts || {};
   const executer = o.executer || lancerPowerShell;
@@ -66,18 +64,16 @@ function lancerPowerShell(lignes) {
   });
 }
 
-// Balaie le corpus : une racine → readdir → dossiers avec ausgabe.yaml →
-// articles/<slug>/<slug>.meta.yaml. Gère mtime pour ne relire que si nécessaire.
-// opts = { racines, vus, maintenant, plafondFichiers, delaiMs, lire, statuer }
+// Balaie chaque racine : les dossiers qui ont un ausgabe.yaml sont des numéros, dont on lit
+// articles/<slug>/<slug>.meta.yaml. Une fiche dont le mtime n'a pas changé n'est pas relue.
+// opts = { racines, vus, maintenant, plafondFichiers, delaiMs, lire, statuer, lireDossier, horloge }
 // vus = { chemin: mtimeMs, ... }
-// Rend { auteurs, vus, fichiers, complet, erreur }. N'ouvre que les *.meta.yaml.
+// Rend { auteurs, vus, fichiers, complet, erreur }.
 //
-// Asynchrone, et chaque entrée passe par `await` : ce balayage traverse potentiellement
-// des milliers de dossiers OneDrive (Fichiers à la demande, chaque readdir/stat pouvant
-// déclencher une hydratation réseau) — une version synchrone gèlerait l'hôte d'extensions
-// tout entier, éditeur compris, pendant toute sa durée. Le budget de temps et de fichiers
-// reste vérifié à chaque entrée, comme avant : un balayage interrompu garde ce qu'il a
-// trouvé, seule la manière d'attendre le disque a changé.
+// Asynchrone : le balayage peut traverser des milliers de dossiers OneDrive, où chaque
+// readdir ou stat peut attendre le réseau ; une version synchrone gèlerait l'éditeur.
+// Les plafonds de temps et de fichiers sont vérifiés à chaque entrée ; un balayage
+// interrompu garde ce qu'il a trouvé et rend complet: false.
 async function balayerCorpus(opts) {
   const o = opts || {};
   const racines = Array.isArray(o.racines) ? o.racines : [];
@@ -88,9 +84,8 @@ async function balayerCorpus(opts) {
   const lire = o.lire || ((c) => fs.promises.readFile(c, 'utf8'));
   const statuer = o.statuer || ((c) => fs.promises.stat(c));
   const lireDossier = o.lireDossier || ((c) => fs.promises.readdir(c, { withFileTypes: true }));
-  // L'horloge du budget est séparée de `maintenant`, qui n'est qu'un horodatage : les
-  // comparer reviendrait à mesurer zéro seconde, et la borne de temps — la seule qui
-  // protège d'un OneDrive qui s'hydrate au compte-gouttes — ne se déclencherait jamais.
+  // L'horloge du plafond de temps est distincte de `maintenant`, qui est un horodatage fixe :
+  // comparé à lui-même, il mesurerait toujours zéro seconde.
   const horloge = o.horloge || Date.now;
   const debut = horloge();
   const auteurs = [];
@@ -113,7 +108,6 @@ async function balayerCorpus(opts) {
       try { statAusgabe = await statuer(ausgabe); }
       catch (e) { continue; }
       if (!statAusgabe.isFile()) { continue; }
-      // Ce dossier est un numéro. Balaie articles/<slug>/<slug>.meta.yaml.
       const articlesDir = path.join(racine, entree.name, 'articles');
       let slugs;
       try { slugs = await lireDossier(articlesDir); }
@@ -128,10 +122,8 @@ async function balayerCorpus(opts) {
         catch (e) { continue; }
         if (!statMeta.isFile()) { continue; }
         fichiers++;
-        // Optimisation OneDrive : ne relire que si mtime a changé.
         if (vus[metaYaml] === statMeta.mtimeMs) { continue; }
         vus[metaYaml] = statMeta.mtimeMs;
-        // On lit la fiche et on en extrait les auteurs.
         let contenu;
         try { contenu = await lire(metaYaml); }
         catch (e) {
@@ -150,7 +142,6 @@ async function balayerCorpus(opts) {
           const prenom = String((a.prenom || '').trim());
           const nom = String((a.nom || '').trim());
           if (prenom === '' && nom === '') { continue; }
-          // Entrée bien formée : fonction, email, affiliation, orcid, ror.
           auteurs.push({
             prenom: prenom,
             nom: nom,
@@ -169,18 +160,14 @@ async function balayerCorpus(opts) {
   return { auteurs: auteurs, vus: vus, fichiers: fichiers, complet: complet, erreur: derniereErreur };
 }
 
-// Pendant de rafraichir() de lib/auteurs-ojs.js. Porte de fraîcheur sur dateCorpus : 30 jours.
-// Retourne { fait, complet, erreur, dateCorpus, nombre, fichiers }, avec
-// { fait: false, raison: 'frais' } quand le cache a moins de 30 jours.
-// dateCorpus n'avance que si le balayage est complet.
-// cache.vus est toujours écrit, même sur balayage partiel.
+// Pendant de rafraichir() de lib/auteurs-ojs.js. Rend { fait, complet, erreur, dateCorpus,
+// nombre, fichiers }, ou { fait: false, raison: 'frais' } quand dateCorpus a moins de
+// JOURS_FRAICHEUR jours. dateCorpus n'avance que si le balayage est complet.
 // opts de test : { maintenant, forcer, racines, executer, lire, statuer }
 async function rafraichirCorpus(opts) {
   const o = opts || {};
   const maintenant = o.maintenant === undefined ? Date.now() : o.maintenant;
   const cache = lireCache();
-  // dateCorpus et dateCorpus côté OJS sont séparés dans le cache — on ne fusionne
-  // que si corpus a avancé.
   const dateCorpus = cache.dateCorpus || null;
   if (!o.forcer && dateCorpus && cacheFrais(dateCorpus, maintenant)) {
     return {
@@ -188,14 +175,12 @@ async function rafraichirCorpus(opts) {
       nombre: cache.auteurs.length, fichiers: 0
     };
   }
-  // On a besoin des racines. Si racines n'est pas fourni en test, on les récupère.
   let racines = Array.isArray(o.racines) ? o.racines : null;
   if (racines === null) {
     const { racines: r, erreur: e } = await racinesCorpus(o);
     if (e) { return { fait: false, raison: 'racines', erreur: e, dateCorpus: dateCorpus, nombre: cache.auteurs.length, fichiers: 0 }; }
     racines = r;
   }
-  // On balaie le corpus.
   const resultCorpus = await balayerCorpus({
     racines: racines,
     vus: (cache.vus && typeof cache.vus === 'object') ? Object.assign({}, cache.vus) : {},
@@ -205,15 +190,13 @@ async function rafraichirCorpus(opts) {
     lire: o.lire,
     statuer: o.statuer
   });
-  // Une seule fusion pour tout le lot : appelée par auteur, elle reconstruirait la table
-  // et le tableau à chaque nom, soit des millions d'opérations sur un corpus entier.
-  // fusionnerAuteurs applique la précédence : une entrée 'corpus' écrase les champs
-  // d'enrichissement d'une entrée 'oai', jamais l'inverse.
+  // Une seule fusion pour tout le lot : fusionner auteur par auteur reconstruirait la table
+  // à chaque nom. Une entrée 'corpus' écrase les champs d'enrichissement d'une entrée 'oai',
+  // pas l'inverse.
   const auteurs = fusionnerAuteurs(cache.auteurs, resultCorpus.auteurs);
-  // Bâtir le cache à écrire.
-  // Version 2 en dur : réécrire `cache.version` laisserait un cache v1 se réécrire en v1,
-  // la migration se rejouerait à chaque lecture et remettrait dateFetch à null — donc un
-  // moissonnage OJS complet à chaque activation, pour toujours.
+  // Version 2 en dur : recopier `cache.version` garderait un cache v1 en v1, et sa migration,
+  // rejouée à chaque lecture, remettrait dateFetch à null, donc relancerait un moissonnage
+  // OJS complet à chaque activation.
   const neuf = {
     version: 2,
     dateFetch: cache.dateFetch || null,
@@ -222,8 +205,8 @@ async function rafraichirCorpus(opts) {
     auteurs: auteurs,
     ror: cache.ror || {}
   };
-  // `vus` part toujours, même sur un balayage partiel : le téléchargement déjà payé par
-  // OneDrive ne doit pas l'être une seconde fois au mois suivant.
+  // `vus` est écrit même après un balayage partiel : les fiches déjà téléchargées par
+  // OneDrive ne seront pas relues au balayage suivant.
   const erreurEcriture = ecrireCache(neuf);
   return {
     fait: true,
@@ -235,7 +218,7 @@ async function rafraichirCorpus(opts) {
   };
 }
 
-// Frais = moins de 30 jours. Même logique que cacheFrais dans auteurs-ojs.js.
+// Vrai si dateCorpus a moins de JOURS_FRAICHEUR jours, comme cacheFrais de auteurs-ojs.js.
 function cacheFrais(dateCorpus, maintenant) {
   if (!dateCorpus || typeof dateCorpus !== 'string') { return false; }
   const t = Date.parse(dateCorpus);

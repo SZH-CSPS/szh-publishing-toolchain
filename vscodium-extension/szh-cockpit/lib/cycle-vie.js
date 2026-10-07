@@ -1,7 +1,6 @@
 // Cycle de vie du numéro : verrou, archivage, désarchivage, avertissement de version, et
-// les copies en conflit qu'un synchroniseur a déposées, jusqu'à leur résolution bloc par
-// bloc. Impur (webviews, dialogues, disque) ; les rappels vers l'hôte passent par
-// configurer() plus bas, jamais par require('../extension').
+// les copies en conflit déposées par OneDrive, jusqu'à leur résolution bloc par bloc. Les
+// rappels vers l'hôte passent par configurer(), pas par require('../extension').
 'use strict';
 
 const vscode = require('vscode');
@@ -23,21 +22,20 @@ const {
   chercherCopies, chercherCopiesPlat, copieConflitPour, estCopieConflit, memeContenu,
   copieRedondante, inverserBloc, appliquerBlocs
 } = require('./copies-conflit');
-// Uniquement pour SITUER le dossier partagé de l'outil (voir copiesDuDossierPartage plus
-// bas) : ce module-ci n'écrit aucun rapport. lib/rapport-erreur.js ne dépend que de
-// fs/path/os — le requérir ici n'alourdit rien et, surtout, évite de réécrire le segment du
-// nom de l'application, qui ne vit qu'à un seul endroit du JavaScript.
+// Seulement pour situer le dossier partagé de l'outil (copiesDuDossierPartage) : ce module
+// n'écrit aucun rapport. lib/rapport-erreur.js ne dépend que de fs/path/os, et il est le
+// seul endroit qui compose le chemin de l'application.
 const { resoudreAncrage, resoudreDossierRapports } = require('./rapport-erreur');
 const { imagesIntrouvablesDesUnites } = require('./export-ojs');
 
 // Le profil du dossier ouvert (lib/profil.js#courant). Verrou et archivage valent pour les
-// deux profils : les textes du geste passent par TP, qui prend la variante « .livre » d'une
-// clé quand elle existe.
+// deux profils : les textes passent par TP, qui prend la variante « .livre » d'une clé
+// quand elle existe.
 function profilCourant() { return profils.courant(); }
 
 // ---- Rappels vers l'hôte ----------------------------------------------------------
-// Posés une seule fois, à la fin d'extension.js (module déjà chargé, tables déjà créées).
-// Les valeurs par défaut ne servent qu'à ne pas planter un test qui require ce module seul.
+// Posés une seule fois, à la fin d'extension.js. Les valeurs par défaut permettent à un
+// test de charger ce module seul.
 let ctx = {
   trouverRacineRevue: () => null,
   ecrireClesAusgabe: () => 'lib/cycle-vie.js non configuré',
@@ -67,11 +65,10 @@ function compilationAutoCoupee() {
   return session.etatNumero().archivee || session.etatNumero().verrouillee;
 }
 
-// ⚠ Exception au verrou, et elle est voulue : l'ordre des articles n'est gelé que par
-// l'archivage, pas par le verrou. Un numéro verrouillé a ses textes figés — c'est ce que
-// `locked` protège — mais sa séquence peut encore se décider : on verrouille la copie,
-// puis on arrête le sommaire. Un numéro archivé, lui, est terminé, et son ordre décide des
-// DOI déjà déposés : plus rien ne bouge.
+// Exception voulue au verrou : l'ordre des articles n'est gelé que par l'archivage. Un
+// numéro verrouillé a ses textes figés (`locked`), mais son sommaire peut encore se
+// décider : on verrouille la copie, puis on arrête le sommaire. Un numéro archivé est
+// terminé, et son ordre fixe les DOI déjà déposés.
 function refuserSiArchivee() {
   if (!session.etatNumero().archivee) { return false; }
   const bouton = T('art.ordre.archive.bouton');
@@ -91,12 +88,10 @@ function refuserSiVerrouille() {
   return true;
 }
 
-// Applique le verrou puis vérifie sur le disque que l'état voulu a bien pris : un
-// settings.json illisible pendant l'écriture laisse le verrou dans son état d'avant
-// l'appel, jamais celui qu'on visait. session.verrouApplique() doit donc refléter le réel,
-// pas le voulu — sinon l'interface promet un état (déverrouillé, par exemple) que le
-// disque dément, et une modification resterait possible par mégarde sur un numéro qui se
-// croit verrouillé.
+// Applique le verrou puis vérifie sur le disque que l'état voulu a pris : un settings.json
+// illisible pendant l'écriture laisse le verrou dans son état d'avant. session.verrouApplique()
+// reflète donc l'état réel, pour que l'interface n'annonce pas un numéro déverrouillé ou
+// verrouillé à tort.
 function appliquerEtVerifierVerrou(racine, voulu) {
   const erreur = appliquerVerrou(racine, voulu);
   const reel = verrouPose(racine);
@@ -120,7 +115,7 @@ function majEtatNumero(fournisseur, barreEtat) {
   }
 }
 
-// Visible seulement sur un numéro gelé ; le clic mène au geste inverse.
+// Visible seulement sur un numéro gelé ; le clic mène à l'action inverse.
 function majBarreEtatNumero(barre) {
   if (!session.etatNumero().verrouillee && !session.etatNumero().archivee) { barre.hide(); return; }
   if (session.etatNumero().verrouillee && session.etatNumero().archivee) { barre.text = T('etat.barre.lesdeux'); }
@@ -171,19 +166,19 @@ function poidsLisible(octets) {
   return (mo < 10 ? mo.toFixed(1).replace('.', ',') : String(Math.round(mo))) + ' Mo';
 }
 
-// Le dossier ne bouge pas, out/ est conservé : le geste d'un numéro déjà archivé.
 // Les formulaires qui écrivent des fichiers sans passer par l'éditeur (gestionnaire des
-// médias, éditeur de tableau) : ni le verrou en lecture seule ni la disparition d'un
-// article ne les atteignent, il faut les fermer. Chaque table sait fermer les siens —
-// voir ctx.fermerPanneauxDe.
+// médias, éditeur de tableau) ne sont touchés ni par la lecture seule ni par la disparition
+// d'un article : il faut les fermer. Chaque table ferme les siens (ctx.fermerPanneauxDe).
 function fermerFormulairesEcriture(racine, slug) {
   for (const fermerDe of ctx.fermerPanneauxDe) { fermerDe(racine, slug); }
 }
 
+// Verrouiller sans archiver : le dossier ne bouge pas, out/ est conservé. C'est aussi
+// l'action sur un numéro déjà archivé.
 async function verrouillerSeulement(fournisseur, rafraichirTout) {
   const racine = fournisseur.racine;
-  // Geler le numéro pendant que quelqu'un y écrit, c'est couper une saisie en cours sur un
-  // autre poste. La question porte sur tout le numéro, pas sur un fichier.
+  // Geler le numéro couperait une saisie en cours sur un autre poste : la vérification porte
+  // sur tout le numéro.
   const refusBail = refusCoeditionNumero(racine);
   if (refusBail) { vscode.window.showWarningMessage(refusBail); return; }
   const choix = await vscode.window.showWarningMessage(
@@ -211,12 +206,10 @@ async function archiverEtVerrouiller(fournisseur, rafraichirTout) {
   // Déjà archivé : il ne reste qu'à reposer le verrou.
   if (session.etatNumero().archivee) {
     if (session.etatNumero().verrouillee) {
-      // Et pas un cul-de-sac. Les deux drapeaux s'écrivent AVANT le déplacement (étape 1
-      // ci-dessous) : un déplacement qui échoue — fenêtre pas encore fermée, dossier tenu
-      // par OneDrive — laisse un numéro marqué archivé, resté parmi les numéros en cours,
-      // que plus aucun geste du cockpit ne savait ranger. Le script est idempotent : déjà
-      // à sa place, il le dit et rouvre le dossier. Le relancer ne coûte donc rien, et
-      // rattrape le seul cas où le rédacteur voit « archivé » sans voir le dossier bouger.
+      // Les deux drapeaux s'écrivent avant le déplacement (étape 1 ci-dessous) : si le
+      // déplacement échoue (fenêtre pas encore fermée, dossier tenu par OneDrive), le numéro
+      // reste marqué archivé parmi les numéros en cours. Le script est idempotent (déjà à
+      // sa place, il le dit et rouvre le dossier) : le relancer d'ici permet de le ranger.
       const ranger = T('arch.ranger.bouton');
       if (await vscode.window.showInformationMessage(TP('info.deja.archivee', profilCourant()), ranger) !== ranger) { return; }
       const erreurReprise = lancerArchivage('archiver', racine);
@@ -228,7 +221,7 @@ async function archiverEtVerrouiller(fournisseur, rafraichirTout) {
     await verrouillerSeulement(fournisseur, rafraichirTout);
     return;
   }
-  // Une image appelée mais absente sort en cadre dans le PDF : on n'archive pas ce PDF-là.
+  // Une image appelée mais absente sort en cadre vide dans le PDF : ce PDF ne s'archive pas.
   const introuvables = imagesIntrouvablesDesUnites(profils.chemins(profilCourant(), racine).unites);
   if (introuvables.length > 0) {
     const liste = introuvables.map((i) => i.slug + ' : ' + i.image).join(', ');
@@ -242,8 +235,8 @@ async function archiverEtVerrouiller(fournisseur, rafraichirTout) {
     { modal: true, detail: TP('modale.archiver.detail', profilCourant(), [poidsLisible(tailleDossier(dossierOut))]) },
     bouton);
   if (choix !== bouton) { return; }
-  // La modale reste ouverte le temps que le rédacteur réponde : une compilation a pu
-  // démarrer entre-temps. Même refus qu'avant la modale, avant tout effet sur le disque.
+  // Une compilation a pu démarrer pendant que la modale attendait la réponse : même refus
+  // qu'avant la modale, avant tout effet sur le disque.
   if (session.buildEnCours() || session.importEnCours()) {
     vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
     return;
@@ -253,18 +246,15 @@ async function archiverEtVerrouiller(fournisseur, rafraichirTout) {
   const erreurYaml = ctx.ecrireClesAusgabe(racine, { locked: 'true', archived: 'true' });
   if (erreurYaml) { vscode.window.showErrorMessage(T('err.ecriture', ['ausgabe.yaml', erreurYaml])); return; }
 
-  // 2. ⚠ fermer les onglets avant de supprimer out/ : un PDF affiché est verrouillé
-  //    côté Windows. En cas d'échec on relève les drapeaux, avant tout déplacement.
+  // 2. fermer les onglets avant de supprimer out/ : un PDF affiché est verrouillé par
+  //    Windows. En cas d'échec, les drapeaux sont relevés avant tout déplacement.
   await ctx.fermerTousLesApercus();
   await ctx.fermerOngletsSous(dossierOut);
   session.poserApercuCourantUri(null);
   session.poserApercuCourantSlug(null);
-  // out/ tient le gros du volume, d'où l'envie de le retirer d'ici ; mais s'il résiste,
-  // l'archivage continue. archive-revue.ps1 le supprime lui aussi, et LUI s'exécute une
-  // fois cette fenêtre fermée, c'est-à-dire quand les poignées que VSCodium tenait encore
-  // sont enfin rendues. Renoncer à tout le geste parce qu'un dossier de documents produits
-  // résiste dix secondes revenait à refuser l'archivage pour son accessoire — et le
-  // message renvoyait à fermer un aperçu PDF qui n'y était le plus souvent pour rien.
+  // out/ tient l'essentiel du volume. S'il résiste à la suppression, l'archivage continue :
+  // archive-revue.ps1 le supprime aussi, une fois cette fenêtre fermée et ses poignées sur
+  // les fichiers rendues.
   const erreurOut = await ctx.supprimerAvecReprises(dossierOut);
   if (erreurOut) { vscode.window.showWarningMessage(T('avert.out.suppression', [erreurOut])); }
 
@@ -304,8 +294,8 @@ async function desarchiver(fournisseur, rafraichirTout) {
     T('modale.desarchiver.question', [titreNumero(racine)]),
     { modal: true, detail: TP('modale.desarchiver.detail', profilCourant()) }, bouton);
   if (choix !== bouton) { return; }
-  // La modale reste ouverte le temps que le rédacteur réponde : une compilation a pu
-  // démarrer entre-temps. Même refus qu'avant la modale, avant tout effet sur le disque.
+  // Une compilation a pu démarrer pendant que la modale attendait la réponse : même refus
+  // qu'avant la modale, avant tout effet sur le disque.
   if (session.buildEnCours() || session.importEnCours()) {
     vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
     return;
@@ -349,39 +339,35 @@ async function deverrouiller(fournisseur, rafraichirTout) {
   vscode.window.setStatusBarMessage(TP('statut.deverrouille', profilCourant()), 5000);
 }
 
-// ---- Copies en conflit déjà déposées par le synchroniseur ------------------------
+// ---- Copies en conflit déjà déposées par OneDrive -------------------------------------
 //
-// Le bail réduit la fenêtre de collision, il ne la ferme pas — il voyage par OneDrive, qui
-// met de quelques secondes à quelques minutes. Quand une copie en conflit est quand même
-// apparue, elle ne doit pas rester invisible : une version du travail n'est plus dans le
-// numéro, et personne ne s'en aperçoit avant de relire le PDF.
+// Le bail réduit la fenêtre de collision sans la fermer (il voyage par OneDrive, en
+// quelques secondes à quelques minutes). Une copie en conflit apparue malgré tout est
+// signalée : une version du travail n'est plus dans le numéro.
 //
-// Un avertissement par fichier et par session : le rafraîchissement passe ici souvent, et
-// répéter la même fenêtre serait vite ignoré. Le bouton ouvre le comparateur natif de
-// l'éditeur (vscode.diff) — la copie à gauche, la version du numéro à droite.
+// Un avertissement par fichier et par session : le rafraîchissement passe souvent ici. Le
+// bouton ouvre le comparateur de l'éditeur (vscode.diff), la copie à gauche, la version du
+// numéro à droite.
 let copiesSignalees = new Set();
 let dernierBalayageCopies = 0;
 
-// Le délai entre deux balayages du dossier. rafraichirTout passe ici à chaque geste et à
-// chaque rafale du système de fichiers ; parcourir tout le numéro à cette cadence coûterait
-// plus cher que le service rendu. Une copie en conflit n'est pas une urgence à la seconde.
+// Le délai entre deux balayages du dossier : rafraichirTout passe ici à chaque action et à
+// chaque rafale du système de fichiers, et parcourir tout le numéro à cette cadence
+// coûterait trop.
 const DELAI_BALAYAGE_COPIES = 15000;
 
 function oublierCopiesSignalees() { copiesSignalees = new Set(); dernierBalayageCopies = 0; }
 
-// ---- Le dossier partagé de l'outil, deuxième terrain de collision -------------------
+// ---- Le dossier partagé de l'outil ----------------------------------------------------
 //
-// Le balayage ne regardait que le dossier du numéro ouvert. Or le synchroniseur dépose ses
-// copies en conflit là où DEUX postes écrivent le même fichier — et c'est aussi, et même
-// surtout, le cas du dossier que l'outil s'écrit à lui-même (`_Systeme` : rapports d'erreur,
-// journaux, suggestions de traduction, inventaire des postes). Une copie en conflit y restait
-// invisible pour tout le monde : elle n'appartient à aucun numéro, et personne n'ouvre ce
-// dossier à la main.
+// OneDrive dépose aussi des copies en conflit dans le dossier que l'outil s'écrit à
+// lui-même (`_Systeme` : rapports d'erreur, journaux, suggestions de traduction, inventaire
+// des postes), où plusieurs postes écrivent les mêmes fichiers. Une copie y passerait
+// inaperçue : elle n'appartient à aucun numéro, et personne n'ouvre ce dossier à la main.
 //
-// Le dossier est DÉRIVÉ de celui des rapports (son parent), jamais recomposé ici : le segment
-// du nom de l'application ne vit qu'à un seul endroit du JavaScript (SEGMENT_APPLICATION,
-// lib/rapport-erreur.js). Résolution PASSIVE de l'ancrage : aucun balayage de disque, aucune
-// fenêtre — exactement ce que fait déjà l'écrivain de rapports.
+// Le dossier est le parent de celui des rapports : le segment du nom de l'application vit
+// à un seul endroit (SEGMENT_APPLICATION, lib/rapport-erreur.js). L'ancrage est résolu sans
+// balayage de disque ni fenêtre, comme pour l'écriture des rapports.
 function dossierPartageOutil() {
   try {
     const rapports = resoudreDossierRapports(resoudreAncrage());
@@ -390,9 +376,8 @@ function dossierPartageOutil() {
   } catch (e) { return null; }
 }
 
-// Plat (chercherCopiesPlat) : le dossier partagé et ses sous-dossiers directs, pas un niveau
-// de plus. Quelques readdir, au même rythme que le balayage du numéro — jamais un parcours
-// profond, et jamais une exception qui remonterait jusqu'au rafraîchissement de l'éditeur.
+// Le dossier partagé et ses sous-dossiers directs (chercherCopiesPlat) : quelques readdir,
+// au même rythme que le balayage du numéro. Une exception rend une liste vide.
 function copiesDuDossierPartage() {
   const partage = dossierPartageOutil();
   if (!partage) { return []; }
@@ -405,13 +390,12 @@ function avertirCopiesConflit(racine) {
   if (maintenant - dernierBalayageCopies < DELAI_BALAYAGE_COPIES) { return; }
   dernierBalayageCopies = maintenant;
   let copies = [];
-  try { copies = chercherCopies(racine); } catch (e) { return; }   // jamais bloquant
-  // Le numéro d'abord, le dossier partagé ensuite : chaque liste est triée pour elle-même,
-  // et c'est ce qui compte ici — une copie dans le numéro ouvert passe avant une copie dans
-  // un dossier de service, que l'on signale surtout pour qu'elle cesse d'être invisible.
+  try { copies = chercherCopies(racine); } catch (e) { return; }   // erreur ignorée
+  // Le numéro d'abord, le dossier partagé ensuite : une copie dans le numéro ouvert passe
+  // avant une copie dans un dossier de service. Chaque liste est triée pour elle-même.
   copies = sansCopiesRedondantes(copies.concat(copiesDuDossierPartage()));
-  // La barre du contrôle de source suit à chaque balayage, avertissement ou pas : c'est elle
-  // qui garde la liste sous la main quand la fenêtre a été fermée d'un revers.
+  // La barre du contrôle de source suit chaque balayage : elle garde la liste sous la main
+  // quand l'avertissement a été fermé.
   majConflitsScm(racine, copies);
   const nouvelles = copies.filter((c) => !copiesSignalees.has(c.chemin));
   if (nouvelles.length === 0) { return; }
@@ -427,14 +411,12 @@ function avertirCopiesConflit(racine) {
   });
 }
 
-// La copie à gauche, la version du numéro à droite. Le fichier d'origine peut manquer — le
-// synchroniseur a pu renommer les deux versions : on ouvre alors la copie seule, plutôt que
-// d'échouer sur un comparateur vide.
+// La copie à gauche, la version du numéro à droite. Si le fichier d'origine manque
+// (OneDrive a pu renommer les deux versions), la copie s'ouvre seule.
 function comparerConflit(cheminFichier, cheminCopie) {
   const copie = cheminCopie || (cheminFichier ? copieConflitPour(cheminFichier) : null);
   if (!copie) {
-    // Rien à comparer. Le fichier visé est peut-être la copie elle-même — le synchroniseur
-    // a pu renommer les deux versions : on l'ouvre, plutôt que de se taire.
+    // Rien à comparer : le fichier visé est peut-être la copie elle-même. On l'ouvre.
     if (cheminFichier && fs.existsSync(cheminFichier)) {
       vscode.window.showTextDocument(vscode.Uri.file(cheminFichier));
       return;
@@ -454,7 +436,7 @@ function comparerConflit(cheminFichier, cheminCopie) {
 
 // À côté de la comparaison, trancher tout le fichier d'un coup : garder sa version (la copie
 // est supprimée) ou prendre celle de la copie (elle remplace le fichier, puis disparaît).
-// Chaque choix a sa confirmation ; la résolution passage par passage reste dans la gouttière.
+// Chaque choix demande confirmation ; la résolution bloc par bloc passe par la gouttière.
 async function proposerTrancherConflit(chemin, copie) {
   const garder = T('conflit.trancher.garder');
   const prendre = T('conflit.trancher.prendre');
@@ -479,7 +461,7 @@ async function prendreCopieConflit(chemin, copie) {
   try { sien = fs.readFileSync(copie, 'utf8'); }
   catch (e) { vscode.window.showWarningMessage(T('conflit.copie.absente')); return; }
   try {
-    // Par l'éditeur, pour que le geste s'annule au Ctrl+Z comme une édition.
+    // Par l'éditeur, pour que la modification s'annule au Ctrl+Z.
     const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(chemin));
     const edition = new vscode.WorkspaceEdit();
     const fin = doc.lineAt(doc.lineCount - 1).range.end;
@@ -499,40 +481,33 @@ async function prendreCopieConflit(chemin, copie) {
 
 // ---- Résoudre une copie en conflit au clic, bloc par bloc -------------------------
 //
-// Comparer deux versions ne suffit pas : il faut pouvoir trancher chaque divergence sans
-// recopier à la main. L'éditeur sait déjà le faire, à une condition — qu'on lui dise ce qui
-// tient lieu d'original pour un fichier donné. C'est le rôle du « diff rapide »
-// (QuickDiffProvider) : dès qu'on déclare la copie en conflit comme original du fichier du
-// numéro, chaque divergence reçoit sa marque dans la gouttière, et le clic sur la marque
-// ouvre le diff en ligne, dont la barre de titre porte nos deux commandes.
-//
-// Les deux sens, et ils sont symétriques :
+// Le « diff rapide » de l'éditeur (QuickDiffProvider) déclare la copie en conflit comme
+// original du fichier du numéro : chaque divergence reçoit sa marque dans la gouttière, et
+// le clic sur la marque ouvre le diff en ligne, dont la barre de titre porte deux commandes :
 //   « Prendre cette version » écrit le bloc de la copie dans le fichier du numéro ;
 //   « Garder la mienne »      écrit le bloc du fichier du numéro dans la copie.
-// Dans les deux cas la divergence disparaît. Quand il n'en reste plus une seule, la copie ne
-// contient plus rien que le numéro n'ait pas : elle est supprimée, et le conflit est clos
-// sans qu'un octet ait été perdu. Même chose quand la résolution se fait à la main puis
+// Dans les deux cas la divergence disparaît. Quand il n'en reste aucune, la copie est
+// supprimée : rien n'a été perdu. Même chose quand la résolution se fait à la main puis
 // s'enregistre (copieResolueEnregistree), ou quand le balayage trouve une copie identique.
 //
-// ⚠ Rien de tout cela ne calcule un diff : les blocs arrivent de l'éditeur, en argument des
-// commandes (uri du document, tableau des blocs, index du bloc affiché). Le contrat est celui
-// du menu « scm/change/title », le même que celui dont Git se sert pour « Stage Change ».
+// Aucun diff n'est calculé ici : les blocs arrivent de l'éditeur, en argument des commandes
+// (uri du document, tableau des blocs, index du bloc affiché), selon le contrat du menu
+// « scm/change/title », celui dont Git se sert pour « Stage Change ».
 //
-// ⚠ Le fournisseur de diff rapide est une propriété d'un SourceControl, seule voie stable de
-// l'API. On ne le crée donc que s'il existe une copie en conflit dans le numéro, et on le
-// détruit dès qu'il n'en reste plus : sans cette précaution, un poste sans conflit porterait
-// à vie une entrée vide dans la barre du contrôle de source.
+// Le fournisseur de diff rapide est une propriété d'un SourceControl, seule voie stable de
+// l'API. Il n'est créé que s'il existe une copie en conflit dans le numéro, et détruit dès
+// qu'il n'en reste plus : un poste sans conflit n'a pas d'entrée vide dans la barre du
+// contrôle de source.
 const SCHEME_CONFLIT = 'szh-conflit';
 
 let scmConflits = null;
 let groupeConflits = null;
 const changementConflit = new vscode.EventEmitter();
 
-// Le chemin caché dans une URI « szh-conflit ». uri.fsPath serait plus court, mais son
-// traitement des lettres de lecteur Windows dépend du schéma « file » : ici on lit le chemin
-// tel que Uri.file l'a écrit — « /c:/… » — et on retire la barre de tête. Pas de
-// décodage : `path` est déjà la forme décodée, et un « % » de nom de fichier ferait lever
-// decodeURIComponent.
+// Le chemin caché dans une URI « szh-conflit ». uri.fsPath traite les lettres de lecteur
+// Windows selon le schéma « file » : on lit donc le chemin tel que Uri.file l'a écrit
+// (« /c:/… ») et on retire la barre de tête. Pas de décodage : `path` est déjà décodé, et
+// un « % » dans un nom de fichier ferait lever decodeURIComponent.
 function cheminDepuisUriConflit(uri) {
   const brut = String((uri && uri.path) || '');
   return path.normalize(/^\/[A-Za-z]:/.test(brut) ? brut.slice(1) : brut);
@@ -548,11 +523,9 @@ const fournisseurContenuConflit = {
   }
 };
 
-// Appelé par l'éditeur pour chaque document ouvert : rendre une URI ici, c'est demander les
-// marques de gouttière ; ne rien rendre, c'est ne rien décorer.
-//
-// D'où la garde sur la racine : sans elle, ouvrir un fichier quelconque du disque ferait lire
-// son dossier à chaque fois. Un fichier hors du numéro ne nous concerne pas.
+// Appelé par l'éditeur pour chaque document ouvert : rendre une URI demande les marques de
+// gouttière, ne rien rendre n'en pose aucune. Un fichier hors du numéro est ignoré, sinon
+// ouvrir un fichier quelconque ferait lire son dossier à chaque fois.
 let racineConflits = null;
 
 function sousLaRacineConflits(chemin) {
@@ -609,8 +582,8 @@ function libererScm() {
   groupeConflits = null;
 }
 
-// Le bloc affiché, ou null : le menu passe le tableau entier et l'index de celui qu'on
-// regarde, et un clic tardif sur un diff recalculé entre-temps peut sortir du tableau.
+// Le bloc affiché, ou null : le menu passe le tableau entier et l'index du bloc regardé, et
+// un clic tardif sur un diff recalculé entre-temps peut sortir du tableau.
 function blocVise(blocs, index) {
   if (!Array.isArray(blocs)) { return null; }
   const i = typeof index === 'number' ? index : 0;
@@ -645,15 +618,15 @@ async function resoudreBlocConflit(uri, blocs, index, prendre) {
 
   if (prendre) {
     // Le fichier du numéro change : le verrou du numéro d'abord, le bail de co-édition
-    // ensuite — un clic isolé ne garde pas la main, il se contente de vérifier.
+    // ensuite. Un clic isolé vérifie le bail sans en poser.
     if (refuserSiVerrouille()) { return; }
     const racine = ctx.trouverRacineRevue();
     const refus = refusCoedition(racine, chemin);
     if (refus) { vscode.window.showWarningMessage(refus); return; }
     const texte = appliquerBlocs(mien, sien, [inverserBloc(bloc)]);
     if (texte === mien) { return; }                // rien à faire, bloc déjà résolu
-    // Par l'éditeur et non par fs : le document est ouvert, et le geste doit rester
-    // annulable au Ctrl+Z comme n'importe quelle édition.
+    // Par l'éditeur et non par fs : le document est ouvert, et la modification doit rester
+    // annulable au Ctrl+Z.
     try {
       const edition = new vscode.WorkspaceEdit();
       const fin = doc.lineAt(doc.lineCount - 1).range.end;
@@ -668,14 +641,14 @@ async function resoudreBlocConflit(uri, blocs, index, prendre) {
       return;
     }
     // L'écriture n'est pas passée par le point d'écriture du fichier du numéro : les
-    // formulaires ouverts doivent quand même savoir que le disque a bougé de notre fait.
+    // formulaires ouverts doivent quand même savoir que le disque a changé.
     rafraichirEmpreinteCoedition(racine, chemin);
     if (memeContenu(texte, sien)) { await supprimerCopieConflit(copie, false); }
     return;
   }
 
-  // L'autre sens. La copie n'est pas un fichier du numéro : aucun bail ne la protège, et
-  // elle est de toute façon destinée à disparaître — écriture atomique directe.
+  // L'autre sens. La copie n'est pas un fichier du numéro : aucun bail ne la protège, et elle
+  // est destinée à disparaître. Écriture atomique directe.
   const texte = appliquerBlocs(sien, mien, [bloc]);
   if (texte === sien) { return; }
   try { ecrireAtomique(copie, texte); }
@@ -686,13 +659,13 @@ async function resoudreBlocConflit(uri, blocs, index, prendre) {
   // Le contenu « original » a changé : sans cet avis, la gouttière garderait ses marques.
   changementConflit.fire(vscode.Uri.file(copie).with({ scheme: SCHEME_CONFLIT }));
   // Une frappe non enregistrée fait partie de « ma version » : la copie attend alors
-  // l'enregistrement (copieResolueEnregistree), sans quoi fermer sans enregistrer perdrait tout.
+  // l'enregistrement (copieResolueEnregistree), pour que fermer sans enregistrer ne perde rien.
   if (memeContenu(texte, mien) && !doc.isDirty) { await supprimerCopieConflit(copie, false); }
 }
 
-// Après un enregistrement : si le fichier enregistré, ou sa copie en conflit, ne diffère plus
-// de l'autre, la copie est retirée. C'est le chemin de la résolution faite à la main dans la
-// comparaison, que les commandes bloc par bloc ne voient pas passer.
+// Après un enregistrement : si le fichier enregistré et sa copie en conflit ne diffèrent
+// plus, la copie est retirée. C'est le chemin d'une résolution faite à la main dans la
+// comparaison.
 function copieResolueEnregistree(chemin) {
   if (!sousLaRacineConflits(chemin)) { return; }
   const dossier = path.dirname(chemin);
@@ -703,8 +676,8 @@ function copieResolueEnregistree(chemin) {
   if (copie && copieRedondante(original, copie)) { supprimerCopieConflit(copie, false); }
 }
 
-// Les copies identiques à leur original sont supprimées au passage, sans avertissement : une
-// copie résolue mais restée sur le disque se réannoncerait à chaque ouverture du numéro.
+// Les copies identiques à leur original sont supprimées sans avertissement : restées sur le
+// disque, elles se réannonceraient à chaque ouverture du numéro.
 function sansCopiesRedondantes(copies) {
   return copies.filter((c) => {
     if (!copieRedondante(c.cheminOriginal, c.chemin)) { return true; }
@@ -714,9 +687,8 @@ function sansCopiesRedondantes(copies) {
   });
 }
 
-// `demander` : la commande explicite passe par une confirmation modale, parce qu'elle peut
-// être lancée sur une copie qui contient encore du travail. La suppression après
-// convergence, elle, ne perd rien et ne demande rien.
+// `demander` : la commande explicite demande confirmation, car la copie peut contenir encore
+// du travail. La suppression après convergence ne perd rien et ne demande rien.
 async function supprimerCopieConflit(copie, demander) {
   if (!copie || !fs.existsSync(copie)) { return; }
   if (demander) {
@@ -734,18 +706,17 @@ async function supprimerCopieConflit(copie, demander) {
 
 // Ce qui suit la suppression d'une copie, hors contrôle de source.
 function copieOubliee(copie) {
-  // Retirée du jeu des fichiers déjà signalés : si le synchroniseur en dépose une autre plus
-  // tard, elle sera annoncée comme une nouvelle.
+  // Retirée des fichiers déjà signalés : une nouvelle copie déposée plus tard sera annoncée.
   copiesSignalees.delete(copie);
-  // La copie a disparu : le fournisseur de contenu doit le savoir, sinon la gouttière
-  // continuerait de comparer avec ce qui n'existe plus.
+  // Le fournisseur de contenu doit savoir que la copie a disparu, sinon la gouttière
+  // continuerait de comparer avec elle.
   changementConflit.fire(vscode.Uri.file(copie).with({ scheme: SCHEME_CONFLIT }));
   vscode.window.setStatusBarMessage(T('conflit.copie.supprimee', [path.basename(copie)]), 4000);
 }
 
-// L'état de la barre du contrôle de source, hors balayage : après une suppression, dont
-// aucun surveillant de fichiers ne nous avertit — les motifs surveillés ne couvrent pas les
-// noms déposés par le synchroniseur. Ne réveille aucun avertissement au passage.
+// L'état de la barre du contrôle de source, hors balayage : après une suppression, qu'aucun
+// surveillant de fichiers ne signale (les motifs surveillés ne couvrent pas les noms déposés
+// par OneDrive). Ne déclenche aucun avertissement.
 function rafraichirConflitsScm() {
   const racine = ctx.trouverRacineRevue();
   if (!racine) { majConflitsScm(null, []); return; }

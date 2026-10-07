@@ -1,11 +1,11 @@
 // Les articles d'un numéro : leur ordre, le nom sous lequel l'interface les désigne, et
-// les tâches éditoriales qui les suivent. Module pur — ni vscode ni écriture disque.
+// les tâches éditoriales qui les suivent. Module pur : ni vscode ni écriture disque.
 //
-// Trois données, trois portées, trois endroits : l'ordre décrit un numéro (ausgabe.yaml,
-// `ordre-articles` — il voyage avec le dossier sur SharePoint) ; les définitions de tâches
-// décrivent une revue (C:\ProgramData\SZH\config.json, `tachesArticle`, aux côtés de
-// l'emplacement des revues et de la configuration OJS) ; l'état coché décrit un article
-// (articles/<slug>/<slug>.taches.yaml) et part avec lui, comme le suivi de traduction.
+// Où vit chaque donnée :
+// - l'ordre, propre au numéro : `ordre-articles` dans ausgabe.yaml ;
+// - les définitions de tâches, propres à une revue : `tachesArticle` dans
+//   C:\ProgramData\SZH\config.json ;
+// - les tâches cochées, propres à un article : articles/<slug>/<slug>.taches.yaml.
 'use strict';
 
 const { decouperValeurYaml, LANGUES_META, citerFrontmatter, CLE_SANS_DOI,
@@ -15,30 +15,25 @@ const { decouperValeurYaml, LANGUES_META, citerFrontmatter, CLE_SANS_DOI,
 
 const CLE_ORDRE = 'ordre-articles';
 
-// Forme d'un slug d'article, telle que lib/slug.js la produit : rien d'autre n'entre dans
-// l'ordre, ce qui met la clé à l'abri d'un chemin ou d'un titre collé à la main.
+// Forme d'un slug d'article, telle que lib/slug.js la produit. Seuls ces jetons entrent dans
+// l'ordre : un chemin ou un titre collé à la main est écarté.
 const FORME_SLUG = /^[a-z0-9][a-z0-9-]*$/;
 
-// Lit la clé : la séquence en ligne est découpée par lib/yaml.js, qui la partage avec
-// `articles-sans-doi` ; ne restent ici que les jetons qui ont la forme d'un slug. Les
-// autres sont écartés sans bruit — la valeur n'est qu'un ordre, elle ne porte aucune
-// information qu'on perdrait.
+// Lit la clé (séquence YAML en ligne, découpée par lib/yaml.js) et garde les jetons qui ont
+// la forme d'un slug. Les autres sont écartés sans avertissement.
 function analyserOrdre(valeur) {
   return listeYamlEnLigne(valeur).filter((v) => FORME_SLUG.test(v));
 }
 
-// Ordre effectif d'un numéro : ce que la clé retient et qui existe encore, puis ce qui
-// n'y figure pas, dans l'ordre que le disque donne. Un article ajouté ou retiré hors de
-// l'interface ne fait donc ni disparaître un autre ni casser l'ordre — il se range à la
-// fin, et un article effacé quitte l'ordre de lui-même.
+// Ordre effectif d'un numéro : les slugs de la clé qui existent encore, puis ceux qui n'y
+// figurent pas, dans l'ordre du disque. Un article ajouté hors de l'interface se range à la
+// fin ; un article effacé quitte l'ordre.
 //
-// `change` dit si la clé mérite d'être réécrite ; l'appelant décide, car réécrire à chaque
-// rafraîchissement de l'arbre réveillerait le surveillant de fichiers en boucle.
+// `sansDoi` ramène ensuite à la fin les articles sans DOI (voir trierParDoi).
 //
-// `sansDoi` applique par-dessus la règle du DOI : les articles qui n'en reçoivent pas sont
-// ramenés à la fin, sans quoi le numéro d'ordre du DOI ne suivrait plus l'ordre de lecture.
-// Le tri est appliqué à la lecture, comme la réparation ci-dessus : rien n'est réécrit tant
-// que l'utilisateur n'a pas fait un geste.
+// `change` dit si la clé diffère du résultat. L'appelant décide de la réécrire : la
+// réécrire à chaque rafraîchissement de l'arbre réveillerait le surveillant de fichiers en
+// boucle.
 function ordonnerArticles(valeurClef, slugsDisque, sansDoi) {
   const disque = (slugsDisque || []).map((s) => String(s));
   const presents = Object.create(null);
@@ -55,11 +50,9 @@ function ordonnerArticles(valeurClef, slugsDisque, sansDoi) {
 // ---- La règle du DOI sur l'ordre -------------------------------------------------
 //
 // Le DOI d'un article est son rang parmi ceux qui en portent un : l'éditorial ouvre le
-// numéro et prend « 00 », le suivant « 01 ». Ce compteur ne saute jamais, puisqu'il ne
-// compte que les porteurs — mais pour que le DOI 05 désigne bien le sixième article qu'on
-// lit, il faut que les articles sans DOI soient tous après les autres. D'où ce tri, et
-// d'où le refus de déplacement qui le protège : sans lui, un clic sur « Monter » suffirait
-// à faire mentir la numérotation.
+// numéro et prend « 00 », le suivant « 01 ». Pour que le DOI 05 désigne le sixième article
+// lu, les articles sans DOI sont tous placés après les autres. trierParDoi() l'assure, et
+// refusDeplacement() empêche un déplacement de le défaire.
 
 // -> Set des slugs sans DOI, quelle que soit la forme reçue (liste, Set, clé YAML brute).
 function jeuSansDoi(sansDoi) {
@@ -70,9 +63,8 @@ function jeuSansDoi(sansDoi) {
 
 function sansDoiIci(jeu, slug) { return jeu.has(String(slug)); }
 
-// Les porteurs de DOI d'abord, dans leur ordre ; les autres ensuite, dans le leur. Tri
-// stable : deux articles du même bloc ne changent jamais de place l'un par rapport à
-// l'autre, et l'ordre saisi à la main est donc conservé partout où la règle ne dit rien.
+// Les porteurs de DOI d'abord, dans leur ordre ; les autres ensuite, dans le leur. Le tri
+// est stable : dans chaque bloc, l'ordre saisi à la main est conservé.
 function trierParDoi(slugs, sansDoi) {
   const liste = (slugs || []).map((s) => String(s));
   const jeu = jeuSansDoi(sansDoi);
@@ -85,8 +77,8 @@ function trierParDoi(slugs, sansDoi) {
 // La liste des articles sans DOI, lue comme l'ordre : même format, mêmes tolérances.
 function analyserSansDoi(valeur) { return analyserOrdre(valeur); }
 
-// Coche ou décoche un article. Rend toujours la liste entière, dans l'ordre des slugs
-// donnés quand on l'a — le fichier se relit alors comme le numéro s'affiche.
+// Coche ou décoche un article. Rend la liste entière, dans l'ordre de `ordre` s'il est
+// donné, pour que le fichier se lise comme le numéro s'affiche.
 function basculerSansDoi(liste, slug, coche, ordre) {
   const cible = String(slug);
   if (!FORME_SLUG.test(cible)) { return analyserSansDoi(liste); }
@@ -100,11 +92,9 @@ function basculerSansDoi(liste, slug, coche, ordre) {
 
 // Pourquoi un déplacement est refusé, ou '' quand il se fait.
 //   'bord'      l'article est déjà en tête ou en queue du numéro ;
-//   'frontiere' le cran suivant appartient à l'autre bloc — on ne remonte pas un article
-//               sans DOI au-dessus d'un article qui en porte un, sinon la règle du tri se
-//               contredirait d'un clic et le DOI ne suivrait plus l'ordre de lecture.
-// Les deux se disent différemment à l'écran : le bord est une évidence, la frontière une
-// règle qu'il faut expliquer.
+//   'frontiere' le cran suivant appartient à l'autre bloc : un article sans DOI ne passe
+//               pas au-dessus d'un article qui en porte un.
+// L'interface explique la frontière, pas le bord.
 function refusDeplacement(liste, slug, delta, sansDoi) {
   const l = (liste || []).map((s) => String(s));
   const i = l.indexOf(String(slug));
@@ -116,8 +106,8 @@ function refusDeplacement(liste, slug, delta, sansDoi) {
   return '';
 }
 
-// Le rang du DOI, ou -1 pour un article qui n'en reçoit pas : le compteur ne compte que
-// les porteurs, si bien qu'il reste contigu quoi qu'on fasse des autres.
+// Le rang du DOI, ou -1 pour un article qui n'en reçoit pas. Seuls les porteurs sont
+// comptés : la série reste contiguë.
 function rangDoi(slugs, slug, sansDoi) {
   const jeu = jeuSansDoi(sansDoi);
   let n = 0;
@@ -129,8 +119,7 @@ function rangDoi(slugs, slug, sansDoi) {
   return -1;
 }
 
-// Déplace un article d'un cran. Rend toujours une liste complète : c'est elle qui part dans
-// ausgabe.yaml, et une liste partielle laisserait les autres articles à réparer.
+// Déplace un article d'un cran. Rend toujours la liste complète, qui part dans ausgabe.yaml.
 function deplacerArticle(liste, slug, delta) {
   const l = (liste || []).slice();
   const i = l.indexOf(String(slug));
@@ -142,49 +131,32 @@ function deplacerArticle(liste, slug, delta) {
   return l;
 }
 
-// Le préfixe visible : « 00 », « 01 »… Il suit l'ordre ci-dessus et non le nom du dossier,
-// et dit d'un coup d'oeil où l'article se situe dans le numéro. Au-delà de 99 articles, le
-// nombre s'écrit tel quel plutôt que de mentir sur deux chiffres.
+// Le préfixe affiché d'un rang : « 00 », « 01 »… Au-delà de 99, le nombre s'écrit tel quel.
 //
-// Il compte À PARTIR DE ZÉRO, et ce n'est pas un décalage : c'est le rang que le DOI
-// porte. doiCalcule() (lib/export-ojs.js) reçoit rangDoi(), qui vaut 0 pour le premier
-// article porteur, et écrit « …-2026-03-00 ». Numéroter l'écran à partir de 1 obligeait à
-// faire la soustraction de tête chaque fois qu'on rapproche une carte d'un DOI, d'une
-// galley ou d'une ligne de l'instance OJS — et c'est exactement là qu'on ne veut pas se
-// tromper d'article. Les articles SANS DOI, rangés en fin de numéro par trierParDoi(),
-// continuent la série au-delà du dernier porteur : leur nombre ne désigne alors aucun DOI,
-// puisqu'ils n'en ont pas.
+// Il compte à partir de zéro, comme le DOI : doiCalcule() (lib/export-ojs.js) reçoit
+// rangDoi(), qui vaut 0 pour le premier porteur, et écrit « …-2026-03-00 ». Le numéro à
+// l'écran est donc celui du DOI, de la galley et de la ligne OJS. Les articles sans DOI,
+// rangés en fin de numéro, continuent la série ; leur nombre ne désigne aucun DOI.
 function prefixeOrdre(index) {
   const n = Math.trunc(Number(index));
   if (!isFinite(n) || n < 0) { return '00'; }
   return n < 10 ? '0' + n : String(n);
 }
 
-// Le préfixe que porte RÉELLEMENT le dossier, lu sur son nom — jamais recalculé. '' s'il
-// n'en a pas. Depuis que seuls les dossiers créés par un import ou réalignés par
-// « Changer l'ordre » en reçoivent un, un numéro peut légitimement mélanger des dossiers
-// numérotés et non numérotés : ce nombre sert à retrouver l'article dans l'Explorateur de
-// fichiers, il ne doit donc jamais promettre un rangement que le disque n'a pas.
+// Le préfixe que porte le dossier, lu sur son nom ; '' s'il n'en a pas. Seuls les dossiers
+// créés par un import ou réalignés par « Changer l'ordre » en ont un : un numéro peut
+// mélanger des dossiers numérotés et non numérotés. Ce nombre sert à retrouver l'article
+// dans l'Explorateur de fichiers.
 //
-// Même motif que tige() (lib/renumerotation.js), qui retire ce même préfixe pour isoler la
-// partie parlante du nom : les deux ne se partagent pas la même fonction parce que
-// renumerotation.js dépend déjà de ce module (prefixeOrdre) — l'importer ici fermerait un
-// cycle, et lib/articles.js reste sans dépendance vers ses propres dépendants. Le motif
-// ^(\d+)- est donc lu à deux endroits, pour deux raisons opposées (retirer le préfixe là,
-// le lire ici), plutôt que d'ouvrir ce cycle pour économiser une ligne de regex.
-//
-// tigeDossier() ci-dessous applique le même motif, pour la même raison, à un troisième
-// endroit : elle ne retire pas le préfixe pour le lire (ici) ni pour renommer le dossier
-// (tige()), mais pour que le repli sur le slug de libelleArticle() ne le répète pas à côté
-// du numéro déjà affiché.
+// tige() (lib/renumerotation.js) lit le même motif ^(\d+)-. Elle n'est pas importée ici :
+// renumerotation.js dépend déjà de ce module, et l'importer créerait un cycle.
 function prefixeDossier(slug) {
   const m = String(slug === undefined || slug === null ? '' : slug).match(/^(\d+)-/);
   return m ? m[1] : '';
 }
 
-// Le complément de prefixeDossier() : ce qui reste du nom une fois son préfixe « NN- »
-// retiré. Un slug sans préfixe garde son nom entier. Sert au repli de libelleArticle()
-// ci-dessous — jamais à autre chose, sinon autant importer tige() (lib/renumerotation.js).
+// Le nom du dossier sans son préfixe « NN- » ; un slug sans préfixe reste entier. Sert au
+// repli de libelleArticle().
 function tigeDossier(slug) {
   const s = String(slug === undefined || slug === null ? '' : slug);
   const m = s.match(/^(\d+)-(.+)$/);
@@ -193,9 +165,8 @@ function tigeDossier(slug) {
 
 // ---- Nom d'un article ------------------------------------------------------------
 
-// Le titre de la fiche, dans la langue du numéro si elle y est, sinon dans une autre —
-// mieux vaut un titre allemand sur une revue française que le slug. '' si la fiche manque
-// ou n'a pas de titre : l'appelant retombe alors sur le slug, et l'article reste visible.
+// Le titre de la fiche, dans la langue du numéro si elle y est, sinon dans une autre.
+// '' si la fiche manque ou n'a pas de titre : l'appelant affiche alors le slug.
 function titreFiche(meta, langue) {
   const map = (meta && meta.title) || {};
   const prefere = LANGUES_META.indexOf(langue) !== -1 ? langue : LANGUES_META[0];
@@ -209,22 +180,15 @@ function titreFiche(meta, langue) {
 
 const SEPARATEUR_LIBELLE = ' · ';
 
-// « 03 · Inklusive Bildung in der Sekundarstufe I ». Le slug n'est plus le libellé : il
-// passe en description, là où l'on va chercher le nom du dossier. Une fiche absente ou un
-// titre vide laisse le slug en place — l'article se voit, il ne disparaît pas.
+// « 03 · Inklusive Bildung in der Sekundarstufe I ». Le slug va en description. Sans fiche
+// ou sans titre, le libellé est le slug sans son préfixe.
 //
-// `numero` est déjà formaté par l'appelant, jamais recalculé ici : `prefixeDossier(slug)`
-// pour ce que le disque porte vraiment (la vue normale, l'arbre, les listes de choix), ou
-// `prefixeOrdre(index)` pour le rang à venir que seul le mode « Changer l'ordre » affiche
-// (« Terminer » l'écrira sur les dossiers). '' est un numéro valide : un dossier sans
-// préfixe n'affiche alors ni chiffre ni séparateur — « Titre », et non « · Titre », qui
-// promettrait un rangement que le dossier n'a pas.
+// `numero` est formaté par l'appelant : `prefixeDossier(slug)` pour le préfixe du dossier
+// (vue normale, arbre, listes de choix), ou `prefixeOrdre(index)` pour le rang à venir en
+// mode « Changer l'ordre ». Avec un numéro '', le libellé est le titre seul, sans séparateur.
 function libelleArticle(numero, slug, titre) {
   const t = String(titre === undefined || titre === null ? '' : titre).trim();
-  // Le repli retire le préfixe du dossier (tigeDossier) : `numero` l'affiche déjà à côté,
-  // qu'il vienne du disque (prefixeDossier) ou du rang à venir en mode « Changer l'ordre »
-  // (prefixeOrdre) — dans les deux cas, le redire dans le nom ferait « 02 · 02-sans-fiche »,
-  // voire pire en mode ordre, un numéro qui n'est même pas celui du dossier.
+  // Le préfixe est retiré du slug, car `numero` est déjà affiché à côté.
   const nom = t !== '' ? t : tigeDossier(slug);
   const n = String(numero === undefined || numero === null ? '' : numero);
   return n !== '' ? n + SEPARATEUR_LIBELLE + nom : nom;
@@ -232,29 +196,16 @@ function libelleArticle(numero, slug, titre) {
 
 // ---- Les images d'un article -----------------------------------------------------
 //
-// Ce que la carte doit dire sans qu'on ouvre le gestionnaire des médias : combien d'images
-// porte l'article, et lesquelles ne sont pas prêtes. Les descripteurs sont ceux que le
-// gestionnaire lit lui-même — légende, texte alternatif, rôle du texte alternatif, « sans
-// légende ni numéro » — et ce module ne fait que les compter : une seconde lecture des
-// images divergerait de la première au premier changement de format.
+// Pour la carte de l'article : combien d'images il porte, et lesquelles ne sont pas prêtes.
+// Les descripteurs sont ceux que lit le gestionnaire des médias ; ce module les compte.
+// Les portraits des auteurs vivent dans portraits/ et n'entrent pas dans ce compte, qui ne
+// porte que sur media/.
 //
-// Les photos des autrices et auteurs n'entrent pas dans ce compte, et pas par un filtre de
-// nom : elles vivent dans portraits/ et non dans media/, dont la liste est la seule source
-// ici. Une photo déposée par la modale ne peut donc pas s'y glisser.
-//
-// Deux absences ne sont pas des défauts, et les annoncer comme tels serait faux :
-//
-//   * une image décorative n'a pas à porter de texte alternatif. Le gestionnaire pose
-//     alt="" exprès pour qu'un lecteur d'écran la saute ; c'est une décision, pas un oubli.
-//     Le descripteur la reconnaît à `altDefini` vrai avec un `alt` vide — exactement comme
-//     la fiche image, qui rallume son bouton « décorative » sur ce même couple.
-//   * une image déclarée « sans légende ni numéro » n'a pas de légende à avoir : le champ
-//     est verrouillé et vidé par le gestionnaire, et la maquette ne fabrique pas de figure.
-//     Compter sa légende vide reviendrait à reprocher à la rédaction ce qu'elle vient de
-//     décider.
-//
-// Tout le reste se signale : une image informative sans texte alternatif, et une légende
-// vide sur une vraie figure.
+// Deux absences ne sont pas des défauts :
+//   * une image décorative (alt="" volontaire, soit `altDefini` vrai et `alt` vide) n'a pas
+//     de texte alternatif ;
+//   * une image « sans légende ni numéro » (horsFigure) n'a pas de légende.
+// Sont signalées : une image informative sans texte alternatif, et une figure sans légende.
 function decorativeImage(image) {
   const i = image || {};
   return !!i.altDefini && String(i.alt || '').trim() === '';
@@ -276,8 +227,8 @@ function resumeImages(images) {
 
 // ---- Tâches éditoriales : les définitions ----------------------------------------
 
-// Le jeu de départ, mot pour mot celui que la rédaction a demandé, dans les deux langues
-// du cockpit. L'allemand est en orthographe suisse.
+// Les tâches par défaut, dans les deux langues du cockpit. L'allemand est en orthographe
+// suisse.
 const TACHES_DEFAUT = [
   { id: 'version-finale', fr: 'version finale', de: 'Endfassung' },
   { id: 'traductions-terminees', fr: 'traductions terminées', de: 'Übersetzungen abgeschlossen' },
@@ -286,20 +237,17 @@ const TACHES_DEFAUT = [
     de: 'Versand der Endfassung an die Autorinnen und Autoren' }
 ];
 
-// Une liste par revue : les deux maisons ne suivent pas le même processus, et l'une doit
-// pouvoir ajouter une étape sans l'imposer à l'autre. Jetons canoniques de lib/yaml.js.
+// Une liste par revue : chaque rédaction a son propre processus. Jetons de lib/yaml.js.
 const REVUES_TACHES = ['revue', 'zeitschrift'];
 const CLE_TACHES = 'tachesArticle';
 
-// Un numéro de tâches par revue, borné : la liste s'affiche sur chaque carte, et cinquante
-// cases y seraient illisibles.
+// Nombre de tâches par revue, borné : la liste s'affiche sur chaque carte.
 const MAX_TACHES = 20;
 const LONGUEUR_MAX_TACHE = 80;
 
-// Identifiant d'une tâche : c'est lui qui est écrit dans le sidecar de l'article, donc il
-// ne doit contenir que ce qu'un YAML nu accepte. Renommer un intitulé ne perd rien ;
-// renommer un identifiant décoche la tâche, et c'est pour cela qu'il est dérivé une fois,
-// à la création, et jamais recalculé depuis l'intitulé.
+// Identifiant d'une tâche, écrit dans le .taches.yaml de l'article : seulement ce qu'un
+// YAML nu accepte. Il est dérivé une fois, à la création, puis conservé : changer
+// l'identifiant décocherait la tâche, changer l'intitulé ne perd rien.
 const FORME_ID_TACHE = /^[a-z0-9][a-z0-9-]*$/;
 
 function idTache(brut) {
@@ -310,8 +258,7 @@ function idTache(brut) {
 }
 
 // Nettoie une liste venue de config.json ou du panneau : identifiants valides, uniques,
-// intitulés bornés, et jamais plus de MAX_TACHES rangées. Une tâche sans intitulé dans une
-// langue garde l'autre — la case reste cochable, seul son nom manque dans une langue.
+// intitulés bornés, au plus MAX_TACHES. Une tâche nommée dans une seule langue est gardée.
 function normaliserTaches(liste) {
   const sortie = [];
   const vus = Object.create(null);
@@ -319,8 +266,8 @@ function normaliserTaches(liste) {
     if (!brute || typeof brute !== 'object') { continue; }
     const fr = String(brute.fr || '').replace(/[\r\n]+/g, ' ').trim().slice(0, LONGUEUR_MAX_TACHE);
     const de = String(brute.de || '').replace(/[\r\n]+/g, ' ').trim().slice(0, LONGUEUR_MAX_TACHE);
-    // L'identifiant se dérive de l'intitulé français seulement quand il manque : une tâche
-    // déjà écrite garde le sien, sans quoi la corriger décocherait tous les articles.
+    // L'identifiant se dérive de l'intitulé seulement quand il manque : une tâche existante
+    // garde le sien, sinon la corriger décocherait tous les articles.
     const id = idTache(brute.id) || idTache(fr) || idTache(de);
     if (id === '' || vus[id]) { continue; }
     if (fr === '' && de === '') { continue; }
@@ -331,9 +278,8 @@ function normaliserTaches(liste) {
   return sortie;
 }
 
-// Les définitions des deux revues, telles que config.json les porte, avec le jeu de départ
-// à la place de ce qui manque. La table est toujours complète : le panneau montre les deux
-// revues, même sur un poste qui n'a jamais rien réglé.
+// Les définitions des deux revues lues dans config.json, avec les tâches par défaut pour
+// une revue sans liste. La table a toujours ses deux revues.
 function tachesConfig(cfg) {
   const brut = (cfg && typeof cfg[CLE_TACHES] === 'object' && cfg[CLE_TACHES]) || {};
   const table = {};
@@ -344,16 +290,15 @@ function tachesConfig(cfg) {
   return table;
 }
 
-// Les tâches d'une revue donnée. Une revue inconnue — ausgabe.yaml sans clé `revue` —
-// reçoit le jeu de départ : mieux vaut une liste que pas de suivi du tout.
+// Les tâches d'une revue. Une revue inconnue (ausgabe.yaml sans clé `revue`) reçoit les
+// tâches par défaut.
 function tachesRevue(cfg, revue) {
   const table = tachesConfig(cfg);
   const cle = String(revue === undefined || revue === null ? '' : revue).toLowerCase();
   return table[cle] || TACHES_DEFAUT.map((t) => Object.assign({}, t));
 }
 
-// Pose une liste sur une revue sans toucher au reste de config.json ni à l'autre revue.
-// Pure, pour être éprouvable sans écrire dans C:\ProgramData.
+// Pose la liste d'une revue sans toucher au reste de config.json ni à l'autre revue.
 function configAvecTaches(cfg, revue, liste) {
   const cle = String(revue === undefined || revue === null ? '' : revue).toLowerCase();
   if (REVUES_TACHES.indexOf(cle) === -1) { return cfg && typeof cfg === 'object' ? cfg : {}; }
@@ -366,20 +311,16 @@ function configAvecTaches(cfg, revue, liste) {
 
 // ---- Ce que la vue « Articles » montre ou cache ----------------------------------
 //
-// Quatre interrupteurs, et rien d'autre : la liste des tâches sur chaque carte, les champs
-// traduits de l'aperçu, l'aperçu des métadonnées lui-même, et ses avertissements. Ils
-// raccourcissent la carte sans rien perdre — ce qui est caché est caché à la lecture,
-// jamais retiré du numéro.
+// Quatre interrupteurs d'affichage : la liste des tâches sur chaque carte, les champs
+// traduits de l'aperçu, l'aperçu des métadonnées, et ses avertissements. Ils ne cachent
+// qu'à l'écran.
 //
-// Ils vivent dans config.json et non dans les réglages de l'éditeur, pour deux raisons : la
-// mise à jour du poste réécrit ces derniers en entier (même motif que la langue, voir
-// lib/archivage.js, configAvecLangue), et un interrupteur d'affichage n'a pas à peupler la
-// liste des réglages de VSCodium. Un réglage de confort, pas un réglage de publication.
+// Ils vivent dans config.json : la mise à jour du poste réécrit les réglages de l'éditeur
+// en entier (voir configAvecLangue dans lib/archivage.js).
 const CLE_VUE_ARTICLES = 'vueArticles';
 
 // -> { cacherTaches, cacherTraductions, cacherMeta, cacherConstats }, toujours des
-// booléens. Une configuration absente, illisible ou à moitié écrite rend « tout est
-// montré » : c'est l'état d'un poste neuf, et c'est celui qui ne cache rien à personne.
+// booléens. Une configuration absente ou illisible montre tout.
 function vueArticlesConfig(cfg) {
   const brut = (cfg && typeof cfg === 'object' && cfg[CLE_VUE_ARTICLES]) || {};
   return {
@@ -390,9 +331,8 @@ function vueArticlesConfig(cfg) {
   };
 }
 
-// Bascule un des quatre interrupteurs sans toucher au reste de config.json. Pure, pour être
-// éprouvable sans écrire dans C:\ProgramData ; c'est l'appelant qui appelle
-// ecrireConfigPoste. Une clé inconnue ne change rien plutôt que d'en inventer une.
+// Bascule un des quatre interrupteurs sans toucher au reste de config.json ; l'appelant
+// écrit le résultat avec ecrireConfigPoste. Une clé inconnue ne change rien.
 function configAvecVueArticles(cfg, cle, valeur) {
   const sortie = Object.assign({}, (cfg && typeof cfg === 'object') ? cfg : {});
   const etat = vueArticlesConfig(cfg);
@@ -402,8 +342,7 @@ function configAvecVueArticles(cfg, cle, valeur) {
   return sortie;
 }
 
-// L'intitulé dans la langue de l'interface, avec repli sur l'autre : une tâche n'ayant été
-// nommée qu'en français doit rester lisible sur un cockpit allemand.
+// L'intitulé dans la langue de l'interface, sinon dans l'autre, sinon l'identifiant.
 function libelleTache(tache, langue) {
   const t = tache || {};
   const prefere = langue === 'de' ? 'de' : 'fr';
@@ -413,8 +352,7 @@ function libelleTache(tache, langue) {
 
 // ---- Tâches éditoriales : l'état coché -------------------------------------------
 //
-// Sidecar articles/<slug>/<slug>.taches.yaml, sur le modèle du suivi de traduction juste à
-// côté : ni publié, ni exporté, ignoré du Makefile, et il part avec l'article.
+// Fichier articles/<slug>/<slug>.taches.yaml : ni publié, ni exporté, ignoré du Makefile.
 //
 //   faites:
 //   - version-finale
@@ -426,7 +364,7 @@ const ENTETE_TACHES = '# Tâches de l’article — état de travail interne au 
   '# revue et vivent dans C:\\ProgramData\\SZH\\config.json.\n';
 
 // -> { faites: [ids], _inconnues: [lignes brutes] }. Une clé inconnue est restituée telle
-// quelle à l'écriture : ce fichier peut recevoir d'autres états d'atelier un jour.
+// quelle à l'écriture.
 function analyserTachesFaites(texte) {
   const valeurs = { faites: [], _inconnues: [] };
   if (!texte) { return valeurs; }
@@ -459,8 +397,7 @@ function analyserTachesFaites(texte) {
   return valeurs;
 }
 
-// Rend '' quand il n'y a plus rien à retenir : l'appelant supprime alors le fichier, et un
-// article dont on décoche tout ne laisse pas de résidu dans son dossier.
+// Rend '' quand il n'y a plus rien à retenir : l'appelant supprime alors le fichier.
 function serialiserTachesFaites(valeurs) {
   const v = valeurs || {};
   const faites = [];
@@ -480,9 +417,8 @@ function serialiserTachesFaites(valeurs) {
   return ENTETE_TACHES + lignes.join('\n') + '\n';
 }
 
-// Ce que la carte doit dire sans qu'on l'ouvre : combien de tâches sont faites sur
-// combien, et si tout est fait. Une tâche cochée puis retirée des définitions ne compte
-// plus — l'avancement suit ce que la revue demande aujourd'hui.
+// Pour la carte : combien de tâches sont faites sur combien, et si tout est fait. Seules
+// les tâches encore définies comptent.
 function resumeTaches(taches, faites) {
   const definies = (taches || []).map((t) => String(t.id));
   const cochees = new Set((faites || []).map((f) => String(f)));
@@ -491,8 +427,7 @@ function resumeTaches(taches, faites) {
   return { faites: n, total: definies.length, toutes: definies.length > 0 && n === definies.length };
 }
 
-// Bascule une tâche dans la liste des faites, en n'y laissant que des tâches définies :
-// une case cochée puis retirée de la configuration ne doit pas ressusciter.
+// Bascule une tâche dans la liste des faites, en n'y laissant que des tâches définies.
 function basculerTache(faites, id, cochee, taches) {
   const definies = new Set((taches || []).map((t) => String(t.id)));
   const cible = idTache(id);
@@ -503,19 +438,18 @@ function basculerTache(faites, id, cochee, taches) {
     sortie.push(v);
   }
   if (cochee && cible !== '' && definies.has(cible)) { sortie.push(cible); }
-  // Remis dans l'ordre des définitions : le fichier se relit comme la liste s'affiche.
+  // Dans l'ordre des définitions, comme la liste s'affiche.
   return (taches || []).map((t) => String(t.id)).filter((id2) => sortie.indexOf(id2) !== -1);
 }
 
 // ---- Couverture du numéro --------------------------------------------------------
 //
-// ⚠ Recopie de NOMS_COUVERTURE dans lib/export-ojs.js, que ce module n'a pas le droit
-// d'importer. test/js/articles.test.js compare les deux listes : si elles divergent, une
-// couverture déposée ici ne serait pas celle que l'export va chercher.
+// Copie de NOMS_COUVERTURE de lib/export-ojs.js, que ce module pur ne peut pas importer.
+// test/js/articles.test.js vérifie que les deux listes sont égales.
 const NOMS_COUVERTURE = ['couverture.jpg', 'couverture.jpeg', 'couverture.png'];
 
-// Extension -> nom canonique. Une couverture déposée en .jpeg est écrite sous le premier
-// nom que l'export essaie, pour qu'il n'y ait jamais deux fichiers de couverture.
+// Extension -> nom du fichier. Un .jpeg est écrit en couverture.jpg, le premier nom que
+// l'export essaie, pour qu'il n'y ait qu'un fichier de couverture.
 const EXTENSIONS_COUVERTURE = { jpg: 'couverture.jpg', jpeg: 'couverture.jpg', png: 'couverture.png' };
 
 function nomCouverture(nomFichier) {
@@ -523,8 +457,7 @@ function nomCouverture(nomFichier) {
   return EXTENSIONS_COUVERTURE[ext] || '';
 }
 
-// Une couverture est une image de une : 12 Mo est déjà très large pour un scan de
-// couverture, et l'aperçu voyage en base64 dans un postMessage.
+// Taille maximale d'une couverture : son aperçu voyage en base64 dans un postMessage.
 const MAX_COUVERTURE = 12 * 1024 * 1024;
 
 module.exports = {

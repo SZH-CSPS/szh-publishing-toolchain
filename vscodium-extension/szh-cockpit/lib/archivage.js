@@ -1,6 +1,6 @@
-﻿// Cycle de vie d'un numéro : archivage, version du logiciel installée, emplacement des revues.
-// Le déplacement d'un dossier de revue est délégué à windows/archive-revue.ps1, seul à
-// calculer les emplacements et à savoir déplacer un dossier que VSCodium tient ouvert.
+﻿// Archivage d'un numéro, version installée, et lecture-écriture de config.json (emplacement
+// des revues, langue, modes de traduction, destinataires). Le déplacement d'un dossier est
+// délégué à windows/archive-revue.ps1, qui sait déplacer un dossier que VSCodium tient ouvert.
 'use strict';
 
 const fs = require('fs');
@@ -29,26 +29,20 @@ function versionInstallee() {
   } catch (e) { return ''; }
 }
 
-// La majeure d'un numéro de version, ou 0 quand ce n'en est pas un — « 0.0.0-dev+<sha> » de
-// l'instance de développement compris, sa majeure étant nulle. Pendant du
-// Get-SzhMediumVersion de windows/szh-common.ps1, qui sépare les mêmes ères.
+// La majeure d'un numéro de version, ou 0 quand ce n'en est pas un. « 0.0.0-dev+<sha> » de
+// l'instance de développement donne aussi 0.
 function majeureVersion(version) {
   const trouve = /^v?(\d+)\.\d+\.\d+/.exec(String(version || '').trim());
   if (!trouve) { return 0; }
   return Number(trouve[1]);
 }
 
-// La MAJEURE seule, et non le numéro entier. Comparer les chaînes faisait crier
-// l'avertissement à chaque release — quarante et une pour le seul mois de septembre 2026 —,
-// donc il ne disait plus rien et personne ne le lisait. Depuis le passage à
-// majeure.medium.mineure (18.09.2026), la majeure est justement ce qui change quand la
-// maquette change : elle seule mérite d'interrompre quelqu'un. Un numéro estampillé de
-// l'ancienne ère (2026.09.42, majeure 2026) diverge donc de tout numéro de la nouvelle, ce
-// qui est exact — la maquette a bougé entre les deux.
+// Vrai si le numéro a été compilé par une autre majeure que celle du poste. Seule la
+// majeure compte : elle change quand un numéro déjà compilé sortirait différent. Une
+// version au format AAAA.MM.N (majeure 2026) diverge donc de toute version 3.x.y.
 //
-// Faux dès qu'une des deux versions est inconnue OU illisible : sur un poste de
-// développement (0.0.0-dev), la maquette est celle du dépôt ouvert, et l'avertissement
-// n'aurait rien à désigner.
+// Faux si l'une des deux versions est inconnue ou illisible, et sur un poste de
+// développement (0.0.0-dev), où la maquette est celle du dépôt ouvert.
 function versionsDivergent(versionNumero, versionPoste) {
   const a = majeureVersion(versionNumero);
   const b = majeureVersion(versionPoste);
@@ -56,11 +50,10 @@ function versionsDivergent(versionNumero, versionPoste) {
   return a !== b;
 }
 
-// Le medium d'un numéro de version — « 1.2 » pour 1.2.13 —, ou une chaîne vide quand ce n'en
-// est pas un. C'est l'unité d'annonce du dépôt : une mineure ne s'annonce pas, un medium se
-// dit, et lib/nouveautes.js range ses notes sous cette clé. Même règle, au caractère près,
-// que Get-SzhMediumVersion (windows/szh-common.ps1) : la majeure doit valoir au moins 1 et
-// rester sous 2000, au-delà c'est une année, donc l'ancienne numérotation.
+// Le medium d'un numéro de version (« 1.2 » pour 1.2.13), ou '' quand ce n'en est pas un.
+// lib/nouveautes.js range ses notes sous cette clé. Même règle que Get-SzhMediumVersion
+// (windows/szh-common.ps1) : la majeure vaut au moins 1 et reste sous 2000 ; au-delà, c'est
+// une année, donc l'ancien format AAAA.MM.N.
 function mediumVersion(version) {
   const trouve = /^v?(\d+)\.(\d+)\.\d+/.exec(String(version || '').trim());
   if (!trouve) { return ''; }
@@ -86,13 +79,11 @@ function tailleDossier(chemin) {
 // Lance un script PowerShell du toolkit de façon qu'il survive à cette fenêtre :
 // l'archivage ferme VSCodium, condition pour déplacer un dossier ouvert.
 //
-// ⚠ Pas de `detached: true` ici : sur Windows, libuv le traduit par DETACHED_PROCESS,
-// donc powershell.exe démarre sans console, ressort aussitôt avec le code 0 et n'exécute
-// pas une ligne du script, sans le moindre message. La voie qui marche est celle que le
-// toolkit emploie partout ailleurs, `wscript.exe //B hidden.vbs`, qui crée un vrai
-// processus à console cachée et rend la main aussitôt — il n'y a donc plus rien à
-// détacher. En contrepartie les scripts lancés d'ici signalent leurs erreurs par une
-// boîte de dialogue et par le journal, non par la console.
+// Le lancement passe par `wscript.exe //B hidden.vbs`, qui crée un processus à console
+// cachée et rend la main aussitôt. `detached: true` ne convient pas : sous Windows, libuv le
+// traduit par DETACHED_PROCESS, et powershell.exe sort alors aussitôt avec le code 0 sans
+// exécuter le script. Les scripts lancés ainsi signalent leurs erreurs par une boîte de
+// dialogue et par le journal.
 function lancerScriptPowerShell(script, args) {
   if (!fs.existsSync(script)) { return 'script introuvable : ' + script; }
   const vbs = path.join(TOOLKIT, 'windows', 'hidden.vbs');
@@ -100,8 +91,8 @@ function lancerScriptPowerShell(script, args) {
   try {
     const proc = spawn('wscript.exe', ['//B', vbs, script].concat(args || []),
       { stdio: 'ignore', windowsHide: true });
-    // wscript sort tout de suite : ni attendre son code, ni laisser une erreur remonter
-    // en rejet non capturé de l'hôte d'extensions.
+    // wscript sort tout de suite : son code n'est pas attendu, et une erreur ne doit pas
+    // devenir un rejet non capturé dans l'hôte d'extensions.
     proc.on('error', () => { /* signalé par l'absence d'effet, et par le journal */ });
     return null;
   } catch (e) { return String((e && e.message) || e); }
@@ -113,49 +104,40 @@ function lancerArchivage(action, racine) {
   return lancerScriptPowerShell(SCRIPT_ARCHIVAGE, args);
 }
 
-// Ouvre le sélecteur de versions du lanceur « Pronto », seule implémentation du choix
-// de version. Rien ne remonte de ce lancement : le lanceur journalise son entrée dans
-// C:\ProgramData\SZH\logs, unique trace si l'utilisateur dit que rien ne se passe.
+// Ouvre le sélecteur de versions du lanceur PowerShell. Aucun retour ne remonte : le
+// lanceur journalise son démarrage dans C:\ProgramData\SZH\logs.
 function lancerChoixVersion() {
   return lancerScriptPowerShell(SCRIPT_LANCEUR, ['-Versions']);
 }
 
 const CONFIG = path.join(BASE_SZH, 'config.json');
 
-// Le fichier réellement lu et écrit : celui du poste, sauf override par SZH_CONFIG_OJS —
-// la seule variable de surcharge de tout le cockpit (déjà celle qu'utilisent les tests :
-// export-ojs.test.js, doi-ojs.test.js, date-numero.test.js, licence.test.js), pour qu'un
-// test ne touche jamais C:\ProgramData\SZH. Une fonction, jamais une constante : elle doit
-// voir un override posé après le chargement du module (`process.env.SZH_CONFIG_OJS = …`
-// puis `require`), comme le fait chaque fichier de test ci-dessus.
+// Le config.json lu et écrit : celui du poste, ou celui que nomme SZH_CONFIG_OJS (les tests
+// s'en servent pour ne pas toucher C:\ProgramData\SZH). C'est une fonction et non une
+// constante : un test pose la variable après le chargement du module.
 function cheminConfigPoste() {
   const surcharge = String(process.env.SZH_CONFIG_OJS || '').trim();
   return surcharge || CONFIG;
 }
 
-// BOM retiré avant l'analyse : d'anciens config.json en portent un et JSON.parse le
-// refuse, ce qui ferait retomber devMode sur son défaut sans rien dire.
+// BOM retiré avant l'analyse : des config.json en portent un, que JSON.parse refuse.
 function lireConfigPoste() {
   try { return JSON.parse(String(fs.readFileSync(cheminConfigPoste(), 'utf8')).replace(/^﻿/, '')); }
   catch (e) { return null; }
 }
 
-// Lecture-modification-écriture en un seul endroit, atomique — le point de passage unique
-// de tout ce qui écrit dans config.json (l'emplacement des revues, la configuration OJS,
-// les mails de traduction…). `fn` reçoit l'objet lu (jamais null : {} si le fichier est
-// absent ou illisible) et rend l'objet à écrire ; null/undefined annule l'écriture. Deux
-// écritures successives, chacune ne connaissant qu'un bloc, ne s'écrasent donc jamais
-// l'une l'autre — la lecture qui précède l'écriture est toujours fraîche.
-//
-// Forme historique gardée : `fn` peut aussi être l'objet à écrire directement (extension.js
-// l'appelle encore ainsi à trois endroits, la fusion déjà faite par l'appelant).
+// Lit, modifie et réécrit config.json ; tout ce qui écrit dans ce fichier passe par ici.
+// `fn` reçoit l'objet lu ({} si le fichier est absent ou illisible) et rend l'objet à
+// écrire ; null ou undefined annule l'écriture. Le fichier étant relu juste avant chaque
+// écriture, deux écritures successives sur des clés différentes ne s'écrasent pas.
+// `fn` peut aussi être directement l'objet à écrire, déjà fusionné par l'appelant.
+// Rend null, ou le message d'erreur.
 function ecrireConfigPoste(fn) {
   try {
     const avant = lireConfigPoste() || {};
     const apres = typeof fn === 'function' ? fn(avant) : fn;
     if (apres === undefined || apres === null) { return null; }
-    // Atomique : config.json porte l'emplacement des revues et la configuration OJS, et
-    // un fichier à moitié écrit rendrait le poste illisible pour tous ses lecteurs.
+    // Écriture atomique : un config.json à moitié écrit serait illisible pour tous ses lecteurs.
     ecrireAtomique(cheminConfigPoste(),
       JSON.stringify(typeof apres === 'object' ? apres : {}, null, 2) + '\n');
     return null;
@@ -164,26 +146,23 @@ function ecrireConfigPoste(fn) {
 
 // ---- Destinataire de « Envoyer pour traduction » --------------------------------
 //
-// On écrit à l'équipe qui va traduire, donc à l'autre maison : un numéro de la
-// Zeitschrift part vers la rédaction francophone, une Revue vers la rédaction
-// germanophone. Ces deux adresses ne vivent plus qu'ici — le script PowerShell qui les
-// portait est parti avec le composant COM d'Outlook.
+// Le courriel va à la rédaction qui traduit : un numéro de la Zeitschrift part vers la
+// rédaction francophone, une Revue vers la rédaction germanophone.
 const MAILS_TRADUCTION = {
   zeitschrift: 'redaction@csps.ch',    // allemand -> français
   revue: 'redaktion@szh.ch'            // français -> allemand
 };
-// Produit inconnu, config illisible, adresse invalide : le brouillon doit s'ouvrir quand
-// même, quitte à ce que le rédacteur corrige le destinataire lui-même.
+// Produit inconnu, config illisible, adresse invalide : le brouillon s'ouvre quand même, et
+// le rédacteur corrige le destinataire.
 const MAIL_TRADUCTION_DEFAUT = 'robin.morand@szh.ch';
 
 // Adresse conservatrice : seuls ces caractères passent tels quels dans un `mailto:`.
 const FORME_MAIL = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 
-// Surchargeable par config.json, clé `mailsTraduction` — un objet dont les clés sont les
-// jetons de revue. Nom et forme inchangés : des postes en portent déjà.
+// Les adresses se surchargent dans config.json :
 //   { "mailsTraduction": { "revue": "…", "zeitschrift": "…" } }
-// La résolution est pure — la config lui est passée — pour être éprouvable sans écrire
-// dans C:\ProgramData ; adresseMailTraduction n'est que la lecture du fichier.
+// La config est passée en argument, pour tester sans écrire dans C:\ProgramData ;
+// adresseMailTraduction lit le fichier.
 function choisirAdresseMail(produit, cfg) {
   const cle = String(produit === undefined || produit === null ? '' : produit).toLowerCase();
   const surcharge = (cfg && typeof cfg.mailsTraduction === 'object' && cfg.mailsTraduction) || {};
@@ -200,23 +179,19 @@ function adresseMailTraduction(produit) {
 
 // ---- Emplacement des revues : où vivent les numéros -----------------------------
 //
-// Un seul interrupteur, dans C:\ProgramData\SZH\config.json, partagé avec tous les scripts
-// PowerShell. Il déplace la racine de tout le travail, et la clé porte donc le nom de son
-// effet : `emplacementRevues` vaut « test » ou « production ». « devMode » était le nom
-// d'avant ; il est encore lu, des postes le portent, et réécrit en même temps que la clé
-// neuve pour un toolkit plus ancien resté sur le poste.
+// La clé `emplacementRevues` de config.json, partagée avec les scripts PowerShell, vaut
+// « test » ou « production » et choisit la racine des numéros. L'ancienne clé `devMode`
+// est encore lue, et réécrite avec la nouvelle pour un toolkit plus ancien resté sur le poste.
 //
-// Les chemins des deux racines ne sont pas ici : ils n'ont qu'une source,
-// Get-SzhEmplacements dans windows/szh-common.ps1. Ce module ne rend que la décision, et
-// Resolve-SzhEmplacementRevues y applique exactement les mêmes règles dans le même ordre —
-// test/js/emplacements.test.js soumet les deux aux mêmes configurations.
+// Les chemins des deux racines sont dans Get-SzhEmplacements (windows/szh-common.ps1). Ce
+// module ne rend que le choix ; Resolve-SzhEmplacementRevues applique les mêmes règles
+// dans le même ordre, ce que vérifie test/js/emplacements.test.js.
 const EMPLACEMENT_TEST = 'test';
 const EMPLACEMENT_PRODUCTION = 'production';
 
 // Booléen d'un JSON écrit à la main : true/false, "true"/"false", 1/0. Tout le reste rend
-// null, soit « clé absente ». Sans cette normalisation, `"devMode": "false"` vaut faux ici
-// et vrai côté PowerShell ([bool]'false' y est $true) : les deux moitiés liraient deux
-// racines différentes pour la même configuration.
+// null, soit « clé absente ». PowerShell applique la même règle ; sans elle,
+// `"devMode": "false"` vaudrait faux ici et vrai côté PowerShell ([bool]'false' y est $true).
 function normaliserBooleenConfig(valeur) {
   if (valeur === true || valeur === false) { return valeur; }
   if (typeof valeur === 'number') {
@@ -232,11 +207,10 @@ function normaliserBooleenConfig(valeur) {
   return null;
 }
 
-// La clé neuve, puis l'ancienne, puis le défaut historique « test ». Résolution pure — la
-// config lui est passée — pour être éprouvable sans écrire dans C:\ProgramData. Le défaut
-// n'est pas un choix : c'est ce que voyaient les postes d'avant, et le seul qui ne fasse
-// disparaître aucune revue. Get-SzhEmplacementRevues, côté PowerShell, l'écrit en clair
-// dans config.json dès qu'il tourne, après avoir regardé le disque.
+// La nouvelle clé, puis l'ancienne, puis « test » par défaut : le seul défaut qui ne fasse
+// disparaître aucune revue d'un poste existant. Get-SzhEmplacementRevues, côté PowerShell,
+// écrit la valeur dans config.json dès qu'il tourne, après avoir regardé le disque.
+// La config est passée en argument, pour tester sans écrire dans C:\ProgramData.
 function resoudreEmplacementRevues(cfg) {
   if (cfg && typeof cfg === 'object') {
     const brut = cfg.emplacementRevues;
@@ -255,9 +229,8 @@ function lireEmplacementRevues() {
   return resoudreEmplacementRevues(lireConfigPoste());
 }
 
-// Les deux clés sont posées ensemble : la neuve fait foi, l'ancienne suit, faute de quoi un
-// toolkit resté en arrière lirait l'inverse de ce que le cockpit affiche. Pure, pour être
-// éprouvable ; ecrireEmplacementRevues n'est que l'écriture du fichier.
+// Les deux clés sont posées ensemble, pour qu'un toolkit plus ancien lise la même chose que
+// le cockpit. ecrireEmplacementRevues écrit le fichier.
 function configAvecEmplacement(cfg, emplacement) {
   const voulu = emplacement === EMPLACEMENT_PRODUCTION ? EMPLACEMENT_PRODUCTION : EMPLACEMENT_TEST;
   const sortie = Object.assign({}, (cfg && typeof cfg === 'object') ? cfg : {});
@@ -270,40 +243,32 @@ function ecrireEmplacementRevues(emplacement) {
   return ecrireConfigPoste((avant) => configAvecEmplacement(avant, emplacement));
 }
 
-// ---- Langue de l'interface : le choix du rédacteur, mis hors d'atteinte ----------
+// ---- Langue de l'interface -------------------------------------------------------
 //
-// Le formulaire de réglages écrit la langue à deux endroits : le réglage de l'éditeur, et
-// ici. Ce n'est pas une redondance de confort. La mise à jour du poste réécrit entièrement
-// les réglages de l'éditeur — thème, zoom, taille de police et langue avec eux — et le
-// choix disparaissait donc à chaque mise à jour : un poste allemand se remettait à parler
-// français. Ce fichier-ci, lui, n'est jamais réécrit par la mise à jour.
+// Les réglages écrivent la langue dans le réglage de l'éditeur et dans config.json. La mise
+// à jour du poste réécrit entièrement les réglages de l'éditeur ; config.json, lui, n'est
+// pas réécrit, et garde donc le choix.
 //
-// C'est lib/i18n.js qui relit la clé, sans passer par ce module : il ne doit dépendre de
-// rien pour rester chargeable hors de l'éditeur. Pure, pour être éprouvable sans écrire
-// dans C:\ProgramData ; c'est l'appelant qui appelle ecrireConfigPoste.
+// lib/i18n.js relit la clé sans passer par ce module, pour rester chargeable hors de
+// l'éditeur. L'appelant écrit le résultat avec ecrireConfigPoste.
 function configAvecLangue(cfg, langue) {
   const sortie = Object.assign({}, (cfg && typeof cfg === 'object') ? cfg : {});
   const v = String(langue === undefined || langue === null ? '' : langue).trim().toLowerCase();
   if (v === 'fr' || v === 'de') { sortie.langue = v; }
-  else { delete sortie.langue; }       // valeur inconnue : on efface plutôt que d'inventer
+  else { delete sortie.langue; }       // valeur inconnue : la clé est effacée
   return sortie;
 }
 
 // ---- Vérificateur de traduction : le mode qui pose une pastille sur les champs --
 //
-// Ici et non dans les réglages de l'éditeur, pour les deux raisons de `vueArticles`
-// (lib/articles.js) : trois panneaux le lisent — fiches, vérification de l'import,
-// traduction — et la mise à jour du poste réécrit en entier les réglages de VSCodium, si
-// bien que le mode s'y éteindrait à chaque mise à jour.
+// Dans config.json plutôt que dans les réglages de l'éditeur : trois panneaux le lisent
+// (fiches, vérification de l'import, traduction), et la mise à jour du poste réécrit les
+// réglages de VSCodium en entier.
 //
-// Le défaut est « éteint » : la pastille est un outil de relecture, pas l'état normal d'un
-// formulaire de saisie. Un JSON écrit à la main est toléré — true, "true" ou 1 — par la
-// même normalisation que l'emplacement des revues, pour qu'un `"verifTraduction": "true"`
-// ne se lise pas faux en silence.
+// Éteint par défaut. Un JSON écrit à la main est lu par normaliserBooleenConfig.
 const CLE_VERIF_TRADUCTION = 'verifTraduction';
 
-// Résolution pure — la config lui est passée — pour être éprouvable sans écrire dans
-// C:\ProgramData. Absente ou illisible : éteint.
+// Absente ou illisible : éteint.
 function resoudreVerifTraduction(cfg) {
   if (!cfg || typeof cfg !== 'object') { return false; }
   return normaliserBooleenConfig(cfg[CLE_VERIF_TRADUCTION]) === true;
@@ -313,8 +278,7 @@ function lireVerifTraduction() {
   return resoudreVerifTraduction(lireConfigPoste());
 }
 
-// Pure elle aussi ; c'est l'appelant qui appelle ecrireConfigPoste. La clé est toujours
-// écrite en booléen propre, quelle que soit la forme reçue à la lecture.
+// La clé est toujours écrite en booléen, quelle que soit la forme lue.
 function configAvecVerifTraduction(cfg, actif) {
   const sortie = Object.assign({}, (cfg && typeof cfg === 'object') ? cfg : {});
   sortie[CLE_VERIF_TRADUCTION] = actif === true;
@@ -326,13 +290,11 @@ function ecrireVerifTraduction(actif) {
 }
 
 // Le mode « Trad » : tant qu'il est allumé, un clic sur un texte de l'interface ouvre le
-// formulaire de suggestion au lieu de l'action normale. Jumelles exactes des quatre
-// fonctions ci-dessus, et dans le même config.json pour la même raison : plusieurs panneaux
-// le lisent, et la mise à jour du poste réécrit les réglages de l'éditeur en entier — le
-// mode s'y éteindrait à chaque mise à jour.
+// formulaire de suggestion au lieu de l'action normale. Mêmes fonctions et même raison
+// d'être dans config.json que le vérificateur ci-dessus.
 //
-// Indépendant du vérificateur : les deux peuvent être allumés en même temps. L'un sert les
-// quatre champs traduisibles d'un ARTICLE, l'autre les libellés de l'OUTIL.
+// Indépendant du vérificateur, qui porte sur les champs traduisibles d'un article ; ce mode
+// porte sur les libellés de l'interface.
 const CLE_MODE_TRAD = 'modeTrad';
 
 function resoudreModeTrad(cfg) {
@@ -354,8 +316,7 @@ function ecrireModeTrad(actif) {
   return ecrireConfigPoste((avant) => configAvecModeTrad(avant, actif === true));
 }
 
-// Noms d'avant, gardés pour l'hôte et ses réglages : « mode développeur » n'était que le nom
-// de l'emplacement de test.
+// « Mode développeur » : autre nom de l'emplacement de test, employé par les réglages.
 function lireModeDeveloppeur() {
   return lireEmplacementRevues() === EMPLACEMENT_TEST;
 }

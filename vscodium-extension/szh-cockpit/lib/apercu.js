@@ -1,6 +1,6 @@
 // Aperçu commutable HTML / PDF, colonne 2 : le panneau HTML (CSP, bandeau, styles de
 // survol), sa bascule avec le PDF, et le défilement synchronisé entre l'éditeur et l'aperçu.
-// Impur (webviews, éditeur, disque) ; les rappels vers l'hôte passent par configurer() plus bas.
+// Les rappels vers l'hôte passent par configurer().
 'use strict';
 
 const vscode = require('vscode');
@@ -21,25 +21,22 @@ const VUE_PDF = 'pdf.preview';
 
 // L'aperçu Markdown de l'éditeur (extension intégrée markdown-language-features). Son
 // `viewType` est préfixé par l'hôte (« mainThreadWebview-markdown.preview ») : on le
-// reconnaît donc à l'inclusion, jamais à l'égalité. C'est lui qui rend la bibliographie
-// — aucun moteur n'est embarqué pour ça, et une liste de références est de la prose.
+// reconnaît donc à l'inclusion, pas à l'égalité. C'est lui qui rend la bibliographie.
 const VUE_MD = 'markdown.preview';
 
 // ---- Rappels vers l'hôte ----------------------------------------------------------
 let ctx = {
   fermerOnglets: async () => {},
   // Les onglets ouverts, pour savoir si l'aperçu Markdown est à l'écran : son état vit dans
-  // l'éditeur et nulle part ici — il se ferme aussi à la croix.
+  // l'éditeur, et il peut se fermer par sa croix.
   ongletOuvert: () => false,
   ouvrirApercuPdf: async () => {},
-  // Mode « Trad » : le clic détourné vers le formulaire de suggestion. Un module non
-  // configuré le prend à lib/traduction-hote.js.
+  // Mode « Trad » : le clic détourné vers le formulaire de suggestion.
   repondreModeTrad: require('./traduction-hote').repondreModeTrad
 };
 
 function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
 
-// Le dossier des unités de texte du profil actif (lib/profil.js#courant).
 function dossierUnites() {
   return profils.courant().unites.dossier;
 }
@@ -54,10 +51,10 @@ async function fermerApercuCourant(saufUri) {
 }
 
 // ---- Aperçu commutable HTML / PDF ------------------------------------------------
-// Mode global szh.apercuMode (défaut html). En HTML, la colonne 2 est une webview qui
-// charge out/<slug>/<slug>.apercu.html, rendu avec sourcepos : survol = contour, clic =
-// ligne source du .md. En PDF, c'est tomoki1207.pdf, et szh-apercu ne s'active que dans
-// ce mode : la colonne 2 n'a qu'un propriétaire à la fois.
+// Réglage szh.apercuMode (html par défaut). En HTML, la colonne 2 est une webview qui
+// charge out/<slug>/<slug>.apercu.html, rendu avec sourcepos : le survol trace un contour,
+// le clic mène à la ligne source du .md. En PDF, c'est tomoki1207.pdf, et szh-apercu ne
+// s'active que dans ce mode : la colonne 2 n'affiche qu'un aperçu à la fois.
 
 // Profil du dossier, lu comme le fait le Makefile : clé absente = « article », clé
 // présente mais vide = 'rien', soit aucun document produit.
@@ -87,7 +84,7 @@ function lignePos(pos) {
   return m ? parseInt(m[1], 10) : null;
 }
 
-// Plage d'un data-pos : « …@L:C-L:C » -> {l1,c1,l2,c2}, 1-based, ou null. Pure.
+// Plage d'un data-pos : « …@L:C-L:C » -> {l1,c1,l2,c2}, 1-based, ou null.
 function plagePos(pos) {
   const texte = String(pos || '');
   const droite = texte.indexOf('@') !== -1 ? texte.slice(texte.indexOf('@') + 1) : texte;
@@ -98,7 +95,7 @@ function plagePos(pos) {
 
 // Première occurrence de `mot` dans la plage [l1:c1 .. l2] des `lignes` du .md ->
 // {ligne, colonne, longueur} 0-based, ou null : venant du texte rendu, le mot n'est pas
-// toujours dans la source, et l'appelant se rabat alors sur le bloc entier. Pure.
+// toujours dans la source, et l'appelant se rabat alors sur le bloc entier.
 function positionMot(lignes, l1, c1, l2, mot) {
   const m = String(mot == null ? '' : mot);
   if (!m || !Array.isArray(lignes)) { return null; }
@@ -114,7 +111,7 @@ function positionMot(lignes, l1, c1, l2, mot) {
   return null;
 }
 
-// Mot sous le curseur ; mêmes délimiteurs que motAuPoint (media/apercu.js). Pure.
+// Mot sous le curseur ; mêmes délimiteurs que motAuPoint (media/apercu.js).
 function jetonSource(texte, colonne) {
   const s = String(texte == null ? '' : texte);
   const i = Math.max(0, Math.min(colonne | 0, s.length));
@@ -183,15 +180,10 @@ function pousserSurlignageVersApercu(fournisseur) {
   }, 60));
 }
 
-// Le script de la page, en un seul morceau et donc sous un seul nonce, comme le fait
-// construireHtml pour les onze autres webviews : la table du protocole
-// (media/_messages.js -> SZH.MSG) AVANT media/apercu.js, qui nomme par elle chaque
-// message échangé avec l'hôte. L'aperçu n'emprunte pas construireHtml — il enrobe le
-// HTML de pandoc au lieu d'un gabarit de media/ — et n'héritait donc d'aucun socle :
-// `SZH` restait indéfini, et la première lecture de SZH.MSG levait une ReferenceError
-// qui emportait le clic vers la source et le défilement synchronisé. Le socle posé ici
-// est le strict minimum : media/_commun.js n'entre pas, l'aperçu n'ayant aucune de ses
-// fonctions à appeler, et _messages.js suppose seulement que `SZH` existe.
+// Le script de la page, en un seul morceau sous un seul nonce : la déclaration de `SZH`,
+// puis la table des messages (media/_messages.js -> SZH.MSG), puis media/apercu.js qui
+// s'en sert. L'aperçu enrobe le HTML de pandoc et n'utilise donc pas construireHtml : il
+// doit poser `SZH` lui-même. media/_commun.js n'est pas inclus, l'aperçu n'en a pas besoin.
 // `ligne` (1-based, 0 = sommet) est celle où la page se place au chargement.
 function scriptApercu(ligne) {
   return ['var SZH = SZH || {};', 'SZH.LIGNE_INITIALE = ' + (parseInt(ligne, 10) || 0) + ';',
@@ -252,8 +244,8 @@ async function fermerTousLesApercus() {
   fermerApercuHtml();
   await fermerApercuCourant(null);
   await ctx.fermerOnglets((e) => e && e.viewType === VUE_PDF);
-  // Le rendu d'une bibliographie occupe la même colonne que les deux autres : il part avec
-  // eux. Sans cette ligne, un formulaire pleine page s'ouvrirait derrière lui.
+  // Le rendu d'une bibliographie occupe la même colonne : il se ferme aussi, sinon un
+  // formulaire pleine page s'ouvrirait derrière lui.
   await fermerApercuMd();
   session.poserApercuCourantUri(null);
 }
@@ -261,9 +253,8 @@ async function fermerTousLesApercus() {
 // ---- Aperçu d'une bibliographie -------------------------------------------------
 //
 // <slug>.biblio.md est de la prose : une référence par paragraphe, collée depuis Zotero.
-// Ce qu'on veut en voir, c'est le texte mis en forme — pas la maquette du numéro, qui
-// demanderait une compilation entière pour un fichier qu'on relit au fil de la saisie.
-// L'aperçu Markdown de l'éditeur suffit, et il se rafraîchit à la frappe.
+// Son aperçu est celui de l'aperçu Markdown de l'éditeur, qui se rafraîchit à la frappe
+// sans compilation.
 function estBiblio(chemin) { return /\.biblio\.md$/i.test(String(chemin || '')); }
 
 function estOngletMd(entree) {
@@ -274,11 +265,10 @@ function apercuMdOuvert() { return !!ctx.ongletOuvert(estOngletMd); }
 
 async function fermerApercuMd() { await ctx.fermerOnglets(estOngletMd); }
 
-// Le texte en colonne 1, son rendu en colonne 2. Le focus revient au texte : c'est là
-// qu'on écrit, et `markdown.showPreviewToSide` le laisse sur le rendu, où l'on ne peut
-// rien saisir.
+// Le texte en colonne 1, son rendu en colonne 2. Le focus revient au texte, que
+// `markdown.showPreviewToSide` laisse sur le rendu.
 async function ouvrirApercuBiblio(uri) {
-  await fermerTousLesApercus();            // la colonne 2 n'a qu'un propriétaire à la fois
+  await fermerTousLesApercus();            // la colonne 2 n'affiche qu'un aperçu à la fois
   await vscode.commands.executeCommand('vscode.open', uri, { viewColumn: vscode.ViewColumn.One });
   try {
     await vscode.commands.executeCommand('markdown.showPreviewToSide', uri);
@@ -295,19 +285,18 @@ function echapperTexte(valeur) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// Le fichier d'aperçu HTML d'une unité, selon le profil actif : celui du chapitre pour un
-// livre (out/chapitres/<slug>.apercu.html, lib/profil.js#chemins — outUnite est déjà ce
-// fichier), celui de l'article pour une revue (out/<slug>/<slug>.apercu.html — outUnite y
-// est le dossier de sortie de l'article, pas le fichier).
+// Le fichier d'aperçu HTML d'une unité, selon le profil actif. Livre :
+// out/chapitres/<slug>.apercu.html, que outUnite désigne déjà. Revue :
+// out/<slug>/<slug>.apercu.html, outUnite étant le dossier de sortie de l'article.
+// C'est le seul endroit qui fasse ce choix ; extension.js s'en sert aussi.
 function cheminApercuHtml(racine, slug) {
   const profil = profils.courant();
   const c = profils.chemins(profil, racine, slug);
   return profil.cle === 'livre' ? c.outUnite : path.join(c.outUnite, slug + '.apercu.html');
 }
 
-// Repli du mode PDF (le .html complet que pandoc écrit aussi) : n'existe que pour un
-// article — un chapitre de livre n'a pas de HTML complet à lui, seulement son fragment et
-// son aperçu, voir profil.js.
+// Repli : le .html complet que pandoc écrit pour le PDF. Il n'existe que pour un article ;
+// un chapitre de livre n'a que son fragment et son aperçu (voir profil.js).
 function cheminHtmlComplet(racine, slug) {
   const profil = profils.courant();
   if (profil.cle === 'livre') { return null; }
@@ -320,8 +309,8 @@ let dernierApercuPrioritaireEcrit = null;
 
 // Priorité de compilation : dit au Makefile quel article regarder d'abord dans le lot,
 // via <racine>/.szh-apercu (une ligne « <slug> <mode> »). Efface le fichier si aucun
-// aperçu n'est ouvert. Jamais bloquant : un numéro verrouillé ou une synchro en cours ne
-// doivent pas gêner l'affichage de l'aperçu.
+// aperçu n'est ouvert. Une écriture refusée (numéro verrouillé, synchronisation en cours)
+// est ignorée.
 function noterApercuPrioritaire(racine) {
   if (!racine) { return; }
   const slug = session.apercuCourantSlug();
@@ -336,7 +325,7 @@ function noterApercuPrioritaire(racine) {
       fs.unlinkSync(fichier);
     }
     dernierApercuPrioritaireEcrit = cle;
-  } catch (e) { /* numéro verrouillé, disque plein, synchro OneDrive en cours : tant pis */ }
+  } catch (e) { /* numéro verrouillé, disque plein, synchronisation OneDrive en cours */ }
 }
 
 // Aperçu HTML en colonne 2 ; si le fichier manque, replie sur le .html du PDF.
@@ -357,20 +346,19 @@ function ouvrirApercuHtml(fournisseur, slug, enAttente) {
   if (contenu === null) {
     const lignes = [echapperTexte(T('apercu.indisponible'))];
     if (enAttente) { lignes.push(echapperTexte(T('apercu.encours'))); }
-    // Numéro gelé : rien ne se compilera tout seul, on dit par quel geste le faire.
+    // Numéro gelé : rien ne se compile seul, la page dit comment lancer la compilation.
     else if (compilationAutoCoupee()) { lignes.push(echapperTexte(T('apercu.gele'))); }
     contenu = '<!DOCTYPE html><html lang="fr"><head></head><body><p>'
             + lignes.join('</p><p>') + '</p></body></html>';
   }
   const html = injecterApercu(contenu, crypto.randomBytes(16).toString('hex'), ligneVisibleEditeur(fournisseur, slug));
-  // Ni reveal ni PRET : le panneau est créé s'il manque, puis son HTML est réécrit à chaque
-  // appel ; c'est la session qui le tient.
+  // Le panneau est créé s'il manque (ni reveal ni PRET), puis son HTML est réécrit à chaque
+  // appel. La session garde la référence au panneau.
   if (!session.panneauApercuHtml()) {
     panneauUnique({
       viewType: 'szhApercuHtml', titre: slug,
       colonne: { viewColumn: vscode.ViewColumn.Two, preserveFocus: true },
       garde: { lire: session.panneauApercuHtml, poser: session.poserPanneauApercuHtml },
-      // Mode « Trad » : l'état du mode, et le clic détourné — voir repondreModeTrad.
       modeTrad: (panneau, msg) => ctx.repondreModeTrad(panneau, msg),
       surMessage: (msg) => {
         if (msg.type === MSG.BASCULER) { vscode.commands.executeCommand('szh.basculerApercu'); return; }
@@ -390,11 +378,10 @@ function ouvrirApercuHtml(fournisseur, slug, enAttente) {
 }
 
 function rechargerApercuHtmlSiChange(fournisseur) {
-  // Réassigner webview.html déplace le focus, et un QuickPick ouvert (Ctrl+Alt+A/S/D,
-  // choix de titre…) se ferme dès que le focus bouge : la fin d'une compilation fermait
-  // le panneau sous les doigts du rédacteur. Tout le corps est donc différé — et
-  // réévalué au rejeu, l'aperçu ayant pu être fermé ou la sortie avoir encore changé
-  // entre-temps. Une seule action pour toutes les compilations survenues pendant le geste.
+  // Réassigner webview.html déplace le focus, ce qui ferme un QuickPick ouvert
+  // (Ctrl+Alt+A/S/D, choix de titre…). Le rechargement est donc différé tant qu'un
+  // QuickPick est ouvert, puis réévalué : l'aperçu a pu être fermé entre-temps. Plusieurs
+  // compilations pendant ce temps ne donnent qu'un rechargement.
   differer('apercu-html', () => {
     if (!session.panneauApercuHtml() || !session.apercuCourantSlug() || !fournisseur.racine || modeApercu() !== 'html') { return; }
     const slug = session.apercuCourantSlug();
@@ -405,13 +392,12 @@ function rechargerApercuHtmlSiChange(fournisseur) {
   });
 }
 
-// Persiste szh.apercuMode ; jamais deux aperçus en colonne 2.
+// Bascule l'aperçu HTML ⇄ PDF et enregistre szh.apercuMode ; la colonne 2 n'affiche qu'un
+// aperçu à la fois.
 //
-// Sur une bibliographie, la même touche (Ctrl+Alt+P) bascule SON aperçu : HTML ⇄ PDF n'a
-// aucun sens sur un fichier qui n'est pas compilé seul, et demander une seconde touche
-// pour le même geste à un endroit différent se retiendrait mal. Le rendu ouvert sans
-// éditeur de texte actif compte aussi : la webview a alors le focus, et c'est pourtant elle
-// qu'on veut refermer.
+// Sur une bibliographie, la même touche (Ctrl+Alt+P) ouvre ou ferme son aperçu Markdown :
+// elle n'est pas compilée seule, HTML ⇄ PDF n'y a pas de sens. Le rendu ouvert sans éditeur
+// de texte actif compte aussi : la webview a alors le focus, et c'est elle qu'on referme.
 async function basculerApercu(fournisseur, majBarreApercu) {
   const actif = vscode.window.activeTextEditor;
   const surBiblio = !!(actif && estBiblio(actif.document.uri.fsPath));
@@ -421,8 +407,8 @@ async function basculerApercu(fournisseur, majBarreApercu) {
     else { await ouvrirApercuBiblio(actif.document.uri); }
     return;
   }
-  // Ailleurs : l'aperçu de l'article reprend la colonne 2, donc le rendu d'une
-  // bibliographie la libère d'abord.
+  // Ailleurs : l'aperçu de l'article reprend la colonne 2, libérée du rendu d'une
+  // bibliographie.
   if (mdOuvert) { await fermerApercuMd(); }
   const nouveau = modeApercu() === 'html' ? 'pdf' : 'html';
   try {
@@ -456,8 +442,5 @@ module.exports = {
   estBiblio, apercuMdOuvert, fermerApercuMd, ouvrirApercuBiblio,
   ouvrirApercuHtml, rechargerApercuHtmlSiChange, basculerApercu,
   noterApercuPrioritaire,
-  // Le chemin d'aperçu attendu, seul endroit qui sache choisir entre le chapitre et
-  // l'article : ouvrirArticle et compilerPuisAfficher (extension.js) s'y raccrochent au
-  // lieu de refaire le calcul avec un path.join littéral, faux sur un livre.
   cheminApercuHtml
 };

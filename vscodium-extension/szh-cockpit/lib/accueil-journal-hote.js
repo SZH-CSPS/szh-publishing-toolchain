@@ -1,5 +1,5 @@
 // L'onglet Log de l'Accueil : les journaux de mise à jour, leur fin, l'éditeur, et le
-// signalement d'un problème en un seul geste. Sans panneau : lib/accueil-hote.js lui relaie
+// signalement d'un problème en un clic. Sans panneau : lib/accueil-hote.js lui relaie
 // les messages de la page.
 'use strict';
 
@@ -16,7 +16,8 @@ const { compiler } = require('./gabarits');
 const { normaliserRenduCourriel, uriMailto } = require('./courriel');
 const { toolkitPoste } = require('./poste');
 
-// La longueur au-delà de laquelle un client de messagerie tronque un mailto:, comme dans le socle.
+// Longueur au-delà de laquelle un client de messagerie tronque un mailto: (même valeur que
+// dans windows/szh-common.ps1).
 const CORPS_MAX = 1500;
 
 let ctx = {
@@ -54,8 +55,8 @@ function lire(msg) {
   }
 }
 
-// Le brouillon au support, rendu par le gabarit du socle (windows/mail-templates) ; sans
-// gabarit lisible, un brouillon vide à la bonne adresse plutôt que rien.
+// Le brouillon au support, rendu par le gabarit du toolkit (windows/mail-templates). Sans
+// gabarit lisible : un brouillon vide adressé au support.
 function brouillonSupport(phrase, journal) {
   const dossier = path.join(toolkitPoste(), 'windows', 'mail-templates');
   const variables = { poste: os.hostname(), etape: T('accueil.journal.signaler.titre'), message: phrase, journal: journal || '' };
@@ -71,7 +72,7 @@ function brouillonSupport(phrase, journal) {
   return { destinataire: COURRIEL_SUPPORT, sujet: '', corps: '' };
 }
 
-// Un seul geste : le rapport part par la voie du cockpit avec la phrase et le journal
+// En un clic : le rapport part par la voie du cockpit avec la phrase et le journal
 // affiché, puis le dossier des journaux et le brouillon au support s'ouvrent.
 function signaler(msg) {
   const phrase = String(msg.phrase || '').trim().slice(0, 300);

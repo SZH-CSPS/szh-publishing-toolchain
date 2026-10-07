@@ -5,8 +5,8 @@
 const { T, TP } = require('./i18n');
 const profils = require('./profil');
 
-// Les libellés de la page, injectés dans __TXT__. Trois d'entre eux ont une variante « .livre », choisie
-// d'après le produit ouvert dans la fenêtre : un livre ne parle ni d'article ni de numéro.
+// Les libellés de la page, injectés dans __TXT__. Ceux qui passent par TP() changent selon
+// le profil ouvert : un livre ne parle ni d'article ni de numéro.
 function textesAccueil() {
   return {
     ongletsAria: T('accueil.onglets'),
@@ -103,8 +103,7 @@ function textesAccueil() {
     jrnSignalerRefuse: T('accueil.journal.signaler.refuse'),
     jrnCourriel: T('accueil.journal.courriel'),
 
-    // Paramètres : les libellés de la page des réglages. Ceux qui portent un « _ » reprennent une clé
-    // « regl.* » d'avant la fusion, sans la renommer.
+    // Réglages. Les noms en « regl_ » reprennent une clé « regl.* » partagée avec d'autres vues.
     rgAffichage: T('accueil.regl.affichage'), rgRedaction: T('accueil.regl.redaction'),
     rgPoste: T('accueil.regl.poste'), rgServices: T('accueil.regl.services'),
     rgTraduction: T('accueil.regl.traduction'), rgLangue: T('regl.langue'),
@@ -171,9 +170,8 @@ function textesAccueil() {
 // Le nom de chaque produit sur ses boutons : un nom propre, le même dans les deux langues.
 const LIBELLES_PRODUITS = { revue: 'Revue', zeitschrift: 'Zeitschrift', livre: 'Book' };
 
-// Le produit ouvert d'office : la langue désigne la Revue ou la
-// Zeitschrift, le choix du compte l'emporte, et SZH_ONGLET, l'essai, a le dernier mot. Le
-// livre n'est jamais désigné par la langue.
+// Le produit ouvert d'office : la langue désigne la Revue ou la Zeitschrift, le choix du
+// compte l'emporte, et la variable d'environnement SZH_ONGLET l'emporte sur les deux.
 function produitParDefaut(langue, choisi, essai, jetons) {
   const connus = jetons || ['revue', 'zeitschrift', 'livre'];
   let produit = langue === 'fr' ? 'revue' : 'zeitschrift';
