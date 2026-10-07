@@ -11,6 +11,31 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.10.4
+
+Mineure : une copie en conflit résolue disparaît d’elle-même, un numéro neuf part sans
+article d’exemple.
+
+**Production.**
+- Nouvelle revue : le numéro créé part avec un dossier « articles » vide, sans l’article
+  d’exemple, et sans les quatre modèles d’article Pronto (.docx et .odt, fr et de) à sa
+  racine. Ils restent dans le toolkit, où le nettoyeur les lit.
+- Copies en conflit (OneDrive) : une copie qui ne diffère plus de son original est supprimée
+  sans question, après le dernier passage tranché, à l’enregistrement du fichier ou de la
+  copie, ou au balayage du numéro. Elle restait sur le disque quand le message qui proposait
+  sa suppression était manqué, ou quand la résolution se faisait à la main, et le conflit se
+  réannonçait à chaque ouverture. Le BOM, les fins de ligne et les sauts de ligne finaux ne
+  comptent pas comme une divergence.
+- Propositions : une colonne Date montre la date de dépôt des interventions parlementaires,
+  en JJ.MM.AAAA, et se trie.
+- Moissonneur parlementaire : `[export] depose_depuis` (2026-09-01) retient les affaires
+  déposées avant cette date hors des lots de propositions ; elles restent classées et
+  comptent dans la finesse.
+
+**Développement.**
+- `docs/DEV/` : notes de travail (catégories, moissonnage, parseurs, intérieur des livres,
+  patch des notes WeasyPrint).
+
 ## 3.10.3
 
 Mineure : l’Actualité et les fiches d’article dans la langue de l’interface.
