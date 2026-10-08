@@ -1,8 +1,6 @@
-// Contrat de vscodium-extension/szh-cockpit/lib/poste.js : basePoste(),
-// resoudreToolkit(), toolkitPoste(), versWsl(), toolkitWsl() — plus le garde-fou récursif contre
-// le retour d'un littéral ProgramData ailleurs dans le cockpit.
-//
-//   node --test test/js/poste.test.js
+// Contrat de vscodium-extension/szh-cockpit/lib/poste.js : basePoste(), resoudreToolkit(),
+// toolkitPoste(), versWsl(), toolkitWsl(), et le contrôle qu'aucun littéral ProgramData ne
+// revient ailleurs dans le cockpit.
 'use strict';
 
 const test = require('node:test');
@@ -18,16 +16,15 @@ const CHEMIN_MODULE = path.join(COCKPIT, 'lib', 'poste.js');
 
 function modulePoste() { return require(CHEMIN_MODULE); }
 
-// resoudreToolkit()/toolkitPoste() passent par path.resolve/path.join sur des chemins à
-// la Windows (lettre de lecteur, antislash) — comme lib/rapport-erreur.js, seuls exacts
-// sous Windows. versWsl()/toolkitWsl() sont de la manipulation de chaîne pure et rendent
-// le même résultat sur toute plateforme, donc restent joués partout.
+// resoudreToolkit()/toolkitPoste() passent par path.resolve/path.join sur des chemins Windows
+// (lettre de lecteur, barre inverse), exacts seulement sous Windows, comme
+// lib/rapport-erreur.js. versWsl()/toolkitWsl() manipulent des chaînes et se testent partout.
 const HORS_WINDOWS = process.platform !== 'win32'
   ? 'chemins Windows — joué par le job contrats-windows'
   : false;
 
-// Pose les variables données, exécute fn, puis restaure l'environnement exactement comme
-// avant (une valeur absente au départ redevient absente, jamais une chaîne vide).
+// Pose les variables données, exécute fn, puis restaure l'environnement (une valeur absente
+// au départ redevient absente, pas une chaîne vide).
 function avecEnv(vars, fn) {
   const anciennes = {};
   for (const cle of Object.keys(vars)) {
@@ -71,7 +68,7 @@ test('basePoste(), SZH_BASE entourée de blancs, rend la valeur .trim()ée', () 
 });
 
 // =========================================================================================
-// resoudreToolkit(env, dossierModule, existe) — fonction pure, les trois branches
+// resoudreToolkit(env, dossierModule, existe) : fonction pure, les trois branches
 // =========================================================================================
 
 test('resoudreToolkit(), SZH_TOOLKIT renseignée, l’emporte sur tout, même existe toujours vrai et SZH_BASE renseignée', () => {
@@ -150,7 +147,7 @@ test('toolkitPoste(), SZH_TOOLKIT renseignée, rend cette valeur', () => {
 });
 
 // =========================================================================================
-// versWsl() — même comportement que cheminVersWsl() dans lib/portraits.js
+// versWsl() : même comportement que cheminVersWsl() dans lib/portraits.js
 // =========================================================================================
 
 test('versWsl(), lettre de lecteur minusculisée et antislash convertis', () => {
@@ -180,7 +177,7 @@ test('versWsl(), chaîne vide, rend une chaîne vide sans lever', () => {
 });
 
 // =========================================================================================
-// toolkitWsl(...segments) — non-régression sur les littéraux réellement employés
+// toolkitWsl(...segments) : les chemins utilisés ne changent pas
 // =========================================================================================
 
 test('toolkitWsl(), le chemin réellement employé par les tâches de compilation ne bouge pas', () => {
@@ -190,9 +187,8 @@ test('toolkitWsl(), le chemin réellement employé par les tâches de compilatio
   });
 });
 
-// Le Makefile de production est nommé huit fois dans vscodium-user/tasks.json — c'est ce
-// fichier-là que VSCodium exécute quand une rédactrice compile. Ce test relie ce chemin à
-// celui que rend toolkitWsl(), jusqu'ici jamais vérifiés ensemble.
+// vscodium-user/tasks.json nomme huit fois le Makefile de production, que VSCodium exécute
+// quand une rédactrice compile. Ce chemin doit être celui que rend toolkitWsl().
 test('le chemin de Makefile des tâches VSCodium et celui de toolkitWsl() ne divergent pas', () => {
   const cheminTaches = path.join(RACINE_DEPOT, 'vscodium-user', 'tasks.json');
   const contenu = fs.readFileSync(cheminTaches, 'utf8');
@@ -207,10 +203,10 @@ test('le chemin de Makefile des tâches VSCodium et celui de toolkitWsl() ne div
   });
 });
 
-// lib/cmyk.js et lib/portraits.js calculent leur SCRIPT_DEFAUT au chargement : la seule
-// façon fiable de rejouer SZH_TOOLKIT est un node enfant, avant tout require de ces
-// modules (le cache de require rendrait un essai après coup muet). lib/pdfua-hote.js
-// n'est pas contrôlé ici : sa constante MAKEFILE_WSL n'est pas exportée.
+// lib/cmyk.js et lib/portraits.js calculent leur SCRIPT_DEFAUT au chargement : SZH_TOOLKIT se
+// rejoue dans un node enfant, avant tout require de ces modules (le cache de require
+// masquerait un essai après coup). lib/pdfua-hote.js n'est pas contrôlé ici : sa constante
+// MAKEFILE_WSL n'est pas exportée.
 test('lib/cmyk.js et lib/portraits.js suivent SZH_TOOLKIT dès le chargement', () => {
   const cheminCmyk = path.join(COCKPIT, 'lib', 'cmyk.js');
   const cheminPortraits = path.join(COCKPIT, 'lib', 'portraits.js');
@@ -233,8 +229,8 @@ test('lib/cmyk.js et lib/portraits.js suivent SZH_TOOLKIT dès le chargement', (
   }
 });
 
-// Un littéral ProgramData qui revient hors de ces trois fichiers est soit un chemin en
-// dur qu'on croyait éteint, soit un module qui n'a pas suivi le branchement.
+// Un littéral ProgramData hors de ces trois fichiers est un chemin en dur, ou un module qui ne
+// passe pas par lib/poste.js.
 test('aucun littéral ProgramData ne revient hors de la liste blanche', () => {
   const listeBlanche = new Set([
     path.join('lib', 'poste.js'),          // la source du chemin
@@ -293,8 +289,8 @@ test('dossierEditeur() et cheminSysteme() suivent APPDATA et WINDIR', () => {
   });
 });
 
-// Les variables des dossiers Windows ne se lisent qu'ici : un autre module qui les lirait
-// échapperait au jour où le poste n'est plus Windows.
+// Les variables des dossiers Windows ne se lisent que dans lib/poste.js : c'est le seul
+// fichier à adapter pour un autre système.
 test('LOCALAPPDATA, USERPROFILE, APPDATA et WINDIR ne se lisent que dans lib/poste.js', () => {
   const reVariable = /process\.env(\.|\[\s*['"])(LOCALAPPDATA|USERPROFILE|APPDATA|WINDIR)\b/;
   const fautifs = [];

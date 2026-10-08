@@ -1,10 +1,7 @@
 // Tests de la fabrique des panneaux webview (lib/webviews/panneau.js) : un seul panneau par
 // viewType et par clé, remis à zéro à la fermeture, mode Trad en tête du gestionnaire, et
-// la poignée de main PRET. Les deux derniers balaient les sources : tout createWebviewPanel de
-// lib/ passe par la fabrique, et extension.js n'en crée plus aucun.
-//
-// Exécution : depuis la racine du dépôt,
-//   node --test test/js/panneau-unique.test.js
+// la poignée de main PRET. Les deux derniers tests parcourent les sources : tout
+// createWebviewPanel de lib/ passe par la fabrique, et extension.js n'en crée aucun.
 'use strict';
 
 const test = require('node:test');

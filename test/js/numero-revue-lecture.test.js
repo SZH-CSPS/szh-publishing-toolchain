@@ -1,17 +1,13 @@
-// Le nom de la revue, dans le formulaire « Métadonnées du numéro » : affiché, plus saisi.
+// Le nom de la revue dans le formulaire « Métadonnées du numéro » : affiché, pas saisi.
 //
-//   node --test "test/js/*.test.js"
+// Un numéro appartient à l'une des deux revues dès sa création (windows/new-revue.ps1 écrit
+// `revue:`) ; l'ISSN, la langue par défaut, le volume, la couleur annuelle et le lanceur qui
+// liste le numéro en découlent. Changer la revue après coup déplacerait le numéro sans que le
+// reste suive : le champ est donc un texte (media/_numero.js, champLecture), jamais renvoyé à
+// l'hôte.
 //
-// Un numéro est créé dans l'une ou l'autre des deux revues — windows/new-revue.ps1 écrit le
-// jeton `revue:` à la création, et l'ISSN, la langue par défaut, le volume, la couleur
-// annuelle et le lanceur qui listera le numéro en découlent. Le formulaire offrait un choix
-// entre les deux (deux boutons radio) : le changer après coup déplaçait un numéro d'une
-// revue à l'autre sans que rien d'autre ne suive. Le champ est donc devenu un texte
-// (media/_numero.js, champLecture), et ne repart plus jamais à l'hôte.
-//
-// Ce que ce fichier garde : le nom complet de la revue s'affiche, une valeur vide ou hors
-// liste affiche un tiret cadratin plutôt qu'un champ muet, et surtout — c'est le contrôle
-// qui compte — le formulaire ne peut plus envoyer la clé `revue` à l'hôte.
+// Contrôles : le nom complet de la revue s'affiche, une valeur vide ou hors liste affiche un
+// tiret cadratin, et le formulaire n'envoie pas la clé `revue` à l'hôte.
 'use strict';
 
 const test = require('node:test');
@@ -23,17 +19,14 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 const { T } = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'i18n.js'));
 
-// lib/metadonnees-hote.js ne se charge pas par chargerAvecVscodeFactice tel quel : il tire
-// lib/cycle-vie.js, qui construit un vscode.EventEmitter au chargement du module — plus que
-// ce que le faux « vscode » minimal de dom-minimal.js fournit (voir son commentaire :
-// workspace/env seulement). libellesHote() n'en tire que les libellés PLATS (« nom: T(...) »
-// littéral) d'une fonction ; `libelles`, la table indexée par clé i18n que lit
-// media/_numero.js (fonction lib()), est un objet CONSTRUIT par une boucle
-// (`for (const cle of LIBELLES_NUMERO) { libelles[cle] = T(cle); }`) et n'est donc pas vu
-// par cette extraction textuelle — contrats.test.js le documente aussi (liste TABLES). On la
-// reconstruit ici à la main, avec exactement les clés de LIBELLES_NUMERO
-// (lib/metadonnees-hote.js) : les mêmes que celles que CHAMPS (media/_numero.js) résout par
-// lib(champ.libelle) pour le formulaire du numéro.
+// lib/metadonnees-hote.js ne se charge pas par chargerAvecVscodeFactice : il tire
+// lib/cycle-vie.js, qui construit un vscode.EventEmitter au chargement, absent du faux vscode
+// de dom-minimal.js (workspace/env seulement). libellesHote() n'extrait que les libellés
+// écrits « nom: T(...) » ; `libelles`, la table par clé i18n que lit media/_numero.js (lib()),
+// est construite par une boucle sur LIBELLES_NUMERO et échappe à cette extraction (voir la
+// liste TABLES de contrats.test.js). On la reconstruit ici avec les clés de LIBELLES_NUMERO
+// (lib/metadonnees-hote.js), celles que CHAMPS (media/_numero.js) résout par
+// lib(champ.libelle).
 const LIBELLES_NUMERO = ['meta.title', 'meta.revue', 'meta.revue.zeitschrift', 'meta.revue.revue',
   'meta.volume', 'meta.numero', 'meta.date', 'meta.langue', 'meta.langue.aucune',
   'meta.langue.fr', 'meta.langue.de', 'meta.langue.en', 'meta.langue.it',
@@ -55,9 +48,9 @@ function ouvrirNumero() {
   });
 }
 
-// Le formulaire vit dans <div id="numero">, jamais rattaché à <body> dans ce harnais (voir
-// dom-minimal.js, ouvrir() : racineDom() ne connaît que cartes/sections/corps/lignes). On le
-// prend donc par son identifiant, comme la page elle-même (document.getElementById('numero')).
+// Le formulaire vit dans <div id="numero">, que ce harnais ne rattache pas à <body> (voir
+// ouvrir() dans dom-minimal.js : racineDom() ne connaît que cartes/sections/corps/lignes). On
+// le prend par son identifiant, comme la page.
 function conteneurNumero(page) { return page.parId.numero; }
 
 test('la page s’annonce et son formulaire est en place', () => {
@@ -105,15 +98,14 @@ test('une valeur vide ou hors liste affiche un demi-cadratin, pas un champ muet'
     'une revue hors liste n’affiche pas le demi-cadratin attendu');
 });
 
-// ---- Le contrôle qui compte : le formulaire ne renvoie plus jamais le jeton ----
+// ---- Le formulaire ne renvoie jamais le jeton ----
 
 test('le formulaire n’envoie jamais la clé revue à l’hôte, même après avoir touché un autre champ', () => {
   const page = ouvrirNumero();
   page.envoyer({ type: 'valeurs', valeurs: { revue: 'zeitschrift', title: 'Un dossier' } });
   const conteneur = conteneurNumero(page);
 
-  // On touche un autre champ, pour que l'enregistrement ait quelque chose à envoyer — un
-  // formulaire qui n'a rien à dire ne prouverait rien sur ce qu'il tairait le cas échéant.
+  // On modifie un autre champ, pour que l'enregistrement ait quelque chose à envoyer.
   const champTitre = conteneur.querySelectorAll('input[data-cle="title"]')[0];
   assert.ok(champTitre, 'le champ titre est introuvable');
   champTitre.value = 'Un autre titre';
@@ -130,10 +122,9 @@ test('le formulaire n’envoie jamais la clé revue à l’hôte, même après a
   assert.strictEqual(envois[0].modifies.title, 'Un autre titre', 'le champ touché, lui, n’est pas parti');
 });
 
-// Revue F03 (22.09.2026) : szh.metadonnees était enregistrée sans paramètre, donc « numero »
-// perdait le focus des constats qui en portent un (meta/champ-vide, sans-langue…). Le champ
-// visé reçoit le curseur, comme pour la fiche (voir focaliser(), media/_numero.js) ; un
-// focus qui ne correspond à aucune clé de CHAMPS ne fait rien, jamais d'erreur.
+// « numero » reçoit le focus des constats qui en portent un (meta/champ-vide, sans-langue…) :
+// le champ visé reçoit le curseur, comme pour la fiche (focaliser(), media/_numero.js). Un
+// focus qui ne correspond à aucune clé de CHAMPS ne fait rien, sans erreur.
 test('focus amène le champ visé à l’écran et lui pose le curseur', () => {
   const page = ouvrirNumero();
   page.envoyer({ type: 'valeurs', valeurs: { revue: 'revue', title: 'Un dossier' }, focus: 'title' });
@@ -159,8 +150,8 @@ test('aucun élément du formulaire ne porte un contrôle modifiable pour la rev
   const page = ouvrirNumero();
   page.envoyer({ type: 'valeurs', valeurs: { revue: 'revue', title: 'Un dossier' } });
   const conteneur = conteneurNumero(page);
-  // Ni <input>, ni <select> : le seul élément portant data-cle="revue" est le <p> de lecture
-  // posé par champLecture, qui ne porte ni value ni gestionnaire de saisie.
+  // Ni <input> ni <select> : le seul élément data-cle="revue" est le <p> posé par
+  // champLecture, sans value ni gestionnaire de saisie.
   const controles = conteneur.querySelectorAll(
     'input[data-cle="revue"], select[data-cle="revue"], textarea[data-cle="revue"]');
   assert.strictEqual(controles.length, 0, 'un contrôle de saisie porte encore data-cle="revue"');

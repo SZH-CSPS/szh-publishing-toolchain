@@ -1,13 +1,10 @@
-// Le vocabulaire edudoc.ch : parseur MARC 690 (namespace « marc: » toléré), fusion sans
+// Le vocabulaire edudoc.ch : lecteur MARC 690 (préfixe « marc: » toléré), fusion sans
 // suppression, moissonnage par set avec resumptionToken, repli sur 503, cache.
 //
-//   node --test "test/js/*.test.js"
-//
-// AUCUN réseau ici : le moissonnage prend sa fonction de récupération en paramètre, et les
-// tests lui donnent une table de fixtures XML — y compris du XML tronqué et hostile, qui
-// doit rendre moins de records, jamais une exception. Le cache passe par SZH_MOTS_CLES_CACHE
-// pour ne pas toucher C:\ProgramData ; l'écriture atomique de lib/yaml.js ne doit pas
-// laisser de temporaire derrière elle.
+// Aucun réseau : le moissonnage reçoit sa fonction de récupération en paramètre, et les tests
+// lui donnent des fixtures XML, dont du XML tronqué ou hostile qui doit rendre moins de
+// records, sans exception. Le cache passe par SZH_MOTS_CLES_CACHE pour ne pas toucher
+// C:\ProgramData ; l'écriture atomique de lib/yaml.js ne laisse pas de fichier temporaire.
 'use strict';
 
 const test = require('node:test');
@@ -27,7 +24,7 @@ const {
   plierDescripteur, indexerThesaurus, apparierDescripteurs
 } = motsClesEdudoc;
 
-// ---- Fixtures : ce qu'edudoc.ch répond réellement (relevé le 31.08.2026) --------------
+// ---- Fixtures : ce qu'edudoc.ch répond ------------------------------------------------
 
 function enveloppe(corps, requete) {
   return '<?xml version="1.0" encoding="UTF-8"?>\n' +
@@ -38,17 +35,17 @@ function enveloppe(corps, requete) {
     corps + '\n</OAI-PMH>\n';
 }
 
-// Un champ 690, namespace marc: — la forme réelle de l'instance. `de`/`fr` peuvent être
-// null pour simuler une paire incomplète (le sous-champ correspondant n'est simplement pas
-// écrit, comme sur les 10 notices réelles où cela arrive).
+// Un champ 690 avec le préfixe marc:, comme sur l'instance. `de`/`fr` peuvent valoir null
+// pour une paire incomplète : le sous-champ n'est alors pas écrit, comme sur certaines
+// notices réelles.
 function champ690(de, fr) {
   const sousA = de === null ? '' : '\n    <marc:subfield code="a">' + de + '</marc:subfield>';
   const sousB = fr === null ? '' : '\n    <marc:subfield code="b">' + fr + '</marc:subfield>';
   return '  <marc:datafield tag="690" ind1=" " ind2=" ">' + sousA + sousB + '\n  </marc:datafield>';
 }
 
-// Un record OAI complet, avec sa notice marc:record imbriquée — reprend la structure
-// exacte observée (namespace sur record/datafield/subfield, <record> OAI nu).
+// Un record OAI complet avec sa notice marc:record imbriquée, dans la structure de l'instance
+// (préfixe sur record/datafield/subfield, <record> OAI sans préfixe).
 function record(datestamp, paires690, options) {
   const o = options || {};
   const statut = o.deleted ? ' status="deleted"' : '';
@@ -82,9 +79,8 @@ function pageListRecords(records, token) {
   return enveloppe('<ListRecords>' + records.join('') + queue + '</ListRecords>');
 }
 
-// Fragment RÉEL, copié tel quel de l'instance (set Revue, notice oai:edudoc.ch:100984,
-// moissonnage du 31.08.2026) — verrues comprises : indentation propre cette fois (contraste
-// avec OJS), mais le namespace marc: partout, y compris sur <marc:record> lui-même.
+// Fragment copié tel quel de l'instance (set Revue, notice oai:edudoc.ch:100984) : le
+// préfixe marc: est partout, y compris sur <marc:record>.
 const FRAGMENT_REEL = [
   '<record><header><identifier>oai:edudoc.ch:100984</identifier>',
   '<datestamp>2026-03-05T10:07:02Z</datestamp>',
@@ -145,8 +141,8 @@ async function avecCacheAsync(nom, fn) {
   }
 }
 
-// Un https.get factice, identique dans l'esprit à celui de auteurs-ojs.test.js : rejoue les
-// réponses (y compris un 503) sans réseau ni attente réelle.
+// Un https.get factice, comme dans auteurs-ojs.test.js : rejoue les réponses (dont un 503)
+// sans réseau ni attente.
 function fauxTransport(scenario) {
   return (url, options, cb) => {
     const req = new EventEmitter();
@@ -197,8 +193,8 @@ test('extraireRecordsMotsCles : le fragment RÉEL de l’instance, namespace mar
     { de: 'Sonderschulwesen', fr: 'enseignement spécialisé', manque: null },
     { de: 'Sonderpädagogik', fr: 'pédagogie spécialisée', manque: null }
   ]);
-  // Le datafield 245 (titre) et le 700 (auteur, avec son $0 numérique) ne doivent produire
-  // aucun descripteur : seul le 690 compte.
+  // Le datafield 245 (titre) et le 700 (auteur, avec son $0 numérique) ne produisent aucun
+  // descripteur : seul le 690 compte.
   assert.strictEqual(records[0].descripteurs.length, 2);
 });
 
@@ -288,9 +284,8 @@ test('fusionnerMotsCles : et dans l’autre sens — le français retrouve l’a
   assert.strictEqual(fusion[0].manque, null);
 });
 
-// Cas RÉEL rencontré lors du moissonnage complet du 31.08.2026 : « Lernschwierigkeit » porte
-// deux traductions concurrentes sur l'instance. Un vrai désaccord ne doit ni s'écraser en
-// silence, ni faire disparaître l'une des deux formes.
+// Sur l'instance, « Lernschwierigkeit » porte deux traductions concurrentes. Un désaccord
+// réel ne s'écrase pas et ne fait disparaître aucune des deux formes.
 test('fusionnerMotsCles : un désaccord réel entre deux moissons donne deux entrées, jamais un écrasement muet', () => {
   const fusion = fusionnerMotsCles(
     [{ de: 'Lernschwierigkeit', fr: "difficulté d'apprentissage", manque: null }],
@@ -303,11 +298,10 @@ test('fusionnerMotsCles : un désaccord réel entre deux moissons donne deux ent
   assert.ok(fusion.every((m) => m.de === 'Lernschwierigkeit'));
 });
 
-// Symétrique du cas ci-dessus : les trois scénarios de désaccord du fichier (lignes
-// précédentes) varient tous sur le FRANÇAIS avec un ALLEMAND identique — la branche
-// « else if (de !== '' && kd !== '' && plierTexte(existant.de) !== kd) » (mots-cles-edudoc.js,
-// juste avant la règle symétrique du français) n'était donc jamais exercée sur un vrai
-// désaccord côté allemand.
+// Les autres scénarios de désaccord varient sur le français avec un allemand identique ; ce
+// test exerce la branche
+// « else if (de !== '' && kd !== '' && plierTexte(existant.de) !== kd) » (mots-cles-edudoc.js),
+// le désaccord côté allemand.
 test('fusionnerMotsCles : un désaccord réel sur l’ALLEMAND, français identique, donne deux entrées', () => {
   const fusion = fusionnerMotsCles(
     [{ de: 'Lernbehinderung', fr: 'difficulté', manque: null }],
@@ -344,12 +338,10 @@ test('fusionnerMotsCles : une entrée sans allemand ni français est écartée',
   assert.deepStrictEqual(fusionnerMotsCles([], [{ de: '', fr: '' }]), []);
 });
 
-// Cas RÉEL, relevé sur C:\ProgramData\SZH\mots-cles.json : 1148 entrées pour 922 paires
-// distinctes, 226 doublons exacts — « Prävention (na) / prévention (na) » y figure 46 fois.
-// La cause : après un fork sur désaccord (même allemand, français distinct), parDe continue
-// de désigner l'entrée D'ORIGINE (jamais réécrite), donc un troisième descripteur identique
-// au FORK ne le retrouve jamais par ce chemin et forke une nouvelle fois — répété à chaque
-// notice qui remoissonne le même terme.
+// Après un fork sur désaccord (même allemand, français distinct), parDe désigne toujours
+// l'entrée d'origine : un troisième descripteur identique au fork ne le retrouve pas par ce
+// chemin et forkerait à chaque moisson. Le cache du poste comptait ainsi 226 doublons exacts
+// sur 1148 entrées.
 test('fusionnerMotsCles : un doublon rigoureusement identique, répété après un fork, ne s’empile pas', () => {
   const moisson = [{ de: 'Prävention (na)', fr: 'prévention', manque: null }];
   for (let i = 0; i < 5; i++) {
@@ -384,9 +376,8 @@ test('fusionnerMotsCles : une chaîne de trois forks légitimes, chacun redondé
   assert.ok(fusion.every((m) => m.de === 'X'));
 });
 
-// Le prochain rafraîchissement appelle fusionnerMotsCles(cache.motsCles, nouveaux) — un
-// cache DÉJÀ pollué (moissonné avant la correction) doit donc se replier tout seul dès qu'il
-// retraverse fusionnerMotsCles, même sans aucun mot-clé neuf à fusionner.
+// Le rafraîchissement appelle fusionnerMotsCles(cache.motsCles, nouveaux) : un cache qui
+// contient déjà des doublons se replie dès qu'il la traverse, même sans mot-clé neuf.
 test('fusionnerMotsCles : un cache déjà pollué se replie de lui-même, même sans rien de neuf à fusionner', () => {
   const pollue = [
     { de: 'Prävention (na)', fr: 'prévention', manque: null },
@@ -437,7 +428,7 @@ test('moissonnerMotsCles : suit les resumptionToken — le token seul sur les pa
   const setSpec = 'Revue suisse de pédagogie spécialisée';
   const premiereUrl = endpoint + '?verb=ListRecords&metadataPrefix=marcxml&set=' +
     encodeURIComponent(setSpec);
-  // Jeton fidèle à la forme réelle d'edudoc.ch : le nom du set y est inclus, avec espaces.
+  // Jeton dans la forme d'edudoc.ch : le nom du set y est inclus, avec espaces.
   const jeton1 = setSpec + '___4a9y8lth';
   const jeton2 = setSpec + '___infsjro7';
   const urlsVues = [];
@@ -693,9 +684,9 @@ test('rafraichirMotsCles : premier moissonnage sans cache -> pas de from, cache 
 
 // ---- Export vers edudoc : appariement par le thésaurus, jamais par position -------------
 //
-// keywords.fr et keywords.de sont chacune triées alphabétiquement de leur côté dans le
-// .meta.yaml réel : la n-ième entrée française ne correspond pas à la n-ième allemande. Les
-// thésaurus ci-dessous sont construits à la main, jamais le vrai cache, jamais de disque.
+// keywords.fr et keywords.de sont triées alphabétiquement chacune de son côté dans le
+// .meta.yaml : la n-ième entrée française ne correspond pas à la n-ième allemande. Les
+// thésaurus ci-dessous sont construits à la main, sans cache ni disque.
 
 test('plierDescripteur : les trois apostrophes courbes/obliques, accents, casse, espaces', () => {
   assert.strictEqual(plierDescripteur('plan d’études'), plierDescripteur("plan d'etudes"));
@@ -709,8 +700,8 @@ test('plierDescripteur : les trois apostrophes courbes/obliques, accents, casse,
 });
 
 test('apparierDescripteurs : le piège positionnel — deux listes triées chacune de leur côté, jamais croisées', () => {
-  // Thésaurus réel condensé : quatre paires, l'appariement fr<->de n'a rien à voir avec
-  // l'ordre alphabétique de chaque liste prise séparément.
+  // Thésaurus condensé : quatre paires, dont l'appariement fr<->de ne suit pas l'ordre
+  // alphabétique de chaque liste.
   const index = indexerThesaurus([
     { de: 'Orientierungsstufe', fr: "cycle d'orientation", manque: null },
     { de: 'Lernspiel', fr: 'jeu éducatif', manque: null },
@@ -728,7 +719,7 @@ test('apparierDescripteurs : le piège positionnel — deux listes triées chacu
     { de: 'kognitiver Prozess', fr: 'processus cognitif' },
     { de: 'Pilotprojekt', fr: 'projet pilote' }
   ]);
-  // La protection explicite : aucun descripteur ne doit croiser les deux paires piégeuses.
+  // Aucun descripteur ne croise les deux paires piégeuses.
   assert.ok(!descripteurs.some((d) => d.fr === "cycle d'orientation" && d.de !== 'Orientierungsstufe'));
   assert.ok(!descripteurs.some((d) => d.fr === 'processus cognitif' && d.de !== 'kognitiver Prozess'));
 });
@@ -791,9 +782,8 @@ test('apparierDescripteurs : paire incomplète du thésaurus (français manquant
 });
 
 test('indexerThesaurus + apparierDescripteurs : la clé exacte prime sur la clé dé-qualifiée', () => {
-  // « Tessin (na) » posé AVANT l'entrée exacte, pour prouver que l'ordre d'indexation ne
-  // change rien : la passe des clés exactes est intégralement posée avant celle des
-  // clés dé-qualifiées, quel que soit l'ordre des entrées dans le thésaurus.
+  // « Tessin (na) » est posé avant l'entrée exacte : les clés exactes sont toutes indexées
+  // avant les clés sans qualificatif, quel que soit l'ordre du thésaurus.
   const index = indexerThesaurus([
     { de: 'Tessin (na)', fr: 'Tessin (na)', manque: null },
     { de: 'Ticino', fr: 'Tessin', manque: null }
@@ -803,12 +793,10 @@ test('indexerThesaurus + apparierDescripteurs : la clé exacte prime sur la clé
   assert.deepStrictEqual(nonReconnus, []);
 });
 
-// Cas RÉEL rencontré sur 04-les-mesures-individuelles-de-pedagogie : le thésaurus porte deux
-// entrées distinctes pour « Lernschwierigkeit » (deux traductions concurrentes — le même
-// désaccord que fusionnerMotsCles refuse d'écraser, voir son propre test plus haut). Le
-// terme allemand saisi tombe sur l'une, le terme français saisi sur l'autre : sans fusion
-// après coup, un seul concept ressortirait en deux champs 690 avec le même $a et deux $b
-// contradictoires.
+// Le thésaurus porte deux entrées pour « Lernschwierigkeit » (deux traductions concurrentes,
+// que fusionnerMotsCles garde). Le terme allemand saisi tombe sur l'une, le français sur
+// l'autre : elles se fondent en un seul descripteur, sinon un même concept sortirait en deux
+// champs 690 avec le même $a et deux $b contradictoires.
 test('apparierDescripteurs : deux entrées du thésaurus qui partagent leur allemand se fondent en un descripteur', () => {
   const index = indexerThesaurus([
     { de: 'Lernschwierigkeit', fr: "difficulté d'apprentissage", manque: null },
@@ -834,8 +822,8 @@ test('apparierDescripteurs : symétrique — deux entrées qui partagent leur fr
   assert.deepStrictEqual(nonReconnus, []);
 });
 
-// Garde-fou : deux entrées réellement distinctes (allemand ET français différents) ne
-// doivent jamais se fondre, même saisies dans la même paire d'appel.
+// Deux entrées distinctes (allemand et français différents) ne se fondent pas, même saisies
+// dans la même paire.
 test('apparierDescripteurs : deux entrées vraiment distinctes ne se fondent pas', () => {
   const index = indexerThesaurus([
     { de: 'Orientierungsstufe', fr: "cycle d'orientation", manque: null },

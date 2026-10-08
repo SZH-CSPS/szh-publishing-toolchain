@@ -1,15 +1,12 @@
 'use strict';
-// Source UNIQUE des motifs de saut (t.skip) admis par runner. Avant ce module, la table
-// MOTIFS/ADMIS ne vivait que dans verifier-tap.js : gardes.js (qui ÉCRIT les motifs via ses
-// assistants `sauter.*`) n'avait aucun moyen de savoir si le texte qu'il composait serait
-// un jour reconnu par la porte qui le RELIT. Une famille ajoutée d'un côté sans l'autre est
-// exactement le genre d'écart qui a coûté trois poses du tag à la 1.2.0 (motif « corpus »
-// mal formulé, refusé par une porte qui ne citait la formule admise nulle part ailleurs).
+// Les motifs de saut (t.skip) admis par runner. gardes.js écrit les motifs par ses
+// assistants `sauter.*`, verifier-tap.js les relit : les deux lisent cette table, pour qu'une
+// famille ajoutée d'un côté soit connue de l'autre.
 //
 // L'ordre de MOTIFS compte : verifier-tap.js retient la première famille dont un fragment
-// apparaît dans le motif lu. Les fragments sont des sous-chaînes LITTÉRALES, jamais des
-// regex : un `.` ou une parenthèse dans un motif réel (un chemin Windows, par exemple) ne
-// doit jamais se lire comme une syntaxe.
+// apparaît dans le motif lu. Les fragments sont des sous-chaînes littérales, pas des regex :
+// un `.` ou une parenthèse dans un motif réel (un chemin Windows) ne doit pas se lire comme
+// une syntaxe.
 
 const MOTIFS = {
   pliage: ['pliage des accents'],
@@ -20,16 +17,16 @@ const MOTIFS = {
   horsWindows: ['chemins Windows'],
   corpus: ['corpus hors dépôt absent', 'aucun .docx dans'],
   eleve: ['processus élevé'],
-  // courriel-support.test.js rend un gabarit par VSCodium-en-Node : aucun runner d'intégration
-  // continue n'a d'installation VSCodium.
+  // courriel-support.test.js rend un gabarit par VSCodium-en-Node : aucun runner de CI n'a
+  // VSCodium.
   vscodium: ['VSCodium introuvable', 'pas Windows'],
-  // Aucun runner d'intégration continue n'a d'installation en C:\ProgramData\SZH, donc les
-  // contrôles d'isolement n'y ont rien à mesurer. La base d'auteurs moissonnée d'OJS
-  // (C:\ProgramData\SZHuteurs.json) en fait partie : c'est le banc des noms qui la lit.
+  // Aucun runner de CI n'a d'installation dans C:\ProgramData\SZH : les contrôles
+  // d'isolement n'y ont rien à mesurer. La base d'auteurs moissonnée d'OJS
+  // (C:\ProgramData\SZH\auteurs.json), lue par le banc des noms, en fait partie.
   production: ['installation de production absente', 'base OJS du poste absente'],
-  // Vale : présent sur ubuntu (job `contrats` de ci.yml l'installe et pose
-  // SZH_VALE_OBLIGATOIRE=1) ; absent sur windows-latest et sur un poste qui ne l'a pas encore
-  // dans son image WSL.
+  // Vale : installé sur ubuntu (le job `contrats` de ci.yml pose aussi
+  // SZH_VALE_OBLIGATOIRE=1) ; absent sur windows-latest et sur un poste dont l'image WSL ne
+  // l'a pas encore.
   vale: ['vale absent'],
   // Un correctif de image/patches/ n'atteint le WeasyPrint de la WSL qu'à la reconstruction
   // de l'image : d'ici là, le poste compile avec un WeasyPrint qui ne l'a pas.
@@ -37,14 +34,13 @@ const MOTIFS = {
 };
 
 const ADMIS = {
-  // Pas de PowerShell, pas de WSL dans le job `contrats` ; vale y est installé et
-  // SZH_VALE_OBLIGATOIRE=1 y transforme donc son absence en échec — vale n'est PAS dans
-  // cette liste. pandoc (famille distincte de wsl) reste admis : un test qui teste
-  // spécifiquement l'ABSENCE de pandoc (plutôt que son résultat) peut légitimement sauter
-  // même là où il est installé. python est exigé (SZH_PYTHON_OBLIGATOIRE).
+  // Ni PowerShell ni WSL dans le job `contrats`. vale y est installé et
+  // SZH_VALE_OBLIGATOIRE=1 fait de son absence un échec : il n'est pas dans cette liste.
+  // pandoc reste admis : un test qui vérifie l'absence de pandoc peut sauter même là où il
+  // est installé. python est exigé (SZH_PYTHON_OBLIGATOIRE).
   ubuntu: ['powershell', 'horsWindows', 'wsl', 'pandoc', 'corpus', 'vscodium', 'production'],
-  // PowerShell exigé (SZH_PS_OBLIGATOIRE) ; le runner tourne élevé, donc l'ACL ne bloque
-  // rien ; ni pandoc ni vale n'y sont installés (le job `contrats-windows` n'installe que
+  // PowerShell exigé (SZH_PS_OBLIGATOIRE) ; le runner tourne élevé, l'ACL ne bloque donc
+  // rien ; ni pandoc ni vale ne sont installés (le job `contrats-windows` n'installe que
   // Node).
   windows: ['wsl', 'pandoc', 'corpus', 'eleve', 'python', 'vscodium', 'production', 'vale'],
   // Un poste complet : ne restent que les accents du pandoc 3.9 de Windows et le corpus

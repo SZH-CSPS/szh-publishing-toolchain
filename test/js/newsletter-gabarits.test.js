@@ -1,11 +1,9 @@
 // La newsletter (lib/secretariat.js, export-templates/newsletter-*.twig) et les adresses
 // d'OJS fixées par Pronto (lib/ojs-adresses.js, écrites par lib/export-ojs.js).
 //
-//   node --test test/js/newsletter-gabarits.test.js
-//
 // Les sorties attendues sont écrites en toutes lettres, d'après les modèles de la newsletter
-// réelle (Mailchimp) : le balisage, l'ordre des lignes et les liens sont ceux de la
-// rédaction, transposés en UTF-8 sans entités. Les noms et les titres sont inventés.
+// (Mailchimp) : balisage, ordre des lignes et liens de la rédaction, en UTF-8 sans entités.
+// Les noms et les titres sont inventés.
 'use strict';
 
 const test = require('node:test');

@@ -1,14 +1,12 @@
 // Parité de l'arborescence entre PowerShell et JavaScript.
 //
-//   node --test "test/js/*.test.js"
-//
 // L'arbre de la rédaction (Revue, Zeitschrift, Books, _Archive) et la façon de reconnaître un
-// produit sur le disque sont écrits deux fois : dans windows/szh-produits.ps1 ($SzhSousDossiers,
-// $SzhProduits, Get-SzhJetonDossier) et dans le cockpit (lib/kirby-contenu.js, lib/profil.js).
-// Un dossier renommé d'un seul côté ne casse rien à grand bruit : le lanceur crée « Books »
-// pendant que le cockpit cherche ailleurs, et les livres disparaissent d'un côté. Ce test lit
-// le fichier PowerShell en texte, sans recopier ses valeurs, et les confronte aux constantes
-// exportées par les deux modules JavaScript.
+// produit sur le disque sont écrits deux fois : dans windows/szh-produits.ps1
+// ($SzhSousDossiers, $SzhProduits, Get-SzhJetonDossier) et dans le cockpit
+// (lib/kirby-contenu.js, lib/profil.js). Un dossier renommé d'un seul côté ne fait pas
+// d'erreur visible : le lanceur crée « Books » pendant que le cockpit cherche ailleurs. Ce
+// test lit le fichier PowerShell en texte et compare ses valeurs aux constantes des deux
+// modules JavaScript.
 'use strict';
 
 const test = require('node:test');

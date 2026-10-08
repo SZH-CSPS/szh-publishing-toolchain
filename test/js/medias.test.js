@@ -1,11 +1,6 @@
-// lib/medias.js : ce que l'extraction hors d'extension.js rend enfin testable seul —
-// dimensions d'image lues dans les en-têtes, noms de fichiers sûrs, versions d'un
-// portrait, et détection des doublons dans media/. Aucune de ces fonctions ne dépendait
-// de vscode ni de l'état du module hôte ; avant l'extraction, seul un hôte activé de bout
-// en bout (test/js/hote.test.js) ou une webview rendue (test/js/webviews.test.js) les
-// exerçait, et jamais sur leurs cas limites.
-//
-//   node --test "test/js/*.test.js"
+// Tests de lib/medias.js : dimensions d'image lues dans les en-têtes, noms de fichiers sûrs,
+// versions d'un portrait, détection des doublons dans media/. Ces fonctions ne dépendent pas
+// de vscode et se testent seules, cas limites compris.
 'use strict';
 
 const test = require('node:test');
@@ -64,11 +59,10 @@ test('dimensions : JPEG, le marqueur SOF0 est retrouvé', () => {
   } finally { fs.rmSync(dossier, { recursive: true, force: true }); }
 });
 
-// Un JPEG d'imprimerie porte son profil ICC CMJN en segments APP2, et un profil comme ISO
-// Coated v2 pèse près de deux mégaoctets : le marqueur SOF tombe alors bien au-delà des 64
-// premiers kilooctets qu'une lecture à fenêtre fixe explorerait. Même piège, même remède
-// que lib/cmyk.js#composantesJpeg (test miroir dans test/js/cmjn-couleurs.test.js) : le
-// fichier est parcouru segment par segment, jamais sur une fenêtre de tête.
+// Un JPEG d'imprimerie porte son profil ICC CMJN en segments APP2 ; un profil comme ISO Coated
+// v2 pèse près de 2 Mo, et le marqueur SOF tombe bien au-delà des 64 premiers Ko. Le fichier
+// est parcouru segment par segment, comme dans lib/cmyk.js#composantesJpeg (test miroir dans
+// test/js/cmjn-couleurs.test.js).
 test('dimensions : JPEG, le marqueur SOF est retrouvé même derrière un gros profil ICC (> 64 Ko)', () => {
   const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-medias-'));
   try {
@@ -346,12 +340,12 @@ test('empreintesPartagees : ne calcule le hachage que pour les tailles partagée
     fs.writeFileSync(path.join(dossier, 'c.png'), Buffer.alloc(10, 2));   // même taille, autre contenu
     fs.writeFileSync(path.join(dossier, 'd.png'), Buffer.alloc(20, 3));   // taille unique
     const empreintes = medias.empreintesPartagees(dossier, ['a.png', 'b.png', 'c.png', 'd.png']);
-    // a et b partagent leur taille ET leur contenu : même empreinte, donc doublons.
+    // a et b partagent taille et contenu : même empreinte, donc doublons.
     assert.strictEqual(empreintes.get('a.png'), empreintes.get('b.png'));
-    // c partage la taille de a/b mais pas le contenu : présent, mais une empreinte différente.
+    // c a la taille de a/b mais un autre contenu : présent, avec une autre empreinte.
     assert.ok(empreintes.has('c.png'));
     assert.notStrictEqual(empreintes.get('c.png'), empreintes.get('a.png'));
-    // d est seul à sa taille : jamais haché, absent de la table.
+    // d est seul à sa taille : pas haché, absent de la table.
     assert.strictEqual(empreintes.has('d.png'), false);
   } finally { fs.rmSync(dossier, { recursive: true, force: true }); }
 });

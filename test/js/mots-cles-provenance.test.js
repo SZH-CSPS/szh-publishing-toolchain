@@ -1,26 +1,16 @@
-// Masquage du qualificatif de PROVENANCE d'un mot-clé edudoc (« Barrierefreiheit (szh) »,
-// « inclusion (CSPS) », « plan d'études (na) ») : la forme canonique complète part dans le
-// .meta.yaml et dans le CSV Edudoc, mais ce qualificatif-là ne doit jamais s'imprimer — voir
-// sansQualificatifDeProvenance dans lib/mots-cles-edudoc.js pour la règle et le pourquoi.
+// Masquage du qualificatif de provenance d'un mot-clé edudoc (« Barrierefreiheit (szh) »,
+// « inclusion (CSPS) », « plan d'études (na) ») : la forme complète part dans le .meta.yaml et
+// dans le CSV Edudoc, mais le qualificatif ne s'imprime pas (voir
+// sansQualificatifDeProvenance dans lib/mots-cles-edudoc.js).
 //
-//   node --test "test/js/*.test.js"
+// Ce fichier couvre la fonction JavaScript et l'égalité de sa liste fermée avec
+// QUALIFICATIFS_PROVENANCE de pipeline/filters/szh-maquette.lua, qui fait le même travail
+// pour le PDF et le HTML. Le masquage dans l'export OJS est couvert par
+// test/js/export-ojs.test.js.
 //
-// Ce fichier ne couvre QUE la moitié JavaScript de la règle : la fonction elle-même
-// (sansQualificatifDeProvenance) et l'égalité de sa liste fermée avec celle de
-// pipeline/filters/szh-maquette.lua (QUALIFICATIFS_PROVENANCE), qui fait le même travail pour
-// le PDF et le HTML. Le dédoublonnage et le masquage dans l'export OJS réel (l'XML produit)
-// sont couverts dans test/js/export-ojs.test.js, qui a déjà tout l'attirail pour monter un
-// numéro complet.
-//
-// ⚠ Ce que CE fichier NE couvre PAS : le comportement RÉEL du filtre Lua (masquage, tri
-// alphabétique sur la forme affichée, dédoublonnage) tel qu'exécuté par pandoc sur
-// resumes[].motscles — la fonction qui alimente à la fois la galley HTML et le PDF
-// (szh-article.html). L'éprouver demanderait de faire tourner pandoc, comme le fait
-// test/filtres-pandoc.test.js pour le tri des mots-clés (A8) déjà en place — mais ce
-// fichier-ci est hors du périmètre de ce chantier (voir la consigne qui l'a produit). La
-// liste et la fonction Lua ont été écrites en miroir exact de leur équivalent JS, et
-// réutilisent cle_tri_motcle (déjà éprouvé par filtres-pandoc.test.js) pour le
-// dédoublonnage — mais aucun test exécutable ne le prouve ici.
+// Non couvert : le comportement du filtre Lua exécuté par pandoc sur resumes[].motscles
+// (masquage, tri sur la forme affichée, dédoublonnage par cle_tri_motcle). Il faudrait faire
+// tourner pandoc, comme test/filtres-pandoc.test.js le fait pour le tri des mots-clés.
 'use strict';
 
 const test = require('node:test');
@@ -43,7 +33,7 @@ test('provenance : chaque jeton de la liste fermée est masqué, dans les deux c
         'jeton non masqué : (' + forme + ')');
     }
   }
-  // Une casse mêlée, comme le thésaurus les écrit parfois réellement (« Szh », « Na »).
+  // Une casse mêlée, comme le thésaurus en écrit parfois (« Szh », « Na »).
   assert.strictEqual(motsClesEdudoc.sansQualificatifDeProvenance('Barrierefreiheit (Szh)'),
     'Barrierefreiheit');
   assert.strictEqual(motsClesEdudoc.sansQualificatifDeProvenance('accessibilité (Na)'),
@@ -51,8 +41,8 @@ test('provenance : chaque jeton de la liste fermée est masqué, dans les deux c
 });
 
 test('provenance : une parenthèse de SENS en fin de libellé n’est jamais touchée', () => {
-  // Les cas réels cités par Robin, qui distinguent deux concepts ou portent un acronyme
-  // officiel : un « tout ce qui est entre parenthèses » les aurait cassés.
+  // Des parenthèses qui distinguent deux concepts ou portent un acronyme officiel : une règle
+  // « tout ce qui est entre parenthèses » les casserait.
   for (const libelle of [
     'diagnostic (résultat)',
     'diagnostic (processus)',
@@ -67,8 +57,7 @@ test('provenance : une parenthèse de SENS en fin de libellé n’est jamais tou
 });
 
 test('provenance : une parenthèse au MILIEU du libellé n’est jamais touchée', () => {
-  // Même quand son contenu est, par malchance, l'un des cinq jetons : seule la parenthèse
-  // FINALE compte, jamais une recherche n'importe où dans le texte.
+  // Seule la parenthèse finale compte, même quand une autre contient l'un des cinq jetons.
   const libelle = 'Formation (SZH) continue';
   assert.strictEqual(motsClesEdudoc.sansQualificatifDeProvenance(libelle), libelle);
 });
@@ -84,11 +73,9 @@ test('provenance : une valeur vide, nulle ou non-chaîne ne fait pas lever d’e
   assert.strictEqual(motsClesEdudoc.sansQualificatifDeProvenance(null), '');
 });
 
-// Cas dégénéré signalé après coup : un mot-clé réduit à son seul qualificatif de provenance
-// devient une chaîne vide. Personne ne tape « (na) » tout seul et aucun descripteur du
-// thésaurus n'a cette forme, mais la saisie manuelle reste ouverte, et c'est à l'appelant
-// (lib/export-ojs.js, pipeline/filters/szh-maquette.lua) d'écarter l'entrée une fois vidée —
-// cette fonction-ci, elle, ne fait QUE masquer, elle ne filtre rien.
+// Un mot-clé réduit à son qualificatif devient une chaîne vide. La fonction ne fait que
+// masquer : c'est à l'appelant (lib/export-ojs.js, pipeline/filters/szh-maquette.lua)
+// d'écarter l'entrée vidée.
 test('provenance : un mot-clé réduit à son seul qualificatif devient une chaîne vide', () => {
   assert.strictEqual(motsClesEdudoc.sansQualificatifDeProvenance('(na)'), '');
   assert.strictEqual(motsClesEdudoc.sansQualificatifDeProvenance('(szh)'), '');
@@ -97,10 +84,9 @@ test('provenance : un mot-clé réduit à son seul qualificatif devient une cha�
 
 // ---- L'accord des deux listes, Lua et JS ----------------------------------------------
 //
-// Même patron que test/js/emplacements.test.js pour l'emplacement des revues (Lua/PowerShell
-// là-bas, ici Lua/JS) : lire les DEUX fichiers et comparer, pour qu'une modification d'un
-// seul côté fasse échouer ce test plutôt que de diverger en silence entre le PDF et la page
-// publique d'ojs.szh.ch.
+// Le test lit les deux fichiers et compare : une modification d'un seul côté le fait échouer,
+// au lieu de faire diverger le PDF et la page publique d'ojs.szh.ch (même méthode que
+// test/js/emplacements.test.js).
 test('provenance : la liste des qualificatifs est identique en Lua et en JavaScript', () => {
   const lua = fs.readFileSync(LUA_MAQUETTE, 'utf8');
   const bloc = lua.match(/local QUALIFICATIFS_PROVENANCE = \{([^}]*)\}/);
@@ -111,9 +97,7 @@ test('provenance : la liste des qualificatifs est identique en Lua et en JavaScr
   assert.deepStrictEqual(clesLua.slice().sort(), motsClesEdudoc.QUALIFICATIFS_PROVENANCE.slice().sort(),
     'la liste Lua (' + clesLua.join(', ') + ') et la liste JS (' +
     motsClesEdudoc.QUALIFICATIFS_PROVENANCE.join(', ') + ') des qualificatifs de provenance ont divergé');
-  // Et la fonction Lua existe bien, appelée par le même nom que celui documenté ici et dans
-  // le commentaire de mots-cles-edudoc.js — un renommage silencieux romprait le lien décrit
-  // entre les deux fichiers sans qu’aucun test ne le remarque autrement.
+  // La fonction Lua existe sous le nom cité ici et dans mots-cles-edudoc.js.
   assert.ok(lua.indexOf('local function sans_qualificatif_provenance(texte)') !== -1,
     'sans_qualificatif_provenance a disparu ou a été renommée dans szh-maquette.lua');
 });

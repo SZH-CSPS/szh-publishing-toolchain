@@ -1,62 +1,42 @@
-// pipeline/manuscrit-nettoyer.py : la CLI du nettoyeur de manuscrit (article), §8 de
-// docs/ARCHITECTURE-nettoyeur-manuscrit.md — le CHAÎNON qui branche les six modules
-// (manuscrit_docx, manuscrit_modele, manuscrit_typo, manuscrit_regles, manuscrit_gabarit).
-// Ce fichier éprouve les contrôles demandés pour ce chantier :
-//   1. le refus du suivi de modifications (w:ins) : message clair, RIEN écrit sur le disque ;
-//   2. le code de sortie : non nul dès qu'une alerte `error` existe, nul sinon ;
-//   3. la chaîne complète sur un manuscrit fabriqué : le .docx produit se relit par
+// Tests de pipeline/manuscrit-nettoyer.py, la CLI du nettoyeur de manuscrit, qui enchaîne
+// manuscrit_docx, manuscrit_modele, manuscrit_typo, manuscrit_regles et manuscrit_gabarit
+// (voir docs/ARCHITECTURE-nettoyeur-manuscrit.md). Contrôles :
+//   1. un .docx en suivi de modifications (w:ins) est refusé, sans rien écrire ;
+//   2. le code de sortie est non nul dès qu'une alerte `error` existe, nul sinon ;
+//   3. chaîne complète sur un manuscrit fabriqué : le .docx produit se relit par
 //      pronto-lire.py, le rapport JSON porte les traces de décision et les alertes ;
-//   4. --analyse-seule : aucun .docx écrit, mais bien un rapport ;
-//   5. le repli de seuil : au-delà de dix occurrences d'une même règle, dix détaillées, le
-//      total donné (délégué à manuscrit_regles.grouper(), déjà éprouvé ailleurs — ici on
-//      prouve que LA CLI le relaie tel quel jusqu'au rapport) ;
-//   6. les flux ne se mélangent pas : une seule ligne sur stdout, la progression sur stderr ;
-//   7. un nom de fichier accentué traverse toute la chaîne sans plantage d'encodage ;
-//   8. les onze manuscrits réels de tmp/corpus-relecture/lot-A/ passent la chaîne complète
-//      sans exception — sauté sous un motif nommé si le corpus (hors git) est absent ;
-//   9. révision du 19.09.2026 — un fichier verrou `~$*.docx` est refusé proprement (code 2,
-//      code_refus='fichier-verrou'), avant toute lecture ;
-//   10. révision du 19.09.2026 — la langue de traitement vient du PRODUIT, jamais du document
-//       déclaré ; un désaccord (ex. `de-CH` sur un article de la Revue) lève une alerte
-//       warning, sans jamais changer la langue réellement utilisée ;
-//   11. révision du 19.09.2026 — un repli typographique (pandoc/WSL indisponible) lève une
-//       alerte warning ET porte `typographie: "repli"` sur la ligne stdout ; --sans-typo porte
-//       aussi "repli" sur cette ligne, mais SANS lever l'alerte (choix explicite, pas une
-//       panne) ;
-//   12. LE test de production (révision du 19.09.2026) : la CLI tourne réellement DANS la WSL
-//       (comme le lanceur en production), sur un manuscrit dont la typographie doit être
-//       appliquée — la panne mesurée avant cette révision (repli silencieux car wsl.exe
-//       n'existe pas dans la distro) ne peut être vue que là.
-//   13. Révision du 21.09.2026 — branchement de manuscrit_vale.py, manuscrit_biblio.py et
-//       manuscrit_annoter.py (jusque-là exposés en fonctions pures, jamais appelés d'ici) :
-//       un manuscrit fabriqué qui porte les quatre origines d'alerte à la fois (structurel,
-//       vocabulaire, bibliographie, typographie), `dans_docx` renseigné sur chacune, le .docx
-//       produit porte bien w:ins/w:del (le DOI corrigé) et comments.xml (la forme épicène),
-//       --analyse-seule n'écrit toujours rien, --sans-annotation n'écrit ni révision ni
-//       commentaire, --sans-reseau porte bien jusqu'à bibliographie.crossref.indisponible.
-//       Sauté proprement si vale est absent du poste (ni PATH ni WSL) ; SZH_VALE_OBLIGATOIRE=1
-//       transforme ce saut en échec, comme test/js/manuscrit-vale.test.js.
-//   14. Révision du 21.09.2026 (soir) — les trois défauts réels de manuscrit_annoter.py
-//       (chevauchement de révisions, mésancrage d'un `found` court, frontière de
-//       w:hyperlink) sont corrigés en amont : `2-dense_…`, le déclencheur réel de l'ancien
-//       défaut, s'annote désormais pour de vrai (révisions/commentaires posés, XML bien
-//       formé, jamais Annotation.Impossible).
-//   15. Le FILET DE SÉCURITÉ de la CLI (try/except + validation XML + restauration autour de
-//       manuscrit_annoter.annoter()) reste éprouvé indépendamment de l'état de ce module, par
-//       injection de dépendance (mod.ma.annoter remplacé après chargement) — jamais une
-//       modification du code de production pour le faire échouer.
-//   16. Révision du 21.09.2026 ter — `_marquer_dans_docx()` recopie désormais le verdict de
-//       `stats['devenir']` (manuscrit_annoter.annoter()) au lieu de le déduire de `action` :
-//       une alerte `fix`/`track` avec `suggested`, DÉMOTÉE en commentaire par le chevauchement
-//       (§7 ter, point « 2 bis »), doit ressortir `dans_docx: 'commentaire'`, jamais
-//       'revision'. Même moteur d'injection que le contrôle n°15.
+//   4. --analyse-seule n'écrit aucun .docx, mais un rapport ;
+//   5. au-delà de dix occurrences d'une règle, dix sont détaillées et le total donné
+//      (manuscrit_regles.grouper(), relayé tel quel jusqu'au rapport) ;
+//   6. stdout porte une seule ligne, la progression va sur stderr ;
+//   7. un nom de fichier accentué traverse la chaîne ;
+//   8. les onze manuscrits de tmp/corpus-relecture/lot-A/ passent la chaîne sans exception
+//      (sauté sous un motif nommé si le corpus est absent) ;
+//   9. un fichier verrou `~$*.docx` est refusé (code 2, code_refus='fichier-verrou') avant
+//      toute lecture ;
+//   10. la langue de traitement vient du produit ; une langue déclarée différente (`de-CH`
+//       pour la Revue) lève une alerte warning sans changer la langue utilisée ;
+//   11. un repli typographique (pandoc ou WSL indisponible) lève une alerte warning et porte
+//       `typographie: "repli"` sur la ligne stdout ; --sans-typo porte aussi "repli", sans
+//       alerte ;
+//   12. la CLI tourne dans la WSL, comme en production, et applique la typographie : c'est le
+//       seul endroit où un repli silencieux se verrait ;
+//   13. manuscrit_vale.py, manuscrit_biblio.py et manuscrit_annoter.py sont branchés : un
+//       manuscrit porte des alertes des quatre origines (structurel, vocabulaire,
+//       bibliographie, typographie), chacune avec `dans_docx` ; le .docx porte w:ins/w:del et
+//       comments.xml ; --analyse-seule, --sans-annotation et --sans-reseau sont respectés.
+//       Sauté si vale est absent (ni PATH ni WSL) ; SZH_VALE_OBLIGATOIRE=1 en fait un échec ;
+//   14. `2-dense_…` s'annote (révisions ou commentaires posés, XML bien formé) ;
+//   15. le filet de sécurité de la CLI (try/except, validation XML et restauration autour de
+//       manuscrit_annoter.annoter()) est éprouvé en remplaçant mod.ma.annoter après chargement ;
+//   16. `_marquer_dans_docx()` recopie `stats['devenir']` : une alerte `fix`/`track` changée en
+//       commentaire par un chevauchement ressort `dans_docx: 'commentaire'`.
 //
-//   node --test test/js/manuscrit-nettoyer.test.js
+// Les .docx de test sont fabriqués par un programme Python écrit à la volée. Gardes de
+// test/js/gardes.js : python() et sansPandocWsl/SZH_WSL_OBLIGATOIRE (contrôle n°12).
 //
-// Patron : test/js/manuscrit-gabarit.test.js (fabrication de fixtures .docx via un petit
-// programme Python écrit au vol, jamais figées en binaire). Gardes de test/js/gardes.js :
-// python() (la WSL sous Windows) et sansPandocWsl/SZH_WSL_OBLIGATOIRE (pandoc + WSL
-// SZH-Publishing, contrôle n°12 seulement).
+// Les commentaires « Sabotage » indiquent la modification du module qui doit faire rougir
+// le test.
 'use strict';
 
 const test = require('node:test');
@@ -73,15 +53,13 @@ const PIPELINE = path.join(RACINE, 'pipeline');
 const NETTOYEUR = path.join(PIPELINE, 'manuscrit-nettoyer.py');
 const PRONTO_LIRE = path.join(PIPELINE, 'pronto-lire.py');
 
-// ---- WSL, pour LE test de production (n°12) — patron de test/js/manuscrit-gabarit.test.js
-// et de pipeline/manuscrit_typo.py (même piège des antislashs : wsl.exe les avale dans un
-// argument de tableau, on convertit en barres obliques AVANT l'appel).
+// ---- WSL, pour le contrôle n°12. wsl.exe avale les barres inverses d'un argument de
+// tableau : les chemins sont convertis en barres obliques avant l'appel.
 const WSL_EXE = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'wsl.exe');
 const DISTRO_WSL = 'SZH-Publishing';
 
-// ---- vale, détecté comme dans test/js/manuscrit-vale.test.js (patron recopié à l'identique,
-// pas importé : sa propre en-tête dit pourquoi — « jamais dans test/js/gardes.js, hors
-// périmètre de ce chantier »). PATH d'abord, wsl.exe -d SZH-Publishing en repli.
+// ---- vale, détecté comme dans test/js/manuscrit-vale.test.js : PATH d'abord,
+// wsl.exe -d SZH-Publishing en repli.
 function _valeSurPath() {
   try {
     const r = cp.spawnSync('vale', ['--version'], { encoding: 'utf8', timeout: 5000, windowsHide: true });
@@ -106,9 +84,8 @@ const sansVale = (() => {
   return motif;
 })();
 
-// Lit word/document.xml tel quel (XML brut), avec le Python de CE poste (Windows) — le
-// fichier produit DANS la WSL reste lisible tel quel depuis Windows, même système de
-// fichiers (patron de test/js/manuscrit-gabarit.test.js).
+// Lit word/document.xml brut. Le fichier produit dans la WSL se lit depuis Windows, même
+// système de fichiers.
 const LIRE_DOCUMENT_XML = 'import sys, zipfile\n'
   + 'z = zipfile.ZipFile(sys.argv[1])\n'
   + 'sys.stdout.write(z.read("word/document.xml").decode("utf-8"))\n';
@@ -122,10 +99,8 @@ function lireDocumentXml(chemin) {
 // des contrôles qui ne dépendent pas de la façon dont la typographie a redécoupé les runs.
 function extraireTexteBrut(xml) {
   const morceaux = [];
-  // (?:\s[^>]*)? borne le nom de balise : sans elle, `<w:t[^>]*>` reconnait aussi
-  // `<w:tcPr>`, `<w:tblPr>`, `<w:tab/>`... (tout ce qui commence par les 4 memes caracteres)
-  // et avale tout le XML jusqu'au PROCHAIN `</w:t>` comme s'il s'agissait de texte -- mesure
-  // en ecrivant ce test : le texte extrait contenait alors des fragments de balises entieres.
+  // (?:\s[^>]*)? borne le nom de balise : sans elle, `<w:t[^>]*>` reconnaît aussi `<w:tcPr>`,
+  // `<w:tblPr>`, `<w:tab/>`… et avale le XML jusqu'au `</w:t>` suivant.
   const re = /<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g;
   let m;
   while ((m = re.exec(xml)) !== null) {
@@ -136,10 +111,9 @@ function extraireTexteBrut(xml) {
 }
 const CORPUS_LOT_A = path.join(RACINE, 'tmp', 'corpus-relecture', 'lot-A');
 
-// PYTHONIOENCODING=utf-8 : même piège que test/js/manuscrit-gabarit.test.js (voir son
-// en-tête) — sans elle, l'interprète Python de ce poste écrit son stdout dans l'encodage de
-// la console Windows (cp1252), et un accent dans un nom de fichier ou dans la progression
-// fait planter le processus au lieu de simplement s'afficher.
+// PYTHONIOENCODING=utf-8 : sans elle, Python écrit son stdout dans l'encodage de la console
+// Windows (cp1252), et un accent dans un nom de fichier ou dans la progression fait planter le
+// processus.
 const ENV_UTF8 = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
 
 function python(args, opts) {
@@ -152,17 +126,15 @@ function dossierJetable(prefixe) {
 }
 
 // ---------------------------------------------------------------------------------
-// Fabrication d'un .docx minimal — patron fabriquerDocx de test/js/docx-titres.test.js,
-// étendu d'un champ `revision` par paragraphe : true l'enveloppe dans un <w:ins>, comme un
-// texte accepté en suivi de modifications par Word. `paragraphes` :
+// Fabrique un .docx minimal. `paragraphes` :
 //   [{ texte, style|undefined, gras|false, taille|undefined, revision|false }, ...]
-// Le 3e argument optionnel `langue` (ex. 'de-CH') pose w:docDefaults/w:rPrDefault/w:rPr/w:lang
-// dans styles.xml — ce que manuscrit_docx._langue_declaree() lit (contrôle n°10, langue).
-// Un paragraphe peut porter `image: { nom }` (patron minimal, un seul champ utile ici :
-// AUCUN `descr` sur `wp:docPr` — donc AUCUN texte alternatif, §11 « A11y.TexteAlternatif ») —
-// une image RÉELLE (1x1 PNG transparent), avec sa relation et sa déclaration
-// [Content_Types].xml, pour que manuscrit_docx._image_depuis_drawing() (r:embed, wp:docPr, un
-// media/ résolu) la reconnaisse comme une VRAIE image, pas une forme vectorielle ignorée.
+// `revision: true` enveloppe le paragraphe dans un <w:ins>, comme un texte en suivi de
+// modifications. Le 3e argument facultatif `langue` (ex. 'de-CH') pose
+// w:docDefaults/w:rPrDefault/w:rPr/w:lang dans styles.xml, que lit
+// manuscrit_docx._langue_declaree() (contrôle n°10).
+// Un paragraphe peut porter `image: { nom }` : une vraie image PNG 1x1 avec sa relation et sa
+// déclaration dans [Content_Types].xml, sans `descr` sur `wp:docPr` (donc sans texte
+// alternatif), que manuscrit_docx._image_depuis_drawing() reconnaît comme une image.
 const PNG_1X1_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
 
 const FABRIQUER_DOCX = [
@@ -240,13 +212,10 @@ function fabriquerDocx(chemin, paragraphes, langue) {
   assert.strictEqual(r.status, 0, 'fabrication du .docx impossible : ' + r.stderr);
 }
 
-// Un manuscrit minimal : un titre, un corps propre, une bibliographie de deux entrées — sert
-// de base à plusieurs contrôles. `avecAlerte` ajoute, juste sous le titre, un résumé bien en
-// dessous de la fourchette attendue (400-600 signes en Revue) : Forme.LongueurResume.Revue,
-// sévérité `error`. Un « Mots-cles » suit immédiatement pour borner la capture du résumé à
-// cette seule ligne (pipeline/manuscrit_entete.py, §5.5 : un résumé se poursuit jusqu'au
-// marqueur suivant). Remplace Epicene.FormesContracteesProscrites (migré vers Vale,
-// pipeline/manuscrit_vale.py, commit 6ddd429 : ce module ne le détecte plus).
+// Un manuscrit minimal : un titre, un corps, une bibliographie de deux entrées. `avecAlerte`
+// ajoute sous le titre un résumé bien trop court (400-600 signes attendus en Revue) :
+// Forme.LongueurResume.Revue, sévérité `error`. Un « Mots-cles » le suit pour borner la
+// capture du résumé à cette ligne (un résumé se poursuit jusqu'au marqueur suivant).
 function manuscritMinimal(avecAlerte) {
   const paras = [
     { texte: "Titre de l'article sur la pedagogie specialisee", style: 'Heading1' },
@@ -274,12 +243,10 @@ function ligneUniqueJson(stdout) {
 }
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°1 — le refus du suivi de modifications : message clair, RIEN écrit sur le
-// disque (ni le .docx, ni le rapport — §8 : « avant tout travail... sans rien écrire »).
+// Contrôle n°1 : un .docx en suivi de modifications est refusé, sans rien écrire (ni .docx ni
+// rapport).
 //
-// Sabotage minimal, atterrissage vérifié plus bas (§ rapport final) : dans principal(),
-// remplacer `if document.revisions > 0:` par `if False:` — le refus ne se déclenche plus,
-// le document en suivi de modifications est nettoyé comme n'importe quel autre.
+// Sabotage : dans principal(), remplacer `if document.revisions > 0:` par `if False:`.
 
 test('manuscrit-nettoyer.py : refuse un .docx en suivi de modifications, sans rien écrire sur le disque',
   { skip: sansPython }, () => {
@@ -306,12 +273,12 @@ test('manuscrit-nettoyer.py : refuse un .docx en suivi de modifications, sans ri
   });
 
 // ---------------------------------------------------------------------------------
-// Refus du suivi de modifications, phrases courtes : le nombre, quoi faire, dans la langue du
-// produit ; et le cas fréquent où le fichier renvoyé est la SORTIE du nettoyeur (son nom finit
-// par -nettoye, ou ses révisions portent l'auteur que le nettoyeur pose lui-même).
+// Le refus du suivi de modifications dit, en phrases courtes, le nombre de révisions et quoi
+// faire, dans la langue du produit. Cas fréquent : le fichier renvoyé est la sortie du
+// nettoyeur (nom en -nettoye, ou révisions de l'auteur que pose le nettoyeur).
 //
-// Sabotage : dans _message_suivi_modifications(), retirer la branche `if sortie_nettoyeur` (ou
-// dans principal(), forcer `sortie_nettoyeur = False`) — les trois derniers cas échouent.
+// Sabotage : dans _message_suivi_modifications(), retirer la branche `if sortie_nettoyeur`
+// (ou forcer `sortie_nettoyeur = False` dans principal()) ; les trois derniers cas échouent.
 
 function ecrireParties(chemin, remplacements, ajouts) {
   const r = python(['-c', [
@@ -392,12 +359,11 @@ test('manuscrit-nettoyer.py : des révisions signées par le nettoyeur suffisent
   });
 
 // ---------------------------------------------------------------------------------
-// Les constats d'import (`[import-avertissement]`, émis par manuscrit_docx via szh_commun) ne
-// fuient plus sur stderr : la CLI les recueille dans le rapport JSON (avec leurs deux langues),
-// avec la progression. Un .docx porteur d'un en-tête de page déclenche entetes-pieds-non-lus.
+// Les avertissements d'import (`[import-avertissement]`, émis par manuscrit_docx via
+// szh_commun) vont dans le rapport JSON, avec leurs deux langues, et pas sur stderr. Un .docx
+// qui porte un en-tête de page déclenche entetes-pieds-non-lus.
 //
-// Sabotage : dans principal(), retirer `szh_commun.avertir = _avertir_capture` — le constat
-// repasse sur stderr et le rapport n'en porte plus.
+// Sabotage : dans principal(), retirer `szh_commun.avertir = _avertir_capture`.
 
 test('manuscrit-nettoyer.py : les avertissements d\'import vont dans le rapport JSON, pas sur stderr',
   { skip: sansPython }, () => {
@@ -421,8 +387,8 @@ test('manuscrit-nettoyer.py : les avertissements d\'import vont dans le rapport 
         'la progression doit être gardée dans le rapport');
       assert.ok(rapport.journal.every((l) => l.indexOf('[manuscrit-nettoyer]') === -1),
         'le préfixe de la CLI ne doit pas être dans le rapport');
-      // Un seul constat : la relecture du .docx écrit (garde-fou « rien ne se perd ») refait
-      // la lecture sans le compter une seconde fois.
+      // Un seul avertissement : la relecture de contrôle du .docx écrit ne le compte pas une
+      // seconde fois.
       assert.strictEqual(rapport.avertissements_import.filter((a) => a.code === 'entetes-pieds-non-lus').length, 1,
         JSON.stringify(rapport.avertissements_import));
     } finally {
@@ -431,13 +397,11 @@ test('manuscrit-nettoyer.py : les avertissements d\'import vont dans le rapport 
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°2 — le code de sortie : non nul dès qu'une alerte `error` existe (ici
-// Forme.LongueurResume.Revue, déclenchée par un résumé trop court), nul sur un manuscrit
-// qui n'en déclenche aucune (aucun paragraphe de rôle 'resume' du tout).
+// Contrôle n°2 : code de sortie non nul avec une alerte `error` (ici
+// Forme.LongueurResume.Revue, résumé trop court), nul sans alerte (aucun résumé).
 //
-// Sabotage minimal : dans principal(), remplacer
-// `code_sortie = CODE_ALERTE_ERROR if n_error > 0 else CODE_OK` par `code_sortie = CODE_OK`
-// — le code de sortie reste 0 même avec une alerte `error` dans le rapport.
+// Sabotage : dans principal(), remplacer
+// `code_sortie = CODE_ALERTE_ERROR if n_error > 0 else CODE_OK` par `code_sortie = CODE_OK`.
 
 test('manuscrit-nettoyer.py : code de sortie non nul avec une alerte error, nul sinon',
   { skip: sansPython }, () => {
@@ -466,12 +430,10 @@ test('manuscrit-nettoyer.py : code de sortie non nul avec une alerte error, nul 
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°3 — la chaîne complète : le .docx produit se relit par pronto-lire.py (le
-// lecteur de PRODUCTION), et le rapport JSON porte les traces de décision et les alertes.
+// Contrôle n°3 : chaîne complète. Le .docx produit se relit par pronto-lire.py, et le rapport
+// JSON porte les traces de décision et les alertes.
 //
-// Sabotage minimal : dans principal(), ne jamais appeler mg.ecrire() (commenter l'appel et
-// laisser sortie_docx = None même hors --analyse-seule) — le test rougit sur
-// `fs.existsSync(sortieDocx)`.
+// Sabotage : dans principal(), ne pas appeler mg.ecrire().
 
 test('manuscrit-nettoyer.py : chaîne complète — le .docx produit se relit par pronto-lire.py, le rapport porte traces et alertes',
   { skip: sansPython }, () => {
@@ -487,7 +449,7 @@ test('manuscrit-nettoyer.py : chaîne complète — le .docx produit se relit pa
       assert.ok(fs.existsSync(obj.sortie_docx), 'le .docx nettoyé doit exister');
       assert.ok(fs.existsSync(obj.sortie_rapport), 'le rapport JSON doit exister');
 
-      // Relecture par le lecteur de PRODUCTION.
+      // Relecture par le lecteur de production.
       const dossierPronto = path.join(base, 'article-pronto');
       fs.mkdirSync(dossierPronto);
       const rl = python([PRONTO_LIRE, obj.sortie_docx, 'essai', dossierPronto]);
@@ -501,7 +463,7 @@ test('manuscrit-nettoyer.py : chaîne complète — le .docx produit se relit pa
         'la bibliographie doit être reconnue par son titre à la relecture');
       assert.strictEqual(statsPronto.biblio.paragraphes, 2, 'les deux entrées doivent être détachées');
 
-      // Le rapport JSON porte les traces de décision ET les alertes.
+      // Le rapport JSON porte les traces de décision et les alertes.
       const rapport = cheminDepuisPython(JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8')));
       assert.ok(Array.isArray(rapport.decisions.titres.trace) && rapport.decisions.titres.trace.length > 0,
         'la trace de classement des titres doit être présente');
@@ -518,11 +480,9 @@ test('manuscrit-nettoyer.py : chaîne complète — le .docx produit se relit pa
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°4 — --analyse-seule : aucun .docx écrit, mais bien un rapport.
+// Contrôle n°4 : --analyse-seule n'écrit aucun .docx, mais un rapport.
 //
-// Sabotage minimal : dans principal(), inverser la condition
-// `if args['analyse_seule']:` en `if not args['analyse_seule']:` (et son `else` symétrique)
-// — un .docx est écrit MALGRÉ --analyse-seule.
+// Sabotage : dans principal(), inverser `if args['analyse_seule']:` et son `else`.
 
 test('manuscrit-nettoyer.py : --analyse-seule n\'écrit aucun .docx, mais bien un rapport',
   { skip: sansPython }, () => {
@@ -545,23 +505,16 @@ test('manuscrit-nettoyer.py : --analyse-seule n\'écrit aucun .docx, mais bien u
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°5 — le repli de seuil : au-delà de dix occurrences d'une même règle, dix sont
-// détaillées et le total est donné (§7/§10 du contrat — relayé par
-// manuscrit_regles.grouper(), ici on prouve que la CLI le porte tel quel jusqu'au rapport).
-// APA.TroisAuteursPlus (sévérité `warning`, « et al » sans point final) remplace
-// Epicene.FormesContracteesProscrites (migré vers Vale, hors de ce module) : le mécanisme
-// éprouvé ici (grouper() par identifiant de règle) ne dépend d'aucune sévérité particulière.
+// Contrôle n°5 : au-delà de dix occurrences d'une règle, dix sont détaillées et le total
+// donné. La règle utilisée est APA.TroisAuteursPlus (warning, « et al » sans point) ; le
+// mécanisme ne dépend pas de la sévérité.
 //
-// Sabotage minimal : dans principal(), construire `groupes` à la main avec
+// Sabotage : dans principal(), construire `groupes` à la main avec
 // `{'par_famille': {}, 'par_regle': {r['rule']: {'total': 1, 'exemples': [r]} for r in
-// alertes}}` au lieu d'appeler `_grouper_toutes_alertes(alertes)` — chaque occurrence
-// redevient son propre groupe de taille 1, le total de 12 disparaît.
+// alertes}}` au lieu d'appeler `_grouper_toutes_alertes(alertes)`.
 //
-// ⚠ Révision du 21.09.2026 (branchement de Vale/manuscrit_biblio.py) : `obj.alertes_warning`
-// n'est plus un compte STRICT de 12 — Vale (s'il est indisponible sur ce poste) ajoute
-// `Vale.Indisponible`, une warning DE PLUS, sans rapport avec ce contrôle. L'assertion qui
-// comptait EXACTEMENT 12 devient `>= 12` (rien n'est PERDU, ce que ce contrôle prouve) ; le
-// compte EXACT reste vérifié, lui, sur le GROUPE de la seule règle qui nous intéresse ici.
+// `obj.alertes_warning` vaut au moins 12 : si Vale manque sur le poste, Vale.Indisponible
+// ajoute une warning. Le compte exact est vérifié sur le groupe de la règle.
 
 test('manuscrit-nettoyer.py : au-delà de dix occurrences d\'une même règle, dix détaillées et le total donné',
   { skip: sansPython }, () => {
@@ -590,11 +543,10 @@ test('manuscrit-nettoyer.py : au-delà de dix occurrences d\'une même règle, d
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°6 — les flux ne se mélangent pas : stdout ne porte QU'UNE ligne, analysable en
-// JSON ; la progression est sur stderr, plusieurs lignes, aucune n'est du JSON de stats.
+// Contrôle n°6 : stdout porte une seule ligne, en JSON ; la progression va sur stderr, en
+// plusieurs lignes.
 //
-// Sabotage minimal : dans progres(), remplacer `file=sys.stderr` par `file=sys.stdout` —
-// les lignes de progression se mêlent à la ligne JSON finale sur stdout.
+// Sabotage : dans progres(), remplacer `file=sys.stderr` par `file=sys.stdout`.
 
 test('manuscrit-nettoyer.py : stdout ne porte qu\'une seule ligne JSON, la progression est sur stderr',
   { skip: sansPython }, () => {
@@ -621,23 +573,16 @@ test('manuscrit-nettoyer.py : stdout ne porte qu\'une seule ligne JSON, la progr
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°7 — un nom de fichier accentué traverse toute la chaîne sans plantage
-// d'encodage (§8 : `sys.stdout.reconfigure`/`sys.stderr.reconfigure` sur les DEUX flux —
-// pipeline/pronto-lire.py, lui, n'a pas cette clause et plante sur ce cas précis, voir
-// l'en-tête de test/js/manuscrit-gabarit.test.js).
+// Contrôle n°7 : un nom de fichier accentué traverse la chaîne sans erreur d'encodage. Le
+// script reconfigure stdout et stderr en UTF-8 (pipeline/pronto-lire.py ne le fait pas).
 //
-// ⚠ ENV_UTF8 (PYTHONIOENCODING=utf-8, ci-dessus) rendrait ce contrôle AVEUGLE à son propre
-// sabotage : Python part alors DÉJÀ en UTF-8 sur ses deux flux, avec ou sans l'appel
-// `reconfigure()` du script — mesuré en écrivant ce fichier (voir le rapport final). Ce
-// test-ci utilise donc un environnement délibérément PRIVÉ de cette variable (ENV_SANS_PIOE),
-// pour retomber sur l'encodage par défaut du poste (cp1252 mesuré ici) si le script ne
-// reconfigurait pas ses flux lui-même — la seule façon de vraiment exercer §8.
+// Ce test tourne sans PYTHONIOENCODING (ENV_SANS_PIOE) : avec ENV_UTF8, Python partirait déjà
+// en UTF-8 et le test ne verrait pas l'absence de reconfigure(). Sans elle, Python retombe
+// sur l'encodage de la console (cp1252).
 //
-// Sabotage minimal, vérifié rouge SEULEMENT sous cet environnement précis (vert, à tort,
-// sous ENV_UTF8 — l'écart est décrit au rapport final) : dans _forcer_utf8(), ne
-// reconfigurer QUE sys.stdout (retirer sys.stderr de la boucle) — la progression accentuée
-// sur stderr redevient tributaire de l'encodage de la console de ce poste (cp1252 ici, «
-// entr\xe9e » au lieu de « entr\xc3\xa9e »), et n'est plus décodable comme de l'UTF-8 propre.
+// Sabotage : dans _forcer_utf8(), ne reconfigurer que sys.stdout ; la progression sur stderr
+// sort en cp1252 (« entr\xe9e » au lieu de « entr\xc3\xa9e »). Il ne rougit que sous
+// ENV_SANS_PIOE.
 
 const ENV_SANS_PIOE = Object.assign({}, process.env);
 delete ENV_SANS_PIOE.PYTHONIOENCODING;
@@ -660,9 +605,8 @@ test('manuscrit-nettoyer.py : un nom de fichier accentué traverse toute la cha�
       assert.ok(path.basename(obj.sortie_docx).startsWith('Étude accentuée'));
       const rapport = cheminDepuisPython(JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8')));
       assert.strictEqual(rapport.entree, entree);
-      // La progression accentuée doit aussi être lisible (pas de mojibake, pas de '?') —
-      // SANS PYTHONIOENCODING dans l'environnement : c'est le script lui-même, par
-      // reconfigure(), qui doit garantir ceci, pas une variable posée par le harnais.
+      // La progression accentuée est lisible sans PYTHONIOENCODING : c'est reconfigure() qui
+      // le garantit.
       assert.ok(r.stderr.includes(gardes.cheminPython(entree)), 'la progression doit reproduire le nom accentué '
         + 'intact, sans PYTHONIOENCODING dans l\'environnement');
     } finally {
@@ -671,9 +615,8 @@ test('manuscrit-nettoyer.py : un nom de fichier accentué traverse toute la cha�
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°8 — le plus utile (§11 du contrat, note finale) : les onze manuscrits réels de
-// lot-A passent la chaîne complète sans exception. tmp/ est hors git, effacé sans prévenir :
-// sauté sous un motif nommé, jamais en silence, si le corpus est absent.
+// Contrôle n°8 : les onze manuscrits du corpus passent la chaîne sans exception. tmp/ est
+// hors git et peut être effacé : le test est alors sauté sous un motif nommé.
 
 test('manuscrit-nettoyer.py : les onze manuscrits réels de lot-A passent la chaîne complète sans exception',
   { skip: sansPython }, (t) => {
@@ -692,13 +635,12 @@ test('manuscrit-nettoyer.py : les onze manuscrits réels de lot-A passent la cha
         const entree = path.join(CORPUS_LOT_A, nomFichier);
         const dossierSortie = path.join(base, path.basename(nomFichier, '.docx'));
         fs.mkdirSync(dossierSortie, { recursive: true });
-        // --sans-reseau (consigne du chantier de branchement : « les tests la passent
-        // toujours ») : ce contrôle porte sur la chaîne complète, pas sur Crossref — l'isoler
-        // du réseau le garde rapide et déterministe, jamais tributaire d'internet en CI.
+        // --sans-reseau : le contrôle porte sur la chaîne, pas sur Crossref ; il reste rapide
+        // et déterministe.
         const r = nettoyer([entree, '--produit', 'revue', '--sortie', dossierSortie, '--sans-reseau']);
-        // Refus (ex. suivi de modifications) est un résultat LÉGITIME, distinct d'un
-        // plantage : seul un code de sortie inattendu (ni 0, ni 1 alerte-error, ni 2 refus)
-        // ou une exception non gérée (traceback Python sur stderr) compte comme un échec.
+        // Un refus (suivi de modifications…) est un résultat légitime. Seuls un code de
+        // sortie inattendu (ni 0, ni 1 alerte error, ni 2 refus) ou un traceback Python
+        // comptent comme un échec.
         const traceback = /Traceback \(most recent call last\)/.test(r.stderr);
         if (traceback || ![0, 1, 2].includes(r.status)) {
           echecs.push(nomFichier + ' (code ' + r.status + ') : ' + r.stderr.slice(-500));
@@ -724,19 +666,18 @@ test('manuscrit-nettoyer.py : les onze manuscrits réels de lot-A passent la cha
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°9 — fichier verrou `~$*.docx` : refus propre AVANT toute lecture, jamais
-// l'exception « File is not a zip file » d'avant cette révision (code 2, pas 3).
+// Contrôle n°9 : un fichier verrou `~$*.docx` est refusé avant toute lecture (code 2), sans
+// l'exception « File is not a zip file ».
 //
-// Sabotage minimal : dans principal(), retirer le bloc `if os.path.basename(entree).
-// startswith('~$'): return refuser(...)` — le test rougit sur `obj.code_refus`.
+// Sabotage : dans principal(), retirer le bloc
+// `if os.path.basename(entree).startswith('~$'): return refuser(...)`.
 
 test('manuscrit-nettoyer.py : refuse un fichier verrou ~$*.docx avant toute lecture',
   { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const entree = path.join(base, '~$verrou.docx');
-      // Un vrai verrou Word n'est pas un zip valide : quelques octets suffisent, le refus
-      // doit intervenir avant que quiconque n'essaie de l'ouvrir.
+      // Un verrou Word n'est pas un zip valide : quelques octets suffisent.
       fs.writeFileSync(entree, Buffer.from([0, 1, 2, 3]));
       const sortie = path.join(base, 'sortie');
       fs.mkdirSync(sortie);
@@ -755,26 +696,23 @@ test('manuscrit-nettoyer.py : refuse un fichier verrou ~$*.docx avant toute lect
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°10 — la langue de traitement vient du PRODUIT, pas du document déclaré ; un
-// désaccord lève une alerte warning SANS changer la langue réellement utilisée.
+// Contrôle n°10 : la langue de traitement vient du produit, pas de la langue déclarée du
+// document ; un désaccord lève une alerte warning sans changer la langue utilisée.
 //
-// Sabotage minimal : dans principal(), remplacer
-// `langue = 'fr' if args['produit'] == 'revue' else 'de'` par `langue = document.langue or 'fr'`
-// — un document déclaré `de-CH` reçoit la typographie/les règles allemandes sur un article
-// de la Revue, et aucune alerte Langue.DesaccordProduit n'apparaît plus jamais (elle dépend
-// justement de la comparaison entre les deux).
+// Sabotage : dans principal(), remplacer `langue = 'fr' if args['produit'] == 'revue' else 'de'`
+// par `langue = document.langue or 'fr'` ; Langue.DesaccordProduit disparaît.
 
 test('manuscrit-nettoyer.py : la langue de traitement vient du produit ; un désaccord lève une alerte warning sans changer la langue utilisée',
   { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
-      // Document déclaré en allemand (de-CH) mais traité comme un article de la Revue (fr).
+      // Document déclaré en allemand (de-CH), traité comme un article de la Revue (fr).
       const entree = path.join(base, 'article.docx');
       fabriquerDocx(entree, manuscritMinimal(false), 'de-CH');
       const sortie = path.join(base, 'sortie');
       fs.mkdirSync(sortie);
-      // --sans-typo : ce contrôle porte sur la langue et l'alerte, pas sur le filtre —
-      // l'isoler évite toute dépendance à pandoc/WSL ici.
+      // --sans-typo : le contrôle porte sur la langue et l'alerte ; il ne dépend pas de
+      // pandoc ni de la WSL.
       const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie, '--sans-typo', '--sans-reseau']);
       const obj = ligneUniqueJson(r.stdout);
       const rapport = cheminDepuisPython(JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8')));
@@ -785,7 +723,7 @@ test('manuscrit-nettoyer.py : la langue de traitement vient du produit ; un dés
       assert.strictEqual(alerteLangue.severity, 'warning');
       assert.ok(alerteLangue.message && alerteLangue.message.length > 0);
 
-      // Négatif : un document déclaré cohérent avec le produit ne lève rien.
+      // Un document déclaré dans la langue du produit ne lève rien.
       const entreeCoherente = path.join(base, 'coherent.docx');
       fabriquerDocx(entreeCoherente, manuscritMinimal(false), 'fr-CH');
       const sortieCoherente = path.join(base, 'sortie-coherente');
@@ -801,20 +739,16 @@ test('manuscrit-nettoyer.py : la langue de traitement vient du produit ; un dés
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°11 — un repli typographique lève une alerte warning ET porte
-// `typographie: "repli"` sur la ligne stdout ; --sans-typo porte aussi "repli" sur cette
-// ligne mais SANS lever l'alerte (choix explicite, pas une panne d'outillage).
+// Contrôle n°11 : un repli typographique lève une alerte warning et porte
+// `typographie: "repli"` sur la ligne stdout ; --sans-typo porte aussi "repli", sans alerte.
 //
-// Le seul levier sûr pour forcer un VRAI repli de bout en bout sans toucher wsl.exe ni au
-// PATH du poste (qui casserait aussi le lancement de python lui-même) : une copie isolée du
-// pipeline PRIVÉE du filtre typographique — pandoc, alors joignable pour de vrai, échoue
-// réellement sur `--lua-filter <introuvable>`. sansPandocWsl garantit que l'échec vient bien
-// du filtre manquant, pas d'une WSL absente sur ce poste.
+// Pour provoquer un vrai repli sans toucher à wsl.exe ni au PATH (python en dépend aussi), le
+// test copie le pipeline sans le filtre typographique : pandoc échoue alors sur
+// `--lua-filter <introuvable>`. sansPandocWsl garantit que l'échec vient du filtre manquant.
 //
-// Sabotage minimal, deux volets : (a) dans principal(), retirer
-// `if statut_typo == 'repli': alertes_manuelles.append(_alerte_repli_typo())` — le repli
-// reste invisible dans les alertes ; (b) ajouter `statut_typo = 'appliquee'` juste avant la
-// ligne stdout — la ligne ment sur ce qui s'est vraiment passé.
+// Sabotages : (a) dans principal(), retirer
+// `if statut_typo == 'repli': alertes_manuelles.append(_alerte_repli_typo())` ; (b) ajouter
+// `statut_typo = 'appliquee'` juste avant la ligne stdout.
 
 test('manuscrit-nettoyer.py : un repli typographique réel lève une alerte warning et porte typographie: "repli"',
   { skip: sansPython || sansPandocWsl }, () => {
@@ -829,8 +763,8 @@ test('manuscrit-nettoyer.py : un repli typographique réel lève une alerte warn
       fabriquerDocx(entree, manuscritMinimal(false));
       const sortie = path.join(base, 'sortie');
       fs.mkdirSync(sortie);
-      // --analyse-seule : ce contrôle porte sur le repli, pas sur l'écriture du gabarit
-      // (qui a besoin de revue-template/, non copié ici).
+      // --analyse-seule : le contrôle porte sur le repli, pas sur l'écriture au gabarit (qui
+      // a besoin de revue-template/, non copié ici).
       const r = python([nettoyeurCopie, entree, '--produit', 'revue', '--sortie', sortie,
         '--analyse-seule', '--sans-reseau']);
       const obj = ligneUniqueJson(r.stdout);
@@ -870,10 +804,9 @@ test('manuscrit-nettoyer.py : --sans-typo porte "repli" sur la ligne stdout mais
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°12 — LE test de production : la CLI tourne réellement DANS la WSL, comme le
-// lanceur en production (`wsl -d SZH-Publishing -e python3 pipeline/manuscrit-nettoyer.py`),
-// sur un manuscrit dont la typographie française doit être appliquée : un repli silencieux
-// (pandoc injoignable) y rendrait `typographie: "repli"` au lieu de "appliquee".
+// Contrôle n°12 : la CLI tourne dans la WSL, comme en production
+// (`wsl -d SZH-Publishing -e python3 pipeline/manuscrit-nettoyer.py`), sur un manuscrit dont
+// la typographie française doit être appliquée. Un repli rendrait `typographie: "repli"`.
 
 test('manuscrit-nettoyer.py : LE test de production — la CLI tourne DANS la WSL et applique la typographie française',
   { skip: sansPython || sansPandocWsl }, () => {
@@ -882,10 +815,9 @@ test('manuscrit-nettoyer.py : LE test de production — la CLI tourne DANS la WS
       const entree = path.join(base, 'article.docx');
       fabriquerDocx(entree, [
         { texte: "Titre de l'article", style: 'Heading1' },
-        // Guillemets COURBES en entree (ce que l'autocorrection de Word produit reellement,
-        // pas des guillemets droits) : le filtre ne construit jamais de noeud Quoted pandoc
-        // lui-meme (voir l'en-tete de manuscrit_typo.py, point 3) -- des guillemets droits,
-        // meme apparies, restent inchanges. Mesure en ecrivant ce test.
+        // Guillemets courbes en entrée, comme les pose l'autocorrection de Word : le filtre ne
+        // construit pas de nœud Quoted pandoc (voir l'en-tête de manuscrit_typo.py), et des
+        // guillemets droits restent inchangés.
         { texte: 'Voir p. 5 : l\'exemple “cité” ?', taille: 24 },
         { texte: 'References', style: 'Heading1' },
         { texte: 'Dupont, J. (2020). Un ouvrage important. Editions Test.' }
@@ -917,8 +849,8 @@ test('manuscrit-nettoyer.py : LE test de production — la CLI tourne DANS la WS
 
 // Les alertes que la CLI émet elle-même (ici Langue.DesaccordProduit) portent l'origine
 // `nettoyage` : la somme des origines vaut le total, chaque alerte porte la sienne.
-// Sabotage : retirer l'étiquette d'un lot (retirer l'appel _etiqueter d'une des alertes de la
-// CLI) fait tomber la somme sous le total, ou lève KeyError sur `a['origine']`.
+// Sabotage : retirer l'appel _etiqueter d'un lot d'alertes de la CLI ; la somme passe sous le
+// total, ou `a['origine']` lève KeyError.
 test('manuscrit-nettoyer.py : la somme de alertes.origine vaut alertes.total, les alertes de la CLI sont comptées sous `nettoyage`',
   { skip: sansPython }, () => {
     const base = dossierJetable();
@@ -944,8 +876,8 @@ test('manuscrit-nettoyer.py : la somme de alertes.origine vaut alertes.total, le
 
 // Les trois alertes que la CLI émet sans passer par un moteur (repli typographique, Vale
 // indisponible, annotation impossible) suivent la langue de traitement : français pour la
-// Revue, allemand pour la Zeitschrift. Sabotage : retirer la branche allemande d'une des trois
-// Les trois fonctions n'ont aucun défaut de langue ; le test suivant garde les sites d'appel.
+// Revue, allemand pour la Zeitschrift. Sabotage : retirer la branche allemande d'une des trois.
+// Les trois fonctions n'ont pas de langue par défaut ; le test suivant vérifie les appels.
 test('manuscrit-nettoyer.py : les alertes propres à la CLI (repli typo, Vale indisponible, annotation impossible) sortent en allemand pour la Zeitschrift',
   { skip: sansPython }, () => {
     const PONT = [
@@ -972,10 +904,10 @@ test('manuscrit-nettoyer.py : les alertes propres à la CLI (repli typo, Vale in
     assert.match(m.de[2], /^Die Korrekturen/);
   });
 
-// Les trois alertes n'ont pas de langue par défaut, et chaque site d'appel de la CLI la passe :
-// un oubli rendrait le français dans la Zeitschrift sans qu'aucun chemin du doré ne le voie.
-// Contrôle par l'arbre syntaxique, car les chemins (Vale absent, annotation en échec) sont rares.
-// Sabotage : retirer `langue` d'un des trois appels, ou remettre `langue='fr'` en défaut.
+// Chaque site d'appel des trois alertes passe la langue : un oubli rendrait du français dans la
+// Zeitschrift sur des chemins rares (Vale absent, annotation en échec), d'où un contrôle par
+// l'arbre syntaxique. Sabotage : retirer `langue` d'un des appels, ou remettre `langue='fr'` en
+// défaut.
 test('manuscrit-nettoyer.py : les trois alertes de la CLI reçoivent la langue à chaque site d’appel, sans défaut',
   { skip: sansPython }, () => {
     const PONT = [
@@ -1004,9 +936,8 @@ test('manuscrit-nettoyer.py : les trois alertes de la CLI reçoivent la langue �
 // Origine des alertes : chaque lot est étiqueté là où il rejoint la liste, et l'étiquette est
 // vérifiée sur une exécution réelle, règle par règle. Les sources rares (identifiants, perte,
 // écartés, notes reprises, réseau, annotation, conversion .odt, Vale absent, repli typo) sont
-// provoquées par injection au chargement du module, comme le contrôle n°15 : le code de
-// production reste intact. Sabotage : étiqueter un lot du mauvais nom (ou l'oublier) dans
-// manuscrit-nettoyer.py rend ces tests rouges.
+// provoquées par injection au chargement du module, comme au contrôle n°15. Sabotage :
+// étiqueter un lot d'un mauvais nom, ou l'oublier, dans manuscrit-nettoyer.py.
 function origineAttendue(regle) {
   if (/^Typo\./.test(regle)) return 'typographie';
   if (/^(Langue|Annotation|Nettoyage|Reseau)\./.test(regle)) return 'nettoyage';
@@ -1164,20 +1095,12 @@ test('manuscrit-nettoyer.py : plafond_commentaires_atteint suit le plafond globa
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°13 — le branchement de manuscrit_vale.py/manuscrit_biblio.py/manuscrit_annoter.py
-// (révision du 21.09.2026). Fixture construite pour porter, chacune sur son propre
-// paragraphe, une alerte de chaque origine SANS EN FAIRE COLLISIONNER DEUX sur le même passage
-// de texte (piège réel, mesuré en écrivant ce test — voir le rapport de chantier :
-// manuscrit_annoter.py mésancre une révision `fix` dont le `found` est un mot COURT et banal,
-// comme "et", sur sa PREMIÈRE occurrence dans le paragraphe entier plutôt que sur celle visée
-// par `span` dès que les deux ne coïncident pas EXACTEMENT — un paragraphe qui contiendrait
-// "et" AVANT la citation à corriger se ferait donc corrompre au mauvais endroit. Ce fichier ne
-// touche pas manuscrit_annoter.py (hors des deux fichiers autorisés) : la phrase de la fixture
-// est choisie pour ne JAMAIS contenir "et" avant la citation, pas pour cacher le défaut —
-// signalé au rapport de chantier, à corriger ailleurs). « Introduction » (Heading1) juste
-// après le titre referme la zone d'en-tête (§5.5) : sans lui, la phrase épicène qui suit
-// serait avalée comme SOUS-TITRE (même signature que le titre, aucune ponctuation finale sur
-// la première ligne) et n'atteindrait jamais Vale — mesuré en écrivant ce test.
+// Contrôle n°13 : branchement de manuscrit_vale.py, manuscrit_biblio.py et
+// manuscrit_annoter.py. La fixture porte une alerte de chaque origine, chacune sur son
+// paragraphe, sans que deux alertes visent le même passage. La phrase de la citation ne
+// contient pas « et » avant la citation : un `found` court et banal pourrait s'ancrer sur sa
+// première occurrence. « Introduction » (Heading1) après le titre referme la zone d'en-tête :
+// sans lui, la phrase épicène serait prise pour un sous-titre et n'atteindrait pas Vale.
 
 function fixtureQuatreOrigines() {
   return [
@@ -1185,21 +1108,16 @@ function fixtureQuatreOrigines() {
     { texte: 'Introduction', style: 'Heading1' },
     // Vale, CSPS.Epicene.FormesContractees (error, action=comment).
     { texte: 'Les enseignant(e)s accompagnent les eleves au quotidien.' },
-    // Vale (CSPS.APA.EtDansParentheses, fix) ET manuscrit_biblio (APA.CitationAbsente,
-    // comment) sur la MÊME parenthèse — sans collision (l'un fixe, l'autre commente, voir
-    // l'en-tête). Aucun « et » avant la citation dans cette phrase (vérifié caractère par
-    // caractère en écrivant ce test).
+    // Vale (CSPS.APA.EtDansParentheses, fix) et manuscrit_biblio (APA.CitationAbsente,
+    // comment) sur la même parenthèse, sans collision : l'un corrige, l'autre commente.
     { texte: 'Plusieurs travaux le confirment (Dupont et Martin, 2020).' },
-    // Typo.guillemets-droits (repris tel quel du filtre, C2) : un guillemet droit isolé,
-    // jamais apparié par pandoc.
+    // Typo.guillemets-droits (C2) : un guillemet droit isolé, que pandoc n'apparie pas.
     { texte: 'Il ecrit "quelque chose de curieux, sans doute avoir raison.' },
-    // A11y.TexteAlternatif.Revue (structurel, catalogue Python) : image sans alt.
+    // A11y.TexteAlternatif.Revue (structurel) : image sans alt.
     { image: { nom: 'fig1.png', octets_base64: PNG_1X1_B64 } },
     { texte: 'References', style: 'Heading1' },
-    // manuscrit_biblio : APA.ReferenceNonCitee (jamais citée sous ce nom) ET APA.DoiForme
-    // (DOI nu, sans préfixe — jamais « doi: » : cette forme-là fait aussi lever
-    // CSPS-Biblio.APA.DoiForme de Vale sur le MÊME texte, collision jumelle du piège
-    // ci-dessus, évitée pour la même raison).
+    // manuscrit_biblio : APA.ReferenceNonCitee et APA.DoiForme (DOI nu, sans préfixe). La
+    // forme « doi: » ferait aussi lever CSPS-Biblio.APA.DoiForme de Vale sur le même texte.
     { texte: 'Muster, E. (2020). Un document. 10.1000/x' },
   ];
 }
@@ -1243,11 +1161,11 @@ test('manuscrit-nettoyer.py : les quatre origines (structurel, vocabulaire, bibl
       assert.strictEqual(doi.dans_docx, 'revision');
       assert.strictEqual(doi.suggested, 'https://doi.org/10.1000/x');
 
-      // --sans-reseau (posé par nettoyer(), voir la fonction) → jamais de tentative Crossref.
+      // --sans-reseau (posé par nettoyer()) : aucune tentative Crossref.
       assert.strictEqual(rapport.bibliographie.crossref.indisponible, true);
 
-      // Le .docx produit porte bien w:del/w:ins (le DOI) ET comments.xml (la forme épicène) —
-      // lu directement par zipfile Python, sans dépendance externe.
+      // Le .docx produit porte w:del/w:ins (le DOI) et comments.xml (la forme épicène), lus
+      // par zipfile.
       const LIRE_MARQUES = [
         'import sys, zipfile',
         'z = zipfile.ZipFile(sys.argv[1])',
@@ -1264,20 +1182,17 @@ test('manuscrit-nettoyer.py : les quatre origines (structurel, vocabulaire, bibl
       const rMarques = python(['-c', LIRE_MARQUES, obj.sortie_docx]);
       assert.strictEqual(rMarques.status, 0, 'lecture des marques a échoué : ' + rMarques.stderr);
       const marques = JSON.parse(rMarques.stdout);
-      // Depuis le diff par jeton (§7 ter, révision du 21.09.2026 bis) : « 10.1000/x » ->
-      // « https://doi.org/10.1000/x » est une INSERTION PURE (le suffixe « 10.1000/x » ne
-      // change pas) — un w:ins sans w:del associé est donc le résultat CORRECT ici, plus
-      // fidèle que l'ancien comportement qui aurait barré puis réécrit tout le DOI. Seul
-      // w:ins est garanti par CETTE fixture (aucune autre alerte de ce lot n'est une révision
-      // qui supprime du texte).
+      // « 10.1000/x » -> « https://doi.org/10.1000/x » est une insertion pure (diff par
+      // jeton) : un w:ins sans w:del est le résultat attendu. Cette fixture ne garantit que
+      // w:ins.
       assert.ok(marques.w_ins >= 1,
         'le DOI corrigé doit apparaître en révision (w:ins) : ' + JSON.stringify(marques));
       assert.ok(marques.comments_xml, 'comments.xml doit exister (la forme épicène commentée)');
       assert.ok(marques.comments_text.indexOf('CSPS.Epicene.FormesContractees') !== -1,
         'le commentaire ne cite pas la règle : ' + marques.comments_text);
 
-      // --analyse-seule : toujours rien écrit à part le rapport (déjà éprouvé au contrôle
-      // n°4, revérifié ici sur CETTE fixture qui exerce les quatre moteurs).
+      // --analyse-seule n'écrit que le rapport, vérifié aussi sur cette fixture aux quatre
+      // moteurs.
       const sortieAs = path.join(base, 'sortie-analyse-seule');
       fs.mkdirSync(sortieAs);
       const rAs = nettoyer([entree, '--produit', 'revue', '--sortie', sortieAs, '--analyse-seule']);
@@ -1285,7 +1200,7 @@ test('manuscrit-nettoyer.py : les quatre origines (structurel, vocabulaire, bibl
       assert.strictEqual(objAs.sortie_docx, null);
       assert.ok(!fs.readdirSync(sortieAs).some((f) => f.endsWith('.docx')));
 
-      // --sans-annotation : le .docx est écrit, mais aucune révision ni commentaire.
+      // --sans-annotation : le .docx est écrit, sans révision ni commentaire.
       const sortieSa = path.join(base, 'sortie-sans-annotation');
       fs.mkdirSync(sortieSa);
       const rSa = nettoyer([entree, '--produit', 'revue', '--sortie', sortieSa, '--sans-annotation']);
@@ -1306,19 +1221,10 @@ test('manuscrit-nettoyer.py : les quatre origines (structurel, vocabulaire, bibl
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°14 — révisé le 21.09.2026 (soir) : les trois défauts réels de
-// manuscrit_annoter.py (chevauchement de révisions, mésancrage d'un `found` court, révision à
-// la frontière d'un w:hyperlink) ont été CORRIGÉS et commités (voir
-// test/js/manuscrit-annoter.test.js pour ses propres contrôles). `2-dense_…` — le déclencheur
-// RÉEL qui rendait un XML mal formé avant cette correction — doit désormais s'ANNOTER pour de
-// vrai : des révisions et/ou des commentaires posés, un XML bien formé sur toutes les parties,
-// jamais Annotation.Impossible. Ce contrôle ne rejoue donc plus un échec, il prouve que le
-// déclencheur réel ne l'est plus.
-//
-// Sabotage minimal : dans manuscrit_annoter._localizar(), remplacer `_LONGUEUR_MIN_FOUND_SANS_SPAN`
-// par 0 (défaut n°2 réintroduit) — ce contrôle ne rougit pas nécessairement lui-même (le XML
-// reste bien formé même avec un mésancrage), mais `test/js/manuscrit-annoter.test.js` le fait ;
-// voir plutôt le contrôle n°15 ci-dessous pour le filet de sécurité PROPRE à cette CLI.
+// Contrôle n°14 : `2-dense_…`, qui combine chevauchement de révisions, `found` court et
+// frontière de w:hyperlink, s'annote : révisions ou commentaires posés, XML bien formé sur
+// toutes les parties, jamais Annotation.Impossible. Les cas eux-mêmes sont testés dans
+// test/js/manuscrit-annoter.test.js ; le filet de sécurité de la CLI, au contrôle n°15.
 
 test('manuscrit-nettoyer.py : sur 2-dense_… (déclencheur réel de l’ancien défaut), l’annotation réussit et le XML reste bien formé',
   { skip: sansPython }, () => {
@@ -1366,26 +1272,14 @@ test('manuscrit-nettoyer.py : sur 2-dense_… (déclencheur réel de l’ancien 
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°15 — le FILET DE SÉCURITÉ de la CLI elle-même (try/except autour de
-// manuscrit_annoter.annoter() + _valider_docx_bien_forme() + restauration de la version
-// pré-annotation, voir le point d'appel dans principal()) reste éprouvé MÊME MAINTENANT que
-// les trois défauts connus de manuscrit_annoter.py sont corrigés — un filet ne se retire pas
-// parce que le trapèze n'est, pour l'instant, plus tombé : une régression future dans ce
-// module, ou tout autre module, doit encore être rattrapée sans corrompre le .docx ni faire
-// planter la CLI.
+// Contrôle n°15 : le filet de sécurité de la CLI (try/except autour de
+// manuscrit_annoter.annoter(), _valider_docx_bien_forme() et restauration de la version
+// d'avant l'annotation, voir principal()). Une régression future de l'annoteur doit être
+// rattrapée sans corrompre le .docx ni faire planter la CLI.
 //
-// Aucune fixture normale ne fait plus lever manuscrit_annoter.annoter() (c'est justement ce
-// que corrige le commit relu) : ni un `suggested` avec des caractères XML spéciaux (échappés
-// par _escapar()/_escapar_attr(), vérifié en lisant le module), ni un chevauchement de spans
-// (résolu, le plus sévère devient révision, l'autre commentaire), ni un `found` court sans
-// span (rejeté, jamais localisé), ni une frontière de w:hyperlink (jamais révisée). La CLI
-// n'offre aucune variable d'environnement pour injecter une panne (ni --sans-annotation, qui
-// n'APPELLE PAS annoter() du tout, ce n'est donc pas ce filet-ci qu'il éprouve). Le seul levier
-// qui reste, SANS toucher pipeline/manuscrit-nettoyer.py ni pipeline/manuscrit_annoter.py :
-// charger manuscrit-nettoyer.py comme un module Python (patron déjà utilisé par
-// test/js/manuscrit-vale.test.js, contrôle n°7, pour la même raison) et remplacer SON
-// attribut `ma.annoter` par une fonction qui lève — une injection de dépendance au niveau du
-// test, jamais une modification du code de production.
+// Aucune entrée normale ne fait échouer annoter(), et --sans-annotation ne l'appelle pas. Le
+// test charge donc manuscrit-nettoyer.py comme module Python (comme manuscrit-vale.test.js)
+// et remplace son attribut `ma.annoter` par une fonction qui lève.
 
 test('manuscrit-nettoyer.py : le filet de sécurité (annotation qui échoue) restaure la version pré-annotation et pose Annotation.Impossible — même moteur d’injection que manuscrit-vale.test.js n°7',
   { skip: sansPython }, () => {
@@ -1425,8 +1319,7 @@ test('manuscrit-nettoyer.py : le filet de sécurité (annotation qui échoue) re
         + JSON.stringify(rapport.alertes.liste.map((a) => a.rule)));
       assert.strictEqual(alerteImpossible.severity, 'warning');
 
-      // Le .docx livré est celui d'AVANT l'annotation : ni révision ni commentaire posé —
-      // la panne injectée n'a jamais pu toucher le fichier sur le disque.
+      // Le .docx livré est celui d'avant l'annotation : ni révision ni commentaire.
       const LIRE_MARQUES_SABOTE = [
         'import sys, zipfile, json',
         'z = zipfile.ZipFile(sys.argv[1])',
@@ -1448,16 +1341,12 @@ test('manuscrit-nettoyer.py : le filet de sécurité (annotation qui échoue) re
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°16 — `dans_docx` recopie `stats['devenir']`, jamais déduit de `action`.
+// Contrôle n°16 : `dans_docx` recopie `stats['devenir']`, il ne se déduit pas de `action`.
 //
-// `APA.DoiForme` (action='fix', suggested renseigné) est l'alerte fiable de
-// fixtureQuatreOrigines() pour ce test — sous l'ANCIEN code, action='fix'+suggested suffisait
-// à marquer `dans_docx: 'revision'`, quoi que l'annotation ait réellement fait. Ici,
-// `mod.ma.annoter` est remplacée (même injection de dépendance que le contrôle n°15, jamais
-// une modification du code de production) par une fonction qui simule le SORT RÉEL d'un
-// chevauchement (§7 ter, point « 2 bis ») : elle démote APA.DoiForme en commentaire via
-// `devenir`, sans toucher au `.docx` (déjà valide, écrit par mg.ecrire() avant l'appel). Si la
-// CLI relaie fidèlement ce verdict, `dans_docx` doit valoir 'commentaire' — jamais 'revision'.
+// `APA.DoiForme` (action='fix', suggested renseigné) vient de fixtureQuatreOrigines().
+// `mod.ma.annoter` est remplacée (comme au contrôle n°15) par une fonction qui simule un
+// chevauchement : elle passe APA.DoiForme en commentaire par `devenir`, sans toucher au .docx
+// déjà écrit. `dans_docx` doit valoir 'commentaire'.
 
 test('manuscrit-nettoyer.py : dans_docx recopie stats.devenir — une alerte fix/track démotée '
   + 'en commentaire par le chevauchement ne ressort jamais "revision"', { skip: sansPython }, () => {
@@ -1509,18 +1398,16 @@ test('manuscrit-nettoyer.py : dans_docx recopie stats.devenir — une alerte fix
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°17 — Traçabilité note -> appel (§7 ter du contrat, révision du 21.09.2026 ter) :
-// `_numeros_notes()` (numéro de SORTIE, ordre de première rencontre, cellules de tableau
-// comprises) et `_paragraphes_notes_pour_vale()`/`_marquer_notes_dans_alertes()` (source
-// SYNTHÉTIQUE d'un paragraphe de note -> note_id/note_numero/para RÉEL sur l'alerte, APRÈS le
-// passage par Vale). Éprouvé directement sur le modèle riche (mm.Document construit à la
-// main), pas via un .docx réel : plus rapide, et indépendant de manuscrit_docx.py/
-// manuscrit_gabarit.py (hors des fichiers de ce lot, un autre agent y travaille en ce moment).
+// Contrôle n°17 : du numéro de note à son appel. `_numeros_notes()` donne le numéro de sortie
+// (ordre de première rencontre, cellules de tableau comprises) ;
+// `_paragraphes_notes_pour_vale()` et `_marquer_notes_dans_alertes()` reportent sur l'alerte
+// note_id, note_numero et le para réel d'un paragraphe de note, après Vale. Le test construit
+// un mm.Document à la main, sans .docx.
 //
-// Fixture : un appel de note 5 dans un paragraphe de PREMIER NIVEAU (source=1, ancrable), un
-// appel de note 2 dans un paragraphe DE CELLULE (dans un Tableau de premier niveau, jamais
-// ancrable — même règle que _paragraphe_source_appelant_note pour Vale) et un second appel de
-// note 5 plus loin (ne doit pas réserver un second numéro).
+// Fixture : un appel de la note 5 dans un paragraphe de premier niveau (source=1, ancrable),
+// un appel de la note 2 dans une cellule de tableau (non ancrable, comme dans
+// _paragraphe_source_appelant_note), et un second appel de la note 5 plus loin, qui ne prend
+// pas de second numéro.
 
 const PONT_NOTES_MODELE = [
   'import importlib.util, json, sys',
@@ -1573,13 +1460,12 @@ test('manuscrit-nettoyer.py : traçabilité note -> appel — numéro de sortie,
     assert.strictEqual(r.status, 0, r.stderr);
     const obj = JSON.parse(r.stdout);
 
-    // Numéros de SORTIE : note 5 (premier appel rencontré, p1) -> 1 ; note 2 (appel en
-    // cellule, rencontré ensuite via le Tableau) -> 2. Un id d'origine élevé (5) ne dicte pas
-    // le numéro écrit — c'est l'ORDRE DE RENCONTRE qui décide, comme manuscrit_gabarit.py.
+    // Numéros de sortie : note 5 (rencontrée d'abord, p1) -> 1 ; note 2 (en cellule, ensuite)
+    // -> 2. C'est l'ordre de rencontre qui décide, comme dans manuscrit_gabarit.py.
     assert.deepStrictEqual(obj.numeros, { '5': 1, '2': 2 });
 
-    // note 2 est appelée depuis une CELLULE : jamais ancrable (source=None, comme Vale pour
-    // le corps/la bibliographie) — son paragraphe de note ne doit PORTER aucun `source`.
+    // La note 2 est appelée depuis une cellule, non ancrable : son paragraphe de note ne porte
+    // pas de `source`.
     const paraNote2 = obj.paragraphes.find((p) => p.texte === 'Contenu note deux');
     assert.strictEqual(paraNote2.source, null,
       'une note appelée depuis une cellule ne doit jamais recevoir de source synthétique');
@@ -1604,7 +1490,7 @@ test('manuscrit-nettoyer.py : traçabilité note -> appel — numéro de sortie,
   });
 
 // ROR/ORCID (manuscrit_identifiants) : le rapport porte une clé `identifiants` en cas B, et
-// --sans-reseau ne tente aucune requête (le réseau lui-même est éprouvé dans
+// --sans-reseau ne tente aucune requête (le réseau est testé dans
 // manuscrit-identifiants.test.js, avec un annuaire simulé).
 test('manuscrit-nettoyer.py : rapport.identifiants présent en cas B, aucune requête avec --sans-reseau',
   { skip: sansPython }, () => {

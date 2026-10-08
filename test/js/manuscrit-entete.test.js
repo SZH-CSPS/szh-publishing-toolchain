@@ -1,26 +1,17 @@
-// pipeline/manuscrit_entete.py : reconnaissance de l'en-tête d'un manuscrit (titre,
-// sous-titre, auteurs, résumé, mots-clés, DOI, ligne de revue) — §5.5 de
+// Tests de pipeline/manuscrit_entete.py : reconnaissance de l'en-tête d'un manuscrit (titre,
+// sous-titre, auteurs, résumé, mots-clés, DOI, ligne de revue). Voir
 // docs/ARCHITECTURE-nettoyeur-manuscrit.md.
 //
-//   node --test test/js/manuscrit-entete.test.js
+// Les tests passent par le mode --diagnostic : un Document JSON (schéma décrit en tête de
+// manuscrit_modele.py) et la langue du produit, sur stdin. Un test de bout en bout fabrique un
+// .docx, passe manuscrit-nettoyer.py, puis relit la sortie par pronto-lire.py.
 //
-// Module PUR : ce fichier passe par le mode --diagnostic, patron de
-// test/js/manuscrit-decisions.test.js pour manuscrit_modele.py — un Document JSON (même
-// schéma, documenté en tête de manuscrit_modele.py) plus la langue du produit, sur stdin.
+// Les tests 11 à 16 couvrent le branchement de pipeline/manuscrit_noms.py : institution prise
+// pour un nom, titres académiques, emoji, propagation de l'ordre prénom/nom, fusion de la tête
+// et du bloc final, champs ordre_confiance/ordre_motif/ordre_conflit.
 //
-// Contrôles couverts (brief de chantier) : titre + sous-titre sur deux lignes ; titre avec
-// deux-points sur sa propre ligne ; 1, 2 et 3 auteurs (byline groupée, lignes séparées avec
-// institution/e-mail, ORCID) ; résumé après marqueur (jusqu'aux mots-clés) ; résumé absent
-// (rien inventé) ; mots-clés ; DOI ; en-tête vide (document qui commence par un intertitre) ;
-// et un test de bout en bout (fabriquerDocx -> manuscrit-nettoyer.py -> pronto-lire.py).
-//
-// §11 (lot B, CONTRAT-noms.md, 22.09.2026, non committé) : le branchement de
-// pipeline/manuscrit_noms.py (§4 du contrat de lot) — les quatre défauts du §0 (institution
-// prise pour un nom, titres académiques, emoji), la propagation d'ordre sur une byline, la
-// fusion tête/bloc final par e-mail et par ensemble de jetons (§4.3), la présence
-// d'ordre_confiance/ordre_motif/ordre_conflit sur chaque fiche (§4.4, ce dernier champ ajouté
-// par le superviseur en cours de lot pour distinguer un ordre "defaut" par CONFLIT de
-// signaux d'un ordre "defaut" faute d'indice).
+// Les commentaires « Sabotage » indiquent la modification du module qui doit faire rougir
+// le test.
 'use strict';
 
 const test = require('node:test');
@@ -48,8 +39,8 @@ function dossierJetable(prefixe) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefixe || 'szh-manuscritentete-'));
 }
 
-// Lance manuscrit_entete.py --diagnostic sur {langue, document}, rend {entete,
-// indices_consommes, trace, document} déjà parsé.
+// Lance manuscrit_entete.py --diagnostic sur {langue, document} et rend {entete,
+// indices_consommes, trace, document} parsé.
 function diagnostiquer(blocs, langue) {
   const document = { styles: [], langue: '', blocs };
   const r = lancerPython( [MANUSCRIT_ENTETE, '--diagnostic'], {
@@ -60,8 +51,7 @@ function diagnostiquer(blocs, langue) {
   return JSON.parse(lignes[lignes.length - 1]);
 }
 
-// Un paragraphe minimal : un seul fragment de texte, forme réduite aux clés fournies —
-// patron `para()` de test/js/manuscrit-decisions.test.js.
+// Un paragraphe minimal : un seul fragment de texte, forme réduite aux clés fournies.
 function para(texte, opts = {}) {
   const { taille, gras, italique } = opts;
   const forme = {};
@@ -99,7 +89,7 @@ test('extraire_entete : titre finissant par « : », sous-titre sur la ligne sui
   });
 
 // ---------------------------------------------------------------------------------------
-// 2. Titre avec deux-points sur sa PROPRE ligne (scinder_titre, repli à une seule ligne).
+// 2. Titre avec deux-points sur sa propre ligne (scinder_titre, repli à une seule ligne).
 
 test('extraire_entete : titre scindé sur le deux-points de sa propre ligne (une seule ligne)', { skip: sansPython }, () => {
     const out = diagnostiquer([
@@ -112,7 +102,7 @@ test('extraire_entete : titre scindé sur le deux-points de sa propre ligne (une
   });
 
 // ---------------------------------------------------------------------------------------
-// 3. Auteurs — 1, 2 et 3, byline groupée et lignes séparées avec institution/e-mail/ORCID.
+// 3. Auteurs : 1, 2 et 3, byline groupée et lignes séparées avec institution, e-mail, ORCID.
 
 test('extraire_entete : un seul auteur, une seule ligne', { skip: sansPython }, () => {
   const out = diagnostiquer([para('Un titre'), para('Jean Dupont'), para('Introduction')]);
@@ -148,10 +138,8 @@ test('extraire_entete : trois auteurs sur une seule byline, ORCID sur la ligne s
     ]);
     assert.strictEqual(out.entete.auteurs.length, 3);
     assert.deepStrictEqual(out.entete.auteurs.map((a) => a.nom), ['Dupont', 'Martin', 'Durand']);
-    // Trois noms déclarés ENSEMBLE : la ligne d'ORCID qui suit ne peut être attribuée à
-    // l'un d'eux sans deviner — aucun champ n'est rempli. Révision du 29.09.2026 (garantie
-    // « rien ne se perd », décision de Robin) : elle n'est plus consommée non plus — retirée,
-    // elle n'allait nulle part. Elle RESTE dans le corps, visible, à ranger à la main.
+    // Trois noms déclarés ensemble : la ligne d'ORCID qui suit ne peut être attribuée sans
+    // deviner. Aucun champ n'est rempli, et la ligne reste dans le corps, à ranger à la main.
     assert.ok(out.entete.auteurs.every((a) => a.orcid === ''),
       'aucun ORCID ne doit être deviné quand trois noms sont déclarés ensemble');
     assert.strictEqual(out.indices_consommes[2], undefined,
@@ -173,7 +161,8 @@ test('extraire_entete : ORCID rattaché au bon auteur quand les noms sont sur de
   });
 
 // ---------------------------------------------------------------------------------------
-// 4. Résumé — capturé après son marqueur jusqu'au marqueur suivant ; absent -> rien inventé.
+// 4. Résumé : capturé après son marqueur jusqu'au marqueur suivant ; absent, rien n'est
+// inventé.
 
 test('extraire_entete : résumé capturé après son marqueur, jusqu\'aux mots-clés',
   { skip: sansPython }, () => {
@@ -234,12 +223,10 @@ test('extraire_entete : DOI reconnu et nettoyé', { skip: sansPython }, () => {
 });
 
 // ---------------------------------------------------------------------------------------
-// 7. En-tête vide : le document commence directement par un intertitre connu.
+// 7. En-tête vide : le document commence par un intertitre connu.
 //
-// Sabotage minimal (vérifié pendant ce chantier) : dans extraire_entete(), retirer le
-// contrôle RE_INTERTITRE_CONNU.match(texte) qui précède la détection du titre — la ligne
-// « Introduction » se fait alors passer pour LE titre de l'article, et ce contrôle rougit
-// (indices_consommes cesse d'être vide, entete.titre devient « Introduction »).
+// Sabotage : dans extraire_entete(), retirer le contrôle RE_INTERTITRE_CONNU.match(texte)
+// qui précède la détection du titre ; « Introduction » devient le titre.
 
 test('extraire_entete : document qui commence par un intertitre connu -> rien consommé', { skip: sansPython }, () => {
     const out = diagnostiquer([
@@ -254,8 +241,8 @@ test('extraire_entete : document qui commence par un intertitre connu -> rien co
   });
 
 // ---------------------------------------------------------------------------------------
-// 8. Un long paragraphe de corps (>= 300 signes) qui n'est ni un marqueur ni un intertitre
-// arrête aussi la zone d'en-tête — même sans intertitre connu.
+// 8. Un long paragraphe de corps (>= 300 signes), ni marqueur ni intertitre, clôt aussi la
+// zone d'en-tête.
 
 test('extraire_entete : un long paragraphe de corps clôt la zone d\'en-tête, sans intertitre',
   { skip: sansPython }, () => {
@@ -266,16 +253,12 @@ test('extraire_entete : un long paragraphe de corps clôt la zone d\'en-tête, s
   });
 
 // ---------------------------------------------------------------------------------------
-// 8 bis. Révision du 21.09.2026 (superviseur, mesuré sur 1_Résumé-article-revue-CSPS.docx) :
-// une ligne « Nom, Prénom, institution, téléphone, e-mail » — TOUT sur une seule ligne,
-// virgules — est UNE fiche, jamais un « non attribué ». Le numéro de téléphone n'a aucun
-// champ dans le schéma EnTete.auteurs : il est écarté, tracé, jamais collé à fonction/
-// institution.
+// 8 bis. Une ligne « Nom, Prénom, institution, téléphone, e-mail » est une seule fiche. Le
+// téléphone n'a pas de champ dans EnTete.auteurs : il est écarté et tracé.
 //
-// Sabotage minimal (vérifié pendant ce chantier) : dans extraire_entete(), retirer le bloc
-// `resultat_virgule = _tenter_nom_virgule_avec_info(texte) ... continue` (le remplacer par
-// un simple `pass`) — la ligne retombe sur _est_ligne_auteur(), sans auteur déjà connu pour
-// la recevoir : elle devient « auteur_info_non_attribuee » et entete.auteurs reste VIDE.
+// Sabotage : dans extraire_entete(), remplacer le bloc
+// `resultat_virgule = _tenter_nom_virgule_avec_info(texte) ... continue` par `pass` ; la
+// ligne devient « auteur_info_non_attribuee » et entete.auteurs reste vide.
 
 test('extraire_entete : « Nom, Prénom, institution, téléphone, e-mail » sur une seule ligne -> une fiche, téléphone écarté', { skip: sansPython }, () => {
     const out = diagnostiquer([
@@ -312,16 +295,12 @@ test('extraire_entete : quatre autrices « Nom, Prénom, institution, tel, e-mai
   });
 
 // ---------------------------------------------------------------------------------------
-// 8 ter. Révision du 21.09.2026 (superviseur, mesuré sur
-// 3bis_CSPS_Revue3_2026_FLOW_Piloting_OFP.docx) : un résumé doit s'arrêter DUR — au premier
-// paragraphe court entièrement en gras (pseudo-titre non détecté par classer_titres(), qui
-// tourne APRÈS ce module), et de toute façon au-delà de PLAFOND_RESUME_SIGNES signes ou
-// PLAFOND_RESUME_PARAGRAPHES paragraphes — jamais avaler le reste du document.
+// 8 ter. Le résumé s'arrête au premier paragraphe court entièrement en gras (un pseudo-titre :
+// classer_titres() tourne après ce module), et au-delà de PLAFOND_RESUME_SIGNES signes ou
+// PLAFOND_RESUME_PARAGRAPHES paragraphes.
 //
-// Sabotage minimal (vérifié pendant ce chantier) : dans extraire_entete(), remplacer
-// `if pseudo_titre or plafond_atteint:` par `if False:` — la capture ne s'arrête plus
-// jamais avant un marqueur ou un intertitre CONNU, et engloutit le pseudo-titre gras plus
-// tout ce qui suit.
+// Sabotage : dans extraire_entete(), remplacer `if pseudo_titre or plafond_atteint:` par
+// `if False:` ; le résumé avale le pseudo-titre et la suite.
 
 test('extraire_entete : un paragraphe court et entièrement gras arrête la capture du résumé (pseudo-titre)', { skip: sansPython }, () => {
     const out = diagnostiquer([
@@ -338,14 +317,14 @@ test('extraire_entete : un paragraphe court et entièrement gras arrête la capt
   });
 
 test('extraire_entete : le résumé est plafonné à quatre paragraphes, le reste jamais capturé', { skip: sansPython }, () => {
-    // index 0 = titre, 1 = marqueur, 2..10 = neuf paragraphes candidats à la suite.
+    // Indice 0 = titre, 1 = marqueur, 2..10 = neuf paragraphes candidats.
     const paras = [para('Un titre'), para('Resume : paragraphe un.')];
     for (let i = 2; i <= 10; i += 1) {
       paras.push(para('Paragraphe de résumé numéro ' + i + ', tout à fait ordinaire et court.'));
     }
     const out = diagnostiquer(paras);
-    // Le marqueur (1) + trois suites (2, 3, 4) : au paragraphe 5, n_paras_resume atteint
-    // déjà 4 -> plafond, capture arrêtée AVANT de l'absorber.
+    // Le marqueur (1) et trois suites (2, 3, 4) : au paragraphe 5, n_paras_resume vaut 4,
+    // le plafond arrête la capture.
     assert.deepStrictEqual(out.indices_consommes, { 0: 'titre', 1: 'resume', 2: 'resume',
       3: 'resume', 4: 'resume' });
     assert.strictEqual(out.document.blocs.length, paras.length - 5,
@@ -365,9 +344,8 @@ test('extraire_entete : le résumé est plafonné à 1500 signes, jamais tout un
   });
 
 // ---------------------------------------------------------------------------------------
-// 9. Test de bout en bout — fabrique un .docx, passe la CLI complète, relit la sortie par
-// pronto-lire.py (le lecteur de PRODUCTION) et compare titre, sous-titre, résumé, auteurs.
-// Patron `fabriquerDocx` de test/js/docx-titres.test.js / test/js/manuscrit-nettoyer.test.js.
+// 9. De bout en bout : fabrique un .docx, passe la CLI complète, relit la sortie par
+// pronto-lire.py (le lecteur de production) et compare titre, sous-titre, résumé, auteurs.
 
 const FABRIQUER_DOCX = [
   'import json, sys, zipfile',
@@ -407,11 +385,9 @@ function ligneUniqueJson(stdout) {
   return cheminDepuisPython(JSON.parse(lignes[0]));
 }
 
-// Compte les occurrences d'un texte dans TOUT le document.xml de sortie (tableaux fixes ET
-// corps confondus) — sert à prouver qu'un paragraphe d'en-tête a bien QUITTÉ le corps : s'il
-// y reste, il apparaît une SECONDE fois en plus de sa fiche dans le tableau des métadonnées
-// ou des auteurs (patron `extraireTexteBrut` de test/js/manuscrit-nettoyer.test.js, réduit à
-// un compte d'occurrences plutôt qu'au texte complet).
+// Compte les occurrences d'un texte dans tout le document.xml de sortie (tableaux et corps).
+// Un paragraphe d'en-tête resté dans le corps apparaît deux fois : dans sa fiche et dans le
+// corps.
 const LIRE_DOCUMENT_XML = 'import sys, zipfile\n'
   + 'z = zipfile.ZipFile(sys.argv[1])\n'
   + 'sys.stdout.write(z.read("word/document.xml").decode("utf-8"))\n';
@@ -455,8 +431,8 @@ test('bout en bout : manuscrit-nettoyer.py reconnaît l\'en-tête et le gabarit 
       const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
       assert.ok(rapport.decisions.entete, 'le rapport doit porter decisions.entete en cas B');
       assert.strictEqual(rapport.decisions.entete.donnees.titre, 'Inclusion scolaire');
-      // Depuis le 30.09.2026, l'en-tête passe par le pont typographique (règles de titre
-      // comprises) : L2 soude « l » à son mot par une insécable. Le texte, lui, est le même.
+      // L'en-tête passe par le pont typographique : L2 soude « l » à son mot par une
+      // insécable. Le texte est le même.
       assert.strictEqual(rapport.decisions.entete.donnees.sous_titre.replace(/ /g, ' '),
         'le role de l enseignant');
       assert.strictEqual(rapport.decisions.entete.donnees.auteurs.length, 2);
@@ -472,8 +448,7 @@ test('bout en bout : manuscrit-nettoyer.py reconnaît l\'en-tête et le gabarit 
 
       const meta = fs.readFileSync(path.join(dossierPronto, 'essai.meta.yaml'), 'utf8');
       assert.match(meta, /title:\s*\n\s*fr: "Inclusion scolaire"/);
-      // L'insécable posée par L2 traverse désormais l'import (valeurs non repliées, D2).
-      // (\s couvre U+00A0 en JavaScript : L2 peut en poser devant « l » comme après.)
+      // L'insécable posée par L2 traverse l'import. \s couvre U+00A0 en JavaScript.
       assert.match(meta, /subtitle:\s*\n\s*fr: "le\s+role\s+de\s+l\s+enseignant"/);
       assert.match(meta, /resume:\s*\n\s*fr: "Un texte de resume tout a fait ordinaire pour ce contr[ôo]le de bout en bout\."/);
       assert.match(meta, /prenom: "Jean"/);
@@ -484,18 +459,16 @@ test('bout en bout : manuscrit-nettoyer.py reconnaît l\'en-tête et le gabarit 
       assert.match(meta, /nom: "Martin"/);
       assert.match(meta, /affiliation: "Universite de Geneve"/);
 
-      // L'en-tête a bien QUITTÉ le corps : son texte n'apparaît qu'UNE FOIS dans la sortie
-      // (dans sa fiche du tableau — Prénom et Nom y sont deux PARAGRAPHES distincts, jamais
-      // « Jean Dupont » accolé), jamais une seconde fois comme paragraphe du corps.
-      // C'est ce contrôle-ci, et lui seul, qui rougit si extraire_entete() est bien appelé
-      // mais que ses paragraphes ne sont pas retirés de document.blocs avant l'écriture.
+      // L'en-tête a quitté le corps : son texte n'apparaît qu'une fois, dans sa fiche (Prénom
+      // et Nom y sont deux paragraphes distincts). Ce contrôle rougit si les paragraphes
+      // d'en-tête ne sont pas retirés de document.blocs avant l'écriture.
       assert.strictEqual(occurrencesDansLaSortie(obj.sortie_docx, 'Jean'), 1);
       assert.strictEqual(occurrencesDansLaSortie(obj.sortie_docx, 'HEP Vaud'), 1);
       assert.strictEqual(
         occurrencesDansLaSortie(obj.sortie_docx, 'Inclusion scolaire : le role de l enseignant'),
         0, 'le titre original (non scindé) ne doit apparaître nulle part : ni tel quel dans '
            + 'le corps, ni recopié entier dans le tableau (titre et sous-titre y sont scindés)');
-      // L'intertitre et le corps du texte, EUX, doivent être restés.
+      // L'intertitre et le corps du texte restent.
       assert.strictEqual(occurrencesDansLaSortie(obj.sortie_docx, 'Introduction'), 1);
       assert.strictEqual(
         occurrencesDansLaSortie(obj.sortie_docx,
@@ -506,18 +479,13 @@ test('bout en bout : manuscrit-nettoyer.py reconnaît l\'en-tête et le gabarit 
   });
 
 // ---------------------------------------------------------------------------------------
-// 10. Bloc final « Informations sur les autrices et auteurs » (décision de Robin,
-// 21.09.2026) : la Revue le demande en FIN de manuscrit — reconnu par extraire_bloc_auteurs_
-// final(), retiré du corps ET de l'étendue de bibliographie de la CLI (mesuré, avant ce
-// correctif, sur 2-clairseme_Article_CSPS_C.Pedrosa.docx et 2-fin-de-document_Article_RSPS.
-// docx : ces coordonnées ressortaient en APA.OrdreBiblio / APA.CitationAbsente / confiance
-// basse). Fusionné dans entete.auteurs : même nom -> complète la fiche déjà ouverte par la
-// tête, jamais dupliquée.
+// 10. Bloc final « Informations sur les autrices et auteurs », demandé par la Revue en fin
+// de manuscrit : reconnu par extraire_bloc_auteurs_final(), retiré du corps et de l'étendue de
+// bibliographie de la CLI (sinon ses lignes ressortent en alertes APA). Fusionné dans
+// entete.auteurs : un même nom complète la fiche ouverte par la tête.
 //
-// Sabotage minimal (vérifié pendant ce chantier) : dans extraire_bloc_auteurs_final(),
-// remplacer `if texte and RE_INTERTITRE_AUTEURS_FINAL.match(texte):` par `if False:` — le
-// marqueur n'est plus jamais reconnu, indices_consommes reste vide et le bloc final reste
-// dans le corps.
+// Sabotage : dans extraire_bloc_auteurs_final(), remplacer
+// `if texte and RE_INTERTITRE_AUTEURS_FINAL.match(texte):` par `if False:`.
 
 test('extraire_bloc_auteurs_final : intertitre « Informations sur les autrices et auteurs », un seul paragraphe multi-lignes', { skip: sansPython }, () => {
     const out = diagnostiquer([
@@ -534,7 +502,7 @@ test('extraire_bloc_auteurs_final : intertitre « Informations sur les autrices 
     assert.strictEqual(a.fonction, 'Assistante diplômée - Doctorante');
     assert.strictEqual(a.institution, 'CERF, Université de Fribourg');
     assert.strictEqual(a.email, 'caroline.pedrosa@unifr.ch');
-    // Le marqueur ET le paragraphe qui le suit ont quitté le corps (indices 3 et 4).
+    // Le marqueur et le paragraphe qui le suit ont quitté le corps (indices 3 et 4).
     assert.strictEqual(out.indices_consommes[3], 'auteurs');
     assert.strictEqual(out.indices_consommes[4], 'auteurs');
     assert.strictEqual(out.document.blocs.length, 2,
@@ -563,7 +531,7 @@ test('extraire_bloc_auteurs_final : sans intertitre, un groupe final de paragrap
     assert.strictEqual(a.fonction, 'Collaboratrice de recherche');
     assert.strictEqual(a.institution, 'Service de la recherche en éducation (DIP Genève)');
     assert.strictEqual(a.email, 'edith.guilley@orange.fr');
-    // La référence bibliographique et son intitulé ne doivent JAMAIS être consommés.
+    // La référence bibliographique et son intitulé ne sont pas consommés.
     assert.strictEqual(out.indices_consommes[3], undefined, 'l’intitulé « Bibliographie » ne doit pas être avalé');
     assert.strictEqual(out.indices_consommes[4], undefined, 'la référence réelle ne doit jamais être prise pour une info d’auteur');
   });
@@ -584,14 +552,12 @@ test('extraire_bloc_auteurs_final : fusionne avec un auteur déjà connu de la t
     assert.strictEqual(a.email, 'caroline.pedrosa@unifr.ch');
   });
 
-// Le repli ne doit jamais avaler l'intitulé de bibliographie lui-même (court, comme les
-// lignes d'info) — même quand rien de long ne le sépare du bloc final (pas de référence
-// entre l'intitulé et les coordonnées, ce qui prive le seuil de longueur de tout rôle ici :
-// seul le lexique de titres de bibliographie peut arrêter la marche arrière).
+// Le repli s'arrête sur l'intitulé de bibliographie, court comme les lignes d'info, même sans
+// référence entre lui et les coordonnées : seul le lexique des titres de bibliographie
+// l'arrête alors.
 //
-// Sabotage minimal (vérifié pendant ce chantier) : dans extraire_bloc_auteurs_final(),
-// remplacer `if pronto_modele.titre_est_biblio(texte, lexique_biblio, …): break` par `if False:
-// break` — « Bibliographie » se fait alors avaler avec le bloc final.
+// Sabotage : dans extraire_bloc_auteurs_final(), remplacer
+// `if pronto_modele.titre_est_biblio(texte, lexique_biblio, …): break` par `if False: break`.
 
 test('extraire_bloc_auteurs_final : le repli s\'arrête net sur l\'intitulé de bibliographie, même collé au bloc final',
   { skip: sansPython }, () => {
@@ -613,14 +579,11 @@ test('extraire_bloc_auteurs_final : le repli s\'arrête net sur l\'intitulé de 
       + 'référence longue pour l’arrêter autrement');
   });
 
-// Frontière avec la zone d'en-tête (§ ci-dessus) : sur un document COURT où toutes les
-// lignes sont brèves, le repli ne doit jamais revisiter une ligne déjà consommée par
-// extraire_entete() — sinon un intertitre de tête (« Introduction ») se fait absorber comme
-// complément d'un auteur ouvert plus haut (régression constatée en construisant ce module).
+// Sur un document court aux lignes toutes brèves, le repli ne revisite pas une ligne déjà
+// consommée par extraire_entete() : sinon « Introduction » devient le complément d'un auteur.
 //
-// Sabotage minimal (vérifié pendant ce chantier) : dans extraire_bloc_auteurs_final(),
-// retirer la garde `if i in indices_entete: break` du repli — la fonction fait alors
-// `a.fonction === 'Introduction'` au lieu de `''`.
+// Sabotage : retirer la garde `if i in indices_entete: break` du repli ;
+// `a.fonction` vaut alors 'Introduction'.
 
 test('extraire_bloc_auteurs_final : ne revisite jamais un paragraphe déjà consommé par extraire_entete()', { skip: sansPython }, () => {
     const out = diagnostiquer([
@@ -635,18 +598,12 @@ test('extraire_bloc_auteurs_final : ne revisite jamais un paragraphe déjà cons
     assert.deepStrictEqual(out.indices_consommes, { 0: 'titre', 1: 'auteurs', 2: 'auteurs' });
   });
 
-// Silhouette d'une ENTRÉE de bibliographie (correctif du 22.09.2026) : une référence courte
-// (bien SOUS SEUIL_LIGNE_AUTEUR_FINAL, 120 signes) en fin de bibliographie doit arrêter net le
-// repli, jamais se faire avaler avec le bloc de coordonnées qui la suit — mesuré sur
-// tmp/docx-cleaner-error/1408_Alves.docx : « Walton, E. (2025). The knowledge of inclusive
-// education: An ecological approach. Routledge. » (91 signes) disparaissait du document
-// nettoyé SANS TRACE (ni réémise, ni proposée en suppression suivie).
+// Une référence courte (sous SEUIL_LIGNE_AUTEUR_FINAL, 120 signes) en fin de bibliographie
+// arrête le repli : sinon elle disparaît avec le bloc de coordonnées qui la suit, sans trace.
 //
-// Sabotage minimal (vérifié pendant ce chantier) : dans extraire_bloc_auteurs_final(), retirer
-// l'appel à _ressemble_reference_biblio_pour_repli() du repli — Walton se fait alors avaler
-// avec le bloc de coordonnées (aucun nom n'y est reconnu, donc aucune fiche parasite non plus :
-// c'est bien la DISPARITION SILENCIEUSE que ce test détecte, via indices_consommes et
-// document.blocs, jamais via entete.auteurs.length seul).
+// Sabotage : retirer l'appel à _ressemble_reference_biblio_pour_repli() du repli. Aucun nom
+// n'étant reconnu, aucune fiche parasite n'apparaît : la disparition se voit dans
+// indices_consommes et document.blocs, pas dans entete.auteurs.
 
 test('extraire_bloc_auteurs_final : le repli s\'arrête net sur la silhouette d\'une référence courte, même juste avant le bloc de coordonnées (Walton, 91 signes)',
   { skip: sansPython }, () => {
@@ -675,15 +632,11 @@ test('extraire_bloc_auteurs_final : le repli s\'arrête net sur la silhouette d\
       + 'jamais disparaître sans trace');
   });
 
-// Même défaut, référence la plus courte du lot (78 signes) et en toute DERNIÈRE position de
-// la bibliographie : aucune entrée longue derrière elle pour faire mur autrement — seule la
-// silhouette de référence (année entre parenthèses) peut arrêter le repli avant qu'il ne
-// l'avale, le seuil de longueur n'y jouant ici aucun rôle.
+// La référence la plus courte (78 signes), en dernière position de la bibliographie : seule
+// la silhouette de référence (année entre parenthèses) peut arrêter le repli.
 //
-// Sabotage minimal (vérifié pendant ce chantier) : même sabotage que le test précédent — sans
-// _ressemble_reference_biblio_pour_repli(), le repli descend jusqu'à l'intitulé
-// « Bibliographie » (qui, lui, reste protégé par titre_est_biblio) et avale Morin
-// juste avant de s'arrêter dessus.
+// Sabotage : le même que le test précédent ; le repli avale Morin et s'arrête sur
+// « Bibliographie ».
 
 test('extraire_bloc_auteurs_final : le repli s\'arrête net sur une référence courte en toute dernière position, sans entrée longue pour faire mur (Morin, 78 signes)',
   { skip: sansPython }, () => {
@@ -707,16 +660,11 @@ test('extraire_bloc_auteurs_final : le repli s\'arrête net sur une référence 
     assert.ok(morin, 'le texte de la référence Morin doit rester dans document.blocs');
   });
 
-// Année SANS parenthèses et autrice institutionnelle sans initiale (« UNESCO, 2017. » plutôt
-// que « Nom, I. (20xx) ») : le piège principal de ce lot — un motif du seul type
-// « Nom, I. (20xx) » aurait laissé passer cette forme, pourtant réelle
-// (tmp/docx-cleaner-error/1408_Alves.docx), et aurait laissé le seuil de longueur seul face à
-// une référence de 83 signes.
+// Année sans parenthèses et autrice institutionnelle sans initiale (« UNESCO, 2017. ») : un
+// motif limité à « Nom, I. (20xx) » laisserait passer cette forme.
 //
-// Sabotage minimal (vérifié pendant ce chantier) : rétrécir RE_ANNEE_REFERENCE_BIBLIO à la
-// seule forme parenthésée (année entre parenthèses), sans l'alternative « virgule + année +
-// point » — UNESCO, 2017 n'est alors plus reconnue et se fait avaler avec le bloc de
-// coordonnées.
+// Sabotage : réduire RE_ANNEE_REFERENCE_BIBLIO à la forme entre parenthèses, sans
+// l'alternative « virgule + année + point ».
 
 test('extraire_bloc_auteurs_final : le repli s\'arrête net sur une référence à année sans '
   + 'parenthèses et autrice institutionnelle sans initiale (UNESCO, 83 signes)',
@@ -743,12 +691,10 @@ test('extraire_bloc_auteurs_final : le repli s\'arrête net sur une référence 
   });
 
 // ---------------------------------------------------------------------------------------
-// 11. Le branchement de manuscrit_noms.py (§4 du contrat de lot B) — les quatre défauts
-// du §0 du contrat, reproduits tels quels puis vérifiés corrigés.
+// 11. Branchement de manuscrit_noms.py.
 
-// Défaut 1 (§0 du contrat) : une institution prise pour un second auteur. Correction du
-// superviseur (22.09.2026) : _segments_plausibles() PARTITIONNE (noms, infos) au lieu de
-// rejeter la ligne entière au premier segment d'institution.
+// Une institution n'est pas un second auteur : _segments_plausibles() répartit les segments
+// en noms et infos au lieu de rejeter la ligne entière.
 test('extraire_entete : « Marie Dupont, Université de Genève » -> une fiche, institution remplie, jamais un second auteur fantôme (§4.1)', { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Un titre'),
@@ -774,8 +720,7 @@ test('extraire_entete : « Université de Genève » seule après « Marie Dupon
     assert.strictEqual(out.entete.auteurs[0].institution, 'Université de Genève');
   });
 
-// Défaut 2 (§0 du contrat) : « Dr. phil. Romain Lanners » ne rendait aucun auteur —
-// _segments_plausibles() n'appelait pas dm.sans_titres_academiques(), contrairement à
+// _segments_plausibles() retire les titres académiques par dm.sans_titres_academiques(), comme
 // dm.auteurs_depuis_byline().
 test('extraire_entete : titres académiques en tête reconnus, « Dr. phil. Romain Lanners » -> un auteur, jamais zéro (§4.1)', { skip: sansPython }, () => {
     const out = diagnostiquer([
@@ -788,9 +733,8 @@ test('extraire_entete : titres académiques en tête reconnus, « Dr. phil. Roma
     assert.strictEqual(out.entete.auteurs[0].nom, 'Lanners');
   });
 
-// Défaut 3 (§0 du contrat) : un jeton emoji (aucune lettre) disqualifiait toute la ligne
-// dans dm.nom_plausible() — retiré du segment AVANT le test de plausibilité, dans
-// _segments_plausibles(), jamais dans docx-meta.nom_plausible() (fichier d'un autre lot).
+// Un jeton emoji (sans lettre) est retiré du segment avant le test de plausibilité, dans
+// _segments_plausibles().
 test('extraire_entete : un jeton emoji ne disqualifie plus la ligne, « Marie Dupont 🎓 » -> un auteur, jamais zéro (§4.1)', { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Un titre'),
@@ -803,10 +747,9 @@ test('extraire_entete : un jeton emoji ne disqualifie plus la ligne, « Marie Du
   });
 
 // ---------------------------------------------------------------------------------------
-// 12. Propagation de l'ordre sur une byline (§3.5 du contrat de lot A, branchée par
-// _tenter_noms() via mn.trancher_groupe(), §4.2) : un segment tranché par la casse TAPÉE
-// (force certaine, aucun besoin de base ni de modèle riche) propage son ordre au second
-// segment, resté sans indice propre.
+// 12. Propagation de l'ordre sur une byline (_tenter_noms() via mn.trancher_groupe()) : un
+// segment tranché par la casse tapée (force certaine) propage son ordre au segment resté sans
+// indice.
 test('extraire_entete : propagation de l\'ordre sur une byline (un segment tranché par la casse, l\'autre "propagee") (§3.5/§4.2)',
   { skip: sansPython }, () => {
     const out = diagnostiquer([
@@ -826,12 +769,10 @@ test('extraire_entete : propagation de l\'ordre sur une byline (un segment tranc
   });
 
 // ---------------------------------------------------------------------------------------
-// 13. La fusion tête/bloc final (§4.3 du contrat de lot, deux correctifs sur _fusionner_
-// auteurs(), défaut documenté au §5.5 bis du contrat d'architecture).
+// 13. Fusion de la tête et du bloc final (_fusionner_auteurs()).
 
-// Correctif 1 : apparier D'ABORD sur l'e-mail, même quand les jetons du nom ne coïncident
-// pas (« Pierre » en tête, « P. » au bloc final) — la comparaison par ENSEMBLE de jetons
-// (correctif 2) échouerait seule ici : {pierre, martin} != {p., martin}.
+// D'abord par l'e-mail, même quand les jetons du nom diffèrent (« Pierre » en tête, « P. » au
+// bloc final) : {pierre, martin} != {p., martin}.
 test('extraire_bloc_auteurs_final : fusionne via l\'e-mail quand les jetons du nom ne coïncident pas (§4.3, correctif 1)',
   { skip: sansPython }, () => {
     const out = diagnostiquer([
@@ -851,11 +792,9 @@ test('extraire_bloc_auteurs_final : fusionne via l\'e-mail quand les jetons du n
     assert.strictEqual(a.institution, 'Institut de recherche');
   });
 
-// Correctif 2 : à défaut d'e-mail, comparer l'ENSEMBLE des jetons pliés plutôt que la
-// chaîne ordonnée — « Guilley Edith » (tête, sans indice, ordre par défaut ERRONÉ) et
-// « Edith GUILLEY » (bloc final, casse certaine) partagent le même ensemble {edith,
-// guilley} malgré l'ordre différent : UNE seule fiche, et l'ordre de meilleure confiance
-// (le bloc final, certaine) l'emporte sur celui, par défaut, de la tête.
+// Sans e-mail, par l'ensemble des jetons pliés : « Guilley Edith » (tête, ordre par défaut)
+// et « Edith GUILLEY » (bloc final, casse certaine) donnent une seule fiche, avec l'ordre de
+// meilleure confiance.
 test('extraire_bloc_auteurs_final : fusionne par ENSEMBLE de jetons (ordres différents), garde l\'ordre de meilleure confiance (§4.3, correctif 2)',
   { skip: sansPython }, () => {
     const out = diagnostiquer([
@@ -877,8 +816,7 @@ test('extraire_bloc_auteurs_final : fusionne par ENSEMBLE de jetons (ordres diff
   });
 
 // ---------------------------------------------------------------------------------------
-// 14. ordre_confiance/ordre_motif/ordre_conflit (§4.4 du contrat de lot ; ordre_conflit
-// ajouté par le superviseur le 22.09.2026, en cours de lot) sur CHAQUE fiche.
+// 14. ordre_confiance, ordre_motif et ordre_conflit sur chaque fiche.
 
 test('extraire_entete : chaque fiche porte ordre_confiance (valeur de CONFIANCE), ordre_motif (texte) et ordre_conflit (booléen) (§4.4)', { skip: sansPython }, () => {
     const out = diagnostiquer([
@@ -895,20 +833,17 @@ test('extraire_entete : chaque fiche porte ordre_confiance (valeur de CONFIANCE)
     }
   });
 
-// ordre_conflit distingue un ordre "defaut" PAR CONFLIT de signaux (deux signaux de force
-// égale et contraires) d'un ordre "defaut"/tranché SANS conflit — le superviseur a demandé
-// ce champ pour que le lot D n'ait plus à chercher un préfixe de phrase dans ordre_motif
-// (fragile : un texte reformulé ne ferait rougir aucun test).
+// ordre_conflit distingue un ordre "defaut" dû à un conflit de signaux d'un ordre "defaut"
+// faute d'indice, sans chercher un préfixe de phrase dans ordre_motif.
 test('extraire_entete : ordre_conflit distingue un ordre "defaut" par CONFLIT de signaux d\'une fiche tranchée sans conflit (superviseur, 22.09.2026)',
   { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Un titre'),
-      // Casse (certaine, ordre inverse : GUILLEY = nom, en tête) contredite par un e-mail
-      // fabriqué exprès pour ce test (certaine, ordre direct : "edith", seul, retrouvé dans
-      // la partie locale) — deux signaux de force ÉGALE (3) et CONTRAIRES : conflict=True
-      // (§3.4, étape 4 du contrat de lot A).
+      // Casse (certaine, ordre inverse : GUILLEY en tête) contredite par l'e-mail (certain,
+      // ordre direct : "edith" seul dans la partie locale) : deux signaux de force égale (3)
+      // et contraires, conflict=True.
       para('GUILLEY Edith, edith@example.com'),
-      // Une seconde fiche, tranchée par la casse SEULE, sans aucune contradiction.
+      // Une seconde fiche, tranchée par la casse seule, sans contradiction.
       para('MARTIN Paul'),
       para('Introduction'),
     ]);
@@ -920,14 +855,9 @@ test('extraire_entete : ordre_conflit distingue un ordre "defaut" par CONFLIT de
       'aucune contradiction -> ordre_conflit=false');
   });
 
-// Croisement des DEUX modules sur une initiale intermédiaire — le trou que ni ce fichier ni
-// manuscrit-noms.test.js ne couvrait. Ce fichier a porté un temps sa propre copie de la
-// répartition prénom/nom ; mesuré le 22.09.2026, elle avait déjà divergé de
-// manuscrit_noms._repartir() : elle ignorait les initiales pointées et renversait naïvement
-// la liste en ordre inverse (« Burkhardt Susan C. A. » -> prénom « A. »), les deux suites
-// restant vertes. La copie est supprimée (mn.repartir() est publique depuis) et ce test
-// ferme le trou : il vérifie la répartition à travers extraire_entete(), pas dans le module
-// de décision isolé.
+// Initiale intermédiaire, à travers extraire_entete() et manuscrit_noms.repartir() : elle
+// reste au prénom, et l'ordre inverse ne prend pas la dernière initiale pour prénom
+// (« Burkhardt Susan C. A. »).
 test('extraire_entete : une initiale intermédiaire reste au prénom, dans les deux ordres (superviseur, 22.09.2026)', { skip: sansPython }, () => {
     const direct = diagnostiquer([
       para('Un titre'), para('Bernard N. Schumacher'), para('Introduction'),
@@ -937,8 +867,8 @@ test('extraire_entete : une initiale intermédiaire reste au prénom, dans les d
       "l'initiale intermédiaire appartient au prénom, jamais au nom de famille");
     assert.strictEqual(direct.entete.auteurs[0].nom, 'Schumacher');
 
-    // Ordre inverse levé par la casse (signal certain) : la remontée depuis la fin doit
-    // ancrer sur « Susan », jamais sur la dernière initiale rencontrée.
+    // Ordre inverse levé par la casse : la remontée depuis la fin ancre sur « Susan », pas
+    // sur la dernière initiale.
     const inverse = diagnostiquer([
       para('Un titre'), para('BURKHARDT Susan C. A.'), para('Introduction'),
     ]);
@@ -948,31 +878,24 @@ test('extraire_entete : une initiale intermédiaire reste au prénom, dans les d
   });
 
 // ---------------------------------------------------------------------------------------
-// 16. La portée de la propagation : LE DOCUMENT, pas la ligne (principe posé par Robin le 22.09.2026 — « un
-// article est écrit dans UN seul ordre prénom/nom, du début à la fin »).
-//
-// Ce que le bloc 12 ci-dessus prouvait déjà : deux noms de LA MÊME LIGNE se votent l'un
-// l'autre, parce que _tenter_noms() les passe ensemble à mn.trancher_groupe(). Ce qui ne
-// marchait PAS avant ce lot, et que ces tests-ci gardent : la byline et le bloc final
-// d'informations sur les autrices et auteurs sont analysés par deux fonctions différentes,
-// à deux moments différents, et rien ne portait l'ordre de l'une à l'autre — sauf pour une
-// personne présente dans les deux endroits, appariée par _fusionner_auteurs(). Une autrice
-// citée seulement dans la byline n'apprenait donc rien de ce que le bloc final avait tranché.
-// Corrigé par _propager_ordre_document(), appelé après la fusion.
+// 16. La propagation de l'ordre porte sur le document entier : un article suit un seul ordre
+// prénom/nom. La byline et le bloc final sont analysés par deux fonctions différentes ;
+// _propager_ordre_document(), appelée après la fusion, porte l'ordre tranché de l'un à
+// l'autre, y compris pour une autrice citée dans un seul des deux.
 
 test('extraire_entete : l\'ordre tranché dans le BLOC FINAL retourne un nom resté en defaut '
   + 'dans la byline (§3 bis — portée = le document)',
   { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Un titre'),
-      // Aucun indice propre : ni casse, ni e-mail, ni bibliographie. Seul, ce segment
-      // retombe sur la convention « premier jeton = prénom » et sort « Valarino Isabel ».
+      // Aucun indice propre (casse, e-mail, bibliographie) : seul, ce segment suivrait la
+      // convention « premier jeton = prénom ».
       para('Valarino Isabel'),
       para('Introduction'),
       para('Un paragraphe de corps assez long pour ne ressembler en rien à une ligne '
         + 'd\'auteur, afin que le repli heuristique de fin de document ne l\'avale pas.'),
       para('Informations sur les autrices et auteurs'),
-      // Casse TAPÉE : force certaine, ordre inverse. C'est lui le donneur.
+      // Casse tapée : force certaine, ordre inverse. C'est lui qui donne l'ordre.
       para('GUILLEY Edith'),
     ]);
     const parNom = {};
@@ -990,7 +913,7 @@ test('extraire_entete : l\'ordre tranché dans le BLOC FINAL retourne un nom res
     assert.match(parNom.valarino.ordre_motif, /document/,
       'le motif doit dire que l\'ordre vient du document, et nommer son donneur');
 
-    // La décision est tracée à la portée « document », jamais cachée dans la fiche seule.
+    // La décision est tracée à la portée « document ».
     const notes = out.trace.filter((t) => t.decision === 'ordre_propage_document');
     assert.strictEqual(notes.length, 1, 'une note de trace par fiche retournée');
     assert.match(notes[0].motif, /Valarino/);
@@ -1000,9 +923,9 @@ test('extraire_entete : deux fiches tranchées qui se contredisent -> AUCUNE pro
   + 'document (sans consensus, rien)', { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Un titre'),
-      // Casse tapée sur le PREMIER jeton -> ordre inverse, certaine.
+      // Casse tapée sur le premier jeton : ordre inverse, certain.
       para('GUILLEY Edith'),
-      // Casse tapée sur le SECOND jeton -> ordre direct, certaine. Les deux se contredisent.
+      // Casse tapée sur le second jeton : ordre direct, certain. Les deux se contredisent.
       para('Rachel SERMIER'),
       para('Un troisième nom sans le moindre indice : Valarino Isabel'),
       para('Introduction'),
@@ -1023,8 +946,8 @@ test('extraire_entete : la forme « Nom, Prénom » ne vote PAS pour l\'ordre du
   + '(la virgule dit un segment, pas une convention)', { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Un titre'),
-      // Ordre certain par construction (la virgule), mais `ordre` reste None : cette fiche
-      // ne doit pas imposer l'ordre inverse au reste du document.
+      // Ordre certain grâce à la virgule, mais `ordre` reste None : cette fiche n'impose pas
+      // l'ordre inverse au reste du document.
       para('Guilley, Edith — Haute école pédagogique'),
       para('Valarino Isabel'),
       para('Introduction'),
@@ -1042,10 +965,10 @@ test('extraire_entete : la forme « Nom, Prénom » ne vote PAS pour l\'ordre du
   });
 
 // ---------------------------------------------------------------------------------------
-// Troisième voie du bloc final (29.09.2026, gzdf_Huttner.docx) : la fiche d'autrice posée dans
-// un TABLEAU (photo à gauche, nom/fonctions/institution/e-mail à droite), AVANT la
-// bibliographie. Les deux voies en paragraphes s'arrêtent sur tout tableau : rien n'était
-// reconnu. Un tableau n'est retenu que s'il nomme une personne DÉJÀ dans la byline.
+// Troisième voie du bloc final : la fiche d'autrice posée dans un tableau (photo à gauche,
+// nom, fonctions, institution, e-mail à droite), avant la bibliographie. Les deux voies en
+// paragraphes s'arrêtent sur tout tableau. Un tableau n'est retenu que s'il nomme une
+// personne déjà dans la byline.
 
 function tableau(cellules) {
   return {

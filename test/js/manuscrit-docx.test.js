@@ -1,29 +1,25 @@
-// pipeline/manuscrit_docx.py : le lecteur .docx du nettoyeur de manuscrit (article), §3/§4/
-// §10/§11 de docs/ARCHITECTURE-nettoyeur-manuscrit.md. Ce fichier éprouve les sept
-// contrôles posés au §11 pour manuscrit-docx.test.js :
+// Tests de pipeline/manuscrit_docx.py, le lecteur .docx du nettoyeur de manuscrit (voir
+// docs/ARCHITECTURE-nettoyeur-manuscrit.md). Contrôles principaux :
 //   1. un paragraphe dont Word a coupé les runs au milieu d'un mot (et sur une espace) rend
-//      N Fragment, dans l'ordre, et leur concaténation est le texte exact ;
-//   2. None (non déclaré) et False (déclaré éteint) ne sont jamais confondus pour `gras` ;
-//   3. un style localisé (Titre 1, Überschrift 1) est résolu au même nom humain que
-//      heading 1, et niveau_declare vaut 1 ;
-//   4. une image w:inline rend flottante=False, une w:anchor rend flottante=True, et les
-//      OCTETS rendus sont exactement ceux de l'archive ;
-//   5. un tableau à cellule fusionnée : la cellule masquée n'apparaît pas, le colspan de la
-//      cellule qui la couvre est juste ;
-//   6. un .docx portant des w:ins rend revisions > 0 ;
+//      N Fragment, dans l'ordre, dont la concaténation est le texte exact ;
+//   2. None (non déclaré) et False (déclaré éteint) restent distincts pour `gras` ;
+//   3. un style localisé (Titre 1, Überschrift 1) est résolu au même nom que heading 1, et
+//      niveau_declare vaut 1 ;
+//   4. une image w:inline rend flottante=False, une w:anchor flottante=True, et les octets
+//      rendus sont ceux de l'archive ;
+//   5. dans un tableau à cellule fusionnée, la cellule masquée n'apparaît pas et le colspan
+//      de la cellule qui la couvre est juste ;
+//   6. un .docx qui porte des w:ins rend revisions > 0 ;
 //   7. projeter_pronto() et pronto_docx.lire() s'accordent sur le gabarit livré.
-// Plus le contrôle le moins cher et le plus utile (§11, note finale) : les onze manuscrits
-// réels de tmp/corpus-relecture/lot-A/ ne lèvent aucune exception à la lecture — sauté sous
-// un motif nommé quand tmp/ (hors git) est absent.
+// S'y ajoute la lecture sans exception des onze manuscrits de tmp/corpus-relecture/lot-A/
+// (sautée sous un motif nommé quand tmp/ est absent).
 //
-//   node --test test/js/manuscrit-docx.test.js
+// Les .docx de test sont fabriqués à la volée par un programme Python, comme dans
+// docx-titres.test.js. manuscrit_docx.py se pilote par sa CLI de diagnostic
+// (--diagnostic, --images, --projeter-pronto, --pronto-brut <fichier.docx>).
 //
-// Patron : test/js/docx-titres.test.js (fixtures .docx fabriquées ICI par un petit programme
-// Python écrit au vol, jamais figées en binaire). Python passe par python() de
-// test/js/gardes.js (la WSL sous Windows).
-//
-// manuscrit_docx.py n'est piloté que par sa CLI de diagnostic (--diagnostic/--images/
-// --projeter-pronto/--pronto-brut <fichier.docx>) : Node ne peut pas l'importer directement.
+// Les commentaires « Sabotage » indiquent la modification du module qui doit faire rougir
+// le test.
 'use strict';
 
 const test = require('node:test');
@@ -38,8 +34,8 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const MANUSCRIT_DOCX = path.join(RACINE, 'pipeline', 'manuscrit_docx.py');
 const PYTHON_OPTS = { maxBuffer: 64 * 1024 * 1024 };
 const CORPUS_LOT_A = path.join(RACINE, 'tmp', 'corpus-relecture', 'lot-A');
-// Gabarits V4 (29.09.2026) : deux fichiers, FR et DE — les contrôles de ce fichier (projection
-// pandoc, styles maison…) sont indépendants de la langue des étiquettes ; le FR suffit.
+// Deux gabarits, FR et DE ; ces contrôles ne dépendent pas de la langue des étiquettes, le FR
+// suffit.
 const GABARIT_LIVRE = path.join(RACINE, "revue-template", "Pronto - modele d'article_FR.docx");
 
 function dossierJetable() {
@@ -47,16 +43,15 @@ function dossierJetable() {
 }
 
 // ---------------------------------------------------------------------------------
-// Fabrication d'un .docx minimal, au vol, par un petit programme Python (jamais figé en
-// binaire — patron docx-titres.test.js/fabriquerDocx). `spec` :
-//   corps       : XML brut des enfants de w:body (w:p / w:tbl), déjà entièrement formé ;
+// Fabrique un .docx minimal par un programme Python. `spec` :
+//   corps       : XML brut des enfants de w:body (w:p / w:tbl), déjà formé ;
 //   styles      : [[styleId, "w:name"], ...] ;
-//   lang        : w:val de w:docDefaults/w:rPrDefault/w:rPr/w:lang, optionnel ;
-//   media       : {"image1.png": "<base64>", ...} -> écrit sous word/media/ ;
-//   rels        : [[rId, target, external?], ...] -> word/_rels/document.xml.rels ;
-//   footnotes   : XML brut des w:footnote (déjà formés), optionnel ;
-//   endnotes    : XML brut des w:endnote (déjà formés), optionnel (ajouté le 19.09.2026) ;
-//   comments    : nombre de commentaires à fabriquer, optionnel.
+//   lang        : w:val de w:docDefaults/w:rPrDefault/w:rPr/w:lang, facultatif ;
+//   media       : {"image1.png": "<base64>", ...}, écrit sous word/media/ ;
+//   rels        : [[rId, target, external?], ...], dans word/_rels/document.xml.rels ;
+//   footnotes   : XML brut des w:footnote, facultatif ;
+//   endnotes    : XML brut des w:endnote, facultatif ;
+//   comments    : nombre de commentaires à fabriquer, facultatif.
 const FABRIQUE = [
   'import base64, json, sys, zipfile',
   'chemin, spec = sys.argv[1], json.loads(sys.argv[2])',
@@ -141,14 +136,12 @@ function diagnostiquer(mode, chemin) {
 }
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°1 — mot coupé au milieu d'un run, ET coupure sur une espace de run : la
-// concaténation des Fragment doit reconstruire le texte EXACT, jamais rogné à la frontière.
+// Contrôle n°1 : mot coupé au milieu d'un run, et coupure sur une espace de run. La
+// concaténation des Fragment reconstruit le texte exact.
 //
-// Sabotage minimal : dans _texte_depuis_enfants(), remplacer
-// `_normaliser_run(''.join(morceaux))` par `_normaliser_run(''.join(morceaux).strip())`
-// (rogner chaque run isolément, comme le ferait pronto_modele.normaliser() appelé par
-// Fragment) — la seconde assertion (coupure sur une espace) rougit : « Bonjour »+« le monde »
-// devient « Bonjourle monde ».
+// Sabotage : dans _texte_depuis_enfants(), remplacer `_normaliser_run(''.join(morceaux))` par
+// `_normaliser_run(''.join(morceaux).strip())` ; « Bonjour »+« le monde » devient
+// « Bonjourle monde ».
 
 test('manuscrit_docx.py --diagnostic : un mot coupé au milieu d\'un run se reconstruit exactement',
   { skip: sansPython }, () => {
@@ -174,8 +167,8 @@ test('manuscrit_docx.py --diagnostic : une coupure de run sur une espace ne perd
     const base = dossierJetable();
     try {
       const docx = path.join(base, 'essai.docx');
-      // La coupure tombe exactement après l'espace qui suit "Bonjour" : un rognage par
-      // Fragment isolé ("Bonjour " -> "Bonjour") perdrait cette espace à la concaténation.
+      // La coupure tombe juste après l'espace qui suit "Bonjour" : rogner chaque Fragment
+      // perdrait cette espace.
       const corps =
         '<w:p><w:r><w:t xml:space="preserve">Bonjour </w:t></w:r>' +
         '<w:r><w:t xml:space="preserve">le monde</w:t></w:r></w:p>';
@@ -189,27 +182,17 @@ test('manuscrit_docx.py --diagnostic : une coupure de run sur une espace ne perd
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°2 — None (non déclaré) contre False (déclaré éteint), jamais confondus.
+// Contrôle n°2 : None (non déclaré) et False (déclaré éteint) restent distincts.
 //
-// _lire_onoff() a DEUX clauses de sortie None, sur deux branches distinctes :
-//   - rpr est None (AUCUN w:rPr sur le run) — ligne `if rpr is None: return None` ;
-//   - rpr existe mais ne porte pas la balise demandée (ex. w:b absent d'un w:rPr qui porte
-//     autre chose, comme de l'italique) — ligne `if el is None: return None`.
-// Le premier jet de ce contrôle (18.09.2026) n'exerçait QUE la première branche (son run
-// « sans declaration » n'a AUCUN w:rPr du tout) : un sabotage de la seconde branche
-// (`if el is None: return False`) — celle que son propre commentaire prétendait viser —
-// laissait les 10 tests verts. Mesuré par sabotage réel, pas supposé : un défaut de
-// couverture confirmé le 18.09.2026 (revue adverse), plus grave qu'il n'y paraît, car c'est
-// la branche qui se déclenche sur PRESQUE TOUS les runs réels — Word écrit un w:rPr dès qu'il
-// y a une langue de correction, une police ou de l'italique, et n'y met un w:b que si le gras
-// est explicite ; « rPr présent, w:b absent » est donc le cas normal, « aucun rPr » le cas
-// rare. Une confusion ici ferait annoncer par nettoyer_mise_en_forme() « gras retiré » sur des
-// milliers de fragments qui n'ont jamais été gras.
+// _lire_onoff() rend None dans deux cas :
+//   - aucun w:rPr sur le run (`if rpr is None: return None`) ;
+//   - un w:rPr sans la balise demandée (`if el is None: return None`). C'est le cas courant :
+//     Word écrit un w:rPr dès qu'il y a une langue, une police ou de l'italique, et n'y met
+//     w:b que si le gras est explicite.
+// Le dernier run porte un w:rPr non vide (italique) sans w:b, pour exercer le second cas.
 //
-// Le run ajouté ci-dessous porte un w:rPr NON VIDE (de l'italique) mais SANS w:b : il exerce
-// la seconde branche. Les deux sabotages sont maintenant prouvés dans les deux sens :
-//   - ligne `if rpr is None: return None` → `return False` : rougit (fr[0]) ;
-//   - ligne `if el is None: return None` → `return False`  : rougit maintenant AUSSI (fr[3]).
+// Sabotage : remplacer l'un ou l'autre `return None` par `return False` ; fr[0] ou fr[3]
+// rougit.
 
 test('manuscrit_docx.py --diagnostic : gras=None (non déclaré) ≠ gras=False (déclaré éteint)', { skip: sansPython }, () => {
     const base = dossierJetable();
@@ -237,17 +220,14 @@ test('manuscrit_docx.py --diagnostic : gras=None (non déclaré) ≠ gras=False 
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°3 — un style localisé résolu au même nom humain, et niveau_declare correct.
-// « heading 1 » (styles.xml complet) et « Titre 1 » (styles.xml complet, nom français) sont
-// les deux formes qu'un manuscrit RÉEL de ce corpus (français) peut porter ; « berschrift1 »
-// exerce le repli sur le styleId brut que pronto_docx.resoudre_style garde pour un style
-// hérité, sans entrée dans styles.xml (docx-pronto.py, ⚠ voir le rapport final : la forme
-// PLEINEMENT localisée « Überschrift 1», résolue via un w:name présent dans styles.xml, ne
-// passe PAS par ce repli et n'est pas couverte ici pour cette raison précise).
+// Contrôle n°3 : un style localisé est résolu au même nom humain, avec le bon niveau.
+// « heading 1 » et « Titre 1 » ont leur entrée dans styles.xml ; « berschrift1 » n'en a pas
+// et exerce le repli sur le styleId brut de pronto_docx.resoudre_style. La forme
+// « Überschrift 1 » résolue par un w:name de styles.xml ne passe pas par ce repli et n'est
+// pas couverte ici.
 //
-// Sabotage minimal : dans _paragraphe_depuis(), appeler `pm.niveau_depuis_style('')` au lieu
-// de `pm.niveau_depuis_style(style_resolu)` — tous les niveau_declare tombent à 0, la
-// dernière assertion de chaque bloc rougit.
+// Sabotage : dans _paragraphe_depuis(), appeler `pm.niveau_depuis_style('')` au lieu de
+// `pm.niveau_depuis_style(style_resolu)`.
 
 test('manuscrit_docx.py --diagnostic : styles localisés résolus au bon niveau de titre', { skip: sansPython }, () => {
     const base = dossierJetable();
@@ -263,7 +243,7 @@ test('manuscrit_docx.py --diagnostic : styles localisés résolus au bon niveau 
       fabriquerDocx(docx, {
         corps,
         styles: [['H1EN', 'heading 1'], ['H1FR', 'Titre 1']]
-        // berschrift1 : AUCUNE entree dans styles.xml -> repli sur le styleId brut.
+        // berschrift1 : aucune entrée dans styles.xml, repli sur le styleId brut.
       });
       const { document } = diagnostiquer('--diagnostic', docx);
       const [p1, p2, p3] = document.blocs;
@@ -279,12 +259,10 @@ test('manuscrit_docx.py --diagnostic : styles localisés résolus au bon niveau 
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°4 — w:inline -> flottante=False, w:anchor -> flottante=True, et les OCTETS
-// rendus sont exactement ceux de l'archive (comparaison par sha256, --images).
+// Contrôle n°4 : w:inline donne flottante=False, w:anchor flottante=True, et les octets
+// rendus sont ceux de l'archive (comparaison par sha256, --images).
 //
-// Sabotage minimal : dans _image_depuis_drawing(), inverser `flottante = False` / la
-// détection wp:anchor (mettre flottante = True dans les deux branches) — la première
-// assertion (flottante===false pour l'image inline) rougit.
+// Sabotage : dans _image_depuis_drawing(), mettre flottante = True dans les deux branches.
 
 test('manuscrit_docx.py --images : inline non flottante, anchor flottante, octets exacts', { skip: sansPython }, () => {
     const base = dossierJetable();
@@ -337,11 +315,9 @@ test('manuscrit_docx.py --images : inline non flottante, anchor flottante, octet
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôles ajoutés le 18.09.2026 — dimensions en PIXELS du FICHIER, lues dans SES OCTETS
-// (jamais dans wp:extent/cx/cy, qui ne décrit que la boîte d'AFFICHAGE de Word ; voir
-// docs/ARCHITECTURE-nettoyeur-manuscrit.md §4). Les fabriques ci-dessous assemblent
-// des octets PNG/JPEG minimaux à la main (Buffer), jamais figés en binaire — même esprit que
-// fabriquerDocx() pour le conteneur .docx qui les enveloppe.
+// Dimensions en pixels lues dans les octets du fichier image, et non dans wp:extent/cx/cy
+// (la boîte d'affichage de Word). Les fabriques ci-dessous assemblent à la main des octets
+// PNG/JPEG minimaux.
 
 function fabriquerPng(largeur, hauteur) {
   const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -356,11 +332,9 @@ function fabriquerPng(largeur, hauteur) {
   return Buffer.concat([signature, longueurChunk, type, donnees, crc]);
 }
 
-// SOI, puis un DHT (0xFFC4, table de Huffman) dont les octets — pris À TORT pour un SOF —
-// rendraient les dimensions absurdes 0xBBCC x 0xDDEE, puis le VRAI SOF0 (0xFFC0) qui porte
-// les dimensions demandées. C'est l'erreur que le contrôle suivant doit prouver absente :
-// le contrat la nomme explicitement (0xFFC4/0xFFC8/0xFFCC partagent la plage numérique des
-// SOF sans en être).
+// SOI, puis un DHT (0xFFC4, table de Huffman) dont les octets, pris pour un SOF, donneraient
+// 0xBBCC x 0xDDEE, puis le vrai SOF0 (0xFFC0). 0xFFC4, 0xFFC8 et 0xFFCC sont dans la plage
+// numérique des SOF sans en être.
 function fabriquerJpegAvecPiegeDht(largeur, hauteur) {
   const dhtDonnees = Buffer.from([0xaa, 0xbb, 0xcc, 0xdd, 0xee]);
   const dhtLongueur = Buffer.alloc(2);
@@ -379,8 +353,8 @@ function fabriquerJpegAvecPiegeDht(largeur, hauteur) {
   return Buffer.concat([Buffer.from([0xff, 0xd8]), dht, sof]);
 }
 
-// Un .docx à un seul paragraphe portant une unique image w:inline, avec `cx`/`cy` (EMU) et
-// les octets d'image donnés — patron du drawing de contrôle n°4, réduit à l'essentiel.
+// Un .docx d'un seul paragraphe portant une image w:inline, avec `cx`/`cy` (EMU) et les
+// octets d'image donnés.
 function fabriquerDocxAvecImage(chemin, octetsImage, cx, cy, nomFichier) {
   const drawing =
     '<w:drawing><wp:inline><wp:extent cx="' + cx + '" cy="' + cy + '"/>' +
@@ -395,9 +369,7 @@ function fabriquerDocxAvecImage(chemin, octetsImage, cx, cy, nomFichier) {
   });
 }
 
-// Sabotage minimal : dans _dimensions_png(), échanger `largeur, hauteur = struct.unpack(...)`
-// en `hauteur, largeur = struct.unpack(...)` — largeur et hauteur étant différentes (120≠80)
-// dans cette fixture, l'assertion sur largeur_px rougit.
+// Sabotage : dans _dimensions_png(), échanger en `hauteur, largeur = struct.unpack(...)`.
 
 test('manuscrit_docx.py --diagnostic : un PNG fabriqué en 120 x 80 rend ses vraies dimensions en pixels', { skip: sansPython }, () => {
     const base = dossierJetable();
@@ -413,9 +385,7 @@ test('manuscrit_docx.py --diagnostic : un PNG fabriqué en 120 x 80 rend ses vra
     }
   });
 
-// Sabotage minimal : retirer 0xC4 de _SOF_JPEG_EXCLUS — le parcours prend alors le DHT pour
-// un SOF et rend les dimensions de sa charge de table de Huffman (0xBBCC x 0xDDEE), pas
-// 120 x 80.
+// Sabotage : retirer 0xC4 de _SOF_JPEG_EXCLUS ; le DHT est pris pour un SOF.
 
 test('manuscrit_docx.py --diagnostic : un JPEG rend ses vraies dimensions, pas celles d\'un 0xFFC4 pris à tort pour un SOF',
   { skip: sansPython }, () => {
@@ -433,15 +403,11 @@ test('manuscrit_docx.py --diagnostic : un JPEG rend ses vraies dimensions, pas c
     }
   });
 
-// Un fichier tronqué (signature PNG et étiquette IHDR présentes, mais coupé avant la fin de
-// la charge largeur/hauteur — cas réel d'un transfert interrompu) doit rendre (0, 0) SANS
-// jamais lever, et le document doit quand même se lire (code de sortie 0, déjà vérifié par
-// diagnostiquer() ci-dessous).
+// Un fichier tronqué (signature PNG et IHDR présentes, coupé avant largeur/hauteur, comme
+// après un transfert interrompu) rend (0, 0) sans lever, et le document se lit (code 0).
 //
-// Sabotage minimal : dans _dimensions_image(), remplacer `except Exception:` par
-// `except ValueError:` — struct.error n'est PAS une ValueError, l'exception remonte alors
-// non rattrapée jusqu'à la CLI, qui échoue tout le document (code 1) au lieu de rendre (0, 0)
-// pour cette seule image : l'assertion `r.status === 0` de diagnostiquer() rougit.
+// Sabotage : dans _dimensions_image(), remplacer `except Exception:` par
+// `except ValueError:` ; struct.error n'est pas une ValueError et la CLI échoue.
 
 test('manuscrit_docx.py --diagnostic : un fichier image tronqué rend 0,0 sans jamais lever, et le document se lit quand même', { skip: sansPython }, () => {
     const base = dossierJetable();
@@ -458,9 +424,7 @@ test('manuscrit_docx.py --diagnostic : un fichier image tronqué rend 0,0 sans j
     }
   });
 
-// Un format entièrement inconnu de ce lecteur (SVG, ici un extrait littéral, ni PNG ni
-// JPEG ni GIF ni BMP) rend (0, 0) de la même façon — c'est un résultat correct, pas une
-// panne : un vectoriel n'a pas de résolution.
+// Un format inconnu du lecteur (SVG) rend (0, 0) aussi : un vectoriel n'a pas de résolution.
 
 test('manuscrit_docx.py --diagnostic : un format inconnu (SVG) rend 0,0, sans lever, distinct d\'un fichier abîmé',
   { skip: sansPython }, () => {
@@ -478,12 +442,10 @@ test('manuscrit_docx.py --diagnostic : un format inconnu (SVG) rend 0,0, sans le
     }
   });
 
-// cx et cy (§4 du contrat) : rendus SÉPARÉMENT, jamais fondus dans le seul produit `surface`
-// — c'est ce qui garantit qu'on n'a rien cassé chez qui lit déjà `surface`.
+// cx et cy sont rendus séparément, en plus du produit `surface` déjà lu ailleurs.
 //
-// Sabotage minimal : dans _image_depuis_drawing(), remplacer `surface = cx * cy` par
-// `surface = cx + cy` — cx et cy restent corrects (lecture inchangée), seule l'assertion sur
-// `surface` (le produit) rougit.
+// Sabotage : dans _image_depuis_drawing(), remplacer `surface = cx * cy` par
+// `surface = cx + cy`.
 
 test('manuscrit_docx.py --diagnostic : cx et cy sont rendus séparément, et leur produit reste égal à surface', { skip: sansPython }, () => {
     const base = dossierJetable();
@@ -502,20 +464,14 @@ test('manuscrit_docx.py --diagnostic : cx et cy sont rendus séparément, et leu
     }
   });
 
-// Le contrôle le plus proche du besoin réel qui motive ce chantier (§ du rapport de mission) :
-// sur le corpus réel, TOUTES les images incorporées doivent porter des dimensions en pixels
-// non nulles — sans quoi rien ne peut se calculer sur leur qualité. Sauté sous un motif
-// nommé si tmp/ (hors git) est absent, jamais en silence.
+// Sur le corpus, toutes les images incorporées ont des dimensions en pixels non nulles.
+// Sauté sous un motif nommé si tmp/ est absent.
 //
-// Chiffres révisés le 19.09.2026 : ce fichier réel porte 21 médias DISTINCTS, pas 16 — 5 de
-// plus, récupérés depuis les mc:Fallback VML de 4 de ses 10 ancrages flottants (voir le
-// contrôle suivant). Mesuré : ces 5 médias (rId20-24) sont référencés IDENTIQUEMENT par les 4
-// ancrages (le même groupe de 5 photos redit 4 fois, une structure réelle de ce fichier, pas
-// un artefact de comptage — vérifié XML en main) : 16 images modernes + 5 images VML × 4
-// occurrences = 36 Image rendues au total, mais 21 noms de fichier distincts.
+// Ce fichier porte 21 médias distincts : 16 images modernes, et 5 récupérées dans les
+// mc:Fallback VML de 4 de ses 10 ancrages flottants. Les 4 ancrages référencent les mêmes 5
+// médias (rId20-24) : 16 + 5 × 4 = 36 Image rendues.
 //
-// Sabotage minimal : ajouter `return 0, 0` en toute première ligne de _dimensions_image() —
-// toutes les images du document, y compris ces 36, rendraient 0,0.
+// Sabotage : ajouter `return 0, 0` en première ligne de _dimensions_image().
 
 test('manuscrit_docx.py --images : le corpus réel (lot-A/4_*.docx) rend 36 occurrences pour 21 médias distincts, toutes avec des dimensions en pixels non nulles',
   { skip: sansPython }, (t) => {
@@ -545,16 +501,11 @@ test('manuscrit_docx.py --images : le corpus réel (lot-A/4_*.docx) rend 36 occu
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle réécrit le 19.09.2026 (revue de chantier) : compter les OCCURRENCES de
-// v:imagedata (comme avant cette date) surcomptait d'un facteur mesuré de 5 sur lot-A/4_La
-// méthode Flip Flap.docx (un même r:id peut être répété plusieurs fois dans un même groupe).
-// Ce lecteur compte désormais les r:id DISTINCTS, et RÉCUPÈRE les images correspondantes
-// (5 des 21 médias de ce fichier réel n'apparaissaient dans AUCUNE sortie avant cette
-// révision) plutôt que de se contenter de les compter comme perdues.
+// Le lecteur compte les r:id distincts de v:imagedata (un même r:id peut se répéter dans un
+// groupe) et récupère les images correspondantes.
 //
-// Sabotage minimal : dans _images_depuis_vml(), retirer la ligne `if rid and rid in vus:
-// continue` (le dédoublonnage) — la seconde des deux assertions ci-dessous (rId répété deux
-// fois ne donne qu'UNE image) rougit : deux Image identiques seraient rendues.
+// Sabotage : dans _images_depuis_vml(), retirer `if rid and rid in vus: continue` ; un rId
+// répété deux fois donnerait deux Image.
 
 test('manuscrit_docx.py --diagnostic : un w:pict groupant 2 images VML DISTINCTES les récupère toutes les deux', { skip: sansPython }, () => {
     const base = dossierJetable();
@@ -615,13 +566,11 @@ test('manuscrit_docx.py --diagnostic : un w:pict qui référence deux fois le M�
     }
   });
 
-// Régression : un w:pict SANS AUCUNE image (pure forme vectorielle héritée — rectangle,
-// connecteur…) doit toujours être compté 1 fois dans 'images-vml-ignorees', jamais 0 (rien ne
-// doit disparaître du décompte) et jamais récupéré (rien à récupérer).
+// Un w:pict sans image (forme vectorielle : rectangle, connecteur…) est compté une fois dans
+// 'images-vml-ignorees' et n'est pas récupéré.
 //
-// Sabotage minimal : dans _images_depuis_vml(), remplacer `if not trouve_imagedata:
-// recensement['image_vml_ignoree'] += 1` par `pass` — l'avertissement ne apparaît plus du
-// tout, l'assertion ci-dessous rougit.
+// Sabotage : dans _images_depuis_vml(), remplacer `if not trouve_imagedata:
+// recensement['image_vml_ignoree'] += 1` par `pass`.
 
 test('manuscrit_docx.py --diagnostic : un w:pict sans aucune image reste compté comme ignoré, jamais 0', { skip: sansPython }, () => {
     const base = dossierJetable();
@@ -641,21 +590,13 @@ test('manuscrit_docx.py --diagnostic : un w:pict sans aucune image reste compté
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle du 18.09.2026 (revue adverse, défaut trouvé par recoupement direct sur
-// lot-A/4_La méthode Flip Flap.docx, PAS par sabotage), RÉÉCRIT le 19.09.2026 pour vérifier la
-// RÉCUPÉRATION et non plus seulement le comptage — _enfants_utiles() ne regarde que la branche
-// mc:Choice d'un mc:AlternateContent, pour ne pas compter deux fois LA MÊME forme redite en
-// VML dans mc:Fallback (voir le point 2 de l'en-tête du module). Mais sur ce fichier réel, 4
-// des 10 ancrages flottants ont une branche Choice qui est un pur groupe de formes SANS image
-// (recensé, correctement, en 'forme_vectorielle_ignoree') — et une branche Fallback qui, elle,
-// porte un VRAI groupe d'images embarquées (<v:imagedata>). Avant la toute première correction,
-// ces images n'apparaissaient dans AUCUN recensement ; avant celle du 19.09.2026, elles étaient
-// comptées comme "ignorées" sans être RÉCUPÉRÉES.
+// _enfants_utiles() ne lit que la branche mc:Choice d'un mc:AlternateContent, pour ne pas
+// compter deux fois la même forme redite en VML dans mc:Fallback. Mais un Choice peut n'être
+// qu'un groupe de formes sans image (recensé en 'forme_vectorielle_ignoree') alors que le
+// Fallback porte de vraies images (<v:imagedata>). Ces images sont récupérées.
 //
-// Sabotage minimal : dans _images_du_repli_fantome(), retirer l'appel à _images_depuis_vml()
-// (ou son corps) — les 2 images du Fallback disparaissent de la sortie ET l'avertissement
-// 'images-vml-ignorees' cesse d'apparaître pour une raison différente (rien à ignorer non
-// plus) : la première assertion (2 images récupérées) rougit dans les deux cas.
+// Sabotage : dans _images_du_repli_fantome(), retirer l'appel à _images_depuis_vml() ; les 2
+// images du Fallback disparaissent.
 
 test('manuscrit_docx.py --diagnostic : les vraies images d\'un mc:Fallback sont RÉCUPÉRÉES, pas seulement comptées, même quand le Choice n\'a aucune image',
   { skip: sansPython }, () => {
@@ -664,9 +605,8 @@ test('manuscrit_docx.py --diagnostic : les vraies images d\'un mc:Fallback sont 
       const docx = path.join(base, 'essai.docx');
       const octets1 = fabriquerPng(12, 18);
       const octets2 = fabriquerPng(22, 28);
-      // Choice : un dessin flottant SANS <a:blip> (pure forme, comme les 10 ancrages réels).
-      // Fallback : la même forme en VML, mais avec un groupe de 2 v:imagedata — les vraies
-      // images que le Choice moderne ne porte pas.
+      // Choice : un dessin flottant sans <a:blip>. Fallback : la même forme en VML, avec un
+      // groupe de 2 v:imagedata.
       const corps =
         '<w:p><w:r><mc:AlternateContent>' +
         '<mc:Choice Requires="wps">' +
@@ -710,14 +650,10 @@ test('manuscrit_docx.py --diagnostic : les vraies images d\'un mc:Fallback sont 
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°5 — cellule fusionnée horizontalement : la cellule masquée n'apparaît pas dans
-// les rangées, et le colspan de la cellule qui la couvre est juste. (Une rangée de 3
-// colonnes-grille où la première cellule porte gridSpan=2 : Word n'écrit AUCUNE cellule pour
-// la seconde colonne couverte — il n'y a donc qu'une seule w:tc de moins à vérifier : le
-// nombre de cellules de la rangée.)
+// Contrôle n°5 : cellule fusionnée horizontalement. Rangée de 3 colonnes de grille dont la
+// première cellule porte gridSpan=2 : Word n'écrit pas de w:tc pour la colonne couverte.
 //
-// Sabotage minimal : dans _colspan(), rendre toujours 1 (ignorer gridSpan) — l'assertion sur
-// colspan===2 rougit.
+// Sabotage : dans _colspan(), rendre toujours 1.
 
 test('manuscrit_docx.py --diagnostic : cellule fusionnée (gridSpan), colspan correct', { skip: sansPython }, () => {
     const base = dossierJetable();
@@ -749,16 +685,10 @@ test('manuscrit_docx.py --diagnostic : cellule fusionnée (gridSpan), colspan co
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°6 — un .docx portant des w:ins rend revisions > 0.
+// Contrôle n°6 : un .docx qui porte des w:ins rend revisions > 0. Le compteur et la
+// reconstruction du texte sont vérifiés par deux tests séparés.
 //
-// Sabotage minimal : dans _compter_revisions(), ne compter que les w:del (retirer le terme
-// `+ sum(1 for _ in racine.iter(W + 'ins'))`) — un document qui n'a QUE des w:ins (celui-ci)
-// rendrait revisions=0, l'assertion `> 0` rougit.
-//
-// Scindé en deux tests le 18.09.2026 (revue adverse) : un même test vérifiait à la fois le
-// COMPTEUR de révisions et la RECONSTRUCTION du texte — un sabotage touchant la seconde moitié
-// (ex. la normalisation du texte) le faisait rougir pour une raison étrangère au compteur qu'il
-// annonce garder. Séparé pour que chaque test tombe pour la raison qu'il dit garder.
+// Sabotage : dans _compter_revisions(), retirer `+ sum(1 for _ in racine.iter(W + 'ins'))`.
 
 test('manuscrit_docx.py --diagnostic : un document en suivi de modifications rend revisions > 0', { skip: sansPython }, () => {
     const base = dossierJetable();
@@ -786,8 +716,8 @@ test('manuscrit_docx.py --diagnostic : le texte inséré en suivi de modificatio
         '<w:r><w:t xml:space="preserve">Texte insere.</w:t></w:r></w:ins></w:p>';
       fabriquerDocx(docx, { corps });
       const { document } = diagnostiquer('--diagnostic', docx);
-      // Pas de plantage sur w:ins (voir le §8 du contrat : c'est la CLI qui refusera le
-      // document, pas le lecteur qui doit planter), et le texte inséré reste lisible.
+      // Le lecteur ne plante pas sur w:ins (c'est la CLI qui refuse le document), et le
+      // texte inséré reste lisible.
       const texte = document.blocs[0].fragments.map((f) => f.texte).join('');
       assert.strictEqual(texte, 'Texte propre. Texte insere.');
     } finally {
@@ -810,13 +740,11 @@ test('manuscrit_docx.py --diagnostic : sans w:ins/w:del, revisions vaut 0', { sk
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°7 — projeter_pronto() et pronto_docx.lire() s'accordent EXACTEMENT sur le
-// gabarit livré (§3 du contrat, dette assumée).
+// Contrôle n°7 : projeter_pronto() et pronto_docx.lire() s'accordent exactement sur le
+// gabarit livré.
 //
-// Sabotage minimal : dans projeter_pronto()/texte_paragraphe(), omettre le second appel à
-// pm.normaliser() (rendre `brut` tel quel) — sur un paragraphe du gabarit qui contient un
-// tiret cadratin ou une espace multiple, `texte` diffère de celui de pronto_docx.lire(),
-// deepStrictEqual rougit.
+// Sabotage : dans projeter_pronto()/texte_paragraphe(), omettre le second appel à
+// pm.normaliser() ; un cadratin ou une espace multiple du gabarit fait diverger `texte`.
 
 test('manuscrit_docx.py : projeter_pronto() == pronto_docx.lire() sur le gabarit livré',
   { skip: sansPython }, (t) => {
@@ -831,9 +759,8 @@ test('manuscrit_docx.py : projeter_pronto() == pronto_docx.lire() sur le gabarit
   });
 
 // ---------------------------------------------------------------------------------
-// Le contrôle le moins cher et le plus utile (§11, note finale) : les onze manuscrits réels
-// ne lèvent aucune exception à la lecture. tmp/ est hors git et peut être effacé sans
-// prévenir : sauté proprement, sous un motif nommé, quand il est absent — jamais en silence.
+// Les onze manuscrits du corpus se lisent sans exception. tmp/ est hors git et peut être
+// effacé : le test est alors sauté sous un motif nommé.
 
 test('manuscrit_docx.py --diagnostic : les onze manuscrits réels de lot-A se lisent sans exception',
   { skip: sansPython }, (t) => {
@@ -852,14 +779,12 @@ test('manuscrit_docx.py --diagnostic : les onze manuscrits réels de lot-A se li
   });
 
 // ---------------------------------------------------------------------------------
-// §5.4 du contrat (ajouté le 18.09.2026, décidé avec Robin après mesure) : résolution du
-// FORMAT d'une liste ('puce'/'numero'/'') en trois sauts — w:numPr (numId) -> word/
-// numbering.xml w:num (abstractNumId) -> w:abstractNum w:lvl (w:numFmt), avec w:lvlOverride
-// qui l'emporte quand il porte lui-même un w:lvl. Jamais deviné : numbering.xml absent ou
-// format non catalogué rend '' (voir manuscrit_gabarit.py pour qui choisit alors un repli).
+// Format d'une liste ('puce', 'numero' ou '') résolu en trois sauts : w:numPr (numId) ->
+// numbering.xml w:num (abstractNumId) -> w:abstractNum w:lvl (w:numFmt). Un w:lvlOverride
+// qui porte un w:lvl l'emporte. numbering.xml absent ou format inconnu rend '' (le repli est
+// choisi par manuscrit_gabarit.py).
 //
-// Fixture : `numbering` sur la spec de fabriquerDocx (ajouté à FABRIQUE ci-dessus, purement
-// additif — absent de tous les tests précédents, leur comportement ne change pas).
+// Fixture : la clé `numbering` de la spec de fabriquerDocx.
 
 function collecterListes(document) {
   const trouvees = [];
@@ -910,9 +835,9 @@ test('manuscrit_docx.py --diagnostic : un w:lvlOverride qui porte son propre w:l
     const base = dossierJetable();
     try {
       const docx = path.join(base, 'essai.docx');
-      // abstractNum : ilvl0 = bullet. Le num qui le référence redéfinit ce même niveau en
-      // decimal via lvlOverride/w:lvl — le cas d'usage documenté (§5.4) : une autrice repart
-      // d'une liste existante en changeant la puce d'un niveau.
+      // abstractNum : ilvl0 = bullet. Le num qui le référence redéfinit ce niveau en decimal
+      // par lvlOverride/w:lvl, comme quand une autrice reprend une liste en changeant la puce
+      // d'un niveau.
       const numbering =
         '<w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:numFmt w:val="bullet"/>'
         + '<w:lvlText w:val="•"/></w:lvl></w:abstractNum>'
@@ -970,10 +895,8 @@ test('manuscrit_docx.py --diagnostic : numbering.xml absent rend un format vide,
     }
   });
 
-// Fige la mesure du 18.09.2026 en contrôle (revue adverse : « la différence entre observer et
-// garder n'est pas cosmétique ») — la seule liste réelle qu'on ait, sur les trois manuscrits
-// qui en portent (§5.4) : 20 paragraphes de liste au total, tous à puces sur 3_ et 3bis_, et
-// 4_ qui porte les deux formes (numéros de section ET puces d'une sous-liste).
+// Corpus : 20 paragraphes de liste sur trois manuscrits, tous à puces sur 3_ et 3bis_ ; 4_
+// porte les deux formes (numéros de section et puces d'une sous-liste).
 test('manuscrit_docx.py --diagnostic : sur le corpus réel, 3_ et 3bis_ résolvent en puce, 4_ porte les deux formes (20 paragraphes au total)',
   { skip: sansPython }, (t) => {
     const fichiers = ['3_VF_Chanier-Delorme_Article CSPS_290626.docx',
@@ -1009,19 +932,15 @@ test('manuscrit_docx.py --diagnostic : sur le corpus réel, 3_ et 3bis_ résolve
   });
 
 // ===================================================================================
-// Contrôles ajoutés le 19.09.2026 (revue de chantier) — un par défaut du relevé, chacun
-// prouvé par un sabotage minimal décrit dans son commentaire (rejoué à la main, voir le
-// rapport de chantier pour le tableau sabotage -> rouge/vert).
+// Un contrôle par défaut de lecture, chacun avec son sabotage.
 
 // ---------------------------------------------------------------------------------
-// Les tirets ne sont plus détruits à la lecture (défaut n°1) : cadratin, demi-cadratin ET
-// trait d'union insécable (w:noBreakHyphen) doivent tous trois traverser _texte_depuis_enfants
-// intacts — jamais réduits à un simple '-'.
+// Cadratin, demi-cadratin et trait d'union insécable (w:noBreakHyphen) traversent
+// _texte_depuis_enfants() intacts.
 //
-// Sabotage minimal : dans _texte_depuis_enfants(), remplacer
-// `morceaux.append('‑')` par `morceaux.append('-')` pour noBreakHyphen, ET réintroduire
-// une boucle `for a, b in (('–', '-'), ('—', '-'), ('‑', '-')):
-// t = t.replace(a, b)` avant le `return`. Les trois assertions ci-dessous rougissent.
+// Sabotage : dans _texte_depuis_enfants(), remplacer `morceaux.append('‑')` par
+// `morceaux.append('-')` pour noBreakHyphen, et ajouter avant le `return` une boucle
+// `for a, b in (('–', '-'), ('—', '-'), ('‑', '-')): t = t.replace(a, b)`.
 
 test('manuscrit_docx.py --diagnostic : cadratin, demi-cadratin et trait d\'union insécable traversent la lecture intacts',
   { skip: sansPython }, () => {
@@ -1047,14 +966,11 @@ test('manuscrit_docx.py --diagnostic : cadratin, demi-cadratin et trait d\'union
   });
 
 // ---------------------------------------------------------------------------------
-// w:tab et w:br rendent désormais de VRAIS caractères ('\t' / '\n'), plus une simple espace
-// (défaut n°8c — condition pour que nettoyer_mise_en_forme() puisse un jour les nettoyer pour
-// de vrai). projeter_pronto() reste inchangé malgré ça (contrôle n°7 plus haut) : normaliser()
-// traite '\t'/'\n' comme un blanc, exactement comme l'espace qu'ils remplaçaient avant.
+// w:tab et w:br rendent '\t' et '\n'. projeter_pronto() n'en est pas affecté (contrôle n°7) :
+// normaliser() les traite comme un blanc.
 //
-// Sabotage minimal : dans _texte_depuis_enfants(), remplacer les deux branches w:tab/w:br par
-// `elif e.tag in (W + 'tab', W + 'br', W + 'cr'): morceaux.append(' ')` (l'ancien comportement)
-// — les deux assertions ci-dessous rougissent.
+// Sabotage : dans _texte_depuis_enfants(), remplacer les branches w:tab/w:br par
+// `elif e.tag in (W + 'tab', W + 'br', W + 'cr'): morceaux.append(' ')`.
 
 test('manuscrit_docx.py --diagnostic : w:tab rend une vraie tabulation, w:br un vrai saut de ligne, jamais une simple espace', { skip: sansPython }, () => {
     const base = dossierJetable();
@@ -1077,13 +993,11 @@ test('manuscrit_docx.py --diagnostic : w:tab rend une vraie tabulation, w:br un 
   });
 
 // ---------------------------------------------------------------------------------
-// w:sym (Insertion > Symbole, défaut n°2) : une puce Wingdings/Symbol courante (U+F0B7) est
-// convertie en puce Unicode réelle ; tout autre caractère d'une police à correspondance
-// spéciale est rendu tel quel ET signalé (jamais un silence total sur un caractère visible).
+// w:sym (Insertion > Symbole) : la puce Wingdings/Symbol courante (U+F0B7) devient une puce
+// Unicode ; tout autre caractère d'une police à correspondance spéciale est rendu tel quel et
+// signalé.
 //
-// Sabotage minimal : dans _rendu_sym(), remplacer tout le corps par `return ''` — les deux
-// assertions de texte rougissent (plus rien n'apparaît du tout), ET l'avertissement
-// 'symboles-police-speciale' disparaît (rien à signaler si rien n'est jamais rendu).
+// Sabotage : remplacer le corps de _rendu_sym() par `return ''`.
 
 test('manuscrit_docx.py --diagnostic : w:sym rend la puce Wingdings usuelle en Unicode, et signale le reste sans le taire', { skip: sansPython }, () => {
     const base = dossierJetable();
@@ -1115,12 +1029,11 @@ test('manuscrit_docx.py --diagnostic : w:sym rend la puce Wingdings usuelle en U
   });
 
 // ---------------------------------------------------------------------------------
-// w:fldSimple (défaut n°2/n°5 de l'en-tête) : sa valeur affichée, mise en cache par Word dans
-// un w:r ordinaire enfant, doit être lue comme du texte normal — l'avertissement
-// 'champs-word-non-resolus' l'affirmait déjà avant cette correction, à tort.
+// w:fldSimple : la valeur affichée, que Word met en cache dans un w:r enfant, se lit comme du
+// texte normal.
 //
-// Sabotage minimal : retirer `W + 'fldSimple'` de _CONTENEURS_PASSE_PLAT — le texte
-// « 3 » du champ disparaît de la lecture (le paragraphe ne rend plus que « Page  sur 10 »).
+// Sabotage : retirer `W + 'fldSimple'` de _CONTENEURS_PASSE_PLAT ; le paragraphe ne rend
+// plus que « Page  sur 10 ».
 
 test('manuscrit_docx.py --diagnostic : la valeur mise en cache d\'un w:fldSimple est lue comme du texte normal',
   { skip: sansPython }, () => {
@@ -1142,11 +1055,10 @@ test('manuscrit_docx.py --diagnostic : la valeur mise en cache d\'un w:fldSimple
   });
 
 // ---------------------------------------------------------------------------------
-// w:sdt de niveau BLOC (défaut n°2/n°5 de l'en-tête) : un contrôle de contenu enveloppant un
-// w:p ENTIER, enfant direct du corps, ne doit plus faire disparaître ce paragraphe.
+// w:sdt de niveau bloc : un contrôle de contenu qui enveloppe un w:p entier, enfant direct du
+// corps, ne fait pas disparaître ce paragraphe.
 //
-// Sabotage minimal : dans _deplier_sdt_niveau_bloc(), remplacer le corps de la fonction par
-// `return container` (rien à déplier) — le paragraphe encapsulé disparaît de document.blocs.
+// Sabotage : remplacer le corps de _deplier_sdt_niveau_bloc() par `return container`.
 
 test('manuscrit_docx.py --diagnostic : un w:sdt de niveau bloc ne fait plus disparaître le paragraphe qu\'il enveloppe',
   { skip: sansPython }, () => {
@@ -1171,14 +1083,11 @@ test('manuscrit_docx.py --diagnostic : un w:sdt de niveau bloc ne fait plus disp
   });
 
 // ---------------------------------------------------------------------------------
-// Notes de bas de page ET de fin, cohabitation sans collision d'identifiant (défaut n°2/n°5,
-// §4 du contrat) : Document.notes devient dict{id: contenu} ; une note de fin reçoit son
-// identifiant brut PLUS le plus grand identifiant de footnote (ici 2), jamais le même que la
-// footnote 1 ou 2.
+// Notes de bas de page et de fin dans un même dict{id: contenu} : une note de fin reçoit son
+// identifiant brut plus le plus grand identifiant de footnote (ici 2).
 //
-// Sabotage minimal : dans lire(), remplacer `decalage=decalage` par `decalage=0` sur l'appel à
-// _notes_depuis_racine() pour les endnotes — la note de fin (id brut 1) écrase alors la
-// footnote 1 dans le dict : il n'en reste plus que 2 clés au lieu de 3.
+// Sabotage : dans lire(), passer `decalage=0` à _notes_depuis_racine() pour les endnotes ;
+// la note de fin écrase la footnote 1.
 
 test('manuscrit_docx.py --diagnostic : notes de bas de page et de fin cohabitent, la note de fin reçoit un identifiant décalé', { skip: sansPython }, () => {
     const base = dossierJetable();
@@ -1214,17 +1123,11 @@ test('manuscrit_docx.py --diagnostic : notes de bas de page et de fin cohabitent
   });
 
 // ---------------------------------------------------------------------------------
-// Notes ORPHELINES (ajout du superviseur, 19.09.2026, sur mesure de l'agent de l'écrivain) :
-// une note présente dans footnotes.xml mais qu'AUCUN w:footnoteReference n'appelle dans
-// document.xml n'est pas une vraie note de ce document. Mesuré : 1bis, 2-dense, 2-grappes et
-// 5bis portaient chacun une note technique 'continuationNotice' orpheline (aucun renvoi) —
-// document.notes doit désormais y être vide sur ces quatre fichiers réels ; ce contrôle-ci
-// prouve le mécanisme GÉNÉRAL (pas seulement le filtre par type) avec une note ORDINAIRE
-// jamais appelée.
+// Une note de footnotes.xml qu'aucun w:footnoteReference n'appelle n'est pas une note du
+// document : elle est retirée. Ce test l'éprouve avec une note ordinaire.
 //
-// Sabotage minimal : dans lire(), remplacer `notes = {i: c for i, c in notes.items() if i in
-// ids_appelees}` par `pass` (ne rien filtrer) — la note orpheline (id 5) réapparaît dans
-// document.notes, la première assertion rougit.
+// Sabotage : dans lire(), remplacer `notes = {i: c for i, c in notes.items() if i in
+// ids_appelees}` par `pass`.
 
 test('manuscrit_docx.py --diagnostic : une note jamais appelée par un renvoi (footnoteReference) est retirée, signalée', { skip: sansPython }, () => {
     const base = dossierJetable();
@@ -1251,15 +1154,11 @@ test('manuscrit_docx.py --diagnostic : une note jamais appelée par un renvoi (f
     }
   });
 
-// Régression sur le corpus réel (défaut n°2/n°5) : 2-fin-de-document_Article_RSPS.docx porte
-// 12 footnotes réelles (word/endnotes.xml, lui, est absent de ce fichier précis — mesuré le
-// 19.09.2026 : le nom du fichier trompe, ce sont bien des NOTES DE BAS DE PAGE ici). Avant
-// cette révision, Document.notes existait déjà pour les footnotes (elles n'étaient pas
-// « jamais lues ») mais en LISTE PLATE, sans savoir laquelle appelle quoi ; ce contrôle fige
-// la nouvelle forme (dict par identifiant) sur un fichier réel.
+// 2-fin-de-document_Article_RSPS.docx porte 12 notes de bas de page (malgré son nom, il n'a
+// pas de word/endnotes.xml), rendues en dict par identifiant.
 //
-// Sabotage minimal : dans lire(), remplacer l'appel à _notes_depuis_racine() pour les
-// footnotes par `notes = {}` — la clé 'notes' rend un dict vide, l'assertion rougit (12 -> 0).
+// Sabotage : dans lire(), remplacer l'appel à _notes_depuis_racine() pour les footnotes par
+// `notes = {}`.
 
 test('manuscrit_docx.py --diagnostic : sur le corpus réel, 2-fin-de-document_Article_RSPS.docx porte 12 notes distinctes',
   { skip: sansPython }, (t) => {
@@ -1278,20 +1177,12 @@ test('manuscrit_docx.py --diagnostic : sur le corpus réel, 2-fin-de-document_Ar
       + 'si la lecture des notes était coupée)');
   });
 
-// Ajout du superviseur (19.09.2026, sur mesure de l'agent de l'écrivain) : 1bis, 2-dense,
-// 2-grappes et 5bis portent chacun, dans footnotes.xml ET endnotes.xml, une note de type
-// 'continuationNotice' SANS AUCUN renvoi correspondant dans document.xml — des notes
-// fantômes. Sur ces quatre fichiers réels, document.notes doit être vide.
+// 1bis, 2-dense, 2-grappes et 5bis portent une note 'continuationNotice' sans renvoi dans
+// document.xml : document.notes y est vide.
 //
-// ⚠ Ce contrôle exerce en réalité le filtre ORPHELINES GÉNÉRAL (voir le contrôle précédent),
-// pas spécifiquement l'ajout de 'continuationNotice' à _TYPES_NOTE_TECHNIQUES : vérifié par
-// sabotage (retirer 'continuationNotice' de la liste, SANS toucher au filtre orphelines) —
-// ce contrôle-ci reste VERT, parce qu'une note 'continuationNotice' n'est de toute façon
-// jamais appelée par un renvoi et se fait retirer par le filtre général. L'entrée dans
-// _TYPES_NOTE_TECHNIQUES reste utile en documentation et en défense en profondeur (si le
-// filtre général devait un jour changer de forme), mais n'est plus, à elle seule, ce qui fait
-// ce test. Le contrôle qui, lui, exerce VRAIMENT le filtre général avec une note ORDINAIRE
-// (jamais technique) est celui juste au-dessus.
+// C'est le filtre général des notes orphelines (test précédent) qui fait passer ce test :
+// retirer 'continuationNotice' de _TYPES_NOTE_TECHNIQUES le laisse vert. Cette entrée reste
+// une défense en profondeur.
 
 test('manuscrit_docx.py --diagnostic : sur le corpus réel, 1bis/2-dense/2-grappes/5bis n\'ont AUCUNE vraie note (continuationNotice fantôme)',
   { skip: sansPython }, (t) => {
@@ -1313,11 +1204,9 @@ test('manuscrit_docx.py --diagnostic : sur le corpus réel, 1bis/2-dense/2-grapp
   });
 
 // ---------------------------------------------------------------------------------
-// Régression hyperliens sur le corpus réel — non touché par ce chantier, mais couvert ici
-// faute de l'être ailleurs (§11 : un mécanisme sans le moindre contrôle n'est pas prouvé).
+// Hyperliens, sur le corpus.
 //
-// Sabotage minimal : dans _resoudre_lien_hyperlink(), `return None` en première ligne — les
-// 24 liens de ce fichier réel disparaissent tous, l'assertion rougit (24 -> 0).
+// Sabotage : `return None` en première ligne de _resoudre_lien_hyperlink() ; 24 -> 0.
 
 test('manuscrit_docx.py --diagnostic : sur le corpus réel, 5bis_...BEP.docx porte 24 hyperliens',
   { skip: sansPython }, (t) => {
@@ -1345,10 +1234,10 @@ test('manuscrit_docx.py --diagnostic : sur le corpus réel, 5bis_...BEP.docx por
   });
 
 // ---------------------------------------------------------------------------------
-// numId="0" signifie « pas de liste », jamais une liste de format indéterminé (défaut n°5).
+// numId="0" signifie « pas de liste ».
 //
-// Sabotage minimal : dans _liste_depuis(), retirer la clause `if numid_brut == '0': return
-// None` — le paragraphe rendrait [0, 0, ''] au lieu de null.
+// Sabotage : dans _liste_depuis(), retirer `if numid_brut == '0': return None` ; le
+// paragraphe rendrait [0, 0, ''] au lieu de null.
 
 test('manuscrit_docx.py --diagnostic : numId="0" rend liste=null, jamais une liste de format indéterminé',
   { skip: sansPython }, () => {
@@ -1368,12 +1257,11 @@ test('manuscrit_docx.py --diagnostic : numId="0" rend liste=null, jamais une lis
   });
 
 // ---------------------------------------------------------------------------------
-// Un numPr HÉRITÉ D'UN STYLE (jamais posé directement sur le paragraphe) doit résoudre la
-// liste — défaut n°4 : une autrice qui applique un style de liste sans reposer numPr sur
-// chaque paragraphe voyait sa liste disparaître.
+// Un numPr hérité d'un style (absent du paragraphe) résout la liste : une autrice applique
+// souvent un style de liste sans numPr sur chaque paragraphe.
 //
-// Sabotage minimal : dans _liste_depuis(), retirer les deux lignes qui appellent
-// _numpr_depuis_style() en repli — le paragraphe rendrait liste=null au lieu de [7, 0, 'puce'].
+// Sabotage : dans _liste_depuis(), retirer le repli sur _numpr_depuis_style() ; liste=null
+// au lieu de [7, 0, 'puce'].
 
 test('manuscrit_docx.py --diagnostic : un numPr hérité du STYLE (jamais posé sur le paragraphe) résout la liste', { skip: sansPython }, () => {
     const base = dossierJetable();
@@ -1390,8 +1278,8 @@ test('manuscrit_docx.py --diagnostic : un numPr hérité du STYLE (jamais posé 
         corps, numbering,
         styles: [['ListeStyle', 'Liste a puces maison']]
       });
-      // fabriquerDocx() n'a pas de clé dédiée pour le pPr d'un style : on l'écrit ici en
-      // réouvrant l'archive, plus simple que d'étendre FABRIQUE pour ce seul contrôle.
+      // fabriquerDocx() n'a pas de clé pour le pPr d'un style : on l'écrit en rouvrant
+      // l'archive.
       const patch = [
         'import re, zipfile, sys',
         'chemin = sys.argv[1]',
@@ -1417,15 +1305,12 @@ test('manuscrit_docx.py --diagnostic : un numPr hérité du STYLE (jamais posé 
   });
 
 // ---------------------------------------------------------------------------------
-// Image.source porte l'indice du PARAGRAPHE porteur dans le corps, jamais celui du w:r
-// (défaut n°3) : l'image est le PREMIER run (indice 0) du TROISIÈME paragraphe (indice 2) —
-// run-index et paragraphe-index divergent délibérément, pour qu'une confusion entre les deux
-// se voie (un premier jet de ce contrôle, où l'image était le second run d'un paragraphe
-// d'indice 1, laissait le sabotage vert par coïncidence : 1 == 1).
+// Image.source porte l'indice du paragraphe porteur dans le corps, pas celui du w:r.
+// L'image est le premier run (indice 0) du troisième paragraphe (indice 2) : les deux
+// indices diffèrent pour qu'une confusion se voie.
 //
-// Sabotage minimal : dans _fragments_de_run(), remplacer `img.source = indice_paragraphe` par
-// `img.source = indice` — l'image rendrait source=0 (l'indice de son run, puisqu'elle est le
-// PREMIER run de son paragraphe), pas 2 (l'indice de son paragraphe dans le corps).
+// Sabotage : dans _fragments_de_run(), remplacer `img.source = indice_paragraphe` par
+// `img.source = indice` ; source=0 au lieu de 2.
 
 test('manuscrit_docx.py --diagnostic : Image.source porte l\'indice du paragraphe porteur, jamais celui du run',
   { skip: sansPython }, () => {
@@ -1458,13 +1343,11 @@ test('manuscrit_docx.py --diagnostic : Image.source porte l\'indice du paragraph
   });
 
 // ---------------------------------------------------------------------------------
-// Fragment.effectif (§4 du contrat, défaut listé) : directe sinon style de caractère sinon
-// chaîne des styles de paragraphe sinon docDefaults. Un run SANS mise en forme directe, dont
-// le style de PARAGRAPHE porte le gras, doit voir `forme.gras` rester None (jamais deviné)
-// alors que `effectif.gras` vaut True.
+// Fragment.effectif : mise en forme directe, sinon style de caractère, sinon chaîne des styles
+// de paragraphe, sinon docDefaults. Un run sans mise en forme directe dont le style de
+// paragraphe porte le gras garde `forme.gras` à None, avec `effectif.gras` à True.
 //
-// Sabotage minimal : dans _forme_effective(), `return dict(forme_directe)` en première ligne
-// (jamais consulter aucun style) — `effectif.gras` resterait None comme `forme.gras`.
+// Sabotage : `return dict(forme_directe)` en première ligne de _forme_effective().
 
 test('manuscrit_docx.py --diagnostic : Fragment.effectif remonte le gras du style de paragraphe, forme reste None', { skip: sansPython }, () => {
     const base = dossierJetable();

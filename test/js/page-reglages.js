@@ -1,6 +1,6 @@
-// L'onglet Paramètres de l'Accueil (media/accueil.js), chargé dans le DOM minimal avec les libellés
-// réels de l'hôte (lib/accueil-page.js), comme le faisaient les tests de l'ancien panneau
-// « settings » : une page prête, l'onglet Paramètres ouvert, et de quoi y chercher un élément.
+// L'onglet Paramètres de l'Accueil (media/accueil.js), chargé dans le DOM minimal avec les
+// libellés de l'hôte (lib/accueil-page.js) : une page prête, l'onglet Paramètres ouvert, et
+// de quoi y chercher un élément.
 //
 //   const { ouvrirReglages } = require('./page-reglages');
 //   const p = ouvrirReglages();            // p.page : la page du DOM minimal ; p.panneau : l'onglet

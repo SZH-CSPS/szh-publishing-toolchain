@@ -1,32 +1,21 @@
-// Le portrait d'auteur·e : une image décorative, sans texte alternatif, et qui n'est
-// PAS un <img>.
+// Le portrait d'auteur·e : une image décorative, sans texte alternatif, qui n'est pas un
+// <img>.
 //
-//   node --test "test/js/*.test.js"
-//
-// Deux décisions sont gardées ici, et elles tiennent ensemble :
-//
-//   * Pas de texte alternatif. Le filtre en fabriquait un depuis le nom de la personne
-//     (« Portrait de X », « Porträt von X »), quel qu'en soit le contenu réel du fichier :
-//     un logo, une photo de groupe ou une photo appariée à la mauvaise personne faisaient
-//     affirmer une identité fausse à un lecteur d'écran. Et le nom est déjà écrit à côté,
-//     dans le bloc « Autrices et auteurs » : un alt qui le répète est du bruit.
+//   * Pas de texte alternatif. Un alt fabriqué depuis le nom (« Portrait de X ») affirmerait
+//     une identité quel que soit le contenu du fichier (logo, photo de groupe, photo de la
+//     mauvaise personne), et le nom est déjà écrit à côté, dans le bloc « Autrices et
+//     auteurs ».
 //   * Donc pas d'<img>. WeasyPrint 69 balise tout <img> en /Figure, même avec
-//     role="presentation", même avec aria-hidden="true" (mesuré par cas minimal) : une
-//     /Figure sans /Alt viole PDF/UA-1 7.3, et `make verifier-ua` la refuse. Le portrait
-//     est donc un <span> vide à fond CSS, comme l'image décorative d'article.
+//     role="presentation" ou aria-hidden="true" : une /Figure sans /Alt viole PDF/UA-1 7.3,
+//     et `make verifier-ua` la refuse. Le portrait est un <span> vide à fond CSS, comme
+//     l'image décorative d'article.
 //
-// Mesuré sur un numéro à un auteur et un numéro à quatre, portraits réels : /Figure
-// passe de 1 et 4 à 0, /Alt de 1 et 4 à 0, le rendu PNG est identique au pixel sur les
-// 15 pages, et les deux PDF restent conformes PDF/UA-1.
+// Remettre un <img> pour « simplifier » le balisage ferait échouer la porte PDF/UA au
+// premier numéro avec portraits.
 //
-// Ce qui se casserait sans ces contrôles : quelqu'un « simplifie » le balisage en
-// remettant un <img>, ce qui est déjà arrivé deux fois, et la porte PDF/UA se referme sur
-// le premier numéro à portraits.
-//
-// ⚠ Le bloc auteurs a quitté le gabarit : c'est filters/szh-auteurs.lua qui l'écrit
-//   désormais, pour pouvoir l'insérer DEVANT la bibliographie — un gabarit ne sait rien
-//   intercaler. Les contrôles de balisage lisent donc le filtre ; seul le <style> des
-//   portraits est resté dans l'en-tête du gabarit, et il y est contrôlé à part.
+// Le bloc auteurs est écrit par filters/szh-auteurs.lua, qui peut l'insérer devant la
+// bibliographie (un gabarit ne sait pas intercaler). Les contrôles de balisage lisent donc le
+// filtre ; le <style> des portraits, resté dans l'en-tête du gabarit, est contrôlé à part.
 'use strict';
 
 const test = require('node:test');
@@ -42,16 +31,16 @@ const GABARIT = lire('pipeline', 'templates', 'szh-article.html');
 const AUTEURS = lire('pipeline', 'filters', 'szh-auteurs.lua');
 const CSS = lire('pipeline', 'styles', 'print.css');
 
-// Le code du filtre qui ÉCRIT le balisage, en-tête de commentaires exclu : ces
-// commentaires parlent d'<img> et d'alt pour dire de ne pas les remettre, et les
-// contrôles ci-dessous les prendraient pour le retour en arrière qu'ils interdisent.
+// Le code du filtre qui écrit le balisage, sans l'en-tête de commentaires : ces commentaires
+// parlent d'<img> et d'alt pour dire de ne pas les remettre, et les contrôles les
+// prendraient pour un retour en arrière.
 const BLOC_AUTEURS = (() => {
   const d = AUTEURS.indexOf('local function bloc_auteur');
   assert.ok(d > 0, 'bloc_auteur a disparu de szh-auteurs.lua : plus rien n’écrit le bloc');
   return AUTEURS.slice(d);
 })();
 
-// Et le gabarit ne doit plus l'écrire : les deux ensemble donneraient le bloc en double.
+// Le gabarit n'écrit pas le bloc : avec le filtre, il serait en double.
 test('portrait : le gabarit n’écrit plus le bloc auteurs', () => {
   assert.doesNotMatch(GABARIT, /<section class="szh-auteurs">/,
     'le bloc auteurs est revenu dans le gabarit : il s’imprimerait deux fois, et celui du gabarit repasserait après la bibliographie');
@@ -94,8 +83,8 @@ test('portrait : le filtre numérote les portraits pour nommer leur règle CSS',
     'szh-maquette.lua n’écrit plus photo-rang : le gabarit produirait des classes vides');
   assert.match(MAQUETTE, /local rang_photo = 0/,
     'le compteur de portraits a disparu');
-  // Le rang ne se compte que sur les auteurs qui ont une photo : sinon deux auteurs
-  // se partageraient une règle, ou une règle serait écrite pour personne.
+  // Le rang ne compte que les auteurs qui ont une photo : sinon deux auteurs se partageraient
+  // une règle, ou une règle serait écrite pour personne.
   assert.match(MAQUETTE, /if S\(a\.photo\) ~= '' then\s*\n\s*rang_photo = rang_photo \+ 1/,
     'le rang n’est plus incrémenté sous la seule condition d’une photo');
 });
@@ -106,8 +95,8 @@ test('portrait : sans photo, la silhouette tient la case du portrait', () => {
   assert.match(BLOC_AUTEURS,
     /<span class="szh-auteur-photo szh-auteur-photo-silhouette" role="presentation"><\/span>/,
     'la silhouette a quitté le bloc auteurs : la colonne de texte de qui n’a pas de photo repartirait à la marge, et le bloc descendrait en escalier');
-  // Branche « sinon » du test de photo, et pas une ligne de plus : ajoutée à côté, elle
-  // doublerait la case des personnes qui ont bien un portrait.
+  // Branche « sinon » du test de photo : à côté, elle doublerait la case des personnes qui
+  // ont un portrait.
   assert.match(BLOC_AUTEURS,
     /if texte\(a\.photo\) ~= '' then[\s\S]*?\n  else\n[\s\S]*?szh-auteur-photo-silhouette/,
     'la silhouette n’est plus la branche « pas de photo » : elle s’ajouterait au portrait au lieu de le remplacer');
@@ -123,9 +112,9 @@ test('portrait : la silhouette est dessinée dans la feuille, pas cherchée sur 
 });
 
 test('portrait : l’encre de la silhouette suit encore le bleu nuit du hero', () => {
-  // Une url() en data: ne lit pas les variables CSS : l'encre du dessin y est écrite en
-  // clair. Si --c-nuit bouge, le hero changerait de bleu et la silhouette resterait seule
-  // sur l'ancien, deux pages plus loin — personne ne le verrait avant le PDF imprimé.
+  // Une url() en data: ne lit pas les variables CSS : l'encre du dessin y est écrite en clair.
+  // Si --c-nuit changeait, la silhouette garderait l'ancien bleu sans que personne ne le voie
+  // avant le PDF imprimé.
   const encre = lire('pipeline', 'styles', 'socle.css').match(/--c-nuit:\s*#([0-9a-fA-F]{6})/);
   assert.ok(encre, '--c-nuit a disparu de socle.css');
   const regle = CSS.match(/\.szh-auteur-photo-silhouette \{[^}]*\}/)[0];
@@ -141,14 +130,14 @@ test('portrait : l’URL de la photo passe par un <style>, pas par un attribut s
     'le <style> qui porte les portraits a changé de forme : --embed-resources ne réécrit url() que là');
   assert.doesNotMatch(BLOC_AUTEURS, /style=/,
     'la photo est passée dans un attribut style : --embed-resources n’y touche pas (mesuré), et le galley partirait avec un chemin relatif mort');
-  // En-tête et non corps : le reader html de pandoc ignore <head>, donc les règles CSS
-  // ne réapparaissent pas en texte clair dans le galley DOCX.
+  // Dans l'en-tête et non le corps : le lecteur html de pandoc ignore <head>, et les règles
+  // CSS ne réapparaissent pas en texte dans le galley DOCX.
   const tete = GABARIT.slice(0, GABARIT.indexOf('</head>'));
   assert.match(tete, /szh-auteur-photo-\$author\.photo-rang\$/,
     'le <style> des portraits a quitté l’en-tête : ses règles se liraient en clair dans le galley DOCX');
 });
 
-// ---- La géométrie, qui doit rendre exactement le même dessin ----
+// ---- La géométrie, qui doit rendre le même dessin ----
 
 test('portrait : le fond CSS reproduit l’object-fit de l’ancien <img>', () => {
   const regle = CSS.match(/\.szh-auteur-photo \{[^}]*\}/);
@@ -164,8 +153,8 @@ test('portrait : le fond CSS reproduit l’object-fit de l’ancien <img>', () =
 });
 
 test('portrait : print.css dit pourquoi ce n’est pas un <img>', () => {
-  // Cette phrase est le seul garde-fou contre la « simplification » qui a déjà eu lieu
-  // deux fois. Un commentaire qu’on peut supprimer sans rien casser finit supprimé.
+  // Le commentaire du CSS qui interdit de remettre un <img> doit rester : un commentaire
+  // qu'on peut supprimer sans rien casser finit supprimé.
   const i = CSS.indexOf('.szh-auteur-photo {');
   const avant = CSS.slice(Math.max(0, i - 1600), i);
   assert.match(avant, /\/Figure/, 'la raison (WeasyPrint balise tout <img> en /Figure) n’est plus écrite près de la règle');

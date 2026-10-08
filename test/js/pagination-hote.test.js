@@ -1,13 +1,10 @@
 // Pagination continue du numéro (lib/pagination-hote.js) : lecture de l'état après chaque
-// compilation d'un numéro déjà paginé, rafraîchissement manuel au bouclage, et les
-// constats qu'un numéro périmé pose dans « À corriger ».
+// compilation d'un numéro déjà paginé, rafraîchissement manuel au bouclage, et constats
+// posés dans « À corriger » pour un numéro périmé.
 //
-//   node --test "test/js/*.test.js"
-//
-// child_process.spawn n'est pas simulé par le harnais (voir hote-factice.js) : le
-// lancement réel de `make` est remplacé par un faux `lancer` injecté via
-// paginationHote.configurer(), après celui que extension.js a déjà posé à l'activation —
-// configurer() fusionne, il ne remplace pas (même contrat que lib/pdfua-hote.js).
+// Le harnais ne simule pas child_process.spawn (voir hote-factice.js) : le lancement de `make`
+// est remplacé par un faux `lancer` passé à paginationHote.configurer(), après celui
+// qu'extension.js a posé à l'activation. configurer() fusionne, comme dans lib/pdfua-hote.js.
 'use strict';
 
 const test = require('node:test');
@@ -21,13 +18,12 @@ const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 
 const NOM_TACHE_BUILD = 'Aperçu / Export PDF';
 
-// Même module que celui chargé par extension.js (require('./lib/pagination-hote') depuis
-// extension.js résout le même chemin absolu) : le cache de require le garantit.
+// Le même module que celui chargé par extension.js : le cache de require le garantit.
 const paginationHote = require(path.join(COCKPIT, 'lib', 'pagination-hote.js'));
 
 // ---- Le faux lanceur -------------------------------------------------------------------
-// Chaque appel est retenu (l'argv reçu), et répond selon `prochaineReponse` : un objet
-// { texte, code, erreur } résolu tout de suite. Jamais de vraie WSL.
+// Chaque appel est retenu (son argv) et reçoit `prochaineReponse` : un objet
+// { texte, code, erreur } résolu tout de suite. Aucune WSL.
 const appelsLancer = [];
 let prochaineReponse = { texte: '', code: 0, erreur: null };
 
@@ -131,8 +127,7 @@ test('aRecompiler : rien n’a changé -> zéro', () => {
 });
 
 test('aRecompiler : un départ qui glisse est compté (et entraîne les suivants)', () => {
-  // 'a' s'est allongé (son départ enregistré était 1, resté 1 ici) mais 'b', qui le suit,
-  // glisse de 4 à 6 : lui seul, et non 'a', doit compter.
+  // 'b' passe de 4 à 6 parce que 'a' s'est allongé : seul 'b', dont le départ change, compte.
   const etat = { articles: [{ slug: 'a', depart: 1 }, { slug: 'b', depart: 6 }] };
   const registre = { articles: [{ slug: 'a', depart: 1 }, { slug: 'b', depart: 4 }] };
   assert.strictEqual(paginationHote.aRecompiler(etat, registre), 1);
@@ -194,9 +189,9 @@ test('lireEtat : rejette si aucune ligne JSON n’est reconnue', async () => {
 });
 
 // =========================================================================================
-// 6. Intégration : le chemin « après compilation » d'extension.js, via le vrai cockpit.
+// 6. Intégration : le chemin « après compilation » d'extension.js, dans le cockpit.
 // =========================================================================================
-// Un seul hôte pour toute cette section, comme test/js/pdfua.test.js : les scénarios
+// Un seul hôte pour toute cette section, comme dans test/js/pdfua.test.js : les scénarios
 // s'enchaînent sur le même numéro.
 
 const REVUE = revueDEssai();
@@ -224,13 +219,12 @@ test('numéro déjà paginé : la fin d’une compilation pose un avertissement 
 
   await HOTE.finirTache(NOM_TACHE_BUILD, 0);
   // relireJournal() lance le contrôle en arrière-plan sans l'attendre : deux tours de
-  // micro-tâches laissent la promesse de lireEtat() se résoudre puis poserConstatsPagination
-  // s'exécuter avant qu'on ne lise l'état de la barre et de la vue.
+  // micro-tâches laissent lireEtat() se résoudre et poserConstatsPagination s'exécuter.
   await laisserDecanter();
   await laisserDecanter();
 
-  // Un avertissement (orange), pas un bloquant : pagination/perimee n'a pas de barrage —
-  // voir lib/constats.js, TABLE['pagination/perimee'] et son commentaire.
+  // Un avertissement (orange), pas un blocage : pagination/perimee n'a pas de barrage (voir
+  // TABLE['pagination/perimee'] dans lib/constats.js).
   assert.ok(HOTE.barreQuiDit('à vérifier'), 'le compteur des Contrôles ne suit pas l’article périmé');
 
   await HOTE.executer('szh.vueControles');

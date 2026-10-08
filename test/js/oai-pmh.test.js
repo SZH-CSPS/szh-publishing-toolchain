@@ -1,16 +1,12 @@
-// lib/oai-pmh.js : le module OAI-PMH commun extrait de lib/auteurs-ojs.js le 01.09.2026,
-// pour que lib/mots-cles-edudoc.js cesse d'importer son voisin comme une bibliothèque.
+// Tests de lib/oai-pmh.js, le module OAI-PMH commun à lib/auteurs-ojs.js et
+// lib/mots-cles-edudoc.js.
 //
-//   node --test "test/js/*.test.js"
-//
-// Ce fichier ne rejoue PAS les contrôles déjà faits ailleurs sur le détail du parseur ou
-// des trois gardes réseau (redirection hors hôte, réponse démesurée, délai total) :
-// test/js/auteurs-ojs.test.js les couvre toujours, sur les mêmes fonctions — réexportées,
-// pas recopiées, ce que le premier test ci-dessous vérifie par égalité de référence. Ce
-// qui est propre à ce fichier : que l'extraction n'a RIEN dupliqué, et que la garde
-// SZH_RESEAU_INTERDIT — LE point de passage unique vers un vrai socket https — couvre bien
-// les DEUX moissonneurs, jusque dans leur chemin par défaut (rafraichir / rafraichirMotsCles
-// appelés SANS `recuperer` injecté), et pas seulement la fonction bas niveau.
+// Le lecteur et les trois gardes réseau (redirection hors hôte, réponse démesurée, délai
+// total) sont testés dans test/js/auteurs-ojs.test.js, sur les mêmes fonctions réexportées.
+// Ce fichier vérifie que ces fonctions sont réexportées et non recopiées, et que la garde
+// SZH_RESEAU_INTERDIT (le point de passage unique vers un socket https) couvre les deux
+// moissonneurs jusque dans leur chemin par défaut (rafraichir / rafraichirMotsCles sans
+// `recuperer` injecté).
 'use strict';
 
 const test = require('node:test');
@@ -24,11 +20,10 @@ const oaiPmh = require(path.join(RACINE_LIB, 'oai-pmh.js'));
 const auteursOjs = require(path.join(RACINE_LIB, 'auteurs-ojs.js'));
 const motsClesEdudoc = require(path.join(RACINE_LIB, 'mots-cles-edudoc.js'));
 
-// ---- L'extraction n'a rien dupliqué -------------------------------------------------
+// ---- Aucune copie -------------------------------------------------------------------
 //
-// auteurs-ojs.js et mots-cles-edudoc.js réexportent ces noms pour ne rien changer à leurs
-// propres appelants et tests — mais ils doivent pointer sur LA MÊME fonction que
-// lib/oai-pmh.js, pas sur une copie qui pourrait diverger en silence.
+// auteurs-ojs.js et mots-cles-edudoc.js réexportent ces noms pour leurs appelants : ils
+// doivent pointer sur la même fonction que lib/oai-pmh.js.
 
 test('lib/auteurs-ojs.js réexporte les fonctions communes de lib/oai-pmh.js, pas des copies', () => {
   assert.strictEqual(auteursOjs.decoderTexteXml, oaiPmh.decoderTexteXml);
@@ -45,13 +40,12 @@ test('lib/mots-cles-edudoc.js réexporte recupererAvecRepli de lib/oai-pmh.js, p
   assert.strictEqual(motsClesEdudoc.recupererAvecRepli, oaiPmh.recupererAvecRepli);
 });
 
-// ---- La garde réseau, LE point le plus important --------------------------------------
+// ---- La garde réseau --------------------------------------------------------------------
 //
-// SZH_RESEAU_INTERDIT vit UNE fois, dans recupererHttps() de lib/oai-pmh.js — voir son
-// en-tête. test/js/hote-factice.js la pose pour les suites qui activent l'extension, mais
-// ce fichier tourne dans son propre processus (un processus par fichier de test, comme
-// partout dans ce dépôt) : elle n'y est PAS déjà posée, ce qui permet d'éprouver ici la
-// transition « absente -> présente » et de la relâcher proprement ensuite.
+// SZH_RESEAU_INTERDIT est lue à un seul endroit, recupererHttps() de lib/oai-pmh.js.
+// test/js/hote-factice.js la pose pour les suites qui activent l'extension ; ce fichier
+// tourne dans son propre processus, où elle n'est pas encore posée : on éprouve le passage
+// « absente -> présente », puis on la retire.
 
 async function avecReseauInterdit(fn) {
   const avant = process.env.SZH_RESEAU_INTERDIT;
@@ -65,8 +59,8 @@ async function avecReseauInterdit(fn) {
 
 test('recupererHttps : SZH_RESEAU_INTERDIT bloque tout appel réel sans transport factice', async () => {
   await avecReseauInterdit(async () => {
-    // Aucun `transport` fourni : sans la garde, ceci ouvrirait un vrai socket vers
-    // ojs.szh.ch. Le rejet doit venir AVANT toute tentative réseau, donc être immédiat.
+    // Aucun `transport` fourni : sans la garde, ceci ouvrirait un socket vers ojs.szh.ch. Le
+    // rejet vient avant toute tentative réseau, donc tout de suite.
     const debut = Date.now();
     await assert.rejects(
       () => oaiPmh.recupererHttps('https://ojs.szh.ch/index.php/revue/fr/oai', 0, {}),
@@ -77,9 +71,8 @@ test('recupererHttps : SZH_RESEAU_INTERDIT bloque tout appel réel sans transpor
 
 test('recupererAvecRepli : la garde se voit aussi à travers le repli sur 503', async () => {
   await avecReseauInterdit(async () => {
-    // recupererAvecRepli délègue à recupererHttps ; « HTTP 503 » est le seul message qui
-    // déclenche une nouvelle tentative — celui de la garde ne doit PAS être retenté en
-    // boucle, juste relevé tel quel.
+    // recupererAvecRepli délègue à recupererHttps ; seul « HTTP 503 » déclenche une nouvelle
+    // tentative. Le refus de la garde n'est pas retenté.
     await assert.rejects(
       () => oaiPmh.recupererAvecRepli('https://edudoc.ch/oai2d', {}),
       /SZH_RESEAU_INTERDIT/);
@@ -97,12 +90,10 @@ test('la garde couvre les DEUX moissonneurs depuis leur propre surface exportée
   });
 });
 
-// Le contrôle de bout en bout : rafraichir() et rafraichirMotsCles() appelés SANS
-// `recuperer` injecté prennent leur repli par défaut — recupererHttps pour l'un,
-// recupererAvecRepli pour l'autre. Si la garde ne couvrait pas vraiment ce chemin (une
-// régression qui réintroduirait un client réseau local, par exemple), ceci partirait en
-// silence interroger ojs.szh.ch ou edudoc.ch au lieu de rendre une erreur nette — exactement
-// la panne que SZH_RESEAU_INTERDIT existe pour empêcher.
+// De bout en bout : rafraichir() et rafraichirMotsCles() sans `recuperer` injecté prennent
+// leur repli par défaut (recupererHttps pour l'un, recupererAvecRepli pour l'autre). Si la
+// garde ne couvrait pas ce chemin, ils interrogeraient ojs.szh.ch ou edudoc.ch au lieu de
+// rendre une erreur.
 
 function cacheVideTemporaire(prefixe, nomFichier) {
   const dossier = fs.mkdtempSync(path.join(os.tmpdir(), prefixe));
@@ -114,8 +105,8 @@ test('rafraichir (auteur·e·s) sans recuperer injecté : la garde coupe, pas un
     const avantCache = process.env.SZH_AUTEURS_CACHE;
     process.env.SZH_AUTEURS_CACHE = cacheVideTemporaire('szh-oai-pmh-auteurs-', 'auteurs.json');
     try {
-      // Cache absent -> cacheVide() -> dateFetch null -> jamais frais : rafraichir() va
-      // donc bien tenter un appel, et c'est cet appel que la garde doit intercepter.
+      // Cache absent -> cacheVide() -> dateFetch null -> jamais frais : rafraichir() tente un
+      // appel, que la garde doit intercepter.
       const res = await auteursOjs.rafraichir({
         maintenant: Date.parse('2026-09-01T12:00:00Z'),
         config: { oai: ['https://ojs.szh.ch/index.php/revue/fr/oai'] }
@@ -151,24 +142,17 @@ test('rafraichirMotsCles (edudoc) sans recuperer injecté : la garde coupe, pas 
   });
 });
 
-// ---- LEQUEL des deux repos rafraichir() appelle-t-il vraiment ? ----------------------
+// ---- Quelle fonction rafraichir() appelle-t-elle ? ---------------------------------------
 //
-// Les deux tests ci-dessus prouvent que la garde coupe l'appel par défaut — mais
-// recupererAvecRepli délègue à recupererHttps, donc les deux rendent EXACTEMENT le même
-// message SZH_RESEAU_INTERDIT, au même endroit : ce test-là ne peut pas dire LEQUEL des deux
-// a été choisi comme repli. C'est pourtant tout le défaut réel (01.09.2026) :
-// mots-cles-edudoc.js câble `o.recuperer || recupererAvecRepli` (le repli sur un 503
-// « Retry after », commun aux deux moissonneurs depuis l'extraction du 01.09.2026 — voir
-// l'en-tête de ce fichier) ; auteurs-ojs.js câblait encore `o.recuperer || recupererHttps`,
-// sans le repli, contredisant son propre commentaire qui affirme que l'extraction profite
-// aux DEUX moissonneurs.
+// Les deux tests ci-dessus ne distinguent pas recupererHttps de recupererAvecRepli : l'un
+// délègue à l'autre, le message est le même. Or les deux moissonneurs doivent utiliser
+// recupererAvecRepli (repli sur un 503 « Retry after »).
 //
-// Seul un test qui regarde QUELLE fonction a été appelée peut distinguer les deux : on
-// substitue ici les exports de lib/oai-pmh.js, déjà en cache, par des espions, PUIS on
-// force une relecture à neuf de lib/auteurs-ojs.js — sa déstructuration de tête
-// (`const { …, recupererHttps } = require('./oai-pmh')`) capte alors nos espions, et seul
-// le nom réellement utilisé par rafraichir() est enregistré. Aucun réseau : les deux espions
-// rejettent immédiatement.
+// On remplace les exports de lib/oai-pmh.js, déjà en cache, par des espions, puis on recharge
+// lib/auteurs-ojs.js : sa déstructuration de tête
+// (`const { …, recupererHttps } = require('./oai-pmh')`) prend alors les espions, et seul le
+// nom utilisé par rafraichir() est enregistré. Les deux espions rejettent tout de suite, sans
+// réseau.
 test('rafraichir (auteur·e·s) sans recuperer injecté : appelle recupererAvecRepli, pas recupererHttps seul', async () => {
   const cheminOai = require.resolve(path.join(RACINE_LIB, 'oai-pmh.js'));
   const cheminAuteurs = require.resolve(path.join(RACINE_LIB, 'auteurs-ojs.js'));

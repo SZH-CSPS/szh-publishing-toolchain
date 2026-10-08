@@ -1,30 +1,22 @@
-// Mode « Trad » : le clic détourné, l'index qui retrouve la clé d'un texte, et le dossier
-// où atterrissent les suggestions sur les libellés de l'outil.
+// Mode « Trad » : le clic détourné, l'index qui retrouve la clé d'un texte, et le dossier où
+// vont les suggestions sur les libellés de l'outil.
 //
-//   node --test "test/js/*.test.js"
-//
-// Ce que ce fichier garde :
-//   * LE PIÈGE. Un mode qui détourne TOUS les clics peut s'enfermer : allumé, si l'onglet
-//     Paramètres de l'Accueil détournait les siens, on ne pourrait plus l'éteindre — plus aucun bouton ne
-//     répondrait, dans aucun panneau, et il faudrait éditer C:\ProgramData\SZH\config.json à
-//     la main. C'est LE défaut à empêcher, et il ne se voit sur aucune capture d'écran : la
-//     page a l'air normale, elle ne répond simplement plus. Trois contrôles le gardent — la
-//     barre d'onglets de l'Accueil et l'onglet Paramètres sont exemptés (data-trad-exempt), le
+// Ce que ce fichier vérifie :
+//   * Le mode ne peut pas s'enfermer. Il détourne tous les clics : si l'onglet Paramètres de
+//     l'Accueil détournait les siens, on ne pourrait plus l'éteindre qu'en éditant
+//     C:\ProgramData\SZH\config.json, et aucune capture d'écran ne le montrerait. La barre
+//     d'onglets de l'Accueil et l'onglet Paramètres sont exemptés (data-trad-exempt), le
 //     reste de l'Accueil détourne, et le formulaire de suggestion ne détourne jamais.
-//   * LE MODE QUI NE SE VOIT PAS. Un outil dont plus aucun bouton ne répond, sans un mot,
-//     passe pour cassé. Le bandeau et son bouton de sortie sont éprouvés ici, dans la vraie
-//     page : c'est le défaut vécu la veille avec la pastille du vérificateur — module juste,
-//     tests verts, et rien à l'écran.
-//   * LE MODE ÉTEINT QUI DÉTOURNE QUAND MÊME, et son inverse : sans message de l'hôte, aucun
-//     clic ne doit changer de sens. Une clé absente ne doit jamais allumer le mode.
-//   * L'INDEX. Un texte à trou retrouvé par son motif, un texte partagé par deux libellés qui
-//     rend DEUX candidates (l'outil ne tranche pas à la place de la personne), et un texte
-//     inconnu qui ouvre quand même le formulaire — c'est justement celui-là qu'un mainteneur
-//     veut voir. Et la copie de la recherche qui vit dans media/_commun.js doit rendre
-//     exactement ce que rend le module : deux réponses différentes seraient invisibles.
-//   * LE CHAMP `cible` ABSENT. Il est apparu APRÈS les premiers fichiers de suggestion : un
-//     fichier qui n'en porte pas doit se relire « article », sans quoi le schéma /1 aurait
-//     menti en restant /1 — même règle que `geste`.
+//   * Le mode se voit : un bandeau et son bouton de sortie, vérifiés dans la vraie page.
+//     Sinon un outil dont aucun bouton ne répond passe pour cassé.
+//   * Sans message de l'hôte, aucun clic ne change de sens ; une clé absente n'allume pas le
+//     mode.
+//   * L'index : un texte à trou retrouvé par son motif, un texte partagé par deux libellés
+//     qui rend deux candidates (l'outil ne tranche pas), et un texte inconnu qui ouvre quand
+//     même le formulaire. La copie de la recherche dans media/_commun.js rend exactement ce
+//     que rend le module.
+//   * Un fichier de suggestion sans champ `cible` se relit « article », comme pour `geste` :
+//     le schéma reste /1.
 'use strict';
 
 const test = require('node:test');
@@ -40,11 +32,9 @@ const sugg = require(path.join(COCKPIT, 'lib', 'suggestion-traduction.js'));
 const { ouvrir, libellesHote, chargerAvecVscodeFactice } = require('./dom-minimal');
 const { TEXTES_COCKPIT } = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'i18n.js'));
 
-// Le config.json factice posé par dom-minimal, à remettre après chaque contrôle qui détourne
-// SZH_CONFIG_OJS vers le sien. Sans cette remise, lib/i18n.js irait lire le config.json DU
-// POSTE : sur une machine réglée en allemand, toutes les pages rendues ensuite seraient en
-// allemand et les contrôles qui comparent à un libellé français tomberaient — pour une
-// raison qui n'a rien à voir avec eux.
+// Le config.json factice posé par dom-minimal, à remettre après chaque test qui détourne
+// SZH_CONFIG_OJS. Sinon lib/i18n.js lirait le config.json du poste : réglé en allemand, il
+// ferait échouer les tests qui comparent à un libellé français.
 const CONFIG_HARNAIS = process.env.SZH_CONFIG_OJS;
 
 // ---- L'index ----------------------------------------------------------------------
@@ -52,9 +42,9 @@ const CONFIG_HARNAIS = process.env.SZH_CONFIG_OJS;
 test('index : un texte affiché tel quel retrouve sa clé', () => {
   const index = ix.construireIndex({ 'a.titre': 'Métadonnées du numéro', 'b.x': 'Annuler' });
   assert.deepStrictEqual(ix.trouverCles(index, 'Métadonnées du numéro'), ['a.titre']);
-  // Les espaces du HTML ne comptent pas : un libellé posé sur deux lignes dans un gabarit
-  // arrive à l'écran avec des retours et de l'indentation, et l'insécable des libellés du
-  // cockpit n'est pas l'espace que le DOM rend.
+  // Les espaces du HTML ne comptent pas : un libellé sur deux lignes dans un gabarit arrive à
+  // l'écran avec des retours et de l'indentation, et l'insécable des libellés n'est pas
+  // l'espace que le DOM rend.
   assert.deepStrictEqual(ix.trouverCles(index, '  Métadonnées\n  du numéro '), ['a.titre']);
 });
 
@@ -64,16 +54,15 @@ test('index : un texte à trou est retrouvé par son MOTIF', () => {
   assert.deepStrictEqual(index.motifs[0].parts, ['Compilation de « ', ' »…']);
   assert.deepStrictEqual(ix.trouverCles(index, 'Compilation de « mon-article »…'),
     ['statut.build.de'], 'le texte rempli ne retrouve pas son gabarit');
-  // Le trou vaut AU MOINS un caractère : sinon le motif reconnaîtrait le gabarit amputé,
-  // qui est un autre texte.
+  // Le trou vaut au moins un caractère : sinon le motif reconnaîtrait le gabarit amputé, qui
+  // est un autre texte.
   assert.deepStrictEqual(ix.trouverCles(index, 'Compilation de «  »…'), []);
-  // Et il ne reconnaît pas ce qui ne commence ni ne finit comme lui.
+  // Il ne reconnaît pas ce qui ne commence ni ne finit comme lui.
   assert.deepStrictEqual(ix.trouverCles(index, 'Compilation de « x » terminée'), []);
 });
 
 test('index : un motif à part fixe trop courte n’entre pas dans l’index', () => {
-  // « {0} : {1} » reconnaîtrait toute ligne à deux points de toute l'interface : le motif
-  // est écarté, plutôt que d'attraper n'importe quoi.
+  // « {0} : {1} » reconnaîtrait toute ligne à deux-points de l'interface : ce motif est écarté.
   const index = ix.construireIndex({ 'x.court': '{0} : {1}', 'x.long': 'Volume {0} de la revue' });
   assert.deepStrictEqual(index.motifs.map((m) => m.cle), ['x.long']);
   assert.deepStrictEqual(ix.trouverCles(index, 'Titre : valeur'), []);
@@ -106,7 +95,7 @@ test('index : la vraie table du cockpit se laisse indexer, et l’exact prime le
   for (const texte of Object.keys(index.exact)) { cles += index.exact[texte].length; }
   assert.ok(cles > total / 2, 'moins de la moitié des libellés sont retrouvables à l’identique');
   assert.ok(index.motifs.length > 100, 'les libellés à trou ne sont pas indexés');
-  // Un libellé réel, pris dans la table plutôt que recopié ici.
+  // Un libellé réel, pris dans la table.
   assert.deepStrictEqual(ix.trouverCles(index, TEXTES_COCKPIT.fr['sugg.annuler']).length > 0, true);
   // L'index part dans un postMessage : il doit survivre à un aller-retour JSON, ce qu'une
   // RegExp ou une Map ne feraient pas.
@@ -180,14 +169,14 @@ test('une suggestion d’interface s’écrit et se relit, sans numéro ni artic
   assert.strictEqual(s.actuel, 'Réglages');
   assert.strictEqual(s.propose, 'Préférences');
   assert.strictEqual(s.geste, 'remplacer');
-  // Le nom dit la clé et la langue : un dossier se lit sans rien ouvrir.
+  // Le nom du fichier dit la clé et la langue.
   assert.match(s.fichier, /^\d{8}-\d{6}-regl\.titre-fr\.json$/);
-  // Ce qu'elle ne porte PAS : une suggestion d'interface ne concerne aucun numéro.
+  // Une suggestion d'interface ne concerne aucun numéro.
   const brut = JSON.parse(fs.readFileSync(s.chemin, 'utf8'));
   for (const absent of ['produit', 'numero', 'article', 'champ']) {
     assert.ok(!(absent in brut), 'champ d’article dans une suggestion d’interface : ' + absent);
   }
-  // Et le mode d'emploi est posé à côté, pour qui tombe sur ce dossier.
+  // Un mode d'emploi est posé dans le dossier.
   assert.ok(fs.existsSync(path.join(dossier, 'LISEZ-MOI.txt')), 'dossier sans mode d’emploi');
   assert.strictEqual(sugg.compterSuggestionsInterface(dossier), 1,
     'le LISEZ-MOI a été compté comme une suggestion');
@@ -213,14 +202,14 @@ test('une suggestion d’interface qui ne dit rien est refusée', () => {
   });
   assert.strictEqual(res.ok, false);
   assert.strictEqual(res.raison, 'vide');
-  // Une SUPPRESSION, elle, n'a jamais de texte proposé : elle passe.
+  // Une suppression n'a pas de texte proposé : elle passe.
   assert.ok(sugg.ecrireSuggestionInterface(dossier, {
     cle: 'a.b', langue: 'fr', geste: 'supprimer', actuel: 'Annuler', propose: '', commentaire: ''
   }).ok, 'une proposition de suppression a été prise pour un formulaire vide');
 });
 
 test('un fichier écrit avant le champ « cible » se relit « article »', () => {
-  // Un fichier de la première version du format, mot pour mot : pas de clé « cible ».
+  // Un fichier de la première version du format : pas de clé « cible ».
   const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-cible-'));
   const dossier = path.join(racine, 'traduction');
   fs.mkdirSync(dossier, { recursive: true });
@@ -242,10 +231,9 @@ test('un fichier écrit avant le champ « cible » se relit « article »', () =
 
 // ---- L'interception, dans les vraies pages -------------------------------------------
 //
-// Éprouver un module ne dit RIEN de ce qu'une page fait : entre le réglage sur le disque et
-// un clic détourné il y a cinq relais — l'hôte lit le réglage, la page le demande, l'hôte
-// répond avec l'index, le socle branche son écoute, et le clic repart. Un seul relais muet,
-// et le mode ne fait rien sans qu'une ligne de code n'ait l'air fausse.
+// Entre le réglage sur le disque et un clic détourné, il y a cinq relais : l'hôte lit le
+// réglage, la page le demande, l'hôte répond avec l'index, la page branche son écoute, le clic
+// repart. Un seul relais muet et le mode ne fait rien ; seul un test sur la page le voit.
 
 const INDEX_ESSAI = ix.construireIndex({
   'a.titre': 'Titre',
@@ -259,8 +247,7 @@ function allumer(page) {
   page.envoyer({ type: 'modeTrad', actif: true, index: INDEX_ESSAI, textes: TEXTES_ESSAI });
 }
 
-// La vue d'ensemble : la plus simple des pages qui détournent, et elle n'attend aucun
-// libellé de l'hôte.
+// La vue d'ensemble : la plus simple des pages qui détournent, sans libellé attendu de l'hôte.
 function ouvrirVue() {
   return ouvrir({
     racine: RACINE, page: 'vue-ensemble',
@@ -281,11 +268,10 @@ function poserBouton(page, texte) {
 }
 
 const detournes = (page) => page.messages.filter((m) => m.type === 'suggererInterface');
-// La demande du mode voyage avec le « pret » : une page qui ne la porte pas ne recevra
-// jamais l'index.
+// La demande du mode voyage avec le « pret » : une page qui ne la porte pas ne reçoit pas
+// l'index.
 const demande = (page) => page.messages.some((m) => m.type === 'pret' && m.modeTrad === true);
-// Les clés postées, recopiées : la page les fabrique dans son propre contexte, et un
-// postMessage réel les sérialiserait de toute façon.
+// Les clés postées, recopiées : la page les fabrique dans son propre contexte.
 const clesDe = (message) => Array.from(message.cles);
 
 test('un panneau demande le mode à l’ouverture, et l’hôte seul décide', () => {
@@ -307,8 +293,7 @@ test('mode allumé : le clic est détourné, et porte le texte et ses clés', ()
     'le clic n’a pas été détourné ; messages : ' + JSON.stringify(page.messages));
   assert.strictEqual(vus[0].texte, 'Ouvrir l’article');
   assert.deepStrictEqual(clesDe(vus[0]), ['c.ouvrir']);
-  // La recherche de la page doit rendre exactement ce que rend le module : deux réponses
-  // différentes seraient invisibles à l'écran.
+  // La recherche de la page rend exactement ce que rend le module.
   assert.deepStrictEqual(clesDe(vus[0]), ix.trouverCles(INDEX_ESSAI, 'Ouvrir l’article'));
 });
 
@@ -327,11 +312,11 @@ test('mode allumé : l’action normale est empêchée', () => {
 });
 
 test('mode éteint : aucun clic ne change de sens', () => {
-  // Sans message de l'hôte d'abord — c'est l'état normal d'un poste.
+  // D'abord sans message de l'hôte : l'état normal d'un poste.
   const muet = ouvrirVue();
   cliquer(muet, poserBouton(muet, 'Ouvrir l’article'));
   assert.strictEqual(detournes(muet).length, 0, 'un panneau détourne sans que le mode soit allumé');
-  // Puis avec un « éteint » explicite : une clé absente ne doit jamais allumer le mode.
+  // Puis avec un « éteint » explicite : une clé absente n'allume pas le mode.
   const eteint = ouvrirVue();
   eteint.envoyer({ type: 'modeTrad', actif: false });
   cliquer(eteint, poserBouton(eteint, 'Ouvrir l’article'));
@@ -365,8 +350,8 @@ test('mode allumé : un texte partagé rend DEUX candidates, un texte inconnu au
 test('mode allumé : le texte pris est celui de l’élément le plus proche, pas le panneau', () => {
   const page = ouvrirVue();
   allumer(page);
-  // Une ligne qui porte son texte et un pictogramme : on clique le pictogramme, qui ne dit
-  // rien, et c'est le texte de la ligne qu'on relit — pas celui de toute la page.
+  // Une ligne avec son texte et un pictogramme : on clique le pictogramme, et c'est le texte
+  // de la ligne qu'on relit, pas celui de toute la page.
   const ligne = page.document.createElement('p');
   ligne.appendChild(page.document.createTextNode('Ouvrir l’article'));
   const icone = page.document.createElement('i');
@@ -392,8 +377,8 @@ test('mode allumé : les textes qui ne sont pas du texte — invite, infobulle, 
   cliquer(page, muet);
   assert.strictEqual(detournes(page)[1].texte, 'Ouvrir l’article', 'une infobulle n’est pas relisible');
 
-  // Ce que le rédacteur a tapé n'est PAS un libellé de l'outil : la valeur d'un champ de
-  // saisie ne doit jamais partir en suggestion.
+  // La valeur d'un champ de saisie n'est pas un libellé de l'outil : elle ne part pas en
+  // suggestion.
   const saisi = page.document.createElement('input');
   saisi.type = 'text';
   saisi.value = 'mon titre à moi';
@@ -416,7 +401,7 @@ test('le mode pose un bandeau qui dit ce qu’il fait et comment sortir', () => 
   const textes = page.document.body.querySelectorAll('.szh-trad-bandeau')[0].textContent;
   assert.ok(textes.includes(TEXTES_ESSAI.bandeau), 'le bandeau ne dit pas ce qu’un clic va faire');
   assert.ok(textes.includes(TEXTES_ESSAI.eteindre), 'le bandeau n’offre pas de sortie');
-  // Éteint, il s'en va.
+  // Éteint, le bandeau disparaît.
   page.envoyer({ type: 'modeTrad', actif: false });
   assert.strictEqual(bandeaux(page), 0, 'le bandeau reste alors que le mode est éteint');
 });
@@ -429,7 +414,7 @@ test('le bouton du bandeau éteint le mode, et le dit à l’hôte', () => {
   sortie.dispatchEvent({ type: 'click' });
   assert.ok(page.messages.some((m) => m.type === 'modeTrad' && m.actif === false),
     'la sortie ne prévient pas l’hôte : le réglage resterait allumé');
-  // Et le panneau redevient cliquable tout de suite, sans attendre la réponse de l'hôte.
+  // Le panneau redevient cliquable tout de suite, sans attendre la réponse de l'hôte.
   cliquer(page, poserBouton(page, 'Titre'));
   assert.strictEqual(detournes(page).length, 0, 'les clics sont encore détournés après la sortie');
 });
@@ -443,10 +428,10 @@ test('Échap éteint le mode depuis n’importe quel panneau', () => {
   assert.strictEqual(bandeaux(page), 0);
 });
 
-// ---- LE GARDE-FOU : les réglages ne se détournent JAMAIS -------------------------------
+// ---- Les réglages restent toujours cliquables ------------------------------------------
 
-// Les réglages vivent dans l'onglet Paramètres de l'Accueil : la page détourne ses clics comme les
-// autres, SAUF sa barre d'onglets et cet onglet (data-trad-exempt), de quoi toujours éteindre le mode.
+// L'Accueil détourne ses clics, sauf sa barre d'onglets et l'onglet Paramètres
+// (data-trad-exempt) : on peut toujours éteindre le mode.
 const { ouvrirReglages: ouvrirParametres } = require('./page-reglages');
 
 test('accueil : la barre d’onglets et l’onglet Paramètres ne détournent rien, mode allumé compris', () => {
@@ -465,7 +450,7 @@ test('accueil : la barre d’onglets et l’onglet Paramètres ne détournent ri
   cliquer(page, p.parId('onglet-reglages'));
   assert.strictEqual(detournes(page).length, 0,
     'ON NE PEUT PLUS REJOINDRE LES PARAMÈTRES : la barre d’onglets détourne ses clics');
-  // Le reste de l'Accueil, lui, est détourné : sans quoi le mode ne relirait rien dans cette page.
+  // Le reste de l'Accueil est détourné.
   cliquer(page, poserBouton(page, 'Ouvrir l’article'));
   assert.strictEqual(detournes(page).length, 1,
     'hors barre d’onglets et Paramètres, l’Accueil ne détourne pas ses clics');
@@ -493,14 +478,14 @@ test('réglages : les suggestions d’interface se comptent et leur dossier s’
   boutons[0].dispatchEvent({ type: 'click' });
   assert.ok(p.messages.some((m) => m.type === 'suggestionsInterface'),
     'le bouton est muet ; messages : ' + JSON.stringify(p.messages));
-  // Le compte arrive avec les valeurs, et se lit en toutes lettres.
+  // Le compte arrive avec les valeurs et s'affiche en toutes lettres.
   p.envoyer({ type: 'valeurs', valeurs: {}, suggInterface: 3 });
   const dit = TEXTES_COCKPIT.fr['accueil.regl.sugg.plus'].split('{0}').join('3');
   assert.ok(p.panneau.textContent.includes(dit),
     'le compte des suggestions ne s’affiche pas : ' + JSON.stringify(dit));
 });
 
-// ---- LE GARDE-FOU : le formulaire de suggestion non plus --------------------------------
+// ---- Le formulaire de suggestion ne détourne pas non plus ------------------------------
 
 function ouvrirFormulaire() {
   return ouvrir({
@@ -575,7 +560,7 @@ test('formulaire : deux candidates se choisissent, une absente n’empêche rien
 });
 
 test('formulaire : une cible absente reste le geste d’avant, sur un article', () => {
-  // Un hôte plus ancien — ou un relais qui oublierait la clé — ne doit pas faire passer une
+  // Un hôte plus ancien, ou un relais qui oublierait la clé, ne doit pas faire passer une
   // suggestion d'article pour une suggestion d'interface.
   const page = ouvrirFormulaire();
   page.envoyer({
@@ -591,20 +576,14 @@ test('formulaire : une cible absente reste le geste d’avant, sur un article', 
   assert.strictEqual(envoi.geste, 'remplacer');
 });
 
-// ---- Le mode est-il branché PARTOUT ? ----------------------------------------------
-// Contrôle statique, sur les sources de l'hôte : c'est le défaut qu'on vient de réparer.
-// Cinq panneaux détournaient leurs clics, quatre fichiers ne le faisaient pas — non par
-// choix, mais parce que personne n'avait relu la liste. Rien ne cassait : les panneaux
-// oubliés répondaient normalement, mode allumé, et la personne croyait le mode en panne.
-// Aucun test de comportement n'aurait pu le voir, puisqu'il ne manquait rien à ce qui
-// était branché. Ce contrôle-ci lit le code, retrouve TOUS les gestionnaires de messages
-// de panneau, et exige la garde en tête de chacun — sauf les deux qui sont nommés ici,
-// avec leur raison. Un panneau neuf entre donc dans la liste tout seul, et ce test tombe
-// tant que sa garde n'est pas posée.
+// ---- Le mode est-il branché partout ? ----------------------------------------------
+// Contrôle statique sur les sources de l'hôte. Un panneau sans garde répond normalement,
+// mode allumé, et la personne croit le mode en panne ; aucun test de comportement ne le
+// voit. Ce contrôle retrouve tous les gestionnaires de messages de panneau et exige la garde
+// en tête de chacun, sauf ceux nommés ci-dessous. Un nouveau panneau entre dans la liste
+// tout seul.
 
-// Les seuls gestionnaires qui ne détournent JAMAIS, nommés par leur fonction d'accueil. Les
-// réglages n'en font plus partie : ils vivent dans l'Accueil, qui détourne mais exempte sa barre
-// d'onglets et l'onglet Paramètres (éprouvés plus haut), de quoi toujours éteindre le mode.
+// Les seuls gestionnaires qui ne détournent jamais, nommés par leur fonction d'accueil.
 const PANNEAUX_SANS_MODE_TRAD = {
   montrerPanneauSuggestion:
     'le formulaire de suggestion : c’est lui que le mode ouvre. Le détourner le rendrait ' +
@@ -616,8 +595,7 @@ const PANNEAUX_SANS_MODE_TRAD = {
     'message vers l’hôte est « je suis prête ».'
 };
 
-// Les sources de l'hôte : extension.js et lib/. media/ est le côté page, il a ses propres
-// contrôles plus bas ; node_modules n'est pas à nous.
+// Les sources de l'hôte : extension.js et lib/. media/ est le côté page, contrôlé plus bas.
 function sourcesHote() {
   const liste = [];
   for (const f of fs.readdirSync(COCKPIT)) {
@@ -630,9 +608,9 @@ function sourcesHote() {
   return liste;
 }
 
-// Chaque `webview.onDidReceiveMessage(` ou `panneauUnique({` d'un fichier, avec le nom de la fonction de premier
-// niveau qui l'entoure (c'est ce nom qui sert d'identité : le viewType du panneau n'est pas
-// toujours une chaîne littérale — ouvrirVueEnsemble passe `def.id`).
+// Chaque `webview.onDidReceiveMessage(` ou `panneauUnique({` d'un fichier, avec le nom de la
+// fonction de premier niveau qui l'entoure. Ce nom sert d'identité : le viewType n'est pas
+// toujours une chaîne littérale (ouvrirVueEnsemble passe `def.id`).
 function gestionnairesDe(chemin) {
   const lignes = fs.readFileSync(chemin, 'utf8').split('\n');
   const trouves = [];
@@ -645,14 +623,14 @@ function gestionnairesDe(chemin) {
         fichier: path.relative(COCKPIT, chemin).replace(/\\\\/g, '/'),
         fonction: fonction,
         ligne: i + 1,
-        // La garde se pose en tête : après le `if (!msg)` et son commentaire de deux
-        // lignes, jamais plus loin. Six lignes laissent la marge, pas un traitement.
+        // La garde se pose en tête, après le `if (!msg)` et son commentaire de deux lignes :
+        // six lignes laissent la marge.
         garde: /repondreModeTrad\(panneau, msg\)\) \{ return; \}/.test(lignes.slice(i, i + 6).join('\n'))
       });
     }
     // Un panneau de la fabrique (lib/webviews/panneau.js) : la garde est son option
-    // `modeTrad`, que la fabrique passe avant tout autre message. Les options s'arrêtent à
-    // la ligne qui referme l'appel, à la même indentation.
+    // `modeTrad`, traitée avant tout autre message. Les options s'arrêtent à la ligne qui
+    // referme l'appel, à la même indentation.
     if (/panneauUnique\(\{/.test(lignes[i])) {
       const retrait = /^\s*/.exec(lignes[i])[0];
       let fin = i + 1;
@@ -693,8 +671,8 @@ test('mode trad : tout panneau détourne ses clics, sauf ceux que le mode exclut
   assert.deepStrictEqual(detournentATort, [],
     'un panneau dispensé détourne quand même ses clics : c’est le garde-fou du mode qui saute.');
 
-  // Les dispenses doivent encore correspondre à un panneau réel : une fonction renommée
-  // laisserait une dispense muette, et le vrai panneau passerait sans garde ni alerte.
+  // Chaque dispense correspond à un panneau réel : une fonction renommée laisserait une
+  // dispense muette, et le panneau passerait sans garde.
   const noms = new Set(tous.map((g) => g.fonction));
   for (const nom of Object.keys(PANNEAUX_SANS_MODE_TRAD)) {
     assert.ok(noms.has(nom),
@@ -703,9 +681,8 @@ test('mode trad : tout panneau détourne ses clics, sauf ceux que le mode exclut
 });
 
 test('mode trad : les modules de lib/ prennent la garde à lib/traduction-hote.js', () => {
-  // Les modules de lib/ ne voient pas extension.js : leur rappel repondreModeTrad est, par
-  // défaut, celui de lib/traduction-hote.js. Un défaut muet laisserait un panneau oublié
-  // par l'hôte répondre normalement, mode allumé, et la personne croirait le mode en panne.
+  // Les modules de lib/ ne voient pas extension.js : leur rappel repondreModeTrad est par
+  // défaut celui de lib/traduction-hote.js.
   for (const f of ['metadonnees-hote.js', 'documentation-hote.js', 'medias-hote.js', 'table-hote.js', 'apercu.js', 'vue-articles-hote.js']) {
     const src = fs.readFileSync(path.join(COCKPIT, 'lib', f), 'utf8');
     assert.match(src, /repondreModeTrad: require\('\.\/traduction-hote'\)\.repondreModeTrad/,
@@ -713,7 +690,7 @@ test('mode trad : les modules de lib/ prennent la garde à lib/traduction-hote.j
     assert.match(src, /ctx\.repondreModeTrad\(panneau, msg\)/,
       `lib/${f} : la garde n’appelle pas le rappel du ctx`);
   }
-  // Et l'hôte ne les relaie plus par une lambda : il n'y a qu'une garde, celle du module.
+  // L'hôte ne les relaie pas par une lambda : la garde est celle du module.
   const ext = fs.readFileSync(path.join(COCKPIT, 'extension.js'), 'utf8');
   const relais = ext.match(/^ {2}repondreModeTrad: \(panneau, msg\) => repondreModeTrad\(panneau, msg\)$/gm) || [];
   assert.strictEqual(relais.length, 0, 'extension.js relaie encore repondreModeTrad à un module de lib/');

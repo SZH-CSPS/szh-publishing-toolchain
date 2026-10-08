@@ -1,34 +1,25 @@
-﻿// pipeline/manuscrit_gabarit.py : l'écrivain du nettoyeur de manuscrit (article), §4/§5.3/
-// §10/§11 de docs/ARCHITECTURE-nettoyeur-manuscrit.md. Ce fichier éprouve les sept
-// contrôles posés au §11 pour manuscrit-gabarit.test.js :
-//   1. aller-retour : un document (corps + titres + une image + un tableau), écrit puis relu
-//      par pronto-lire.py, rend les champs attendus (légende, blocs reconnus) ;
-//   2. aucun signe perdu : le texte du corps en sortie (relu par manuscrit_docx.py, LA
-//      référence de vérité du contrat) est celui d'entrée, caractère pour caractère ;
-//   3. chaque image est dans un bloc figure, et ses OCTETS sont identiques à l'entrée (sha256,
-//      jamais la seule taille) ;
-//   4. chaque bloc porte sa rangée de métadonnées fusionnée sur TOUTE la largeur déclarée du
-//      bloc, quel que soit le nombre de colonnes du tableau qu'il enveloppe ;
-//   5. un paragraphe vide sépare toujours deux blocs qui se touchent (contrôle du repliage
-//      LibreOffice, §10) ;
-//   6. l'italique survit au passage dans l'écrivain ;
-//   7. un document sans aucune image ni tableau produit un .docx valide et relisible — le cas
-//      le plus courant, le plus facile à casser en soignant les cas rares.
-// Plus le contrôle sur le corpus réel (§11, note finale) : les onze manuscrits de
-// tmp/corpus-relecture/lot-A/ s'écrivent au gabarit sans exception et se relisent tous par
-// pronto-lire.py — sauté sous un motif nommé si tmp/ (hors git) est absent.
+﻿// Tests de pipeline/manuscrit_gabarit.py, l'écrivain du nettoyeur de manuscrit (voir
+// docs/ARCHITECTURE-nettoyeur-manuscrit.md). Contrôles principaux :
+//   1. aller-retour : un document (corps, titres, une image, un tableau) écrit puis relu par
+//      pronto-lire.py rend les champs attendus (légende, blocs reconnus) ;
+//   2. aucun signe perdu : le texte du corps relu par manuscrit_docx.py est celui d'entrée,
+//      caractère pour caractère ;
+//   3. chaque image est dans un bloc figure, avec les mêmes octets qu'en entrée (sha256) ;
+//   4. les métadonnées d'un bloc ne dépendent pas du nombre de colonnes du tableau ;
+//   5. un paragraphe vide sépare toujours deux blocs qui se touchent (LibreOffice fond deux
+//      <w:tbl> voisins) ;
+//   6. l'italique survit à l'écriture ;
+//   7. un document sans image ni tableau, le cas courant, produit un .docx valide et relisible.
+// S'y ajoute le corpus tmp/corpus-relecture/lot-A/ : les onze manuscrits s'écrivent au gabarit
+// et se relisent par pronto-lire.py (sauté sous un motif nommé si tmp/ est absent).
 //
-//   node --test test/js/manuscrit-gabarit.test.js
+// manuscrit_gabarit.py est une bibliothèque sans CLI (ecrire(document, chemin_gabarit,
+// chemin_sortie, decisions)) : un programme Python écrit à la volée l'importe et appelle
+// ecrire(). Le résultat est relu par les deux lecteurs de production : manuscrit_docx.py et
+// pipeline/pronto-lire.py.
 //
-// Patron : test/js/manuscrit-docx.test.js. Python passe par python() de gardes.js (la WSL sous Windows).
-// manuscrit_gabarit.py n'a pas de CLI propre (c'est une bibliothèque,
-// §4 : « def ecrire(document, chemin_gabarit, chemin_sortie, decisions) ») : ce fichier le
-// pilote via un petit programme Python écrit au vol (patron FABRIQUE de
-// manuscrit-docx.test.js), qui importe le module et appelle ecrire() directement — puis relit
-// le résultat par les DEUX lecteurs de production, jamais un lecteur maison : manuscrit_docx.py
-// (référence de vérité du contrat, §5.3) et pipeline/pronto-lire.py (le lecteur de production,
-// §11 : « c'est le seul contrôle qui prouve que ton écrivain et le lecteur de production sont
-// d'accord »).
+// Les commentaires « Sabotage » indiquent la modification du module qui doit faire rougir
+// le test.
 'use strict';
 
 const test = require('node:test');
@@ -45,23 +36,16 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const PIPELINE = path.join(RACINE, 'pipeline');
 const MANUSCRIT_DOCX = path.join(PIPELINE, 'manuscrit_docx.py');
 const PRONTO_LIRE = path.join(PIPELINE, 'pronto-lire.py');
-// Gabarits V4 (29.09.2026) : deux fichiers, FR et DE, styleId « allemands » des deux côtés
-// (berschrift1/2/3/4, Textkrper, Zitat — enregistrés par un Word allemand) même si les w:name
-// restent 'heading N'/'Body Text'/'Quote'. GABARIT_LIVRE reste le nom historique (FR, la voie
-// la plus empruntée par ce fichier) ; GABARIT_DE pour les contrôles propres à l'allemand.
+// Deux gabarits, FR et DE. Leurs styleId sont allemands des deux côtés (berschrift1/2/3/4,
+// Textkrper, Zitat : enregistrés par un Word allemand) ; les w:name restent 'heading N',
+// 'Body Text', 'Quote'. GABARIT_LIVRE est le gabarit FR.
 const GABARIT_LIVRE = path.join(RACINE, "revue-template", "Pronto - modele d'article_FR.docx");
 const GABARIT_DE = path.join(RACINE, "revue-template", "Pronto - modele d'article_DE.docx");
 const CORPUS_LOT_A = path.join(RACINE, 'tmp', 'corpus-relecture', 'lot-A');
 
-// PYTHONIOENCODING=utf-8 : sans elle, l'interprète Python de ce poste écrit son stdout dans
-// l'encodage de la console Windows (cp1252, mesuré le 18.09.2026) — pronto-lire.py écrit
-// pourtant du JSON en UTF-8 littéral (ensure_ascii=False, contrairement à manuscrit_docx.py
-// et manuscrit_modele.py qui posent ensure_ascii=True pour cette même raison). Sans cette
-// variable, un accent fait soit une bouillie de caractères (mojibake), soit un
-// UnicodeEncodeError qui fait carrément planter pronto-lire.py — mesuré sur le corpus réel
-// (lot-A/4_La méthode Flip Flap.docx, dont le nom même porte un accent). C'est un défaut de
-// pronto-lire.py, pas de ce chantier (fichier existant, hors des deux qu'il touche) : contourné
-// ici côté harnais de test, jamais réparé en silence dans le pipeline — voir le rapport final.
+// PYTHONIOENCODING=utf-8 : sans elle, Python écrit son stdout dans l'encodage de la console
+// Windows (cp1252), alors que pronto-lire.py écrit du JSON en UTF-8 littéral
+// (ensure_ascii=False). Un accent donne alors du mojibake ou un UnicodeEncodeError.
 const ENV_UTF8 = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
 
 function dossierJetable() {
@@ -69,9 +53,8 @@ function dossierJetable() {
 }
 
 // ---------------------------------------------------------------------------------
-// Pilotage de manuscrit_gabarit.ecrire() depuis Node : construit un Document (via
-// manuscrit_modele.document_depuis_json(), déjà éprouvé par manuscrit_modele.test.js — même
-// schéma JSON que son mode --diagnostic, documenté en tête de ce fichier) et appelle ecrire().
+// Pilote manuscrit_gabarit.ecrire() depuis Node : construit un Document par
+// manuscrit_modele.document_depuis_json() (schéma du mode --diagnostic) et appelle ecrire().
 const ECRIRE_DEPUIS_JSON = [
   'import json, sys',
   'sys.path.insert(0, sys.argv[1])',
@@ -89,8 +72,8 @@ function ecrireDepuisSpec(spec, cheminSortie, cheminGabarit) {
   return JSON.parse(r.stdout);
 }
 
-// Pilotage depuis un .docx RÉEL (pas un JSON) — pour le contrôle sur le corpus lot-A : lit le
-// manuscrit avec manuscrit_docx.lire() (le lecteur de production) puis écrit au gabarit.
+// Variante depuis un vrai .docx, pour le corpus lot-A : lit le manuscrit par
+// manuscrit_docx.lire() puis l'écrit au gabarit.
 const ECRIRE_DEPUIS_DOCX = [
   'import json, sys',
   'sys.path.insert(0, sys.argv[1])',
@@ -108,10 +91,9 @@ function diagnostiquerManuscritDocx(mode, chemin) {
   return JSON.parse(r.stdout);
 }
 
-// `produit` (ajout 29.09.2026, gabarits FR/DE) : pose $SZH_PRODUIT ('revue'|'zeitschrift') —
-// c'est LUI qui décide la langue lue (pronto_modele.langue_du_produit()), pas un champ du
-// gabarit. Omis (comme avant ce chantier) : produit inconnu, repli 'fr' par l'avertissement
-// 'langue-deduite', voie déjà éprouvée par les contrôles FR existants de ce fichier.
+// `produit` pose $SZH_PRODUIT ('revue' ou 'zeitschrift'), qui décide la langue lue
+// (pronto_modele.langue_du_produit()). Omis : produit inconnu, repli 'fr' avec l'avertissement
+// 'langue-deduite'.
 function prontoLire(chemin, slug, dossier, produit) {
   const env = produit ? Object.assign({}, ENV_UTF8, { SZH_PRODUIT: produit }) : ENV_UTF8;
   const r = python( [PRONTO_LIRE, chemin, slug, dossier],
@@ -120,8 +102,7 @@ function prontoLire(chemin, slug, dossier, produit) {
   return JSON.parse(r.stdout);
 }
 
-// Lit word/document.xml tel quel (XML brut) — pour les deux contrôles qui inspectent la
-// structure produite directement, plutôt que par un des deux lecteurs de production.
+// Lit word/document.xml brut, pour les contrôles qui inspectent directement la structure.
 const LIRE_DOCUMENT_XML = 'import sys, zipfile\n'
   + 'z = zipfile.ZipFile(sys.argv[1])\n'
   + 'sys.stdout.write(z.read("word/document.xml").decode("utf-8"))\n';
@@ -132,10 +113,10 @@ function lireDocumentXml(chemin) {
 }
 
 // ---------------------------------------------------------------------------------
-// pandoc sous la WSL (§5.4 du contrat) — la mesure qui tranche pour les listes : le writer
-// Markdown de pandoc peut embellir, l'AST natif ne ment pas. Même distro que gardes.js
-// (SZH-Publishing) et que pipeline/manuscrit_typo.py — voir son en-tête pour le piège des
-// antislashs (wsl.exe les avale dans un argument de tableau : on convertit AVANT l'appel).
+// pandoc dans la WSL, pour les listes : le writer Markdown de pandoc peut embellir, l'AST
+// natif est fidèle. Même distribution que gardes.js (SZH-Publishing). wsl.exe avale les
+// barres inverses d'un argument de tableau : les chemins sont convertis avant l'appel (voir
+// l'en-tête de pipeline/manuscrit_typo.py).
 const WSL_EXE = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'wsl.exe');
 const DISTRO_WSL = 'SZH-Publishing';
 
@@ -150,17 +131,16 @@ function pandocNatifSurWsl(cheminWindows) {
   return r.stdout;
 }
 
-// Un paragraphe de liste — `liste` : [numId, ilvl, format] comme le rend désormais
-// manuscrit_docx.py (§5.4) ; le numId choisi ici (7, 8...) est délibérément arbitraire et ne
-// doit JAMAIS se retrouver dans la sortie (contrôle n°4).
+// Un paragraphe de liste. `liste` : [numId, ilvl, format], comme le rend manuscrit_docx.py.
+// Le numId choisi ici (7, 8...) est arbitraire et ne doit pas se retrouver dans la sortie
+// (contrôle n°4 des listes).
 function paragrapheListe(texte, numid, ilvl, format) {
   return paragraphe([fragment(texte)], { liste: [numid, ilvl, format] });
 }
 
 // ---------------------------------------------------------------------------------
-// Fabrication de specs Document minimales (schéma document_depuis_json(), voir l'en-tête de
-// manuscrit_modele.py) — un petit constructeur par type de bloc, pour ne pas répéter les
-// champs par défaut dans chaque test.
+// Constructeurs de specs Document minimales (schéma document_depuis_json(), voir l'en-tête de
+// manuscrit_modele.py), un par type de bloc.
 
 function fragment(texte, forme, extra) {
   return Object.assign({ texte, forme: forme || {}, lien: null }, extra || {});
@@ -190,12 +170,10 @@ function specDocument(blocs, notes) {
 }
 
 // ---------------------------------------------------------------------------------
-// Lecture des enfants DIRECTS du corps (<w:p>, <w:tbl>, <w:sectPr>), dans l'ordre — par
-// comptage de PROFONDEUR sur la balise elle-même (jamais un indexOf('</w:tbl>') naïf : un
-// bloc figure/tableau contient lui-même un <w:tbl> IMBRIQUÉ, un </w:tbl> non-greedy s'arrête
-// sur le mauvais, voir le piège documenté au §11 sur un test antérieur de ce fichier). Sert au
-// contrôle de la table de correspondance ET au contrôle « au plus un paragraphe vide entre
-// deux blocs ».
+// Lit les enfants directs du corps (<w:p>, <w:tbl>, <w:sectPr>), dans l'ordre, en comptant la
+// profondeur des balises : un bloc contient lui-même un <w:tbl> imbriqué, et un
+// indexOf('</w:tbl>') s'arrêterait sur le mauvais. Sert à la table de correspondance et au
+// contrôle « au plus un paragraphe vide entre deux blocs ».
 const ENFANTS_CORPS_PY = [
   'import sys, zipfile, re, json',
   'z = zipfile.ZipFile(sys.argv[1])',
@@ -261,10 +239,9 @@ function stylesWp(enfants) {
   return enfants.filter((e) => e.tag === 'w:p').map((e) => e.style);
 }
 
-// Sépare les entrées `correspondance` normales des entrées `bloc` (ajout du 22.09.2026,
-// ancrage de A11y.TexteAlternatif.* sur la clé « Texte alternatif : » d'un bloc figure/
-// tableau) — les tests d'exactitude texte-à-texte plus anciens ne portent que sur les
-// premières, jamais sur les secondes (le paragraphe-clé ne porte pas le texte de `source`).
+// Sépare les entrées `correspondance` normales des entrées `bloc` (ancrage de
+// A11y.TexteAlternatif.* sur la clé « Texte alternatif : » d'un bloc). Les tests texte à
+// texte ne portent que sur les premières : le paragraphe-clé ne porte pas le texte de `source`.
 function separerCorrespondance(correspondance) {
   const normales = correspondance.filter((c) => !c.bloc);
   const blocs = correspondance.filter((c) => c.bloc);
@@ -272,9 +249,9 @@ function separerCorrespondance(correspondance) {
 }
 
 // ---------------------------------------------------------------------------------
-// Validation XML — chaque partie .xml/.rels de l'archive doit être bien formée (ET.fromstring
-// plutôt qu'un simple statut de sortie 0 : §11, « pronto-lire.py rend 0 même sur un XML
-// illisible »), et quelques contrôles structurels ciblés sur les défauts mesurés.
+// Validation XML : chaque partie .xml/.rels de l'archive doit être bien formée
+// (ET.fromstring ; pronto-lire.py rend 0 même sur un XML illisible), plus quelques contrôles
+// structurels ciblés.
 const VALIDER_PARTIES_XML_PY = [
   'import sys, zipfile, json',
   'import xml.etree.ElementTree as ET',
@@ -366,17 +343,12 @@ function normaliserEspaces(s) {
 }
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°1 — aller-retour complet (image + tableau + légende déjà écrite dans le
-// manuscrit) : la sortie relue par pronto-lire.py (le lecteur de PRODUCTION, pas un lecteur
-// maison) rend les champs attendus.
+// Contrôle n°1 : aller-retour complet (image, tableau, légende déjà écrite dans le
+// manuscrit), relu par pronto-lire.py.
 //
-// Sabotage minimal : dans _rangee_meta_xml(), remplacer le libellé 'Légende' par 'Legende'
-// (retirer l'accent) — pronto_modele._premiere_etiquette_szh_cle()/n_blocs_meta() comparent
-// via aplatir() (accents et casse indifférents), donc CE sabotage précis reste inoffensif :
-// preuve qu'il fallait le vérifier pour de vrai plutôt que de le supposer. Le sabotage qui
-// tombe réellement (mesuré ci-dessous, §11 « vérifie d'abord que ton sabotage atterrit ») est
-// de renommer l'étiquette en 'Description' — un mot hors du lexique LABELS_FIGURE de
-// pronto_modele.py, qui ne peut alors plus reconnaître le bloc du tout.
+// Sabotage : dans _rangee_meta_xml(), renommer l'étiquette 'Légende' en 'Description', un mot
+// hors du lexique LABELS_FIGURE de pronto_modele.py. Retirer seulement l'accent ne suffit
+// pas : la comparaison passe par aplatir(), insensible aux accents et à la casse.
 
 test('manuscrit_gabarit.ecrire : aller-retour complet (image + tableau + légende), relu par pronto-lire.py',
   { skip: sansPython }, () => {
@@ -415,13 +387,10 @@ test('manuscrit_gabarit.ecrire : aller-retour complet (image + tableau + légend
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°2 — aucun signe perdu : le texte du corps en sortie, relu par manuscrit_docx.py
-// (LA référence de vérité, §5.3), est caractère pour caractère celui d'entrée. Compté, pas
-// jugé à l'œil (§11).
+// Contrôle n°2 : le texte du corps, relu par manuscrit_docx.py, est caractère pour caractère
+// celui d'entrée.
 //
-// Sabotage minimal : dans _run_xml(), tronquer `fragment.texte` d'un caractère
-// (`fragment.texte[:-1]`) avant de l'écrire — un caractère manque en sortie, la comparaison de
-// longueur ET de contenu rougissent.
+// Sabotage : dans _run_xml(), écrire `fragment.texte[:-1]`.
 
 test('manuscrit_gabarit.ecrire : le texte du corps ne perd ni ne gagne aucun caractère',
   { skip: sansPython }, () => {
@@ -447,12 +416,10 @@ test('manuscrit_gabarit.ecrire : le texte du corps ne perd ni ne gagne aucun car
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°3 — chaque image est dans un bloc figure, et ses OCTETS sont identiques à
-// l'entrée (sha256, jamais la seule taille — §11 : « une suggestion » n'a jamais suffi ici).
+// Contrôle n°3 : chaque image est dans un bloc figure, avec les mêmes octets (sha256).
 //
-// Sabotage minimal : dans _Registre.enregistrer_image(), écrire `image.nom.encode()` au lieu
-// de `image.octets` — le fichier écrit dans word/media/ existe toujours (même longueur de
-// nom fortuite possible), mais son sha256 diffère de celui de l'image d'origine.
+// Sabotage : dans _Registre.enregistrer_image(), écrire `image.nom.encode()` au lieu de
+// `image.octets` ; le fichier existe mais son sha256 diffère.
 
 test('manuscrit_gabarit.ecrire : chaque image est dans un bloc figure, octets identiques (sha256)',
   { skip: sansPython }, () => {
@@ -477,14 +444,12 @@ test('manuscrit_gabarit.ecrire : chaque image est dans un bloc figure, octets id
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°4 — révisé le 21.09.2026 (plus de tableau enveloppe) : les métadonnées d'un bloc
-// sont TOUJOURS exactement cinq paragraphes SZH Cle Abb/Tab, jamais répétés par colonne du
-// tableau de contenu (ici 3, pour distinguer ce risque de la structure du tableau imbriqué
-// lui-même), et ils précèdent DIRECTEMENT ce tableau — aucun <w:tbl> enveloppe ne doit rester.
+// Contrôle n°4 : les métadonnées d'un bloc sont exactement cinq paragraphes SZH Cle Abb/Tab,
+// non répétés par colonne du tableau de contenu (ici 3 colonnes), et ils précèdent
+// directement ce tableau, sans <w:tbl> enveloppe.
 //
-// Sabotage minimal : dans _meta_paragraphes_xml(), répéter la boucle `for cle, label in
-// CHAMPS_BLOC` une fois par ligne du tableau de contenu (`for _ in tableau.rangees: for cle,
-// label in CHAMPS_BLOC: ...`) — cinq paragraphes de clé deviennent dix (deux rangées).
+// Sabotage : dans _meta_paragraphes_xml(), répéter la boucle `for cle, label in CHAMPS_BLOC`
+// pour chaque rangée du tableau de contenu ; cinq paragraphes deviennent dix.
 
 test('manuscrit_gabarit.ecrire : les métadonnées d\'un bloc sont cinq paragraphes SZH Cle Abb/Tab, jamais un par colonne ni par rangée',
   { skip: sansPython }, () => {
@@ -510,8 +475,8 @@ test('manuscrit_gabarit.ecrire : les métadonnées d\'un bloc sont cinq paragrap
         'un bloc doit toujours porter EXACTEMENT cinq paragraphes de clé, jamais un par '
         + 'colonne ou par rangée du tableau de contenu (obtenu : ' + nbCles + ')');
 
-      // Le tableau de contenu (3 colonnes, mesurées par son propre tblGrid) suit DIRECTEMENT
-      // les quatre paragraphes de clé — plus aucun <w:tbl> enveloppe autour d'eux.
+      // Le tableau de contenu (3 colonnes, selon son tblGrid) suit directement les paragraphes
+      // de clé, sans <w:tbl> enveloppe.
       const debutContenu = reste.indexOf('<w:tbl');
       assert.ok(debutContenu > 0, 'le tableau de contenu doit suivre les paragraphes de clé');
       const finContenu = reste.indexOf('</w:tbl>', debutContenu) + '</w:tbl>'.length;
@@ -527,21 +492,15 @@ test('manuscrit_gabarit.ecrire : les métadonnées d\'un bloc sont cinq paragrap
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°5 — révisé le 21.09.2026 : un bloc figure n'écrit plus de <w:tbl> du tout (juste
-// des <w:p>), donc le risque mesuré au §10 (LibreOffice qui fond deux <w:tbl> voisins) ne peut
-// plus se produire pour deux blocs figure adjacents — mais la CONVENTION éditoriale (« un
-// paragraphe vide reste garanti entre deux blocs », décision de Robin) doit survivre quand
-// même : deux images consécutives, sans texte entre elles, doivent rester visiblement séparées
-// par un paragraphe vide, jamais collées bord à bord.
+// Contrôle n°5 : un paragraphe vide sépare deux blocs qui se touchent, pour qu'ils restent
+// visiblement séparés. Un bloc figure n'écrit que des <w:p>, mais la règle vaut pour tous.
 //
-// Sabotage minimal : dans _separateur_requis(), remplacer
-// `return est_bloc_courant or est_bloc_precedent` par `return False` — le paragraphe vide entre
-// les deux blocs figure disparaît.
+// Sabotage : dans _separateur_requis(), remplacer
+// `return est_bloc_courant or est_bloc_precedent` par `return False`.
 
-// Révisé le 29.09.2026 : deux paragraphes d'images À LA SUITE ne font plus deux blocs figure
-// mais UN groupe d'images (décision de Robin, voir le test « deux paragraphes d'images à la
-// suite » plus bas). Deux blocs qui se touchent, c'est désormais une figure suivie d'un
-// tableau : le séparateur qu'on garde ici est le même.
+// Deux paragraphes d'images à la suite forment un seul groupe d'images (voir le test « deux
+// paragraphes d'images à la suite ») : les deux blocs qui se touchent sont ici une figure
+// puis un tableau.
 test('manuscrit_gabarit.ecrire : un paragraphe vide sépare deux blocs qui se touchent (figure puis tableau)',
   { skip: sansPython }, () => {
     const base = dossierJetable();
@@ -560,9 +519,8 @@ test('manuscrit_gabarit.ecrire : un paragraphe vide sépare deux blocs qui se to
       assert.strictEqual(indicesLegende.length, 2,
         'deux blocs (deux groupes de cinq clés) attendus : ' + JSON.stringify(textes));
       const [i1, i2] = indicesLegende;
-      // Entre les deux « Légende : » : les quatre autres clés du premier bloc, son image, PUIS
-      // le paragraphe séparateur — 7 <w:p> d'écart. Un écart de 6 signalerait un paragraphe vide
-      // manquant (le sabotage ci-dessus).
+      // Entre les deux « Légende : » : les quatre autres clés du premier bloc, son image, puis
+      // le séparateur, soit 7 <w:p>. Un écart de 6 trahirait un séparateur manquant.
       assert.strictEqual(i2 - i1, 7,
         'il doit y avoir exactement un paragraphe vide entre l\'image du premier bloc et les '
         + 'clés du second (7 <w:p> d\'écart attendus, obtenu ' + (i2 - i1) + ') : '
@@ -572,8 +530,8 @@ test('manuscrit_gabarit.ecrire : un paragraphe vide sépare deux blocs qui se to
       assert.strictEqual(textes[i2 - 2], '',
         'le <w:p> juste avant le séparateur doit être l\'image du premier bloc (texte vide)');
 
-      // Positif : un seul <w:tbl> de plus que les deux tableaux FIXES — celui du bloc
-      // tableau. Le bloc figure n'en écrit pas (contrairement à l'ancienne forme).
+      // Un seul <w:tbl> de plus que les deux tableaux fixes : celui du bloc tableau. Le bloc
+      // figure n'en écrit pas.
       const xml = lireDocumentXml(sortie);
       assert.strictEqual((xml.match(/<w:tbl\b/g) || []).length, 3,
         'les deux tableaux FIXES du gabarit et le tableau du bloc, rien d\'autre : un '
@@ -583,9 +541,8 @@ test('manuscrit_gabarit.ecrire : un paragraphe vide sépare deux blocs qui se to
     }
   });
 
-// Même principe, pour deux blocs TABLEAU cette fois (où le risque mesuré au §10 — deux <w:tbl>
-// qui se touchent — reste théoriquement possible si le contenu suivait directement, sans les
-// quatre clés) : deux tableaux de contenu consécutifs, un paragraphe vide doit les séparer.
+// Même règle pour deux blocs tableau, où deux <w:tbl> pourraient se toucher : un paragraphe
+// vide sépare deux tableaux de contenu consécutifs.
 test('manuscrit_gabarit.ecrire : un paragraphe vide sépare deux blocs tableau qui se touchent, et leurs deux <w:tbl> de contenu ne se touchent jamais',
   { skip: sansPython }, () => {
     const base = dossierJetable();
@@ -607,9 +564,8 @@ test('manuscrit_gabarit.ecrire : un paragraphe vide sépare deux blocs tableau q
       textes.forEach((t, i) => { if (t === 'Légende : ') { indicesLegende.push(i); } });
       assert.strictEqual(indicesLegende.length, 2);
       const [i1, i2] = indicesLegende;
-      // Entre les deux « Légende : » : les quatre autres clés puis le séparateur — le tableau de
-      // contenu lui-même n'est PAS un <w:p> (il n'apparaît donc pas dans cette liste), d'où un
-      // écart de 6 (4 clés + séparateur, en comptant l'index de départ).
+      // Entre les deux « Légende : » : les quatre autres clés puis le séparateur. Le tableau de
+      // contenu n'est pas un <w:p>, d'où un écart de 6.
       assert.strictEqual(i2 - i1, 6,
         'écart inattendu entre les deux groupes de clés (6 <w:p> d\'écart attendus — 4 autres '
         + 'clés puis le séparateur) : ' + JSON.stringify(textes.slice(i1, i2 + 1)));
@@ -621,12 +577,10 @@ test('manuscrit_gabarit.ecrire : un paragraphe vide sépare deux blocs tableau q
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°6 — l'italique survit au passage dans l'écrivain (§5.2 : « un italique porte du
-// sens... et le tuer est une perte qu'aucune relecture ne rattrape »).
+// Contrôle n°6 : l'italique survit à l'écriture (il porte du sens).
 //
-// Sabotage minimal : dans _rpr_xml(), retirer la clause `if forme.get('italique')` (ou son
-// corps `parties.append('<w:i/>')`) — le run italique revient sans w:i, forme.italique vaut
-// null (jamais déclaré) au lieu de true après relecture.
+// Sabotage : dans _rpr_xml(), retirer la clause `if forme.get('italique')` ; forme.italique
+// vaut null au lieu de true après relecture.
 
 test('manuscrit_gabarit.ecrire : l\'italique survit',
   { skip: sansPython }, () => {
@@ -642,11 +596,9 @@ test('manuscrit_gabarit.ecrire : l\'italique survit',
       ]);
       ecrireDepuisSpec(spec, sortie);
       const { document } = diagnostiquerManuscritDocx('--diagnostic', sortie);
-      // Le gabarit livré pose ses DEUX tableaux fixes (métadonnées, autrices et auteurs) et
-      // les paragraphes vides qui les séparent AVANT le corps du manuscrit (voir la décision
-      // n°1 de l'en-tête de manuscrit_gabarit.py) : chercher le premier paragraphe non-table
-      // trouverait l'un de CES paragraphes de remplissage, vides, jamais le nôtre — il faut
-      // filtrer sur un texte non vide, comme le fait déjà le contrôle n°2 ci-dessus.
+      // Le gabarit pose ses deux tableaux fixes et des paragraphes vides avant le corps (voir
+      // l'en-tête de manuscrit_gabarit.py) : on cherche le premier paragraphe au texte non
+      // vide, comme au contrôle n°2.
       const p = document.blocs.find((b) => b.type !== 'tableau'
         && b.fragments.some((f) => f.texte));
       const fragItalique = p.fragments.find((f) => f.texte.includes('italique'));
@@ -662,30 +614,20 @@ test('manuscrit_gabarit.ecrire : l\'italique survit',
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle ajouté après revue adverse (18.09.2026) — le corps porte bien le STYLE « Corps de
-// texte » du gabarit, jamais « Normal » ni l'absence de w:pStyle, et un titre de niveau 1/2/3
-// porte bien le style résolu correspondant. Défaut trouvé : un sabotage du repli du corps
-// laissait les huit premiers contrôles VERTS — aucun d'eux n'inspectait le STYLE réellement
-// écrit dans le XML, seulement le TEXTE relu. Un « Normal » écrit à la place de « Corps de
-// texte » ne casse aucune reconstruction de texte ni de forme ; il casse la composition en
-// aval (la maquette est accrochée au style, pas au contenu) — exactement le genre de défaut
-// qu'un contrôle qui ne regarde que le texte ne peut jamais voir.
+// Le corps porte le style « Corps de texte » du gabarit (pas « Normal » ni l'absence de
+// w:pStyle), et un titre de niveau 1/2/3 le style correspondant. Les autres contrôles relisent
+// le texte, pas le style ; or la maquette est accrochée au style.
 //
-// Le style effectivement écrit se lit sur `Paragraphe.style` du JSON --diagnostic de
-// manuscrit_docx.py : ce champ est le nom humain RÉSOLU par resoudre_style() depuis le
-// styles.xml du GABARIT lui-même (w:name « body text »/« heading 1/2/3 »/« normal », AUCUN
-// w:pStyle -> '') — quatre valeurs bien distinctes, insensibles au styleId réel (Corpsdetexte
-// côté FR d'avant les gabarits V4, Textkrper depuis) : ce contrôle ne peut donc pas se tromper
-// de style par coïncidence de nommage, et reste valable QUEL QUE SOIT le gabarit sous-jacent.
+// Le style se lit dans `Paragraphe.style` du JSON --diagnostic de manuscrit_docx.py : le nom
+// humain résolu depuis le styles.xml du gabarit (« body text », « heading 1/2/3 », « normal »,
+// '' sans w:pStyle). Ces noms ne dépendent pas du styleId réel (Textkrper…) : le contrôle vaut
+// pour tout gabarit.
 //
-// Sabotages minimaux, dans les deux sens (§11 : « quelque chose doit rougir ») :
-//   - dans _StylesResolus, faire résoudre le corps sur le repli 'Normal' plutôt que sur le
-//     styleId réellement trouvé par w:name : les paragraphes de corps ressortent avec le style
-//     'normal' au lieu de 'body text' — ce contrôle-ci rougit (et lui seul : aucun des sept
-//     autres n'inspecte le style écrit, comme le pointe la revue).
-//   - dans _StylesResolus.__init__, décaler `self.titre` d'un cran (niveau 1 -> styleId du
-//     niveau 2) : le titre de niveau 1 ressort avec le style 'heading 2' au lieu de
-//     'heading 1' — ce contrôle-ci rougit (assertion sur le titre de niveau 1).
+// Sabotages :
+//   - dans _StylesResolus, résoudre le corps sur le repli 'Normal' : le corps ressort en
+//     'normal' au lieu de 'body text' ;
+//   - dans _StylesResolus.__init__, décaler `self.titre` d'un cran : le titre de niveau 1
+//     ressort en 'heading 2'.
 
 test('manuscrit_gabarit.ecrire : le corps porte le style « Corps de texte », les titres Titre1/2/3, jamais Normal ni l\'absence de style',
   { skip: sansPython }, () => {
@@ -729,8 +671,7 @@ test('manuscrit_gabarit.ecrire : le corps porte le style « Corps de texte », l
   });
 
 // Une citation du manuscrit sort en citation (style « Quote » du gabarit, que pandoc relit en
-// bloc de citation), dans les deux gabarits, quel que soit le nom qu'elle portait : jusqu'au
-// 29.09.2026 elle ressortait en corps de texte, sans retrait.
+// bloc de citation), dans les deux gabarits, quel que soit le nom qu'elle portait.
 test('manuscrit_gabarit.ecrire : une citation (Quote, Citation, Zitat) sort en citation, FR et DE',
   { skip: sansPython }, () => {
     const base = dossierJetable();
@@ -758,14 +699,11 @@ test('manuscrit_gabarit.ecrire : une citation (Quote, Citation, Zitat) sort en c
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°7 — un document SANS aucune image ni tableau produit un .docx valide et
-// relisible : le cas le plus courant (§11 : « le plus facile à casser en soignant les cas
-// rares »). Vérifié par les DEUX lecteurs de production, et par la conservation du niveau de
-// titre (pas seulement « ça ne plante pas »).
+// Contrôle n°7 : un document sans image ni tableau produit un .docx valide et relisible par
+// les deux lecteurs de production, avec ses niveaux de titre.
 //
-// Sabotage minimal : dans STYLE_TITRE, retirer l'entrée `1: 'Titre1'` — un titre de niveau 1
-// est alors rendu avec le style de corps (repli de _style_pour_paragraphe sur STYLE_CORPS),
-// et niveau_declare revient à 0 après relecture au lieu de 1.
+// Sabotage : retirer l'entrée `1: 'Titre1'` de STYLE_TITRE ; le titre sort en corps et
+// niveau_declare vaut 0 après relecture.
 
 test('manuscrit_gabarit.ecrire : un document sans image ni tableau produit un .docx valide et relisible',
   { skip: sansPython }, () => {
@@ -781,7 +719,7 @@ test('manuscrit_gabarit.ecrire : un document sans image ni tableau produit un .d
       assert.strictEqual(resultat.stats.blocs_figure, 0);
       assert.strictEqual(resultat.stats.blocs_tableau, 0);
 
-      // Lecteur n°1 : manuscrit_docx.py, la référence de vérité du contrat.
+      // Lecteur n°1 : manuscrit_docx.py.
       const { document } = diagnostiquerManuscritDocx('--diagnostic', sortie);
       const titre = document.blocs.find((b) => b.type !== 'tableau' && b.niveau_declare > 0);
       assert.ok(titre, 'le titre doit être retrouvé à la relecture');
@@ -789,8 +727,8 @@ test('manuscrit_gabarit.ecrire : un document sans image ni tableau produit un .d
         'un titre de niveau 1 doit rester de niveau 1 après le passage dans l\'écrivain');
       assert.strictEqual(titre.fragments.map((f) => f.texte).join(''), 'Titre de niveau 1');
 
-      // Lecteur n°2 : pronto-lire.py, le lecteur de PRODUCTION — ne doit ni planter ni
-      // signaler de bloc mal formé sur un document qui n'en a aucun.
+      // Lecteur n°2 : pronto-lire.py, le lecteur de production. Il ne plante pas et ne
+      // signale aucun bloc mal formé.
       const dossierPronto = path.join(base, 'article');
       fs.mkdirSync(dossierPronto);
       const stats = prontoLire(sortie, 'essai', dossierPronto);
@@ -801,10 +739,8 @@ test('manuscrit_gabarit.ecrire : un document sans image ni tableau produit un .d
   });
 
 // ---------------------------------------------------------------------------------
-// Le contrôle le moins cher et le plus utile (§11, note finale) : les onze manuscrits réels
-// s'écrivent au gabarit sans exception et se relisent tous par pronto-lire.py. tmp/ est hors
-// git et peut être effacé sans prévenir : sauté proprement, sous un motif nommé, quand il est
-// absent — jamais en silence.
+// Les onze manuscrits du corpus s'écrivent au gabarit et se relisent par pronto-lire.py.
+// tmp/ est hors git et peut être effacé : le test est alors sauté sous un motif nommé.
 
 test('manuscrit_gabarit.ecrire : les onze manuscrits réels de lot-A s\'écrivent au gabarit et se relisent tous',
   { skip: sansPython }, (t) => {
@@ -839,20 +775,16 @@ test('manuscrit_gabarit.ecrire : les onze manuscrits réels de lot-A s\'écriven
   });
 
 // ===================================================================================
-// §5.4 du contrat (ajouté le 18.09.2026, décidé avec Robin après mesure) — les listes SONT
-// reportées, mais PAR CORRESPONDANCE : puce du manuscrit -> définition à puces de la sortie,
-// numérotée -> définition numérotée, `ilvl` conservé, le `numId` d'origine ne traverse
-// JAMAIS. La mesure qui tranche : le writer Markdown de pandoc peut embellir sa sortie textuelle,
-// l'AST natif (`pandoc -f docx -t native`) ne ment pas — c'est lui que ces contrôles lisent,
-// jamais un texte reformaté.
+// Listes. Elles sont reportées par correspondance : puce du manuscrit -> définition à puces
+// de la sortie, numérotée -> définition numérotée, `ilvl` conservé, `numId` d'origine jamais
+// recopié. Les contrôles lisent l'AST natif de pandoc (`pandoc -f docx -t native`), fidèle,
+// plutôt que sa sortie Markdown, qui peut embellir.
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°1 — une liste à puces de trois éléments ressort en liste dans le .docx produit,
-// ET pandoc -f docx -t native en rend un BulletList de trois éléments.
+// Contrôle n°1 : une liste à puces de trois éléments donne un BulletList de trois éléments.
 //
-// Sabotage minimal : dans _RegistreListes.numid_pour(), échanger les deux `constructeur`
-// (poser _niveau_numero_xml pour 'puce' et _niveau_puce_xml pour 'numero') — une liste à
-// puces reçoit alors la définition numérotée : pandoc rend OrderedList au lieu de BulletList.
+// Sabotage : dans _RegistreListes.numid_pour(), échanger les deux `constructeur` ; pandoc
+// rend OrderedList au lieu de BulletList.
 
 test('manuscrit_gabarit.ecrire : une liste à puces de trois éléments ressort en BulletList (pandoc natif)',
   { skip: sansPython }, (t) => {
@@ -869,9 +801,8 @@ test('manuscrit_gabarit.ecrire : une liste à puces de trois éléments ressort 
       const natif = pandocNatifSurWsl(sortie);
       const iBullet = natif.indexOf('BulletList');
       assert.ok(iBullet !== -1, 'aucun BulletList trouvé dans l\'AST natif : ' + natif.slice(0, 500));
-      // Ce document synthétique ne porte RIEN après la liste (voir specDocument ci-dessus) :
-      // compter chaque élément « [ Para » du BulletList jusqu'à la fin du flux est donc sûr,
-      // sans avoir à faire correspondre les crochets de fermeture imbriqués de pandoc.
+      // Rien ne suit la liste dans ce document : compter les « [ Para » jusqu'à la fin du flux
+      // suffit, sans apparier les crochets imbriqués de pandoc.
       const nItems = (natif.slice(iBullet).match(/\[ Para/g) || []).length;
       assert.strictEqual(nItems, 3, 'le BulletList doit porter exactement 3 éléments');
     } finally {
@@ -880,10 +811,7 @@ test('manuscrit_gabarit.ecrire : une liste à puces de trois éléments ressort 
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°2 — une liste numérotée ressort en OrderedList.
-//
-// Même sabotage que le contrôle n°1 (l'échange est symétrique) : une liste numérotée reçoit
-// alors la définition à puces, pandoc rend BulletList au lieu d'OrderedList.
+// Contrôle n°2 : une liste numérotée donne un OrderedList. Même sabotage que le n°1.
 
 test('manuscrit_gabarit.ecrire : une liste numérotée ressort en OrderedList (pandoc natif)',
   { skip: sansPython }, (t) => {
@@ -907,13 +835,10 @@ test('manuscrit_gabarit.ecrire : une liste numérotée ressort en OrderedList (p
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°3 — le niveau ilvl d'une liste imbriquée est conservé : un second élément d'une
-// liste numérotée qui porte lui-même un sous-élément à puces (ilvl=1) doit ressortir avec ce
-// sous-élément NESTÉ dans l'AST — jamais à plat au même niveau que la liste parente.
+// Contrôle n°3 : le niveau ilvl est conservé. Le second élément d'une liste numérotée porte un
+// sous-élément à puces (ilvl=1), qui doit ressortir imbriqué dans l'AST.
 //
-// Sabotage minimal : dans _numpr_xml(), forcer `ilvl = 0` inconditionnellement — le sous-
-// élément perd son niveau 1, il ressort à plat comme un troisième élément numéroté au lieu
-// d'un BulletList imbriqué dans le second.
+// Sabotage : dans _numpr_xml(), forcer `ilvl = 0` ; le sous-élément sort à plat.
 
 test('manuscrit_gabarit.ecrire : le niveau ilvl d\'une liste imbriquée est conservé (pandoc natif)',
   { skip: sansPython }, (t) => {
@@ -932,13 +857,9 @@ test('manuscrit_gabarit.ecrire : le niveau ilvl d\'une liste imbriquée est cons
       const iBullet = natif.indexOf('BulletList');
       assert.ok(iOrdered !== -1 && iBullet !== -1, 'OrderedList et BulletList attendus tous deux');
       assert.ok(iBullet > iOrdered, 'le BulletList doit apparaître APRÈS le début de l\'OrderedList');
-      // Le sous-point imbriqué doit se trouver DANS le bloc de l'OrderedList (nesté dans son
-      // second élément), jamais après sa fermeture au même niveau que la liste parente — trouvé
-      // par comptage de profondeur des crochets, PAS par un indexOf('\n]') naïf : un premier
-      // jet de ce test (18.09.2026) cherchait le premier « \n] » après OrderedList, qui tombe
-      // en réalité sur la fermeture d'un Str imbriqué bien AVANT la vraie fin de la liste — ce
-      // qui rendait le contrôle vert même avec le sabotage (ilvl forcé à 0) qui aplatit
-      // complètement la liste. Mesuré par sabotage réel, pas supposé.
+      // Le sous-point doit se trouver dans le bloc de l'OrderedList. La fin de ce bloc se
+      // trouve en comptant la profondeur des crochets : le premier « \n] » après OrderedList
+      // ferme un Str imbriqué, bien avant la fin de la liste.
       const debutTableau = natif.indexOf('[', iOrdered);
       let profondeur = 0;
       let finOrdered = -1;
@@ -959,13 +880,10 @@ test('manuscrit_gabarit.ecrire : le niveau ilvl d\'une liste imbriquée est cons
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°4 — le numId du manuscrit ne se retrouve NULLE PART dans la sortie (§5.4,
-// garde-fou explicite : « ne se recopie JAMAIS »). C'est le contrôle qui garde la règle la
-// plus facile à enfreindre par commodité (recopier serait plus simple que corresponder).
+// Contrôle n°4 : le numId du manuscrit ne se retrouve pas dans la sortie.
 //
-// Sabotage minimal : dans _numpr_xml(), utiliser `liste[0]` (le numId d'origine) au lieu de
-// `registre.listes.numid_pour(...)` — le numId du manuscrit (ici 424242, choisi improbable)
-// apparaît alors littéralement dans w:numId du document produit.
+// Sabotage : dans _numpr_xml(), utiliser `liste[0]` au lieu de
+// `registre.listes.numid_pour(...)` ; 424242 apparaît dans w:numId.
 
 test('manuscrit_gabarit.ecrire : le numId du manuscrit ne se retrouve nulle part dans la sortie',
   { skip: sansPython }, () => {
@@ -987,13 +905,11 @@ test('manuscrit_gabarit.ecrire : le numId du manuscrit ne se retrouve nulle part
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°5 — écrire à partir du gabarit livré (qui ne définit AUCUNE liste de corps —
-// mesuré : son seul num sert la numérotation de Titre1/2/3) produit quand même une liste
-// valide, et la TRACE dit que la définition a été injectée — jamais en silence.
+// Contrôle n°5 : le gabarit livré ne définit aucune liste de corps (son seul num sert la
+// numérotation de Titre1/2/3). L'écriture produit quand même une liste valide, et la trace
+// dit que la définition a été injectée.
 //
-// Sabotage minimal : dans _RegistreListes.numid_pour(), forcer `self.trace.append(...)` à
-// toujours écrire `'voie': 'gabarit'` — même quand la définition a bien été injectée, la
-// trace prétendrait le contraire.
+// Sabotage : dans _RegistreListes.numid_pour(), forcer `'voie': 'gabarit'` dans la trace.
 
 test('manuscrit_gabarit.ecrire : un gabarit sans définition de liste produit une liste valide, et la trace dit l\'injection',
   { skip: sansPython }, () => {
@@ -1022,15 +938,12 @@ test('manuscrit_gabarit.ecrire : un gabarit sans définition de liste produit un
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°6 — les trois manuscrits réels qui portent des listes (3_, 3bis_, 4_) traversent
-// la chaîne : ils s'écrivent sans exception, et leurs 20 paragraphes de liste (mesure figée
-// aussi côté lecture, voir manuscrit-docx.test.js) ressortent tous en liste_reportee, avec un
-// format DÉTERMINÉ par le lecteur (jamais le repli par défaut de l'écrivain — ces 20
-// paragraphes n'en ont pas besoin, leur numbering.xml résout tout).
+// Contrôle n°6 : les trois manuscrits du corpus qui portent des listes (3_, 3bis_, 4_)
+// s'écrivent sans exception, et leurs 20 paragraphes de liste (voir aussi
+// manuscrit-docx.test.js) ressortent en liste_reportee, au format déterminé par le lecteur.
 //
-// Sabotage minimal : dans _convertir_niveau_racine(), remplacer
-// `if format_lu in ('puce', 'numero'):` par `if False:` — les 20 paragraphes basculent tous
-// en « format NON DÉTERMINÉ », alors que le lecteur les avait bel et bien résolus.
+// Sabotage : dans _convertir_niveau_racine(), remplacer
+// `if format_lu in ('puce', 'numero'):` par `if False:`.
 
 test('manuscrit_gabarit.ecrire : les trois manuscrits réels à listes (3_, 3bis_, 4_) traversent la chaîne, 20 paragraphes reportés, format toujours déterminé',
   { skip: sansPython }, (t) => {
@@ -1069,19 +982,14 @@ test('manuscrit_gabarit.ecrire : les trois manuscrits réels à listes (3_, 3bis
   });
 
 // ===================================================================================
-// Revue adverse du 19.09.2026 — dix défauts mesurés dans manuscrit_gabarit.py, chacun avec
-// son sabotage minimal noté en commentaire (rejoué et consigné dans le rapport de chantier).
+// Un contrôle par défaut d'écriture, chacun avec son sabotage.
 
 // ---------------------------------------------------------------------------------
-// Défaut n°1 — XML malformé dans un ATTRIBUT : `_echapper` n'échappait pas `"`, utilisée à
-// tort pour `descr="%s"` (texte alternatif) et `Target="%s"` (URL de lien). Un lien avec un
-// `&` non échappé, ou un alt avec un guillemet droit, produisait un fichier que Word refuse
-// (code de sortie 0 malgré tout). Contrôle : CHAQUE partie XML de la sortie doit rester bien
-// formée (ET.fromstring), pas seulement le fichier lui-même.
+// Attributs XML : `descr="%s"` (texte alternatif) et `Target="%s"` (URL de lien) doivent
+// échapper `"` et `&`, sinon Word refuse le fichier (alors que la sortie vaut 0). Chaque
+// partie XML de la sortie doit être bien formée.
 //
-// Sabotage minimal : dans _echapper_attribut, retirer `.replace('"', '&quot;')` — le
-// guillemet de « Schéma "A" » referme l'attribut descr en plein milieu, word/document.xml
-// devient un XML malformé.
+// Sabotage : dans _echapper_attribut, retirer `.replace('"', '&quot;')`.
 
 test('manuscrit_gabarit.ecrire : un lien avec "&" et un texte alternatif avec des guillemets produisent un XML valide partout',
   { skip: sansPython }, () => {
@@ -1116,12 +1024,10 @@ test('manuscrit_gabarit.ecrire : un lien avec "&" et un texte alternatif avec de
   });
 
 // ---------------------------------------------------------------------------------
-// Défaut n°3 — puce illisible dans Word : `_niveau_puce_xml` écrivait `lvlText="•"`
-// (U+2022) en police Symbol, un glyphe que Symbol ne connaît pas (case vide ☐ à l'affichage).
-// Word écrit U+F0B7 pour une puce Symbol.
+// Une puce en police Symbol s'écrit U+F0B7, comme Word le fait : Symbol n'a pas de glyphe
+// pour U+2022.
 //
-// Sabotage minimal : dans _niveau_puce_xml, remplacer `&#xF0B7;` par `•` (U+2022) — le
-// numbering.xml injecté reprend le glyphe que Symbol n'affiche pas.
+// Sabotage : dans _niveau_puce_xml, remplacer `&#xF0B7;` par `•` (U+2022).
 
 test('manuscrit_gabarit.ecrire : une définition de puce injectée porte le glyphe U+F0B7 (jamais U+2022) en police Symbol',
   { skip: sansPython }, () => {
@@ -1145,12 +1051,10 @@ test('manuscrit_gabarit.ecrire : une définition de puce injectée porte le glyp
   });
 
 // ---------------------------------------------------------------------------------
-// Défaut n°4 — toutes les images en boîte 4:3 : `_extent_depuis_surface` ignorait cx/cy et le
-// rapport largeur_px/hauteur_px, pourtant renseignés par le lecteur depuis le 18.09.2026.
+// Le rapport largeur/hauteur d'une image (cx/cy) est conservé.
 //
-// Sabotage minimal : dans _extent_depuis_surface, retirer la clause `if image.cx and
-// image.cy:` (tomber directement sur le repli surface/4:3) — une image dont cx/cy valent
-// 3000000x500000 (ratio 6:1) ressort en 4:3.
+// Sabotage : dans _extent_depuis_surface, retirer la clause `if image.cx and image.cy:` ;
+// une image 6:1 ressort en 4:3.
 
 test('manuscrit_gabarit.ecrire : le rapport largeur/hauteur d\'une image (cx/cy) est conservé, pas écrasé en 4:3',
   { skip: sansPython }, () => {
@@ -1209,9 +1113,8 @@ test('manuscrit_gabarit.ecrire : une image plus large que la page est plafonnée
       const xml = lireDocumentXml(sortie);
       const m = xml.match(/<wp:extent cx="(\d+)" cy="(\d+)"\/>/);
       const cx = Number(m[1]);
-      // Largeur A4 courante (~11906 dxa) moins marges : bien en-dessous de 50 000 000 EMU
-      // (50000000/635 ≈ 78 740 dxa) — la valeur exacte dépend du gabarit, seul le PLAFOND
-      // compte ici, pas un dxa précis.
+      // Largeur A4 (~11906 dxa) moins les marges reste bien sous 50 000 000 EMU : seul le
+      // plafond compte ici.
       assert.ok(cx < 50000000, 'l\'image ne doit plus dépasser la largeur utile de la page, obtenu cx=' + cx);
       const ratio = cx / Number(m[2]);
       assert.ok(Math.abs(ratio - 5) < 0.1, 'le rapport (5:1) doit survivre au plafonnage, obtenu ' + ratio);
@@ -1221,12 +1124,10 @@ test('manuscrit_gabarit.ecrire : une image plus large que la page est plafonnée
   });
 
 // ---------------------------------------------------------------------------------
-// Défaut n°5 — rangée plus large que la première : `_grille_ecriture` fixait `ncols` sur la
-// rangée 0, les cellules en trop des rangées suivantes étaient jetées.
+// Une rangée plus large que la première ne perd aucune cellule.
 //
-// Sabotage minimal : dans _grille_ecriture, remplacer le calcul du max par
-// `ncols = sum(c.colspan for c in rangees[0]) or 1` (l'ancienne version) — la 3e colonne de
-// la seconde rangée disparaît du document produit.
+// Sabotage : dans _grille_ecriture, remplacer le calcul du max par
+// `ncols = sum(c.colspan for c in rangees[0]) or 1`.
 
 test('manuscrit_gabarit.ecrire : une rangée plus large que la première ne perd aucune cellule',
   { skip: sansPython }, () => {
@@ -1241,11 +1142,9 @@ test('manuscrit_gabarit.ecrire : une rangée plus large que la première ne perd
       ]);
       ecrireDepuisSpec(spec, sortie);
       const { document } = diagnostiquerManuscritDocx('--diagnostic', sortie);
-      // Les DEUX premiers <w:tbl> du corps sont les tableaux FIXES du gabarit (métadonnées,
-      // autrices et auteurs) : document.blocs les porte aussi (le lecteur ne les distingue
-      // pas). Depuis le 21.09.2026, le tableau du bloc n'est plus imbriqué dans une enveloppe :
-      // c'est directement le premier <w:tbl> de premier niveau qui SUIT les quatre paragraphes
-      // de clé (« Légende : », etc.).
+      // Les deux premiers <w:tbl> du corps sont les tableaux fixes du gabarit, que
+      // document.blocs porte aussi. Le tableau du bloc est le premier <w:tbl> de premier
+      // niveau qui suit les paragraphes de clé (« Légende : », etc.).
       const idxLegende = document.blocs.findIndex((b) => b.type !== 'tableau' && b.fragments
         && b.fragments.some((f) => f.texte === 'Légende : '));
       assert.ok(idxLegende >= 0, 'les quatre paragraphes de clé du bloc doivent être retrouvés');
@@ -1261,13 +1160,11 @@ test('manuscrit_gabarit.ecrire : une rangée plus large que la première ne perd
   });
 
 // ---------------------------------------------------------------------------------
-// Défaut n°6 — fusion verticale ET horizontale à la fois : les rangées de continuation
-// perdaient leur gridSpan (une continuation par colonne au lieu d'une seule, large de
-// `colspan`), désynchronisant le tblGrid.
+// Fusion verticale et horizontale à la fois : une rangée de continuation porte un seul <w:tc>
+// large de `colspan`, sinon le tblGrid est désynchronisé.
 //
-// Sabotage minimal : dans _ligne_xml, pour le cas 'continue', retirer `gridspan` de la
-// balise <w:tc> (revenir à une continuation systématiquement large d'UNE colonne) — avec un
-// rowspan=2/colspan=2, la ligne de continuation compte alors 2 <w:tc> au lieu d'1.
+// Sabotage : dans _ligne_xml, cas 'continue', retirer `gridspan` du <w:tc> ; avec
+// rowspan=2/colspan=2, la continuation compte 2 <w:tc> au lieu d'1.
 
 const RANGEES_TABLEAU_IMBRIQUE_PY = [
   'import sys, zipfile, json, re',
@@ -1347,11 +1244,10 @@ test('manuscrit_gabarit.ecrire : une fusion verticale ET horizontale à la fois 
   });
 
 // ---------------------------------------------------------------------------------
-// Défaut n°7 — wp:docPr id="0" partout : Word répare les identifiants dupliqués en silence à
-// l'ouverture, un défaut invisible tant qu'on n'inspecte pas le XML produit.
+// Chaque wp:docPr a un id unique : Word répare en silence les doublons à l'ouverture.
 //
-// Sabotage minimal : dans _Registre.nouveau_docpr_id, remplacer `self._docpr_id += 1; return
-// self._docpr_id` par `return 0` — les deux images ressortent avec wp:docPr id="0".
+// Sabotage : dans _Registre.nouveau_docpr_id, remplacer
+// `self._docpr_id += 1; return self._docpr_id` par `return 0`.
 
 test('manuscrit_gabarit.ecrire : chaque wp:docPr porte un identifiant unique',
   { skip: sansPython }, () => {
@@ -1374,13 +1270,11 @@ test('manuscrit_gabarit.ecrire : chaque wp:docPr porte un identifiant unique',
   });
 
 // ---------------------------------------------------------------------------------
-// Défaut n°8 — l'exposant d'une légende est détruit : la légende déjà écrite dans le
-// manuscrit était aplatie en texte plat avant d'être posée dans le champ « Légende : »,
-// perdant toute mise en forme (mesuré : 2 exposants sur 2 du corpus).
+// Une légende déjà écrite dans le manuscrit garde sa mise en forme (exposant) dans le champ
+// « Légende : ».
 //
-// Sabotage minimal : dans _rangee_meta_xml, remplacer la branche `isinstance(valeur, list)`
-// par un aplatissement (`''.join(f.texte for f in valeur)`) systématique — l'exposant d'une
-// légende ressort en texte normal.
+// Sabotage : dans _rangee_meta_xml, remplacer la branche `isinstance(valeur, list)` par
+// `''.join(f.texte for f in valeur)`.
 
 test('manuscrit_gabarit.ecrire : une légende déjà écrite dans le manuscrit garde son exposant',
   { skip: sansPython }, () => {
@@ -1398,12 +1292,10 @@ test('manuscrit_gabarit.ecrire : une légende déjà écrite dans le manuscrit g
       const xml = lireDocumentXml(sortie);
       assert.ok(/<w:vertAlign w:val="superscript"\/>/.test(xml),
         'un vertAlign superscript doit survivre quelque part dans le document');
-      // La légende ne doit PAS être dupliquée comme paragraphe de corps ORDINAIRE, ET son
-      // exposant doit être RETROUVÉ précisément dans le bloc figure (pas ailleurs par hasard).
-      // Depuis le 21.09.2026, le champ « Légende : » du bloc EST lui-même un paragraphe de
-      // premier niveau (style SZH Cle Abb/Tab, plus de tableau enveloppe) : il porte le texte
-      // de la légende par construction — ce n'est pas la duplication que ce contrôle traque,
-      // seulement un VRAI paragraphe de corps (un autre style) qui la répéterait par erreur.
+      // La légende n'est pas dupliquée en paragraphe de corps ordinaire, et son exposant est
+      // retrouvé dans le bloc figure. Le champ « Légende : » est lui-même un paragraphe de
+      // premier niveau (style SZH Cle Abb/Tab) qui porte ce texte : seul un paragraphe d'un
+      // autre style serait une duplication.
       const { document } = diagnostiquerManuscritDocx('--diagnostic', sortie);
       const corpsOrdinaire = document.blocs.filter((b) => b.type !== 'tableau'
         && b.style !== 'szh cle abb/tab'
@@ -1416,15 +1308,11 @@ test('manuscrit_gabarit.ecrire : une légende déjà écrite dans le manuscrit g
   });
 
 // ---------------------------------------------------------------------------------
-// Défaut n°9 — légende de tableau sur DEUX paragraphes (« Tableau 1 » en gras, seul, puis le
-// texte de la légende sur le paragraphe suivant, puis le tableau) : l'ancienne version ne
-// regardait qu'un seul paragraphe voisin, le titre restait alors dans le corps ET la légende
-// n'était jamais associée au tableau.
+// Légende de tableau sur deux paragraphes (« Tableau 1 » en gras seul, puis le texte, puis le
+// tableau) : les deux sont retirés du corps et la légende est associée au tableau.
 //
-// Sabotage minimal : dans _cherche_legende, retirer tout le bloc « cas à deux paragraphes »
-// (revenir à la seule recherche à un paragraphe) — la légende du tableau ci-dessous n'est
-// alors plus trouvée du tout (aucun des deux paragraphes ne matche RE_LEGENDE seul... le
-// second parce qu'il n'a pas le préfixe « Tableau »).
+// Sabotage : dans _cherche_legende, retirer le bloc « cas à deux paragraphes » ; aucun des
+// deux paragraphes ne correspond seul à RE_LEGENDE.
 
 test('manuscrit_gabarit.ecrire : une légende de tableau répartie sur deux paragraphes (titre gras + texte) est retrouvée',
   { skip: sansPython }, () => {
@@ -1449,8 +1337,7 @@ test('manuscrit_gabarit.ecrire : une légende de tableau répartie sur deux para
         && blocTableau.legende.includes('Comparaison des résultats'),
         'la légende doit réunir le titre ET le texte : obtenu ' + JSON.stringify(blocTableau.legende));
 
-      // Même remarque que le contrôle précédent : le paragraphe « Légende : » du bloc (style
-      // SZH Cle Abb/Tab) porte légitimement ce texte depuis le 21.09.2026 — seul un VRAI
+      // Le paragraphe « Légende : » du bloc (SZH Cle Abb/Tab) porte ce texte ; seul un
       // paragraphe de corps qui le répéterait serait une duplication.
       const { document } = diagnostiquerManuscritDocx('--diagnostic', sortie);
       const resteTitre = document.blocs.some((b) => b.type !== 'tableau'
@@ -1466,11 +1353,10 @@ test('manuscrit_gabarit.ecrire : une légende de tableau répartie sur deux para
   });
 
 // ---------------------------------------------------------------------------------
-// 29.09.2026 — légende allemande séparée de son image par un paragraphe VIDE (« Abbildung 1:
-// Schatzkarte… », ¶ vide, image). Le premier passage ne regarde que le voisin immédiat : la
-// légende restait dans le corps. Deux figures, légendes AU-DESSUS : sauter les vides rend
-// « Abbildung 2 » atteignable aussi depuis la première image (au-dessous) — c'est la
-// convention du document qui doit trancher, chaque légende revenant à SA figure.
+// Légende allemande séparée de son image par un paragraphe vide (« Abbildung 1:
+// Schatzkarte… », ¶ vide, image). Avec deux figures légendées au-dessus, sauter les vides
+// rend « Abbildung 2 » atteignable depuis la première image aussi : c'est la convention du
+// document qui tranche, et chaque légende revient à sa figure.
 
 test('manuscrit_gabarit.ecrire : légende séparée de son image par un paragraphe vide, convention « au-dessus »',
   { skip: sansPython }, () => {
@@ -1513,22 +1399,15 @@ test('manuscrit_gabarit.ecrire : légende séparée de son image par un paragrap
   });
 
 // ---------------------------------------------------------------------------------
-// Défaut n°10 — paragraphes vides consécutifs autour d'un bloc : plusieurs paragraphes vides
-// du manuscrit, collés à un bloc, s'ajoutaient au séparateur injecté au lieu de s'y
-// substituer (jusqu'à trois <w:p> vides entre deux tableaux).
+// Plusieurs paragraphes vides du manuscrit collés à un bloc se fondent dans le séparateur
+// injecté au lieu de s'y ajouter.
 //
-// Sabotage minimal : dans _convertir_niveau_racine, ne PAS fondre les segments vides
-// consécutifs (retirer le bloc `segments_reduits`, réassigner `segments_reduits = segments`)
-// — trois paragraphes vides entre les deux tableaux ci-dessous ressortent tous les trois,
-// PLUS un éventuel séparateur injecté.
+// Sabotage : dans _convertir_niveau_racine, ne pas fondre les segments vides consécutifs
+// (retirer le bloc `segments_reduits`, réassigner `segments_reduits = segments`).
 
-// Depuis le 21.09.2026, un bloc tableau écrit ses quatre paragraphes de clé AVANT son <w:tbl>
-// de contenu : la zone entre le <w:tbl> du premier bloc et celui du second n'est donc plus
-// UNIQUEMENT le séparateur, elle porte aussi les quatre clés du second bloc. Ce que ce
-// contrôle vérifie reste le même dans son PRINCIPE (repliage à un seul vide, jamais zéro,
-// jamais plusieurs) : le tout premier élément après le <w:tbl> du premier bloc doit être LE
-// séparateur (un unique <w:p> vide), immédiatement suivi de la première clé du second bloc —
-// jamais un second <w:p> vide.
+// Un bloc tableau écrit ses paragraphes de clé avant son <w:tbl> de contenu. Après le <w:tbl>
+// du premier bloc viennent donc le séparateur (un seul <w:p> vide) puis la première clé du
+// second bloc, sans second <w:p> vide.
 
 test('manuscrit_gabarit.ecrire : au plus un paragraphe vide sépare deux blocs, même si le manuscrit en portait plusieurs',
   { skip: sansPython }, () => {
@@ -1581,18 +1460,16 @@ test('manuscrit_gabarit.ecrire : deux tableaux directement adjacents (rien entre
   });
 
 // ===================================================================================
-// Contrat partagé du 19.09.2026 — notes de bas de page. Fragment.note / Document.notes
-// (dict[int, list[bloc]]) sont désormais livrés par manuscrit_modele.py/manuscrit_docx.py :
-// ces contrôles passent par le JSON réel (document_depuis_json), jamais un objet fabriqué à
-// la main qui contournerait le contrat.
+// Notes de bas de page. Fragment.note et Document.notes (dict[int, list[bloc]]) viennent de
+// manuscrit_modele.py/manuscrit_docx.py : les contrôles passent par le JSON réel
+// (document_depuis_json).
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°1 — une note appelée par un fragment du corps est écrite dans footnotes.xml,
-// renumérotée à partir de 1, et retrouvée par le lecteur de production avec sa mise en forme.
+// Contrôle n°1 : une note appelée par un fragment du corps est écrite dans footnotes.xml,
+// renumérotée à partir de 1, et relue par le lecteur de production avec sa mise en forme.
 //
-// Sabotage minimal : dans _RegistreNotes._resoudre, ne jamais appeler `_contenu_note_xml`
-// (poser `self._xml_par_id[id_sortie] = ''`) — la note existe mais reste vide, son italique
-// disparaît.
+// Sabotage : dans _RegistreNotes._resoudre, poser `self._xml_par_id[id_sortie] = ''` au lieu
+// d'appeler `_contenu_note_xml` ; la note reste vide.
 
 test('manuscrit_gabarit.ecrire : une note appelée est écrite dans footnotes.xml et relue avec sa mise en forme',
   { skip: sansPython }, () => {
@@ -1634,12 +1511,10 @@ test('manuscrit_gabarit.ecrire : une note appelée est écrite dans footnotes.xm
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°2 — une note présente dans document.notes mais jamais appelée par un fragment
-// n'est PAS écrite (elle serait sans ancre), et c'est tracé.
+// Contrôle n°2 : une note de document.notes jamais appelée n'est pas écrite (elle n'aurait pas
+// d'ancre), et c'est tracé. Le test vérifie le contenu de la trace, pas sa seule présence.
 //
-// Sabotage minimal : dans ecrire(), retirer la condition `if orphelines:` (toujours ajouter
-// la ligne de trace même vide) — un test qui chercherait juste « une ligne de trace existe »
-// resterait vert à tort ; celui-ci vérifie le CONTENU de la trace, pas sa seule présence.
+// Sabotage : dans ecrire(), retirer la condition `if orphelines:`.
 
 test('manuscrit_gabarit.ecrire : une note jamais appelée n\'est pas écrite, et c\'est tracé',
   { skip: sansPython }, () => {
@@ -1662,9 +1537,8 @@ test('manuscrit_gabarit.ecrire : une note jamais appelée n\'est pas écrite, et
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°3 — un appel de note sans contenu correspondant (ne devrait jamais arriver
-// depuis un vrai lecteur) reçoit un contenu vide plutôt qu'un document invalide, et c'est
-// tracé comme anomalie.
+// Contrôle n°3 : un appel de note sans contenu (cas anormal) reçoit un contenu vide plutôt
+// qu'un document invalide, et c'est tracé comme anomalie.
 
 test('manuscrit_gabarit.ecrire : un appel de note sans contenu correspondant écrit une note vide, tracée',
   { skip: sansPython }, () => {
@@ -1686,14 +1560,10 @@ test('manuscrit_gabarit.ecrire : un appel de note sans contenu correspondant éc
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°4 — aucun des deux gabarits (FR/DE) ne définit de style d'appel de note ni de
-// style de texte de note : le renvoi se pose en simple exposant (vertAlign), le paragraphe de
-// note dans le style de CORPS RÉSOLU du gabarit — jamais une exception, jamais un renvoi sans
-// mise en forme du tout. Depuis les gabarits V4 (29.09.2026, enregistrés par un Word allemand),
-// ce style de corps s'appelle Textkrper (styleId), PAS Corpsdetexte — un ancien sabotage qui
-// codait 'Corpsdetexte' en dur dans _resoudre_styles_note() serait désormais invisible sur ce
-// SEUL contrôle FR (le repli documenté partage par coïncidence le même nom que l'ancien
-// gabarit) : d'où la boucle FR/DE, chacune avec le styleId RÉEL de son propre gabarit.
+// Contrôle n°4 : les gabarits FR et DE ne définissent ni style d'appel de note ni style de
+// texte de note. Le renvoi se pose en exposant (vertAlign), le paragraphe de note dans le
+// style de corps résolu du gabarit. Ce style a pour styleId Textkrper : la boucle FR/DE
+// vérifie le styleId réel de chaque gabarit, pour qu'un 'Corpsdetexte' codé en dur se voie.
 
 for (const { langue, gabarit, styleCorpsAttendu } of [
   { langue: 'fr', gabarit: GABARIT_LIVRE, styleCorpsAttendu: 'Textkrper' },
@@ -1733,18 +1603,10 @@ for (const { langue, gabarit, styleCorpsAttendu } of [
 }
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°5 (corpus) — chiffre mesuré le 19.09.2026 : 12 notes sur `2-fin-de-document`
-// (12 vrais w:footnoteReference, vérifiés à la main dans le XML brut). Les quatre autres
-// fichiers cités par le brief de départ (`1bis`, `2-dense`, `2-grappes`, `5bis`, 1 note
-// « attendue » chacun) mesurent en réalité ZÉRO appel de note dans leur document.xml — vérifié
-// octet pour octet : ni <w:footnoteReference>, ni <w:endnoteReference>, nulle part. Ce que
-// document.notes contenait pour eux (clés 1 et 2) n'était pas une vraie note : c'est le
-// type technique `continuationNotice` (« suite à la page suivante »), absent de
-// `_TYPES_NOTE_TECHNIQUES = ('separator', 'continuationSeparator')` dans manuscrit_docx.py
-// (fichier HORS du périmètre de cet agent, non corrigé ici, voir le rapport de chantier) —
-// mal filtré, il est lu comme un contenu de note réel. N'étant jamais appelé nulle part dans
-// le corps, cet écrivain le classe correctement en note ORPHELINE (voir le contrôle n°2
-// ci-dessus) et n'écrit rien pour lui : 0 est donc la valeur CORRECTE ici, pas 1.
+// Contrôle n°5, sur le corpus : 12 notes dans `2-fin-de-document` (12 w:footnoteReference).
+// `1bis`, `2-dense`, `2-grappes` et `5bis` n'ont aucun appel de note : leur document.notes ne
+// contenait qu'une note technique `continuationNotice`, orpheline, donc pas écrite. 0 est la
+// valeur attendue.
 
 test('manuscrit_gabarit.ecrire : les notes de bas de page du corpus réel sont écrites en nombre attendu',
   { skip: sansPython }, (t) => {
@@ -1754,9 +1616,7 @@ test('manuscrit_gabarit.ecrire : les notes de bas de page du corpus réel sont �
     }
     const attendu = {
       '2-fin-de-document_Article_RSPS.docx': 12,
-      // Les quatre lignes suivantes valent 0, pas 1 : voir le commentaire ci-dessus (défaut
-      // de manuscrit_docx.py, hors périmètre, qui fait passer une note technique
-      // 'continuationNotice' pour une vraie note — jamais appelée, donc jamais écrite ici).
+      // 0 : voir le commentaire du test (note technique orpheline, jamais écrite).
       '1bis_Booms Article.docx': 0,
       '2-dense_20250404_Quelle inclusion pour les personnes en situation de handicap.docx': 0,
       '2-grappes_En Route pour Apprendre.docx': 0,
@@ -1783,17 +1643,11 @@ test('manuscrit_gabarit.ecrire : les notes de bas de page du corpus réel sont �
   });
 
 // ===================================================================================
-// Table de correspondance (ajout du 19.09.2026, demandé par le superviseur pour un futur
-// module d'annotation) : ecrire() rend `correspondance`, une entrée par paragraphe de CORPS
-// écrit comme <w:p> de premier niveau — jamais pour les paragraphes qu'un bloc figure/tableau
-// écrit lui-même (ses quatre clés, son image), qui n'ont pas de source unique évidente, mais
-// qui COMPTENT bien dans l'indice `sortie` des paragraphes qui les suivent (révision du
-// 21.09.2026, alertée par l'agent de l'annotation : voir le contrôle dédié juste après).
-//
-// Révision du 22.09.2026 (demande du coordinateur) : un tableau reçoit désormais EN PLUS une
-// entrée `bloc` (ancrage de A11y.TexteAlternatif.* sur sa clé « Texte alternatif : ») — ce
-// contrôle ne porte que sur les entrées NORMALES (séparerCorrespondance), le contrôle dédié
-// aux entrées `bloc` est plus bas.
+// Table de correspondance : ecrire() rend `correspondance`, une entrée par paragraphe de corps
+// écrit comme <w:p> de premier niveau. Les paragraphes qu'un bloc écrit lui-même (clés,
+// image) n'ont pas d'entrée normale mais comptent dans l'indice `sortie` des suivants. Un bloc
+// reçoit en plus une entrée `bloc` (ancrage de A11y.TexteAlternatif.* sur sa clé « Texte
+// alternatif : ») ; ce contrôle ne porte que sur les entrées normales.
 
 test('manuscrit_gabarit.ecrire : la table de correspondance pointe, pour chaque paragraphe de corps, le bon <w:p> de la sortie',
   { skip: sansPython }, () => {
@@ -1827,15 +1681,12 @@ test('manuscrit_gabarit.ecrire : la table de correspondance pointe, pour chaque 
     }
   });
 
-// Contrôle demandé par l'agent de l'annotation (21.09.2026) : sur une fixture à DEUX blocs
-// figure et UN bloc tableau, la correspondance des paragraphes de corps qui les encadrent doit
-// rester exacte. Avant le correctif de `n_wp` (voir §10 du contrat), un bloc contribuait 0 au
-// compteur alors qu'il écrit RÉELLEMENT 4 ou 5 <w:p> (ses clés, plus l'image d'un bloc figure) :
-// mesuré, ce défaut faisait dérailler 540 entrées sur 706 (76 %) sur les onze manuscrits réels
-// — voir le rapport final pour le détail de cette mesure.
+// Avec deux blocs figure et un bloc tableau, la correspondance des paragraphes de corps qui
+// les entourent reste exacte : un bloc écrit 4 ou 5 <w:p> (ses clés, plus l'image d'une
+// figure) et compte d'autant dans `n_wp`.
 //
-// Sabotage minimal : dans `_convertir_niveau_racine`, remplacer `compteur_wp += n_wp` par
-// `compteur_wp += (0 if est_bloc else n_wp)` (l'ancien comportement) — ce contrôle rougit.
+// Sabotage : dans `_convertir_niveau_racine`, remplacer `compteur_wp += n_wp` par
+// `compteur_wp += (0 if est_bloc else n_wp)`.
 
 test('manuscrit_gabarit.ecrire : la correspondance reste exacte de part et d\'autre de deux blocs figure et un bloc tableau',
   { skip: sansPython }, () => {
@@ -1854,9 +1705,8 @@ test('manuscrit_gabarit.ecrire : la correspondance reste exacte de part et d\'au
         paragraphe([fragment('Après tout.')], { source: 6 }),
       ]);
       const resultat = ecrireDepuisSpec(spec, sortie);
-      // Quatre paragraphes de corps RÉELS (0, 2, 4, 6) : les deux images et le tableau sont
-      // des blocs, jamais une entrée de correspondance NORMALE à eux-mêmes (mais une entrée
-      // `bloc` chacun, voir plus bas — révision du 22.09.2026).
+      // Quatre paragraphes de corps (0, 2, 4, 6). Les deux images et le tableau n'ont pas
+      // d'entrée normale, mais une entrée `bloc` chacun.
       const { normales, blocs } = separerCorrespondance(resultat.correspondance);
       assert.strictEqual(normales.length, 4,
         'quatre paragraphes de corps attendus dans la correspondance normale, obtenu '
@@ -1876,8 +1726,8 @@ test('manuscrit_gabarit.ecrire : la correspondance reste exacte de part et d\'au
           'source ' + c.source + ' -> sortie ' + c.sortie + ' : texte attendu '
           + JSON.stringify(attendus[c.source]) + ', obtenu ' + JSON.stringify(textes[c.sortie]));
       }
-      // Chaque entrée `bloc` doit viser un <w:p> en style SZHCleAbbTab qui commence par
-      // « Texte alternatif » — jamais le texte de `source` (l'image/le tableau n'en a pas).
+      // Chaque entrée `bloc` vise un <w:p> de style SZHCleAbbTab qui commence par « Texte
+      // alternatif » (l'image ou le tableau n'a pas de texte `source`).
       for (const b of blocs) {
         assert.strictEqual(styles[b.sortie], 'SZHCleAbbTab',
           'bloc ' + JSON.stringify(b) + ' devrait viser un <w:p> SZHCleAbbTab');
@@ -1890,13 +1740,9 @@ test('manuscrit_gabarit.ecrire : la correspondance reste exacte de part et d\'au
     }
   });
 
-// `correspondance.source` doit être le vrai `Paragraphe.source` du bloc d'origine, pas sa
-// position dans la liste `blocs` reçue par ecrire() : la CLI retire les paragraphes d'en-tête
-// de `document.blocs` AVANT d'appeler ecrire() (§5.5), donc la liste que ce module reçoit est
-// déjà un SOUS-ENSEMBLE, avec des trous. Ici, les deux paragraphes portent `source` 5 et 9
-// (comme si les indices 0-4 et 6-8 avaient déjà été retirés) alors qu'ils occupent les
-// positions 0 et 2 de la liste (position 1 = tableau) — un remappage par position rendrait
-// 0 et 2, jamais 5 et 9.
+// `correspondance.source` est le vrai `Paragraphe.source`, pas la position dans la liste
+// `blocs` : la CLI retire les paragraphes d'en-tête avant d'appeler ecrire(), et la liste
+// reçue a des trous. Ici les deux paragraphes portent `source` 5 et 9 aux positions 0 et 2.
 test('manuscrit_gabarit.ecrire : correspondance.source est Paragraphe.source, pas une position de liste',
   { skip: sansPython }, () => {
     const base = dossierJetable();
@@ -1913,8 +1759,7 @@ test('manuscrit_gabarit.ecrire : correspondance.source est Paragraphe.source, pa
       assert.deepStrictEqual(sources, [5, 9],
         'correspondance.source doit porter les Paragraphe.source 5 et 9, jamais des positions '
         + 'de liste (0 et 2) : obtenu ' + JSON.stringify(sources));
-      // Le tableau (source RÉELLE 6, position de liste 1) reçoit sa propre entrée `bloc` — même
-      // exigence « source, pas position de liste » que ci-dessus, sur l'entrée `bloc` cette fois.
+      // Le tableau (source 6, position 1) reçoit son entrée `bloc`, elle aussi par source.
       assert.deepStrictEqual(blocs.map((b) => b.source), [6],
         'l\'entrée `bloc` du tableau doit porter Paragraphe.source (6), jamais une position '
         + 'de liste (1)');
@@ -1947,9 +1792,8 @@ test('manuscrit_gabarit.ecrire : sur les onze manuscrits réels, 100% de la tabl
         for (const c of resultat.correspondance) {
           total += 1;
           if (c.bloc) {
-            // Entrée `bloc` (22.09.2026) : le paragraphe `sortie` ne porte JAMAIS le texte de
-            // `source` (l'image/le tableau n'en a pas) — vérifié à la place : style
-            // SZHCleAbbTab, texte qui commence par « Texte alternatif ».
+            // Entrée `bloc` : le paragraphe `sortie` ne porte pas le texte de `source` ; on
+            // vérifie le style SZHCleAbbTab et le début « Texte alternatif ».
             const styleOk = stylesSortie[c.sortie] === 'SZHCleAbbTab';
             const texteOk = (textesSortie[c.sortie] || '').startsWith('Texte alternatif');
             if (!styleOk || !texteOk) {
@@ -1980,9 +1824,8 @@ test('manuscrit_gabarit.ecrire : sur les onze manuscrits réels, 100% de la tabl
   });
 
 // ===================================================================================
-// Contrôles renforcés du corpus réel (§11 : « les tests ne gardent rien aujourd'hui ») —
-// validité XML de chaque partie, structure (sectPr en dernier, Content_Types, relations
-// résolues, TargetMode externe), et aucun texte perdu (corps + notes) par rapport à l'entrée.
+// Corpus : validité XML de chaque partie, structure (sectPr en dernier, Content_Types,
+// relations résolues, TargetMode externe), et aucun texte perdu (corps et notes).
 
 test('manuscrit_gabarit.ecrire : sur les onze manuscrits réels, chaque partie XML de la sortie est valide et la structure est cohérente',
   { skip: sansPython }, (t) => {
@@ -2040,13 +1883,11 @@ test('manuscrit_gabarit.ecrire : sur les onze manuscrits réels, aucun texte (co
   });
 
 // ===================================================================================
-// Ajout du 19.09.2026 — §5.5 du contrat : ecrire() reçoit désormais un paramètre `entete`
-// (l'EnTete que pipeline/manuscrit_entete.py a reconnue) et remplit les DEUX tableaux fixes
-// avec — Titre/Sous-titre/Résumé/Langue de l'article, et une fiche par autrice ou auteur.
-// Patron : ECRIRE_DEPUIS_JSON ci-dessus, étendu d'un cinquième argument (l'EnTete en JSON,
-// reconstruite côté Python par `manuscrit_entete.EnTete(**...)` — mêmes noms de champs que
-// entete_vers_json()). La sortie est relue par pronto-lire.py, LE lecteur de production :
-// « bien rempli » ne veut rien dire d'autre que « au bon endroit pour ce lecteur-là ».
+// En-tête : ecrire() reçoit `entete` (l'EnTete reconnue par pipeline/manuscrit_entete.py) et
+// remplit les deux tableaux fixes : titre, sous-titre, résumé, et une fiche par autrice ou
+// auteur. L'EnTete est passée en JSON en cinquième argument et reconstruite par
+// `manuscrit_entete.EnTete(**...)` (mêmes champs que entete_vers_json()). La sortie est relue
+// par pronto-lire.py.
 
 const ECRIRE_DEPUIS_JSON_AVEC_ENTETE = [
   'import json, sys',
@@ -2063,8 +1904,7 @@ const ECRIRE_DEPUIS_JSON_AVEC_ENTETE = [
   'print(json.dumps(resultat, ensure_ascii=True))',
 ].join('\n');
 
-// `langue` (ajout 29.09.2026, gabarits FR/DE) : 'fr' par défaut, compatibilité des appels
-// existants de ce fichier (tous écrits contre le seul gabarit FR d'alors).
+// `langue` : 'fr' par défaut.
 function ecrireAvecEntete(spec, entete, cheminSortie, cheminGabarit, langue) {
   const r = python(['-c', ECRIRE_DEPUIS_JSON_AVEC_ENTETE, PIPELINE, cheminGabarit || GABARIT_LIVRE,
     cheminSortie, JSON.stringify(spec), JSON.stringify(entete), langue || 'fr'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 });
@@ -2072,8 +1912,8 @@ function ecrireAvecEntete(spec, entete, cheminSortie, cheminGabarit, langue) {
   return JSON.parse(r.stdout);
 }
 
-// Un EnTete minimal, tous les champs présents (EnTete.__init__ n'accepte que ceux-là — un nom
-// en trop lèverait un TypeError, un manquant prendrait le défaut '' / [] / {}).
+// Un EnTete minimal avec tous ses champs : EnTete.__init__ lève un TypeError sur un nom en
+// trop, et donne '' / [] / {} à un champ manquant.
 function entete(valeurs) {
   return Object.assign({
     titre: '', sous_titre: '', auteurs: [], resume: '', langue_resume: '',
@@ -2123,8 +1963,8 @@ test('manuscrit_gabarit.ecrire (entete) : Titre/Sous-titre/Résumé/Langue rempl
       assert.match(meta, /affiliation: "HEP Vaud"/);
       assert.match(meta, /email: "jean\.dupont@hepvd\.ch"/);
 
-      // Les mots-clés n'ont aucun champ dans le gabarit livré (§5.5) : repli en premier
-      // paragraphe du corps, en Corpsdetexte — jamais un champ inventé dans les métadonnées.
+      // Les mots-clés n'ont pas de champ dans le gabarit : ils vont en premier paragraphe du
+      // corps, en Corpsdetexte.
       const xml = lireDocumentXml(sortie);
       assert.match(xml, /Mots-clés : pedagogie, inclusion/);
     } finally {
@@ -2137,7 +1977,7 @@ test('manuscrit_gabarit.ecrire (entete) : plus d\'auteurs que de fiches -> la de
     const base = dossierJetable();
     try {
       const sortie = path.join(base, 'sortie.docx');
-      // Le gabarit livré ne porte que 3 fiches (mesuré) : 4 auteurs doivent en dupliquer une.
+      // Le gabarit livré porte 3 fiches : 4 auteurs en font dupliquer une.
       const e = entete({
         titre: 'Un titre', langue_produit: 'fr',
         auteurs: ['A', 'B', 'C', 'D'].map((lettre) => auteur({ prenom: lettre, nom: 'Nom' + lettre })),
@@ -2167,8 +2007,8 @@ test('manuscrit_gabarit.ecrire : sans entete (None), les deux tableaux fixes res
       const dossierPronto = path.join(base, 'pronto');
       fs.mkdirSync(dossierPronto);
       prontoLire(sortie, 'essai', dossierPronto);
-      // meta.yaml existe TOUJOURS (lang/source y sont écrits même sans aucune valeur), mais
-      // sans entete aucun des DEUX tableaux fixes ne doit avoir livré la moindre valeur.
+      // meta.yaml existe toujours (lang/source y sont écrits), mais sans entete aucun des
+      // deux tableaux fixes ne livre de valeur.
       const meta = fs.readFileSync(path.join(dossierPronto, 'essai.meta.yaml'), 'utf8');
       assert.ok(!/^title:/m.test(meta), 'aucun titre sans entete');
       assert.ok(!/^author:/m.test(meta), 'aucun auteur sans entete');
@@ -2178,19 +2018,14 @@ test('manuscrit_gabarit.ecrire : sans entete (None), les deux tableaux fixes res
   });
 
 // ===================================================================================
-// Chantier « gabarits Pronto FR/DE » (29.09.2026) — manuscrit_gabarit.ecrire() écrit
-// désormais dans DEUX gabarits (Revue = FR, Zeitschrift = DE, `langue='fr'|'de'`), dont les
-// styleId réels ne sont PLUS Titre1/Corpsdetexte (repli historique) mais berschrift1../
-// Textkrper (les deux gabarits ont été réenregistrés par un Word allemand — seuls les w:name
-// restent 'heading N'/'Body Text'), résolus depuis word/styles.xml de CHAQUE gabarit plutôt que
-// codés en dur. Les contrôles ci-dessous couvrent : la résolution de style par nom (et son
-// repli tracé), les étiquettes de bloc figure/tableau et la ligne mots-clés PAR LANGUE, le
-// retrait du commentaire d'aide du gabarit (sinon orphelin dans le .docx produit), et la
-// preuve de bout en bout demandée par le brief — un manuscrit RÉEL, écrit dans les deux
-// gabarits, relu par pronto-lire.py (le lecteur de PRODUCTION) sans « cle-approximee » ni
-// blocage.
+// Gabarits FR et DE : ecrire() écrit dans le gabarit de la Revue (`langue='fr'`) ou de la
+// Zeitschrift (`langue='de'`). Les styleId (berschrift1…, Textkrper) sont résolus depuis
+// word/styles.xml de chaque gabarit par leur w:name. Contrôles : résolution de style et son
+// repli tracé, étiquettes des blocs et ligne mots-clés par langue, retrait du commentaire
+// d'aide du gabarit, et un manuscrit du corpus écrit dans les deux gabarits puis relu par
+// pronto-lire.py sans « cle-approximee » ni blocage.
 
-// ---- Résolution de style : styleId réel du gabarit, jamais le repli FR historique ------
+// ---- Résolution de style : styleId réel du gabarit, pas le repli FR -------------------
 
 const STYLEIDS_PY = [
   'import sys, zipfile, re, json',
@@ -2265,14 +2100,11 @@ for (const { langue, gabarit } of [{ langue: 'fr', gabarit: GABARIT_LIVRE },
     });
 }
 
-// Sabotage vérifié à la main (script jetable, hors dépôt) : `_styleid_par_nom` neutralisé
-// (retourne toujours None) force le repli sur TOUTES les résolutions ('Titre1'/'Corpsdetexte'/
-// 'SZHCle'/'SZHAide' apparaissent bien dans le XML produit) et pose une ligne de trace
-// 'style_introuvable' par résolution manquante — les deux contrôles ci-dessus, sans ce
-// sabotage, ne voient QUE le styleId réel (berschrift1/Textkrper) : ils rougiraient si la
-// résolution s'était mise à ignorer word/styles.xml.
+// Sabotage : `_styleid_par_nom` qui rend toujours None force le repli ('Titre1',
+// 'Corpsdetexte', 'SZHCle', 'SZHAide') et une trace 'style_introuvable' par résolution ; les
+// deux contrôles ci-dessus rougissent.
 
-// ---- Étiquettes des blocs figure/tableau et ligne mots-clés, PAR LANGUE ----------------
+// ---- Étiquettes des blocs figure/tableau et ligne mots-clés, par langue -----------------
 
 for (const { langue, gabarit, labels, mots } of [
   { langue: 'fr', gabarit: GABARIT_LIVRE,
@@ -2314,12 +2146,10 @@ for (const { langue, gabarit, labels, mots } of [
     });
 }
 
-// Sabotage vérifié à la main : `ecrire(..., langue='de')` appelé sur le gabarit DE écrit bien
-// les étiquettes DE (Beschriftung/Alternativtext/Copyright/Quelle, aucune trace de Légende) ;
-// forcer `langue='fr'` sur ce MÊME gabarit DE écrit alors les étiquettes FR — la sortie suit
-// le paramètre `langue`, jamais un texte lu dans le fichier gabarit lui-même.
+// Les étiquettes suivent le paramètre `langue`, pas un texte lu dans le gabarit : forcer
+// `langue='fr'` sur le gabarit DE écrit les étiquettes FR.
 
-// ---- Le commentaire d'aide du gabarit ne doit jamais se retrouver, orphelin, en sortie -
+// ---- Le commentaire d'aide du gabarit ne se retrouve pas, orphelin, en sortie ----------
 
 for (const { langue, gabarit } of [{ langue: 'fr', gabarit: GABARIT_LIVRE },
                                     { langue: 'de', gabarit: GABARIT_DE }]) {
@@ -2357,11 +2187,10 @@ for (const { langue, gabarit } of [{ langue: 'fr', gabarit: GABARIT_LIVRE },
     });
 }
 
-// Sabotage vérifié à la main : neutraliser `_retirer_relations`/`_retirer_overrides` (les
-// rendre identité) fait réapparaître les cinq parties commentaire dans la sortie — exactement
-// le défaut que ce contrôle attrape.
+// Sabotage : rendre `_retirer_relations`/`_retirer_overrides` sans effet ; les cinq parties
+// commentaire réapparaissent dans la sortie.
 
-// ---- Preuve de bout en bout (§ brief, obligatoire) : manuscrit RÉEL, entete complet, FR/DE -
+// ---- De bout en bout : manuscrit du corpus, entete complet, FR et DE ------------------
 
 const MANUSCRIT_REEL = path.join(RACINE, 'tmp', 'corpus-relecture',
   "Le coenseignement développemental_revue Suisse_10082026.docx");
@@ -2418,13 +2247,12 @@ for (const { langue, gabarit, produit } of [
 
         // Chaque partie XML de la sortie doit être bien formée...
         assert.deepStrictEqual(validerPartiesXml(sortie), []);
-        // ...et chaque pStyle écrit doit exister dans styles.xml de CE gabarit.
+        // ...et chaque pStyle écrit existe dans styles.xml de ce gabarit.
         const { manquants } = pstylesEcrits(sortie);
         assert.deepStrictEqual(manquants, [],
           'pStyle écrit(s) introuvable(s) dans styles.xml du gabarit : ' + manquants);
 
-        // Relu par pronto-lire.py, LE lecteur de production — $SZH_PRODUIT décide la langue
-        // lue (pas un champ du gabarit, voir prontoLire ci-dessus).
+        // Relu par pronto-lire.py ; $SZH_PRODUIT décide la langue lue.
         const dossierPronto = path.join(base, 'pronto');
         fs.mkdirSync(dossierPronto);
         const r = python( [PRONTO_LIRE, sortie, 'essai', dossierPronto],

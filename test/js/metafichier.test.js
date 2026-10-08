@@ -1,25 +1,19 @@
-// Contrôles de pipeline/filters/szh-metafichier.lua : une image native Word (.emf/.wmf)
-// est remplacée par un placeholder visible, et NOMMÉE.
+// Tests de pipeline/filters/szh-metafichier.lua : une image native Word (.emf/.wmf) est
+// remplacée par un substitut visible, qui la nomme.
 //
-//   node --test "test/js/*.test.js"
+// Le test exécute pandoc avec le filtre et lit le HTML produit et le journal : lire le .lua
+// ne prouve pas qu'il tourne.
 //
-// Ce fichier EXÉCUTE pandoc avec le filtre, comme import-numerotation-titres.test.js
-// exécute la chaîne d'import : ce qui est en jeu n'est pas un texte source mais un HTML
-// produit et une ligne de journal. Un contrôle qui se contenterait de lire le .lua ne
-// dirait rien du défaut réel — szh-legende-avant.lua était CORRECT à la lecture et ne
-// tournait jamais (défaut A9, une alternation « | » dans un motif Lua).
-//
-// Ce que ces contrôles tiennent :
-//   1. une image du CORPS est substituée, et ses dimensions d'origine survivent — le
-//      placeholder occupe la boîte de l'image absente, la mise en page ne se déplace pas ;
-//   2. une image citée SEULEMENT dans un tableau extrait l'est aussi : docx-tables.py les
-//      sort du .md dans tables/table-NN.html, et un walker Image ne les voit pas. C'était
-//      le cas de fig-73 au chapitre 09 du VN-FALC ;
-//   3. le texte alternatif NOMME le fichier manquant — sans quoi un lecteur d'écran
-//      annoncerait le vide, et le PDF/UA prendrait le placeholder pour un décor ;
+// Contrôles :
+//   1. une image du corps est substituée et garde ses dimensions, pour que la mise en page ne
+//      bouge pas ;
+//   2. une image citée seulement dans un tableau extrait l'est aussi : docx-tables.py sort
+//      ces tableaux dans tables/table-NN.html, où un walker Image ne les voit pas ;
+//   3. le texte alternatif nomme le fichier manquant, sinon un lecteur d'écran annoncerait
+//      le vide et le PDF/UA prendrait le substitut pour un décor ;
 //   4. une image ordinaire n'est pas touchée ;
-//   5. le constat est écrit UNE fois par fichier, dans les deux langues du poste ;
-//   6. la casse ne décide pas : Word écrit parfois « .EMF ».
+//   5. le constat est écrit une fois par fichier, dans les deux langues ;
+//   6. la casse ne compte pas : Word écrit parfois « .EMF ».
 'use strict';
 
 const test = require('node:test');
@@ -48,11 +42,10 @@ function wsl(args) {
     { encoding: 'utf8', windowsHide: true, timeout: 120000 });
 }
 
-// SZH_WSL_OBLIGATOIRE via gardes.js en fait un échec au chargement du module.
+// Avec SZH_WSL_OBLIGATOIRE, gardes.js fait de l'absence de WSL un échec au chargement.
 
-// Lance pandoc sur `markdown` avec le seul filtre à l'essai, dans un dossier jetable où
-// l'on dépose les fichiers de `fichiers` ({ 'media/x.emf': 'contenu' }).
-// Rend { html, stderr, status }.
+// Lance pandoc sur `markdown` avec le seul filtre testé, dans un dossier jetable où l'on dépose
+// `fichiers` ({ 'media/x.emf': 'contenu' }). Rend { html, stderr, status }.
 function rendre(markdown, fichiers, meta) {
   const chantier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-metafichier-'));
   try {
@@ -62,8 +55,8 @@ function rendre(markdown, fichiers, meta) {
       fs.writeFileSync(cible, contenu);
     }
     fs.writeFileSync(path.join(chantier, 'essai.md'), markdown);
-    // Pas de --embed-resources : on veut LIRE la cible, pas 300 ko de base64. Le filtre
-    // pose un chemin absolu, que pandoc laisse tel quel sans incorporation.
+    // Sans --embed-resources, pour lire la cible plutôt que du base64. Le filtre pose un
+    // chemin absolu, que pandoc laisse tel quel.
     const cmd = 'cd ' + JSON.stringify(cheminVersWsl(chantier))
       + ' && pandoc essai.md --from=markdown --to=html5'
       + (meta ? ' ' + meta : '')
@@ -85,8 +78,8 @@ test('szh-metafichier : une image du corps est remplacée, ses dimensions conser
     { 'media/dessin.emf': 'des octets qui ne sont pas une image' });
 
   assert.strictEqual(r.status, 0, 'pandoc a échoué : ' + r.stderr);
-  // Ce qui compte est la CIBLE : c'est elle que WeasyPrint va chercher. L'alt, lui, doit
-  // au contraire nommer le fichier manquant — un autre contrôle s'en charge.
+  // La cible est ce que WeasyPrint va chercher. L'alt, lui, nomme le fichier manquant
+  // (contrôle à part).
   const cibles = (r.html.match(/src="([^"]*)"/g) || []).map((s) => s.slice(5, -1));
   assert.deepStrictEqual(cibles.filter((c) => /\.(emf|wmf)$/i.test(c)), [],
     'une cible .emf survit : WeasyPrint s’y arrêterait, et la compilation entière '
@@ -103,8 +96,8 @@ test('szh-metafichier : une image du corps est remplacée, ses dimensions conser
 
 test("szh-metafichier : une image citée SEULEMENT dans un tableau extrait l’est aussi", (t) => {
   if (sansPandocWsl) { return sauter.wsl(t); }
-  // Ce que szh-tabelle-inclure.lua réinjecte : du HTML brut, où il n'y a plus de nœud
-  // Image. Un walker Image seul passerait à côté — c'est ce qui est arrivé à fig-73.
+  // szh-tabelle-inclure.lua réinjecte du HTML brut, sans nœud Image : un walker Image seul ne
+  // le verrait pas.
   const r = rendre(
     '```{=html}\n<table><tr><td>'
     + '<img src="media/schema.wmf" alt="P1#yIS1" width="266"></td></tr></table>\n```\n',
@@ -143,7 +136,7 @@ test('szh-metafichier : une image ordinaire traverse le filtre intacte', (t) => 
 
 test('szh-metafichier : le constat est écrit une seule fois par fichier, en deux langues', (t) => {
   if (sansPandocWsl) { return sauter.wsl(t); }
-  // La même image citée trois fois ne doit pas remplir le journal de trois lignes.
+  // La même image citée trois fois ne donne qu'une ligne de journal.
   const r = rendre('![a](./media/d.emf)\n\n![b](./media/d.emf)\n\n![c](./media/d.emf)\n',
     { 'media/d.emf': 'x' });
 

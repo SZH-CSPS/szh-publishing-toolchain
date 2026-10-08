@@ -1,38 +1,21 @@
-// Le nettoyage des orphelins du toolkit : ce qu'il ne doit JAMAIS faire.
+// Le nettoyage des orphelins du toolkit (Remove-SzhToolkitOrphelins, szh-common.ps1, appelée
+// par update.ps1, bootstrap.ps1 et update-launcher.ps1) : il compare le toolkit à une archive
+// extraite à part, et retire du toolkit ce que l'archive ne contient pas.
 //
-//   node --test "test/js/*.test.js"
-//
-// Le défaut corrigé ici, découvert en revue adversariale sur les correctifs de la nuit du
-// 31 août au 1er septembre 2026 : Remove-SzhToolkitOrphelins (update.ps1, bootstrap.ps1,
-// update-launcher.ps1) compare le toolkit à une archive extraite à part, et supprime du
-// toolkit ce que l'archive ne contient pas — mais ne vérifiait JAMAIS que le dossier
-// correspondant existe dans l'archive. Constaté à l'exécution :
-//
-//   * $Extrait\pipeline absent mais $Extrait\windows présent -> TOUT $Toolkit\pipeline
-//     disparaissait, sans qu'une seule ligne du dépôt n'ait changé ;
-//   * $Extrait vide (zip qui réussit sans rien contenir) -> les cinq dossiers gérés du
-//     toolkit étaient vidés, un par un.
-//
-// Le point qui rend ce défaut sérieux : il ne demande pas une archive corrompue. Il suffit
-// qu'Expand-Archive réussisse sans exception sur un contenu incomplet — le try/catch qui
-// entoure le nettoyage ne rattrape alors rien — et une archive incomplète mais AUTHENTIQUE
-// (un dossier source vidé par erreur avant le `cp -r` de release.yml, zip valide, empreinte
-// correcte) passe Test-SzhSha256, qui ne protège que de la corruption de téléchargement.
-//
-// Trois gardes, dans l'esprit « en cas de doute, ne rien supprimer » :
-//   1. Par dossier : le dossier doit exister dans l'archive extraite, sinon ce dossier-là
-//      n'est pas touché — c'est ce qui répare le premier scénario ci-dessus.
-//   2. Globalement, avant même de commencer : si l'extraction ne porte NI le VERSION NI un
-//      seul des cinq dossiers gérés, le nettoyage entier s'abstient — c'est ce qui répare le
-//      second scénario. (Volontairement plus laxiste qu'« il faut les cinq » : sinon cette
-//      garde et la garde 1 seraient indiscernables, et le premier scénario perdrait son
-//      nettoyage légitime des AUTRES dossiers en même temps que sa protection de pipeline.)
-//   3. Proportion invraisemblable : une archive authentique mais incomplète (le dossier
-//      source vidé par erreur ci-dessus) fait passer les deux gardes précédentes — le
-//      dossier EXISTE dans l'archive, il est juste creux. Si retirer les candidats
-//      éliminerait plus de la moitié d'un dossier d'au moins quatre fichiers, rien n'est
-//      retiré de ce dossier : un nettoyage normal écarte quelques fichiers retirés du
-//      dépôt, pas la majorité d'un dossier géré.
+// Expand-Archive peut réussir sur un contenu incomplet, et une archive authentique mais
+// incomplète (un dossier source vidé avant le `cp -r` de release.yml) passe Test-SzhSha256,
+// qui ne protège que de la corruption au téléchargement. Trois gardes, selon la règle « en cas
+// de doute, ne rien supprimer » :
+//   1. Par dossier : un dossier absent de l'archive extraite n'est pas touché (sinon
+//      $Extrait\pipeline absent vide tout $Toolkit\pipeline).
+//   2. Globalement : si l'extraction ne porte ni VERSION ni aucun des cinq dossiers gérés,
+//      le nettoyage s'abstient (une extraction vide viderait les cinq dossiers). La garde
+//      n'exige pas les cinq : sinon elle se confondrait avec la garde 1 et empêcherait le
+//      nettoyage légitime des autres dossiers.
+//   3. Proportion : un dossier présent mais creux passe les deux gardes. Si retirer les
+//      candidats éliminait plus de la moitié d'un dossier d'au moins quatre fichiers, rien
+//      n'est retiré de ce dossier : un nettoyage normal écarte quelques fichiers, pas la
+//      majorité.
 'use strict';
 
 const test = require('node:test');
@@ -51,10 +34,9 @@ const BOOTSTRAP = lire('windows', 'bootstrap.ps1');
 const LANCEUR = lire('windows', 'update-launcher.ps1');
 const RELEASE = lire('.github', 'workflows', 'release.yml');
 
-// Le corps d'une fonction PowerShell : de sa ligne de déclaration jusqu'à la première ligne
-// qui n'est QUE « } », en colonne 0 — la fermeture du top-level, dans le style constant de ce
-// dépôt. Ne compte pas les accolades une à une : les chaînes de formatage de ces fonctions
-// (« {0} », « {1} ») en portent, et un compteur naïf s'y tromperait.
+// Le corps d'une fonction PowerShell : de sa déclaration à la première ligne qui n'est que
+// « } » en colonne 0. Les accolades ne sont pas comptées : les chaînes de formatage
+// (« {0} », « {1} ») en contiennent.
 function corpsFonction(source, nom) {
   const lignes = source.split('\r\n');
   let debut = -1;
@@ -70,12 +52,10 @@ function corpsFonction(source, nom) {
   return lignes.slice(debut, fin + 1).join('\r\n');
 }
 
-// Le bloc qui suit l'appel à Remove-SzhToolkitOrphelins, jusqu'à la fermeture de SON propre
-// `finally` -- un Remove-Item qui traînerait ailleurs dans le fichier ne prouverait rien, il
-// doit être DANS ce bloc-ci pour compter comme le nettoyage du staging après l'appel. Repéré
-// par indentation (celle qui précède « } finally { » referme le bloc au même niveau, trois
-// lignes plus bas) plutôt que par un compte d'accolades, pour la même raison que
-// corpsFonction évite les accolades des chaînes de formatage.
+// Le bloc qui suit l'appel à Remove-SzhToolkitOrphelins, jusqu'à la fermeture de son propre
+// `finally` : un Remove-Item ailleurs dans le fichier ne compterait pas comme le nettoyage du
+// staging. Repéré par indentation (la ligne « } finally { » au même niveau, trois lignes plus
+// bas), pour la même raison que corpsFonction.
 function finallyApresAppel(source, nom) {
   const iAppel = source.indexOf('$bilanOrphelins = Remove-SzhToolkitOrphelins');
   assert.ok(iAppel !== -1, nom + ' : appel à Remove-SzhToolkitOrphelins introuvable');
@@ -90,16 +70,13 @@ function finallyApresAppel(source, nom) {
 }
 
 // ---- Une seule définition, appelée par les trois ----
-// Trois copies mot pour mot avaient divergé sans qu'on le voie : la fonction vit maintenant
-// une seule fois dans szh-common.ps1 (que les trois scripts dot-sourcent déjà), et rien ne
-// doit en redéfinir une copie locale.
+// La fonction vit une fois dans szh-common.ps1, que les trois scripts chargent ; aucun ne doit
+// en redéfinir une copie locale.
 
 test('Remove-SzhToolkitOrphelins est définie une seule fois, dans szh-common.ps1, et appelée (via Install-SzhToolkitDepuisArchive) par les trois scripts', () => {
-  // Une seule déclaration dans tout le dépôt : szh-common.ps1 la porte, aucun des trois
-  // scripts ne la redéfinit localement. Depuis le remplacement atomique du toolkit, les
-  // trois scripts n'appellent plus Remove-SzhToolkitOrphelins directement : c'est
-  // Install-SzhToolkitDepuisArchive (szh-common.ps1 aussi) qui le fait, sur une copie
-  // jetable du toolkit plutôt que sur l'arbre vivant.
+  // Une seule déclaration dans le dépôt, dans szh-common.ps1. Les trois scripts n'appellent
+  // pas Remove-SzhToolkitOrphelins directement : Install-SzhToolkitDepuisArchive
+  // (szh-common.ps1) le fait, sur une copie jetable du toolkit.
   assert.ok(COMMUN.indexOf('function Remove-SzhToolkitOrphelins') !== -1,
     'szh-common.ps1 ne déclare plus Remove-SzhToolkitOrphelins');
   assert.ok(COMMUN.indexOf('function Install-SzhToolkitDepuisArchive') !== -1,
@@ -115,22 +92,19 @@ test('Remove-SzhToolkitOrphelins est définie une seule fois, dans szh-common.ps
       nom + ' redéfinit sa propre copie de Install-SzhToolkitDepuisArchive');
     assert.ok(source.indexOf('$bilanOrphelins = Install-SzhToolkitDepuisArchive') !== -1,
       nom + ' n’appelle plus Install-SzhToolkitDepuisArchive');
-    // La mention en commentaire (« Remove-SzhToolkitOrphelins vit dans szh-common.ps1… »)
-    // est admise ; seul un APPEL direct ne l'est plus.
+    // Une mention en commentaire est admise ; un appel direct ne l'est pas.
     assert.ok(source.indexOf('= Remove-SzhToolkitOrphelins ') === -1,
       nom + ' appelle encore Remove-SzhToolkitOrphelins directement, plus seulement via Install-SzhToolkitDepuisArchive');
   }
-  // Le corps unique, extrait de szh-common.ps1 : c'est lui que les scénarios dégénérés plus
-  // bas rejouent tel quel.
+  // Le corps unique, extrait de szh-common.ps1, que les scénarios plus bas exécutent.
   const corps = corpsFonction(COMMUN, 'Remove-SzhToolkitOrphelins');
   assert.ok(corps.length > 200, 'le corps extrait de szh-common.ps1 paraît vide');
 });
 
 test('les trois appelants relisent .retires et .avertissements, plus un $orphelins nu', () => {
-  // La fonction rend désormais une table ordonnée, pas juste la liste des retirés : les trois
-  // appelants doivent avoir suivi, sinon `.Count` sur un $orphelins nu (l'ancienne forme)
-  // planterait au tout premier nettoyage. Même bilan, maintenant rendu par
-  // Install-SzhToolkitDepuisArchive plutôt que par Remove-SzhToolkitOrphelins directement.
+  // La fonction rend une table ordonnée, pas la seule liste des retirés : les appelants
+  // doivent lire ce bilan, sinon `.Count` sur un $orphelins nu planterait. Le bilan est rendu
+  // par Install-SzhToolkitDepuisArchive.
   for (const [nom, source] of [['update.ps1', UPDATE], ['bootstrap.ps1', BOOTSTRAP],
     ['update-launcher.ps1', LANCEUR]]) {
     assert.ok(source.indexOf('$bilanOrphelins = Install-SzhToolkitDepuisArchive') !== -1,
@@ -144,13 +118,9 @@ test('les trois appelants relisent .retires et .avertissements, plus un $orpheli
 });
 
 test('le remplacement du toolkit nettoie son dossier d’extraction, dans un finally qui suit l’appel', () => {
-  // Le staging ($SzhStaging\toolkit-verif-<guid>) est une extraction À PART, faite
-  // seulement pour comparer -- elle n'a aucune raison de survivre à l'appel. Ce nettoyage vit
-  // dans un `finally` précisément parce que Remove-SzhToolkitOrphelins peut lever (dossier
-  // illisible, chemin trop long...) : sans ce filet, une seule mise à jour malchanceuse
-  // suffirait à laisser le dossier d'extraction derrière elle. Ce nettoyage vit maintenant
-  // dans Install-SzhToolkitDepuisArchive (szh-common.ps1), appelée par les trois scripts :
-  // un seul endroit à garder juste, plutôt que trois copies qui auraient pu diverger.
+  // Le staging ($SzhStaging\toolkit-verif-<guid>) est une extraction faite seulement pour
+  // comparer. Son nettoyage est dans un `finally` d'Install-SzhToolkitDepuisArchive, parce que
+  // Remove-SzhToolkitOrphelins peut lever (dossier illisible, chemin trop long…).
   const corpsInstall = corpsFonction(COMMUN, 'Install-SzhToolkitDepuisArchive');
   const filet = finallyApresAppel(corpsInstall, 'Install-SzhToolkitDepuisArchive');
   assert.match(filet,
@@ -159,16 +129,10 @@ test('le remplacement du toolkit nettoie son dossier d’extraction, dans un fin
 });
 
 test('$dossiersGeres coïncide, dans les deux sens, avec ce que release.yml copie dans le toolkit', () => {
-  // Piège de maintenance, pas un bug vivant : aujourd'hui les deux listes coïncident, et le
-  // défaut que ce fichier garde par ailleurs (garde 1, plus haut) protège déjà un dossier
-  // absent de l'archive -- une CI qui cesserait d'en livrer un échouerait donc en sécurité,
-  // pas en silence. Mais rien ne LIE ces deux listes entre elles. Si quelqu'un ajoute un
-  // dossier aux trois scripts sans l'ajouter à la ligne `cp -r` de release.yml, le nettoyage
-  // raisonnera sur un dossier que l'archive ne porte jamais (la garde 1 le protégera --
-  // rien de cassé, juste du mort). Mais si quelqu'un ajoute un dossier à `cp -r` sans
-  // l'ajouter aux trois scripts, ce dossier-là s'accumule sur chaque poste sans jamais être
-  // nettoyé -- exactement le défaut que ce fichier garde par ailleurs, réintroduit par un
-  // chemin que ni les trois scripts ni ce fichier ne surveillaient jusqu'ici.
+  // La liste des dossiers gérés (trois scripts) et la ligne `cp -r` de release.yml ne sont
+  // liées par rien d'autre que ce test. Un dossier géré absent de l'archive est protégé par la
+  // garde 1 (sans effet). Un dossier livré mais non géré s'accumulerait sur chaque poste sans
+  // jamais être nettoyé.
   const mGeres = COMMUN.match(/\$dossiersGeres = @\(([^)]*)\)/);
   assert.ok(mGeres, 'szh-common.ps1 : $dossiersGeres a changé de forme, la comparaison ne sait plus le lire');
   const dossiersGeres = mGeres[1].split(',').map((s) => s.trim().replace(/^'(.*)'$/, '$1'));
@@ -187,8 +151,8 @@ test('$dossiersGeres coïncide, dans les deux sens, avec ce que release.yml copi
 });
 
 test('la boucle de repli de bootstrap.ps1 copie les mêmes dossiers que $dossiersGeres, moissonneurs compris', () => {
-  // Un poste installé par le repli hors ligne doit recevoir tout le toolkit : sans
-  // moissonneurs, le bouton de la moisson mensuelle échouerait sur ce poste-là seulement.
+  // Un poste installé par le repli hors ligne reçoit tout le toolkit : sans moissonneurs, le
+  // bouton de la moisson mensuelle échouerait sur ce poste.
   const mGeres = COMMUN.match(/\$dossiersGeres = @\(([^)]*)\)/);
   assert.ok(mGeres, 'szh-common.ps1 : $dossiersGeres a changé de forme');
   const dossiersGeres = mGeres[1].split(',').map((s) => s.trim().replace(/^'(.*)'$/, '$1'));
@@ -199,12 +163,12 @@ test('la boucle de repli de bootstrap.ps1 copie les mêmes dossiers que $dossier
   assert.ok(dossiersGeres.indexOf('moissonneurs') !== -1, '$dossiersGeres ne connaît pas moissonneurs');
 });
 
-// ---- Le second défaut : update-launcher.ps1 sans mutex ----
+// ---- update-launcher.ps1 et le mutex ----
 
 test('update-launcher.ps1 pose le même mutex nommé qu’update.ps1, et le relâche partout', () => {
-  // Même nom par défaut ('SZH-Publishing-Update' dans New-SzhMutexPoste) : c'est ce qui fait
-  // qu'un seul verrou protège les deux scripts à la fois. -Nom n'est PAS passé ici — sinon ce
-  // serait un verrou différent de celui d'update.ps1, et la protection n'aurait plus de sens.
+  // Même nom par défaut ('SZH-Publishing-Update' dans New-SzhMutexPoste) : un seul verrou
+  // protège les deux scripts. -Nom n'est pas passé, sinon ce serait un autre verrou que celui
+  // d'update.ps1.
   assert.match(LANCEUR, /\$script:SzhMutex = New-SzhMutexPoste\r\n/);
   assert.ok(LANCEUR.indexOf('New-SzhMutexPoste -Nom') === -1,
     'le mutex du lanceur ne doit pas porter un autre nom que celui d’update.ps1');
@@ -215,20 +179,15 @@ test('update-launcher.ps1 pose le même mutex nommé qu’update.ps1, et le rel�
   const garde = LANCEUR.slice(iGarde, iGarde + 200);
   assert.match(garde, /Write-SzhLog 'check : une autre mise à jour est déjà en cours/);
   assert.match(garde, /exit 0/);
-  // Relâché avant de passer la main à la fenêtre visible : sinon update.ps1, qui prend le
-  // même verrou à son tour, le trouverait occupé par ce script-ci et sortirait aussitôt en
-  // croyant une mise à jour concurrente qui n'existe pas.
-  // Renommée depuis Start-SzhFenetreVisible : « le nom disait "visible" quand cette
-  // fonction ne savait faire que cela ; il a suivi quand elle a appris à se cacher »
-  // (commentaire de update-launcher.ps1) -- le comportement gardé ici ne change pas.
+  // Relâché avant de passer la main à la fenêtre visible : sinon update.ps1, qui prend le même
+  // verrou, le trouverait occupé et sortirait en croyant à une mise à jour concurrente.
   const corpsFenetre = corpsFonction(LANCEUR, 'Start-SzhFenetreMaj');
   const iRelache = corpsFenetre.indexOf('ReleaseMutex');
   const iLance = corpsFenetre.indexOf('Start-Process');
   assert.ok(iRelache !== -1 && iLance !== -1 && iRelache < iLance,
     'le verrou doit être relâché AVANT Start-Process, pas après');
-  // Et un filet de sûreté couvre les autres sorties (déjà à jour, renoncement de moment,
-  // erreur) : un `finally` sur le bloc principal, gardé par le même drapeau pour ne jamais
-  // relâcher deux fois un mutex déjà rendu.
+  // Un `finally` sur le bloc principal couvre les autres sorties (déjà à jour, renoncement,
+  // erreur), gardé par le même drapeau pour ne pas relâcher deux fois.
   const iFinally = LANCEUR.lastIndexOf('} finally {');
   assert.ok(iFinally !== -1, 'aucun filet de sûreté (finally) sur la passe principale');
   const filet = LANCEUR.slice(iFinally, iFinally + 500);
@@ -236,28 +195,24 @@ test('update-launcher.ps1 pose le même mutex nommé qu’update.ps1, et le rel�
   assert.match(filet, /ReleaseMutex/);
 });
 
-// ---- Les scénarios dégénérés, réellement exécutés ----
-// Windows seulement. La fonction ne dépend que de cmdlets natives (Test-Path, Get-ChildItem,
-// Remove-Item…), jamais du reste de szh-common.ps1 : elle est donc éprouvée seule, extraite
-// du VRAI texte de szh-common.ps1 (celui que les trois scripts appellent, prouvé ci-dessus)
-// et évaluée dans des dossiers de travail jetables. Rien n'est jamais touché sous
-// C:\ProgramData\SZH.
+// ---- Les scénarios dégénérés, exécutés ----
+// Windows seulement. La fonction n'utilise que des cmdlets natives (Test-Path, Get-ChildItem,
+// Remove-Item…) : elle est extraite du texte de szh-common.ps1 et exécutée seule, dans des
+// dossiers jetables. Rien n'est touché sous C:\ProgramData\SZH.
 
 const { POWERSHELL, sansPowerShell } = require('./gardes');
 
 const CORPS_FONCTION = corpsFonction(COMMUN, 'Remove-SzhToolkitOrphelins');
 
-// Les blocs éprouvés ici sont extraits mot pour mot des vrais .ps1, donc portent leurs
-// messages en français accentué. Windows PowerShell 5.1 lit un script SANS BOM avec la page
-// de code ANSI du poste, pas en UTF-8 : sans ce préfixe, « à », « é » ressortent en mojibame
-// une fois relus (constaté : « une autre mise Ã  jour... »). Les .ps1 du dépôt, eux, portent
-// déjà ce BOM ; celui qu'on écrit ici, fraîchement, doit le porter aussi.
+// Les blocs extraits des .ps1 portent des messages en français accentué. Windows PowerShell
+// 5.1 lit un script sans BOM dans la page de code ANSI du poste : sans ce préfixe, les accents
+// ressortent en mojibake (« une autre mise Ã  jour... »).
 function ecrirePs1(chemin, contenu) {
   fs.writeFileSync(chemin, '﻿' + contenu, 'utf8');
 }
 
-// Un scénario = deux arbres (toolkit, extrait) ; le pilote appelle la fonction UNE fois et
-// rend { retires, avertissements } tel quel, plus l'état du toolkit après coup.
+// Un scénario = deux arbres (toolkit, extrait). Le pilote appelle la fonction une fois et
+// rend { retires, avertissements }, plus l'état du toolkit après coup.
 const PILOTE = [
   "\$ErrorActionPreference = 'Stop'",
   CORPS_FONCTION,
@@ -286,15 +241,15 @@ const PILOTE = [
   '  $resultats[$s.nom] = [ordered]@{',
   '    retires = @($r.retires); avertissements = @($r.avertissements); restants = @($restants) }',
   '}',
-  // Sans BOM : Set-Content -Encoding UTF8 en poserait un sous PowerShell 5.1, et Node ne
-  // digère pas un fichier JSON qui commence par ce caractère.
+  // Sans BOM : Set-Content -Encoding UTF8 en poserait un sous PowerShell 5.1, et Node ne lit
+  // pas un JSON qui commence par ce caractère.
   '[System.IO.File]::WriteAllText($sortie, ($resultats | ConvertTo-Json -Depth 6), (New-Object System.Text.UTF8Encoding($false)))'
 ].join('\r\n') + '\r\n';
 
 const SCENARIOS = [
   {
-    // Cas nominal : un fichier retiré du dépôt doit toujours être écarté. Sans ce test, une
-    // garde trop prudente pourrait « corriger » le défaut en ne nettoyant plus jamais rien.
+    // Cas nominal : un fichier retiré du dépôt est écarté. Une garde trop prudente qui ne
+    // nettoierait plus rien échouerait ici.
     nom: 'nominal',
     toolkit: [
       'pipeline/garde.md', 'pipeline/vieux-filtre.py',
@@ -309,8 +264,7 @@ const SCENARIOS = [
     ]
   },
   {
-    // Le défaut d'origine, rejoué tel qu'observé : pipeline absent de l'archive, windows
-    // présent. AVANT le correctif, ceci vidait tout pipeline.
+    // pipeline absent de l'archive, windows présent.
     nom: 'dossier-manquant',
     toolkit: [
       'pipeline/a.py', 'pipeline/b.py', 'pipeline/c.py',
@@ -324,8 +278,7 @@ const SCENARIOS = [
     ]
   },
   {
-    // Le second défaut d'origine : extraction vide (zip qui « réussit » sans rien contenir).
-    // AVANT le correctif, ceci vidait les cinq dossiers gérés.
+    // Extraction vide (zip qui réussit sans rien contenir).
     nom: 'extraction-vide',
     toolkit: [
       'pipeline/a.py', 'pipeline/b.py',
@@ -334,10 +287,9 @@ const SCENARIOS = [
     extrait: []   // ni VERSION, ni aucun dossier
   },
   {
-    // Une archive AUTHENTIQUE mais incomplète : le dossier existe dans l'extraction (donc les
-    // gardes 1 et 2 passent toutes deux) mais il est vide — le scénario « dossier source vidé
-    // par erreur avant le `cp -r` de release.yml ». windows, lui, a un nettoyage normal (un
-    // seul orphelin sur cinq) qui doit passer malgré la garde qui bloque pipeline à côté.
+    // Archive authentique mais incomplète : le dossier existe dans l'extraction (gardes 1 et
+    // 2 passent) mais il est vide. windows a un nettoyage normal (un orphelin sur cinq) qui
+    // doit passer malgré la garde qui bloque pipeline.
     nom: 'dossier-creux',
     toolkit: [
       'pipeline/f1.py', 'pipeline/f2.py', 'pipeline/f3.py', 'pipeline/f4.py', 'pipeline/f5.py',
@@ -347,11 +299,9 @@ const SCENARIOS = [
     ],
     extrait: [
       'VERSION',
-      // pipeline/.keep : force la création du dossier « pipeline » dans l'extraction sans
-      // qu'aucun des dix fichiers réels de pipeline n'y trouve son pendant — c'est le
-      // dossier CREUX (existe, mais rien à quoi comparer), à distinguer du dossier ABSENT
-      // du scénario précédent. Sans ce fichier, le dossier ne serait même pas créé et on
-      // testerait la garde 1 (absence) au lieu de la garde 3 (proportion).
+      // pipeline/.keep crée le dossier « pipeline » dans l'extraction sans aucun des dix
+      // fichiers de pipeline : dossier creux (garde 3), distinct du dossier absent (garde 1)
+      // du scénario précédent.
       'pipeline/.keep',
       'windows/f1.ps1', 'windows/f2.ps1', 'windows/f3.ps1', 'windows/f4.ps1',
       'vscodium-user/garde.md', 'revue-template/garde.md', 'livre-template/garde.md'
@@ -385,7 +335,7 @@ test('le cas nominal continue de nettoyer : un fichier retiré du dépôt est é
 
 test('dossier absent de l’archive : ce dossier n’est pas touché, les autres sont nettoyés normalement', { skip: sansPowerShell }, () => {
   const s = bilan.r['dossier-manquant'];
-  // Le défaut d'origine : les trois fichiers de pipeline auraient tous disparu.
+  // Les trois fichiers de pipeline sont toujours là.
   assert.ok(s.restants.indexOf('pipeline/a.py') !== -1, 'pipeline a été vidé malgré la garde par dossier');
   assert.ok(s.restants.indexOf('pipeline/b.py') !== -1);
   assert.ok(s.restants.indexOf('pipeline/c.py') !== -1);
@@ -404,24 +354,22 @@ test('extraction vide : le nettoyage entier s’abstient, rien n’est retiré n
 
 test('dossier présent mais creux dans l’archive : la garde de proportion protège le dossier, sans bloquer les autres', { skip: sansPowerShell }, () => {
   const s = bilan.r['dossier-creux'];
-  // Les dix fichiers de pipeline auraient tous été des « candidats orphelins » : la garde de
-  // proportion doit les épargner tous, alors même que le dossier existe bien dans l’archive.
+  // Les dix fichiers de pipeline seraient candidats : la garde de proportion les épargne,
+  // alors que le dossier existe dans l'archive.
   for (let i = 1; i <= 10; i++) {
     assert.ok(s.restants.indexOf('pipeline/f' + i + '.py') !== -1,
       'pipeline/f' + i + '.py a été retiré malgré la garde de proportion');
   }
-  // windows, dont un seul fichier sur cinq est orphelin (20 %, sous le seuil), doit rester
-  // nettoyé normalement : la garde ne doit pas se répercuter sur un dossier sain.
+  // windows, avec un orphelin sur cinq (20 %, sous le seuil), est nettoyé normalement.
   assert.deepStrictEqual(s.retires, ['windows\\vieux.ps1']);
   assert.ok(s.avertissements.some((a) => a.indexOf('proportion') !== -1 && a.indexOf('pipeline') !== -1),
     'la garde de proportion doit se journaliser explicitement');
 });
 
-// ---- Le mutex du lanceur, réellement exécuté ----
-// On ne rejoue pas update-launcher.ps1 en entier (il appellerait Get-SzhManifest, donc le
-// réseau) : on éprouve le VRAI bloc d'acquisition, extrait tel quel du fichier, avec son nom
-// de mutex substitué par un nom d'essai — sinon le test prendrait le verrou RÉEL du poste,
-// celui qu'update.ps1 utilise en production.
+// ---- Le mutex du lanceur, exécuté ----
+// update-launcher.ps1 entier appellerait Get-SzhManifest, donc le réseau : on exécute le
+// bloc d'acquisition extrait du fichier, avec un nom de mutex d'essai pour ne pas prendre le
+// verrou réel du poste.
 
 const BLOC_MUTEX = (function () {
   const iDebut = LANCEUR.indexOf('$script:SzhMutex = New-SzhMutexPoste');
@@ -436,9 +384,9 @@ const bilanMutex = (function () {
   const travail = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-mutex-lanceur-'));
   const nomEssai = 'SZH-Essai-Lanceur-' + process.pid;
 
-  // Le titulaire : prend le verrou d'essai et le garde jusqu'à ce qu'un fichier signal
-  // apparaisse, en écrivant lui-même un marqueur dès qu'il l'a obtenu (pour que le test
-  // n'interroge le lanceur qu'une fois le verrou vraiment posé).
+  // Le titulaire prend le verrou d'essai et le garde jusqu'à l'apparition d'un fichier
+  // signal ; il écrit un marqueur dès qu'il l'a obtenu, pour que le test n'interroge le
+  // lanceur qu'une fois le verrou posé.
   const titulaire = [
     '. "' + COMMUN_PS1 + '"',
     "$nomEssai = '" + nomEssai + "'",
@@ -449,8 +397,8 @@ const bilanMutex = (function () {
     '$m.ReleaseMutex()'
   ].join('\r\n') + '\r\n';
 
-  // L'essai : exactement le bloc du lanceur (nom d'essai substitué), suivi d'un marqueur posé
-  // seulement si l'exécution est arrivée jusque-là — donc jamais quand le bloc a fait `exit 0`.
+  // L'essai : le bloc du lanceur (nom d'essai substitué), suivi d'un marqueur posé seulement
+  // si l'exécution arrive jusque-là, donc pas quand le bloc fait `exit 0`.
   const essaiVerrouille = [
     "$ErrorActionPreference = 'Stop'",
     '. "' + COMMUN_PS1 + '"',
@@ -469,8 +417,8 @@ const bilanMutex = (function () {
   const procTitulaire = spawn(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', pTitulaire],
     { windowsHide: true });
 
-  // Pause synchrone sans sous-processus : ce bloc entier tourne hors d'un test async (une
-  // IIFE, comme dans installation.test.js et rythme-maj.test.js), donc pas d'await possible.
+  // Pause synchrone sans sous-processus : ce bloc tourne hors d'un test async (une IIFE,
+  // comme dans installation.test.js et rythme-maj.test.js), sans await possible.
   const dormirSync = (ms) => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); };
 
   const attendre = (fichier, delaiMs) => {
@@ -496,7 +444,7 @@ const bilanMutex = (function () {
   fs.writeFileSync(path.join(travail, 'libere.txt'), 'ok');
   procTitulaire.kill();
 
-  // Une fois relâché : le même bloc doit maintenant acquérir le verrou et continuer.
+  // Une fois relâché, le même bloc acquiert le verrou et continue.
   const runLibre = spawnSync(POWERSHELL,
     ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', pEssai],
     { encoding: 'utf8', windowsHide: true, timeout: 30000 });

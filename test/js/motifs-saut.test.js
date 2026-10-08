@@ -1,10 +1,8 @@
 'use strict';
-// Preuve que chaque assistant `sauter.*` (test/js/gardes.js) écrit un motif que la porte
-// (test/js/verifier-tap.js) admet réellement sur AU MOINS UN runner, et que la table
-// partagée (test/js/motifs-saut.js) elle-même ne se contredit pas. Sans ce fichier, un
-// assistant et la table qu'il est censé respecter pourraient diverger sans qu'aucun test ne
-// le remarque avant le prochain run GitHub — exactement ce qui a coûté trois poses du tag à
-// la 1.2.0.
+// Vérifie que chaque assistant `sauter.*` (test/js/gardes.js) écrit un motif que
+// test/js/verifier-tap.js admet sur au moins un runner, et que la table partagée
+// (test/js/motifs-saut.js) ne se contredit pas. Sans ce fichier, un écart ne se verrait qu'à
+// l'exécution suivante sur GitHub.
 const test = require('node:test');
 const assert = require('node:assert');
 const { MOTIFS, ADMIS } = require('./motifs-saut');
@@ -54,10 +52,9 @@ test('gardes.sauter : exactement les neuf assistants attendus', () => {
 
 // ---- ce que chaque assistant écrit, vraiment reconnu par une famille ---------------------
 
-// Capture le motif que l'assistant passerait à t.skip(...), ou signale qu'il a refusé de
-// sauter (garde-fou _garantir : l'outil est en fait présent sur CE poste). Les deux issues
-// sont normales et attendues selon l'outillage du poste qui fait tourner la suite — le test
-// ne suppose jamais lequel des deux.
+// Capture le motif que l'assistant passerait à t.skip(...), ou note qu'il a refusé de sauter
+// (garde-fou _garantir : l'outil est présent sur ce poste). Les deux issues sont normales,
+// selon l'outillage du poste ; le test ne suppose ni l'une ni l'autre.
 function essayer(fn) {
   let motif;
   const t = { skip(m) { motif = m; } };
@@ -74,9 +71,8 @@ function admisQuelquePart(famille) {
   return Object.values(ADMIS).some((familles) => familles.includes(famille));
 }
 
-// Un motif capturé doit contenir un fragment de SA famille, et cette famille doit être
-// admise par la porte sur au moins un runner — sans quoi produire ce motif ne servirait à
-// rien : aucun runner ne le laisserait jamais passer.
+// Un motif capturé contient un fragment de sa famille, et cette famille est admise sur au
+// moins un runner : sinon aucun runner ne le laisserait passer.
 function verifierMotifFamille(famille, motif) {
   const fragments = MOTIFS[famille];
   assert.ok(fragments.some((f) => motif.includes(f)),
@@ -98,11 +94,9 @@ test('sauter.eleve(t) : motif de la famille eleve, toujours (pas de détection c
   verifierMotifFamille('eleve', r.motif);
 });
 
-// Pour les assistants adossés à une détection centralisée (gardes.js calcule sansX une
-// seule fois par processus) : sur CE poste, l'outil peut être présent (l'assistant refuse
-// alors de sauter — le garde-fou fonctionne) ou absent (l'assistant produit le motif admis).
-// Les deux branches sont couvertes selon ce que le poste qui exécute la suite possède — voir
-// le rapport de livraison pour l'inventaire mesuré sur le poste de développement.
+// Assistants adossés à une détection centralisée (gardes.js calcule sansX une fois par
+// processus) : sur ce poste, l'outil peut être présent (l'assistant refuse de sauter) ou
+// absent (l'assistant produit le motif admis). La branche couverte dépend du poste.
 const CENTRALISES = [
   ['wsl', () => gardes.sauter.wsl.bind(gardes.sauter)],
   ['pandoc', () => gardes.sauter.pandoc.bind(gardes.sauter)],
@@ -140,9 +134,8 @@ test('sauter.pliage(t) : motif admis si le pandoc de ce poste plie mal les accen
 
 test('un motif produit par sauter.corpus est bien admis PAR verifier-tap.js sur les trois runners', () => {
   const r = essayer((t) => gardes.sauter.corpus(t, 'tmp/corpus-fictif'));
-  // Neuf lignes qui passent avant le SKIP : sans elles, un seul test sauté sur un seul test
-  // déclencherait la règle « plus de la moitié de la suite manque », qui n'a rien à voir
-  // avec ce que ce contrôle éprouve ici.
+  // Neuf lignes qui passent avant le SKIP : sinon un seul test, sauté, déclencherait la règle
+  // « plus de la moitié de la suite manque », sans rapport avec ce contrôle.
   const passent = Array.from({ length: 9 }, (_v, i) => 'ok ' + (i + 1) + ' - a' + i).join('\n');
   const tapComplet = passent + '\nok 10 - x # SKIP ' + r.motif
     + '\n1..10\n# tests 10\n# pass 9\n# fail 0\n# cancelled 0\n# skipped 1\n';

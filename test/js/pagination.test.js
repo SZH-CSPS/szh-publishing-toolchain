@@ -1,38 +1,28 @@
-// pipeline/pagination.py : la pagination continue d'un numéro (folios de départ par
-// article, feuilles .szh-folio.css passées à WeasyPrint en feuille utilisateur).
+// Tests de pipeline/pagination.py : la pagination continue d'un numéro (folio de départ de
+// chaque article, feuilles .szh-folio.css passées à WeasyPrint comme feuille utilisateur).
 //
-//   node --test test/js/pagination.test.js
-//
-// Ce que ce fichier tient :
-//   1. les départs cumulés (dépendent de compter_pages(), donc de PDF réels — voir
-//      fabriquerPdf ci-dessous) ;
-//   2. le contenu de la feuille écrite pour un article qui ne part pas à 1 ;
-//   3. l'idempotence d'un second `rafraichir` sans rien changer : la feuille est un
-//      prérequis make du PDF, la réécrire à l'identique referait tous les PDF du numéro ;
-//   4. la péremption, aux trois positions possibles dans l'ordre — jamais avant ;
-//   5. `inconnus` (article sans PDF) et le refus en code 2 de `rafraichir`, sans qu'aucune
-//      feuille ne soit écrite ;
+// Contrôles :
+//   1. les départs cumulés (par compter_pages(), donc sur des PDF, voir fabriquerPdf) ;
+//   2. le contenu de la feuille d'un article qui ne commence pas à 1 ;
+//   3. un second `rafraichir` sans changement ne réécrit rien : la feuille est un prérequis
+//      make du PDF, la réécrire referait tous les PDF du numéro ;
+//   4. la péremption commence au premier article qui diverge, quelle que soit sa position ;
+//   5. `inconnus` (article sans PDF) et le refus en code 2 de `rafraichir`, sans feuille
+//      écrite ;
 //   6. `enregistre`, avant puis après un `rafraichir` ;
-//   7. `feuilles`, reconstruite depuis .szh-pagination.json seul, identique au caractère
-//      près, et son passage silencieux quand ce fichier est absent ;
-//   8. le premier article (départ 1) reçoit lui aussi une feuille ;
-//   9. UN cas avec WeasyPrint réel (WSL) : la feuille produite par pagination.py décale
-//      vraiment les folios imprimés, pas seulement le JSON qui les annonce.
-//  10. un article INSÉRÉ dans l'ordre : les suivants glissent sans qu'aucun nombre de
-//      pages ne change, et doivent tous être signalés ;
-//  10 bis. deux articles CONNUS permutés : le seul cas que la comparaison des départs
-//      attrape toute seule — aucun slug neuf, aucune longueur changée ;
-//  11. après un `make clean` : plus un seul PDF, et pourtant ni départ perdu ni fausse
-//      alerte.
-//  12. `rafraichir` exige --ordre, et `etat` sans lui relit l'ordre de la dernière
+//   7. `feuilles`, reconstruites depuis .szh-pagination.json seul, identiques au caractère
+//      près, et sans effet quand ce fichier est absent ;
+//   8. le premier article (départ 1) reçoit aussi une feuille ;
+//   9. avec WeasyPrint dans la WSL : la feuille décale les folios imprimés ;
+//  10. un article inséré : les suivants glissent sans changer de longueur, et sont tous
+//      signalés ;
+//  10 bis. deux articles connus permutés : seule la comparaison des départs le voit ;
+//  11. après un `make clean` : aucun PDF, mais ni départ perdu ni fausse alerte ;
+//  12. `rafraichir` exige --ordre, et `etat` sans --ordre relit l'ordre de la dernière
 //      pagination : seul le cockpit connaît l'ordre de lecture d'un numéro.
 //
-// Les PDF de test ne sont jamais compilés par WeasyPrint (cas 1 à 8) : ce sont des PDF
-// minimaux écrits à la main (un objet /Type /Pages /Count N et N objets /Type /Page, table
-// xref non compressée). Vérifié avant d'en dépendre : pypdf 6.15.0 (celui de ce poste,
-// `python -c "import pypdf"`) les relit avec le bon nombre de pages, et pipeline/pagination.py
-// lui-même (compter_pages) les compte correctement — la première assertion du fichier
-// (départs cumulés) l'exerce déjà.
+// Les cas 1 à 8 utilisent des PDF minimaux écrits à la main (un /Type /Pages /Count N et N
+// /Type /Page, table xref non compressée), que pypdf et compter_pages() comptent correctement.
 'use strict';
 
 const test = require('node:test');
@@ -46,17 +36,16 @@ const { python, pythonSortie, sansPython, sauter, sansPandocWsl } = require('./g
 const RACINE = path.resolve(__dirname, '..', '..');
 const PAGINATION = path.join(RACINE, 'pipeline', 'pagination.py');
 
-// Toujours forcé : sys.stdout de python est en cp1252 par défaut sur ce poste (mesuré,
-// `python -c "import sys; print(sys.stdout.encoding)"`), qui corromprait tout accent des
-// messages d'erreur relus ensuite comme de l'UTF-8 par Node.
+// sys.stdout de Python est en cp1252 par défaut sous Windows : les accents des messages
+// d'erreur, relus en UTF-8 par Node, seraient corrompus.
 const ENV_UTF8 = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
 
 function dossierJetable(prefixe) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefixe || 'szh-pagination-'));
 }
 
-// Un PDF minimal, non compressé, dont pypdf lit le vrai nombre de pages — jamais une
-// compilation WeasyPrint (trop lente pour huit cas qui ne regardent que le comptage).
+// Un PDF minimal, non compressé, dont pypdf lit le nombre de pages. Plus rapide qu'une
+// compilation WeasyPrint pour des cas qui ne regardent que le comptage.
 function fabriquerPdf(chemin, nPages) {
   const objets = ['<< /Type /Catalog /Pages 2 0 R >>'];
   const enfants = Array.from({ length: nPages }, (_, i) => (3 + i) + ' 0 R').join(' ');
@@ -103,8 +92,8 @@ function etat(base, ordre) { return executer('etat', ['--ordre', ordre.join(',')
 function rafraichir(base, ordre) { return executer('rafraichir', ['--ordre', ordre.join(',')], base); }
 function feuilles(base) { return executer('feuilles', [], base); }
 
-// stdout est toujours une seule ligne JSON (etat/rafraichir/feuilles impriment un seul
-// json.dumps) : une deuxième ligne dénoncerait une sortie de debug oubliée dans le script.
+// stdout est toujours une seule ligne JSON (un seul json.dumps) : une deuxième ligne
+// trahirait une sortie de débogage oubliée.
 function sortieJson(r) {
   assert.strictEqual(r.status, 0, 'sortie inattendue (' + r.status + ') : ' + r.stderr);
   const lignes = r.stdout.split('\n').filter((l) => l.length > 0);
@@ -146,9 +135,8 @@ test('pagination : la feuille du deuxième article porte counter-reset: page 3',
     const obj = sortieJson(rafraichir(base, ordre));
     assert.deepStrictEqual(obj.ecrites.slice().sort(), ordre.slice().sort());
     const contenu = fs.readFileSync(cheminFolio(base, 'a2'), 'utf8');
-    // Tolérant aux espaces : ce n'est pas au script de figer l'espacement, seulement la
-    // valeur — départ lui-même, pas départ − 1 (mesuré sur WeasyPrint, voir l'en-tête du
-    // script).
+    // Seule la valeur compte, pas l'espacement : le départ lui-même, pas départ − 1 (voir
+    // l'en-tête du script).
     assert.match(contenu, /counter-reset:\s*page\s+3\s*;/);
     assert.match(contenu, /@page\s*:first/);
   } finally {
@@ -169,8 +157,8 @@ test('pagination : un second rafraichir identique rend ecrites: [] et ne touche 
       const jsonAvant = fs.statSync(cheminJsonPagination(base)).mtimeMs;
       dormirSync(20); // rendrait visible un mtime qui bougerait à tort
       const obj = sortieJson(rafraichir(base, ordre));
-      // Piège que ce cas protège : la feuille est un prérequis make du PDF, la réécrire à
-      // l'identique referait tous les PDF du numéro à chaque rafraîchissement.
+      // La feuille est un prérequis make du PDF : la réécrire à l'identique referait tous les
+      // PDF du numéro.
       assert.deepStrictEqual(obj.ecrites, []);
       const apres = ordre.map((slug) => fs.statSync(cheminFolio(base, slug)).mtimeMs);
       assert.deepStrictEqual(apres, avant, 'au moins une feuille a été réécrite sans changement de contenu');
@@ -181,7 +169,7 @@ test('pagination : un second rafraichir identique rend ecrites: [] et ne touche 
   });
 
 // ---------------------------------------------------------------------------------------
-// 4. Péremption aux trois positions — jamais un article avant celui qui diverge
+// 4. Péremption aux trois positions, jamais avant l'article qui diverge
 // ---------------------------------------------------------------------------------------
 
 test('pagination : la péremption démarre au premier article dont les pages divergent, jamais avant',
@@ -262,9 +250,8 @@ test('pagination : feuilles régénère des feuilles identiques au caractère pr
       const obj = sortieJson(feuilles(base));
       assert.deepStrictEqual(obj.ecrites.slice().sort(), ordre.slice().sort());
       assert.strictEqual(obj.articles, ordre.length);
-      // .szh-pagination.json seul a suffi : aucun PDF n'a été regardé pour ce résultat —
-      // le cas d'usage réel est make clean, qui efface out/ (donc les feuilles) sans
-      // toucher .szh-pagination.json.
+      // .szh-pagination.json a suffi, sans PDF : c'est le cas de make clean, qui efface out/
+      // (donc les feuilles) sans toucher .szh-pagination.json.
       for (const slug of ordre) {
         assert.strictEqual(fs.readFileSync(cheminFolio(base, slug), 'utf8'), avant[slug],
           'feuille de ' + slug + ' différente après reconstruction');
@@ -282,7 +269,7 @@ test('pagination : feuilles sort en code 0 sans rien écrire quand .szh-paginati
       assert.strictEqual(r.status, 0);
       const obj = JSON.parse(r.stdout.trim());
       assert.deepStrictEqual(obj.ecrites, []);
-      // Numéro jamais paginé : cas normal, pas une panne — rien à créer.
+      // Numéro jamais paginé : cas normal, rien à créer.
       assert.deepStrictEqual(fs.readdirSync(base), []);
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
@@ -298,9 +285,8 @@ test('pagination : le premier article (départ 1) reçoit lui aussi une feuille'
   try {
     const obj = sortieJson(rafraichir(base, ordre));
     assert.ok(obj.ecrites.includes('a1'), 'le premier article doit figurer parmi les feuilles écrites');
-    // Retirer sa feuille ne ramènerait pas le PDF au folio 1 : make ne verrait alors plus
-    // aucun prérequis avoir bougé pour ce PDF (mesuré). « Départ 1, donc pas besoin de
-    // feuille » serait un raccourci qui laisse le folio dériver en silence.
+      // Sans sa feuille, make ne verrait aucun prérequis changer pour ce PDF, et son folio
+      // pourrait dériver sans que rien ne le signale.
     const contenu = fs.readFileSync(cheminFolio(base, 'a1'), 'utf8');
     assert.match(contenu, /counter-reset:\s*page\s+1\s*;/);
   } finally {
@@ -309,7 +295,7 @@ test('pagination : le premier article (départ 1) reçoit lui aussi une feuille'
 });
 
 // ---------------------------------------------------------------------------------------
-// 9. Avec WSL : la feuille produite par le script décale vraiment les folios imprimés
+// 9. Avec WSL : la feuille produite décale les folios imprimés
 // ---------------------------------------------------------------------------------------
 
 const DISTRO = 'SZH-Publishing';
@@ -326,9 +312,8 @@ function wsl(args) {
     { encoding: 'utf8', windowsHide: true, timeout: 120000 });
 }
 
-// Patron minimal de la maquette réelle (pipeline/styles/print.css) : pied courant en
-// position: running(), folio en ::after { content: counter(page) }, trois blocs séparés
-// par un saut de page — juste assez pour lire trois folios consécutifs.
+// Réduction de la maquette (pipeline/styles/print.css) : pied courant en position: running(),
+// folio en ::after { content: counter(page) }, trois blocs séparés par un saut de page.
 const HTML_PATRON = [
   '<!doctype html><html><head><meta charset="utf-8"><style>',
   '@page { size: 100mm 100mm; margin: 15mm; @bottom-center { content: element(piedCourant); } }',
@@ -343,9 +328,9 @@ const HTML_PATRON = [
   '</body></html>'
 ].join('\n');
 
-// Lit, dans le venv WeasyPrint (seul python de la distro à porter pypdf — voir l'en-tête de
-// pagination.py), le dernier mot non vide de chaque page : c'est le folio, `extract_text()`
-// rendant "Section un\n1".
+// Lit, dans le venv WeasyPrint (seul Python de la distro avec pypdf, voir l'en-tête de
+// pagination.py), le dernier mot non vide de chaque page : le folio, `extract_text()` rendant
+// "Section un\n1".
 const EXTRAIRE_FOLIOS = [
   'import json, sys',
   'from pypdf import PdfReader',
@@ -364,8 +349,8 @@ test('pagination + WeasyPrint (WSL) : une feuille produite par le script décale
   (t) => {
     if (sansPandocWsl) { sauter.wsl(t); return; }
 
-    // La feuille vient réellement de pagination.py : un numéro à deux articles (10 puis 1
-    // page), pour que le second parte au folio 11.
+    // La feuille vient de pagination.py : un numéro à deux articles (10 puis 1 page), le
+    // second commençant au folio 11.
     const numero = dossierJetable('szh-pagination-wsl-numero-');
     const travail = dossierJetable('szh-pagination-wsl-html-');
     try {
@@ -408,9 +393,9 @@ test('pagination + WeasyPrint (WSL) : une feuille produite par le script décale
 // 10. Un article inséré dans l'ordre
 // ---------------------------------------------------------------------------------------
 
-// Le piège : mesurer la péremption au seul nombre de pages laisse passer l'insertion, le
-// retrait et le déplacement — les folios des suivants glissent alors qu'aucun article n'a
-// changé de longueur. C'est pour ce cas que l'état retient aussi le départ de chacun.
+// Compter seulement les pages laisse passer l'insertion, le retrait et le déplacement : les
+// folios des suivants glissent sans qu'aucun article change de longueur. L'état retient donc
+// aussi le départ de chacun.
 test('pagination : un article inséré périme les suivants, jamais celui qui le précède',
   { skip: sansPython }, () => {
     const { base, ordre } = preparerNumero('szh-pagination-insere-', [2, 3, 1]);
@@ -435,11 +420,10 @@ test('pagination : un article inséré périme les suivants, jamais celui qui le
 // 11. Après un `make clean`
 // ---------------------------------------------------------------------------------------
 
-// `make clean` efface out/, donc les PDF ET les feuilles de folio ; .szh-pagination.json,
-// lui, vit dans le dossier du numéro et survit. Deux façons de rater ce cas, toutes deux
-// mesurées sur une vraie mini-revue : compter un article non compilé pour zéro page, et le
-// numéro entier se déclare périmé alors que rien n'a changé ; ne pas savoir rebâtir les
-// feuilles sans les PDF, et tous les folios repartent à 1 en silence à la recompilation.
+// `make clean` efface out/ (PDF et feuilles de folio) ; .szh-pagination.json, dans le
+// dossier du numéro, reste. Deux erreurs possibles : compter un article non compilé pour zéro
+// page (tout le numéro se dit périmé), ou ne pas savoir rebâtir les feuilles sans les PDF
+// (les folios repartent à 1 à la recompilation).
 test('pagination : après un clean, les départs tiennent et les feuilles se rebâtissent',
   { skip: sansPython }, () => {
     const { base, ordre } = preparerNumero('szh-pagination-clean-', [2, 3, 1]);
@@ -467,11 +451,9 @@ test('pagination : après un clean, les départs tiennent et les feuilles se reb
 // 10 bis. Deux articles connus, permutés
 // ---------------------------------------------------------------------------------------
 
-// Le cas ci-dessus ne prouve pas ce qu'on croit : un article inséré est NEUF, donc absent
-// de l'état enregistré, et cette absence suffit à le dénoncer. Mesuré en sabotant le
-// script : retirer la comparaison des départs le laissait vert. Une permutation, elle, ne
-// présente que des slugs connus dont pas un n'a changé de longueur — seul le départ bouge,
-// et c'est le seul cas qui l'exige vraiment.
+// Un article inséré est neuf, absent de l'état, et cette absence suffit à le signaler. Une
+// permutation ne présente que des slugs connus de même longueur : seul le départ bouge, et
+// seule la comparaison des départs la voit.
 test('pagination : permuter deux articles connus périme le premier déplacé et la suite',
   { skip: sansPython }, () => {
     const { base, ordre } = preparerNumero('szh-pagination-permute-', [2, 3, 1]);
@@ -494,11 +476,10 @@ test('pagination : permuter deux articles connus périme le premier déplacé et
 // 12. Seul le cockpit dit l'ordre
 // ---------------------------------------------------------------------------------------
 
-// Le cockpit trie le disque par collation française et ramène en fin de numéro les articles
-// sans DOI — ceux de `articles-sans-doi`, mais aussi ceux dont le TYPE n'en reçoit pas
-// selon la configuration OJS. Une première version reconstituait l'ordre depuis
-// ausgabe.yaml et ne voyait que la clé : elle aurait paginé un agenda au milieu du numéro
-// sans rien dire. Paginer sans l'ordre du cockpit est donc refusé, pas deviné.
+// Le cockpit trie le disque par collation française et met en fin de numéro les articles
+// sans DOI : ceux de `articles-sans-doi`, et ceux dont le type n'en reçoit pas selon la
+// configuration OJS. ausgabe.yaml ne suffit pas à reconstituer cet ordre : paginer sans
+// l'ordre du cockpit est refusé.
 test('pagination : rafraichir refuse sans --ordre, en code 2, sans rien écrire',
   { skip: sansPython }, () => {
     const { base } = preparerNumero('szh-pagination-sans-ordre-', [2, 3]);
@@ -513,8 +494,8 @@ test('pagination : rafraichir refuse sans --ordre, en code 2, sans rien écrire'
     }
   });
 
-// Sans --ordre, `etat` sert au diagnostic : il relit l'ordre enregistré. Et il refuse
-// quand rien n'a jamais été paginé, plutôt que d'inventer un ordre depuis le disque.
+// Sans --ordre, `etat` sert au diagnostic : il relit l'ordre enregistré, et refuse quand rien
+// n'a jamais été paginé.
 test('pagination : etat sans --ordre relit l\'ordre de la dernière pagination',
   { skip: sansPython }, () => {
     const { base, ordre } = preparerNumero('szh-pagination-ordre-relu-', [2, 3, 1]);
@@ -522,8 +503,8 @@ test('pagination : etat sans --ordre relit l\'ordre de la dernière pagination',
       const jamais = executer('etat', [], base);
       assert.strictEqual(jamais.status, 2, 'rien d\'enregistré : refus attendu');
 
-      // Un ordre qui n'est PAS l'ordre alphabétique : s'il revient tel quel, c'est bien
-      // l'enregistrement qui a été relu, et non le disque.
+      // Un ordre non alphabétique : s'il revient tel quel, c'est l'enregistrement qui a été
+      // relu, pas le disque.
       const voulu = ['a3', 'a1', 'a2'];
       sortieJson(rafraichir(base, voulu));
       const obj = sortieJson(executer('etat', [], base));

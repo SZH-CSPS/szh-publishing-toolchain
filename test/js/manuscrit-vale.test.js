@@ -1,38 +1,27 @@
-// test/js/manuscrit-vale.test.js : le pont Vale du nettoyeur de manuscrit (article), §7 de
-// docs/ARCHITECTURE-nettoyeur-manuscrit.md. Les familles lexicales et éditoriales
-// (langage épicène, vocabulaire du handicap, casse maison, liaison et/&, citation directe,
-// nom des éditions) vivent en YAML dans pipeline/vale/styles/, portées par Vale — jamais
-// réimplémentées ici ni dans pipeline/manuscrit_regles.py, qui ne garde que le structurel
-// (voir test/js/manuscrit-regles.test.js).
+// Tests du pont Vale du nettoyeur de manuscrit (pipeline/manuscrit_vale.py, voir
+// docs/ARCHITECTURE-nettoyeur-manuscrit.md). Les règles lexicales et éditoriales (langage
+// épicène, vocabulaire du handicap, casse maison, liaison et/&, citation directe, nom des
+// éditions) sont des fichiers YAML de pipeline/vale/styles/, exécutés par Vale ;
+// pipeline/manuscrit_regles.py ne garde que le structurel.
 //
-// Ce fichier éprouve :
-//   1. la configuration Vale se charge (vale ls-config), les trois styles (CSPS,
-//      CSPS-Biblio, SZH) sont bien attachés à leurs quatre fichiers ;
-//   2. un positif et un négatif pour chacune des quatorze règles du catalogue ;
-//   3. LE PIÈGE OQLF/CSPS, nommé comme critère d'acceptation : « personne en situation de
-//      handicap » ne lève jamais rien ;
-//   4. LE FAIT QUI COMMANDE TOUT (l'inversion épicène) : chaque produit proscrit
-//      exactement le contraire de l'autre ;
-//   5. les URL et DOI ne déclenchent jamais Epicene dans le corps, alors qu'un DOI reste
-//      lisible (et donc réécrit) dans la bibliographie — le masquage est CORPS SEULEMENT ;
-//   6. extraire() rend une ligne par paragraphe et un index exact, et refuse un mélange
-//      corps/bibliographie plutôt que de rendre un index ambigu en silence ;
-//   7. analyser() rend indisponible=True proprement (jamais une exception) quand vale ne
-//      peut pas tourner — configuration cassée ou règle YAML mal formée ;
-//   8. _resoudre_vale_bin() retrouve un vale installé hors PATH (poste de développement sans
-//      sudo, ~/.local/bin) — bug mesuré le 21.09.2026 : Vale.Indisponible sur 11 manuscrits
-//      sur 11 dans un exec WSL non interactif, PATH sans ~/.local/bin.
+// Contrôles :
+//   1. la configuration Vale se charge (vale ls-config) et les trois styles (CSPS,
+//      CSPS-Biblio, SZH) sont attachés à leurs quatre fichiers ;
+//   2. un positif et un négatif pour chaque règle du catalogue ;
+//   3. « personne en situation de handicap » ne lève rien ;
+//   4. inversion épicène : chaque produit proscrit le contraire de l'autre ;
+//   5. les URL et DOI ne déclenchent pas Epicene dans le corps (masquage), alors qu'un DOI
+//      reste lisible, donc réécrit, dans la bibliographie ;
+//   6. extraire() rend une ligne par paragraphe avec un index exact, et refuse un mélange
+//      corps/bibliographie ;
+//   7. analyser() rend indisponible=True, sans exception, quand vale ne peut pas tourner
+//      (configuration cassée, règle YAML mal formée) ;
+//   8. _resoudre_vale_bin() retrouve un vale installé hors PATH (~/.local/bin, poste sans
+//      sudo) : un exec WSL non interactif n'a pas ~/.local/bin dans son PATH.
 //
-//   node --test test/js/manuscrit-vale.test.js
-//
-// Détection de vale FAITE ICI (jamais dans test/js/gardes.js, hors périmètre de ce
-// chantier) : PATH d'abord, puis wsl.exe -d SZH-Publishing en repli — même distro que
-// gardes.js. Sans vale : t.skip('vale absent'), sauf SZH_VALE_OBLIGATOIRE=1 qui transforme
-// le saut en échec, comme les autres gardes du dépôt. Le motif du saut cite volontairement
-// « wsl.exe » ET « dans la distro », les deux fragments que test/js/verifier-tap.js admet
-// déjà pour la famille `wsl` sur ubuntu ET sur windows — aucune modification de ce fichier
-// n'est donc nécessaire pour que ce test saute proprement en CI tant que vale n'y est pas
-// installé (le job `contrats` l'installe : voir .github/workflows/ci.yml).
+// vale est cherché sur le PATH, puis par wsl.exe -d SZH-Publishing. Sans vale, le test est
+// sauté, sauf avec SZH_VALE_OBLIGATOIRE=1 qui en fait un échec. Le job `contrats` de la CI
+// installe vale (.github/workflows/ci.yml).
 'use strict';
 
 const test = require('node:test');
@@ -53,8 +42,7 @@ function python(args, entree) {
 }
 
 // ---------------------------------------------------------------------------------
-// Détection de vale — PATH d'abord, wsl.exe en repli. Jamais bloquante : un délai borne
-// chaque tentative, comme gardes.js le fait pour python3.
+// Détection de vale : PATH d'abord, wsl.exe en repli. Un délai borne chaque tentative.
 
 function detecterValeSurPath() {
   try {
@@ -70,8 +58,8 @@ function detecterValeSurWsl() {
   const wslExe = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'wsl.exe');
   const exe = fs.existsSync(wslExe) ? wslExe : 'wsl.exe';
   try {
-    // bash -lc : un poste de développement sans sudo installe vale dans ~/.local/bin, qui
-    // n'entre sur le PATH que via .profile (jamais sourcé par une commande `wsl -- ...` nue).
+    // bash -lc : sans sudo, vale s'installe dans ~/.local/bin, qui n'entre sur le PATH que
+    // par .profile, non lu par une commande `wsl -- ...` nue.
     const r = cp.spawnSync(exe, ['-d', DISTRO, '--', 'bash', '-lc', 'vale --version'],
       { encoding: 'utf8', timeout: 15000, windowsHide: true });
     return !r.error && r.status === 0 && /vale version/i.test(String(r.stdout || ''));
@@ -89,18 +77,14 @@ function exiger(variable, motif) {
   }
   return motif;
 }
-// Motif de la famille `vale` (test/js/motifs-saut.js), admise sur windows et poste,
-// refusée sur ubuntu (le job `contrats` y installe vale et pose SZH_VALE_OBLIGATOIRE=1) —
-// avant cette famille, ce motif se déguisait en `wsl` (« dans la distro », « wsl.exe »)
-// pour passer la porte : un motif qu'on peut mal écrire, exactement ce que la famille
-// dédiée existe pour éviter.
+// Motif de la famille `vale` (test/js/motifs-saut.js) : admise sur windows et sur le poste,
+// refusée sur ubuntu, où le job `contrats` installe vale et pose SZH_VALE_OBLIGATOIRE=1.
 const sansVale = exiger('SZH_VALE_OBLIGATOIRE',
   _valeOk ? false : 'vale absent (ni sur le PATH, ni dans la distro ' + DISTRO
     + ' via wsl.exe)');
 
 // ---------------------------------------------------------------------------------
-// Appels à manuscrit_vale.py — jamais d'import direct depuis Node (même patron que
-// manuscrit_regles.py) : trois modes CLI, JSON sur stdin/stdout.
+// Appels à manuscrit_vale.py par ses trois modes CLI, JSON sur stdin/stdout.
 
 function analyser(paragraphesCorps, paragraphesBiblio, langue) {
   const r = python([MANUSCRIT_VALE, '--analyser'], JSON.stringify({
@@ -133,14 +117,13 @@ function extraire(paragraphes, langue) {
 }
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°1 — la configuration Vale se charge : les trois styles sont attachés à leurs
-// quatre fichiers, sans erreur de configuration.
+// Contrôle n°1 : la configuration Vale se charge, les trois styles sont attachés à leurs
+// quatre fichiers.
 //
-// Sabotage minimal : dans pipeline/vale/.vale.ini, retirer l'étoile en tête d'une section
-// (`[*corps-fr.txt]` -> `[corps-fr.txt]`) — mesuré le 18.09.2026 (Vale 3.22.0) : un nom de
-// fichier littéral, sans caractère générique, ne déclenche JAMAIS aucune règle. La
-// deuxième assertion du contrôle n°2 sur CSPS.Epicene.FormesContractees rougirait alors
-// (aucune alerte au lieu d'une).
+// Sabotage : dans pipeline/vale/.vale.ini, retirer l'étoile en tête d'une section
+// (`[*corps-fr.txt]` -> `[corps-fr.txt]`). Un nom de fichier sans caractère générique ne
+// déclenche aucune règle (Vale 3.22) : le contrôle n°2 sur CSPS.Epicene.FormesContractees
+// rougit.
 
 test('la configuration Vale se charge : CSPS, CSPS-Biblio et SZH sont attachés',
   { skip: sansVale }, () => {
@@ -151,8 +134,7 @@ test('la configuration Vale se charge : CSPS, CSPS-Biblio et SZH sont attachés'
     if (detecterValeSurPath()) {
       r = cp.spawnSync('vale', ['--config', cheminIni, 'ls-config'], { encoding: 'utf8' });
     } else {
-      // wslpath : conversion du chemin Windows, même piège que pipeline/manuscrit_vale.py
-      // (wsl.exe avale les antislashs d'un argument en tableau).
+      // wslpath : wsl.exe avale les barres inverses d'un argument en tableau.
       const versWsl = (c) => cp.spawnSync(exe, ['-d', DISTRO, '--', 'wslpath', '-a',
         c.replace(/\\/g, '/')], { encoding: 'utf8' }).stdout.trim();
       r = cp.spawnSync(exe, ['-d', DISTRO, '--', 'bash', '-lc',
@@ -169,13 +151,8 @@ test('la configuration Vale se charge : CSPS, CSPS-Biblio et SZH sont attachés'
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°2 — un positif et un négatif pour chacune des vingt règles du catalogue (les six
-// dernières ajoutées lors de la passe du 21.09.2026 : HandicapPersonne, Forme.
-// AbreviationHorsParentheses côté français ; GenerischesMaskulinum, WoertlichesZitatSeite,
-// UndInKlammern, KaufmannsUndAusserhalbKlammern côté allemand). Chaque cas nomme la fonction
-// d'analyse (corps/biblio) et la langue, comme le fait le contexte réel. Les sabotages
-// minimaux sont documentés dans le rapport (une ligne YAML par règle), pas ici : les répéter
-// vingt fois ici serait le bruit que le contrat proscrit.
+// Contrôle n°2 : un positif et un négatif pour chacune des vingt règles du catalogue. Chaque
+// cas nomme la fonction d'analyse (corps ou biblio) et la langue, comme en usage réel.
 
 const CAS = [
   { regle: 'CSPS.Epicene.FormesContractees',
@@ -286,10 +263,9 @@ for (const cas of CAS) {
     });
 }
 
-// 29.09.2026 — « 3 Literatur (gemäss Redaktionsrichtlinien) » n'était pas reconnu comme
-// intitulé de bibliographie : ses références passaient pour du Lauftext, et le « & » APA de
-// « Baumann, M., Bolz, T. & Albers, V. (2021) » recevait « und ». Même si l'intitulé échappe
-// encore au lexique, une ligne à silhouette de référence ne doit JAMAIS recevoir la règle.
+// Une ligne à silhouette de référence (« Baumann, M., Bolz, T. & Albers, V. (2021) ») ne
+// reçoit pas la règle du « & », même lue comme corps parce que son intitulé de bibliographie
+// n'a pas été reconnu.
 test('« & » d’une ligne à silhouette de référence, lue comme corps : aucune alerte (de et fr)',
   { skip: sansVale }, () => {
     const { sortie: de } = analyserCorps(
@@ -305,19 +281,13 @@ test('« & » d’une ligne à silhouette de référence, lue comme corps : aucu
   });
 
 // ---------------------------------------------------------------------------------
-// Audit des ancrages (demande du coordinateur, 22.09.2026) — défaut RÉEL mesuré sur le
-// corpus : _raffiner_et_dans_parentheses()/_raffiner_und_in_klammern() NARROWENT `found` à
-// « et »/« und » seul (2-3 caractères), mais laissaient `span` sur le motif Vale ENTIER (toute
-// la parenthèse) — `manuscrit_annoter._localizar()` exige `texto[d:f] == found` pour un span
-// exact, refusait donc ce span-là, ET refusait aussi son propre repli (found < 4 caractères) :
-// l'alerte finissait TOUJOURS en commentaire sur le PARAGRAPHE ENTIER, jamais sur « et »/
-// « und ». Mesuré : 9/9 occurrences de CSPS.APA.EtDansParentheses sur le corpus réel
-// (tmp/corpus-relecture/lot-A + outils-dev, chaîne complète WSL). `_convertir_alerte()` narrow
-// désormais `span` avec le raffineur, quand celui-ci en fournit un.
+// _raffiner_et_dans_parentheses() et _raffiner_und_in_klammern() réduisent `found` à « et »
+// ou « und » ; `_convertir_alerte()` réduit `span` de même. Sinon `span` couvre toute la
+// parenthèse, manuscrit_annoter._localizar() refuse le span (`texto[d:f] != found`) et
+// l'alerte retombe en commentaire sur le paragraphe entier.
 //
-// Sabotage minimal : dans _convertir_alerte(), remplacer `span0 = resultat.get('span', span0)`
-// par `pass` (ignorer le span du raffineur) — les deux contrôles ci-dessous rougissent
-// (span redevient celui de toute la parenthèse, plus égal à « et »/« und »).
+// Sabotage : dans _convertir_alerte(), remplacer `span0 = resultat.get('span', span0)` par
+// `pass`.
 
 test('CSPS.APA.EtDansParentheses : `span` vise EXACTEMENT « et », jamais toute la parenthèse',
   { skip: sansVale }, () => {
@@ -343,15 +313,12 @@ test('SZH.APA.UndInKlammern : `span` vise EXACTEMENT « und », jamais toute la 
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle complémentaire — CSPS.Vocabulaire.Cf : « cf. » en tête de phrase devient « Voir »
-// (majuscule), jamais « voir » minuscule ; un mot qui contiendrait la séquence « cf » sans
-// en être l'abréviation isolée ne doit jamais être touché. Le cas positif générique (mi-
-// phrase) est déjà couvert par le tableau CAS ci-dessus.
+// CSPS.Vocabulaire.Cf : « cf. » en tête de phrase devient « Voir », avec majuscule ; un mot
+// qui contient « cf » sans être l'abréviation n'est pas touché.
 //
-// Sabotage minimal : dans pipeline/vale/styles/CSPS/Vocabulaire/Cf.yml, retirer
-// `nonword: true` — chaque motif finit sur un point (non-mot), le \b que Vale ajoute par
-// défaut en fin de motif échoue alors systématiquement : la règle entière cesse de se
-// déclencher, les deux premières assertions rougissent.
+// Sabotage : dans pipeline/vale/styles/CSPS/Vocabulaire/Cf.yml, retirer `nonword: true`.
+// Chaque motif finit sur un point ; le \b que Vale ajoute en fin de motif échoue alors et la
+// règle ne se déclenche plus.
 
 test('CSPS.Vocabulaire.Cf : « Cf. » en tête de phrase devient « Voir », jamais « voir »',
   { skip: sansVale }, () => {
@@ -370,15 +337,12 @@ test('CSPS.Vocabulaire.Cf : « Cf. » en tête de phrase devient « Voir », jam
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle complémentaire — CSPS.Vocabulaire.HandicapPersonne : un nom propre de loi ou de
-// convention n'est jamais corrigé (Revue : 3.1.3, exemples exacts du PDF). Le cas positif
-// générique (hors contexte légal) est déjà couvert par le tableau CAS ci-dessus.
+// CSPS.Vocabulaire.HandicapPersonne : un nom propre de loi ou de convention n'est pas corrigé
+// (exemples des Lignes directrices de la Revue, 3.1.3).
 //
-// Sabotage minimal : dans pipeline/manuscrit_vale._raffiner_handicap_personne, remplacer le
-// `or` par un `and` entre les deux signaux (mot introducteur ET sigle requis simultanément
-// au lieu de l'un ou l'autre) — la première assertion ci-dessous (LHand, sigle après mais
-// « Loi » à plus de 90 caractères dans le vrai intitulé complet) resterait correcte par
-// chance, mais le second cas (une loi nommée sans sigle qui suit d'assez près) rougirait.
+// Sabotage : dans manuscrit_vale._raffiner_handicap_personne, remplacer le `or` entre les deux
+// signaux (mot introducteur, sigle) par un `and` ; le second cas (une loi nommée sans sigle)
+// rougit.
 
 test("CSPS.Vocabulaire.HandicapPersonne : un nom propre de loi ou de convention n'est jamais corrigé",
   { skip: sansVale }, () => {
@@ -404,12 +368,11 @@ test("CSPS.Vocabulaire.HandicapPersonne : un nom propre de loi ou de convention 
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle complémentaire — SZH.APA.WoertlichesZitatSeite : une citation de « persönliche
-// Kommunikation » (entretien, communication personnelle) ne porte jamais de numéro de page en
-// APA, ce n'est donc jamais une faute. Le cas positif générique est déjà couvert par CAS.
+// SZH.APA.WoertlichesZitatSeite : une « persönliche Kommunikation » ne porte pas de numéro
+// de page en APA.
 //
-// Sabotage minimal : dans pipeline/manuscrit_vale._raffiner_woertliches_zitat_seite,
-// remplacer `return None` par `return {}` — l'exclusion disparaît, l'assertion rougit.
+// Sabotage : dans manuscrit_vale._raffiner_woertliches_zitat_seite, remplacer `return None`
+// par `return {}`.
 
 test('SZH.APA.WoertlichesZitatSeite : une communication personnelle ne demande jamais de page',
   { skip: sansVale }, () => {
@@ -421,21 +384,14 @@ test('SZH.APA.WoertlichesZitatSeite : une communication personnelle ne demande j
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle complémentaire — une entrée bibliographique réelle lève BIEN les deux règles
-// CSPS-Biblio à la fois (DoiForme et Esperluette) sur la MÊME ligne. Signalé par le
-// superviseur : un essai manuel avait conclu que ni l'une ni l'autre ne se déclenchaient —
-// en fait le mécanisme fonctionne (vérifié par `vale --output=JSON` directement sur cette
-// ligne, voir le rapport), l'essai manuel avait dû passer par un fichier nommé
-// `corps-fr.txt` (le seul exemple donné par LISEZMOI.md avant sa mise à jour) au lieu de
-// `biblio-fr.txt`, ou par le rôle de paragraphe '' au lieu de 'bibliographie' : dans les deux
-// cas, c'est le style CSPS (corps) qui s'applique, où ces deux règles n'existent pas. Ce
-// test fixe noir sur blanc le cas correct, avec le rôle 'bibliographie' explicite.
+// Une entrée bibliographique lève les deux règles CSPS-Biblio (DoiForme et Esperluette) sur
+// la même ligne, à condition de passer par le rôle 'bibliographie' (fichier biblio-fr.txt).
+// Avec le rôle '' ou un fichier corps-fr.txt, c'est le style CSPS (corps) qui s'applique, où
+// ces deux règles n'existent pas.
 //
-// Sabotage minimal : dans manuscrit_vale.extraire(), changer
-// `cible = lignes_biblio if role == 'bibliographie' else lignes_corps` en
-// `cible = lignes_corps` (le rôle n'est plus lu) — la ligne partirait alors dans le fichier
-// corps-fr.txt (style CSPS, sans APA.DoiForme ni APA.Esperluette), les deux assertions
-// rougissent.
+// Sabotage : dans manuscrit_vale.extraire(), remplacer
+// `cible = lignes_biblio if role == 'bibliographie' else lignes_corps` par
+// `cible = lignes_corps`.
 
 test('une entrée bibliographique réelle lève DoiForme ET Esperluette sur la même ligne',
   { skip: sansVale }, () => {
@@ -452,15 +408,11 @@ test('une entrée bibliographique réelle lève DoiForme ET Esperluette sur la m
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°3 — LE PIÈGE OQLF/CSPS, nommé comme critère d'acceptation par le brief : déjà
-// couvert par le cas CSPS.Vocabulaire.Handicap ci-dessus, mais répété ici EXPLICITEMENT,
-// sans filtrer sur une règle précise — c'est TOUTE alerte (n'importe laquelle) que la forme
-// recommandée ne doit jamais lever, pas seulement celle-ci.
+// Contrôle n°3 : la forme recommandée « personne en situation de handicap » ne lève aucune
+// alerte, quelle que soit la règle.
 //
-// Sabotage minimal : dans pipeline/vale/styles/CSPS/Vocabulaire/Handicap.yml, élargir le
-// motif `personnes? handicap[ée]e?s?` en `personnes?.{0,30}handicap[ée]?e?s?` — le motif
-// traverserait alors « en situation de » et attraperait la forme recommandée elle-même :
-// la première assertion rougit.
+// Sabotage : dans pipeline/vale/styles/CSPS/Vocabulaire/Handicap.yml, élargir
+// `personnes? handicap[ée]e?s?` en `personnes?.{0,30}handicap[ée]?e?s?`.
 
 test('le piège OQLF/CSPS : "personne en situation de handicap" ne lève absolument rien',
   { skip: sansVale }, () => {
@@ -472,13 +424,10 @@ test('le piège OQLF/CSPS : "personne en situation de handicap" ne lève absolum
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°4 — L'INVERSION ÉPICÈNE, le fait qui commande tout : les deux revues
-// prescrivent des solutions opposées. Migré depuis l'ancien test/js/manuscrit-regles.test.js
-// (la règle a déménagé vers Vale, le contrôle avec elle).
+// Contrôle n°4 : inversion épicène, les deux revues prescrivent des solutions opposées.
 //
-// Sabotage minimal : dans pipeline/vale/styles/SZH/Epicene/Paarform.yml, ajouter un motif
-// qui reconnaît le deux-points (`Schüler:innen`) — la forme prescrite côté allemand se
-// mettrait à être signalée, la deuxième assertion rougit.
+// Sabotage : dans pipeline/vale/styles/SZH/Epicene/Paarform.yml, ajouter un motif qui
+// reconnaît le deux-points (`Schüler:innen`).
 
 test('l\'inversion épicène : chaque produit proscrit exactement le contraire de l\'autre',
   { skip: sansVale }, () => {
@@ -504,12 +453,11 @@ test('l\'inversion épicène : chaque produit proscrit exactement le contraire d
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°5 — les URL et DOI ne déclenchent jamais Epicene dans le CORPS (masquage), et
-// un DOI reste lisible (et donc réécrit) dans la BIBLIOGRAPHIE (pas de masquage là).
+// Contrôle n°5 : les URL et DOI ne déclenchent pas Epicene dans le corps (masquage) ; un DOI
+// reste lisible, donc réécrit, dans la bibliographie.
 //
-// Sabotage minimal : dans manuscrit_vale._masquer_urls ou son emploi dans analyser(), ne
-// plus appeler le masquage sur les lignes de corps — la première assertion (aucune alerte
-// sur l'URL) rougit : mesuré le 18.09.2026, `downloads/sections` lève Epicene sans lui.
+// Sabotage : ne plus appeler manuscrit_vale._masquer_urls sur les lignes de corps ;
+// `downloads/sections` lève alors Epicene.
 
 test('une URL ne déclenche jamais Epicene dans le corps ; un DOI reste corrigible en bibliographie',
   { skip: sansVale }, () => {
@@ -528,14 +476,11 @@ test('une URL ne déclenche jamais Epicene dans le corps ; un DOI reste corrigib
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°6 — extraire() rend une ligne par paragraphe et un index EXACT ; un mélange de
-// rôles corps/bibliographie dans le même appel est refusé plutôt que de rendre un index
-// ambigu en silence.
+// Contrôle n°6 : extraire() rend une ligne par paragraphe et un index exact ; un mélange de
+// rôles corps/bibliographie dans le même appel est refusé.
 //
-// Sabotage minimal : dans extraire(), remplacer `index[len(cible)] = p.get('source')` par
-// `index[len(cible) - 1] = p.get('source')` (décalage d'un cran) — la deuxième assertion
-// (index exact par ligne 1-based) rougit : la ligne 1 pointerait alors vers rien (index[0]
-// n'est jamais lu) et la ligne 3 vers la source de la ligne 2.
+// Sabotage : dans extraire(), remplacer `index[len(cible)] = p.get('source')` par
+// `index[len(cible) - 1] = p.get('source')`.
 
 test('extraire() : une ligne par paragraphe, un index exact, jamais de mélange de rôles',
   { skip: sansPython }, () => {
@@ -556,9 +501,8 @@ test('extraire() : une ligne par paragraphe, un index exact, jamais de mélange 
     assert.strictEqual(biblioSeule.texte_biblio, 'Une référence.');
     assert.deepStrictEqual(biblioSeule.index, { '1': 40 });
 
-    // Un mélange corps + bibliographie dans le MÊME appel produirait un index ambigu
-    // (ligne 1 côté corps ET ligne 1 côté bibliographie partageant la même clé) : extraire()
-    // le refuse plutôt que de choisir en silence.
+    // Un mélange corps + bibliographie donnerait deux « ligne 1 » sous la même clé :
+    // extraire() le refuse.
     const melange = extraire([
       { source: 1, texte: 'Corps.', role: '' },
       { source: 2, texte: 'Référence.', role: 'bibliographie' },
@@ -568,25 +512,19 @@ test('extraire() : une ligne par paragraphe, un index exact, jamais de mélange 
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°7 — analyser() rend indisponible=True PROPREMENT (jamais une exception, jamais
-// un plantage) quand vale ne peut pas tourner. Deux causes distinctes, mesurées le
-// 19.09.2026 (corrigeant une mesure du 18.09.2026, qui plaçait à tort l'erreur sur stdout) :
-// une configuration introuvable (exit 0) et une règle YAML mal formée dans un style par
-// ailleurs valide (exit 2). Dans les DEUX cas, le diagnostic (un objet JSON portant "Code",
-// ex. "E100") atterrit sur STDERR et stdout reste VIDE — le code de sortie, lui, varie sans
-// motif fiable entre les deux causes. Les deux doivent aboutir au même indisponible=True.
+// Contrôle n°7 : analyser() rend indisponible=True, sans exception, quand vale ne peut pas
+// tourner. Deux causes : configuration introuvable (exit 0) et règle YAML mal formée dans un
+// style valide (exit 2). Dans les deux cas, le diagnostic JSON (avec "Code", ex. "E100") va
+// sur stderr et stdout reste vide ; le code de sortie ne permet pas de les distinguer.
 //
-// Sabotage minimal : dans _executer(), retirer le `try/except ValueError` autour de
-// `json.loads(brut)` — sur stdout vide, `json.loads('')` lève ValueError NON CAPTURÉE, qui
-// remonte jusqu'au processus Python (traceback sur stderr, code de sortie non nul) au lieu
-// de devenir un indisponible=True propre. Vérifié réellement le 19.09.2026 : ce sabotage
-// fait rougir CE contrôle, et lui seul.
+// Sabotage : dans _executer(), retirer le `try/except ValueError` autour de
+// `json.loads(brut)` ; `json.loads('')` lève et le processus Python échoue.
 
 test('analyser() : indisponible=True proprement, jamais un plantage, config cassée',
   { skip: sansPython }, () => {
     const racineFactice = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-vale-factice-'));
-    // Aucun pipeline/vale/.vale.ini sous cette racine : --config pointera vers un chemin
-    // qui n'existe pas, exactement la panne mesurée sur une configuration cassée.
+    // Aucun pipeline/vale/.vale.ini sous cette racine : --config pointe vers un chemin
+    // inexistant.
     const r = gardes.pythonGroupe([MANUSCRIT_VALE, '--analyser'], {
       input: JSON.stringify({
         paragraphes_corps: [{ source: 0, texte: 'Un texte quelconque.', role: '' }],
@@ -594,9 +532,8 @@ test('analyser() : indisponible=True proprement, jamais un plantage, config cass
       }),
       env: Object.assign({}, process.env, { SZH_RACINE_VALE_FACTICE: racineFactice }),
     });
-    // On ne peut pas passer racine_depot en argument de la CLI (elle se calcule depuis
-    // __file__) : on monkey-patche donc un fichier manuscrit_vale.py TEMPORAIRE qui importe
-    // le vrai module et force racine_depot vers un dossier sans pipeline/vale/.vale.ini.
+    // racine_depot se calcule depuis __file__ : un manuscrit_vale.py temporaire importe le
+    // vrai module et force racine_depot vers un dossier sans pipeline/vale/.vale.ini.
     const pontFactice = path.join(racineFactice, 'pont_vale_factice.py');
     fs.writeFileSync(pontFactice, [
       'import json, sys',
@@ -631,41 +568,27 @@ test('analyser() : indisponible=True proprement, jamais un plantage, config cass
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°8 — _resoudre_vale_bin() retrouve un vale installé hors PATH (poste de
-// développement sans sudo, ~/.local/bin), sans avoir besoin de lancer vale pour de vrai. Le
-// PATH réel de la machine de test n'est PAS fiable pour ce contrôle (une CI qui installerait
-// vale sur le PATH ferait trouver CE vale-là par shutil.which, avant même le repli) : un
-// petit pont Python (même patron que le contrôle n°7 ci-dessus, « config cassée ») monkey-
-// patche donc `manuscrit_vale.shutil.which` pour qu'il rende toujours None, et appelle
-// `_resoudre_vale_bin(domicile_factice)` directement — domicile_factice est le PARAMÈTRE
-// INJECTABLE (jamais HOME : os.path.expanduser('~') ignore HOME sous Windows, mesuré) qui ne
-// contient QUE .local/bin/vale, jamais /usr/local/bin.
+// Contrôle n°8 : _resoudre_vale_bin() retrouve un vale installé dans ~/.local/bin, sans
+// lancer vale. Le PATH de la machine de test ne convient pas (un vale sur le PATH serait
+// trouvé d'abord) : un petit pont Python remplace `manuscrit_vale.shutil.which` par une
+// fonction qui rend None, puis appelle `_resoudre_vale_bin(domicile_factice)`.
+// domicile_factice est le paramètre injectable (os.path.expanduser('~') ignore HOME sous
+// Windows) ; il ne contient que .local/bin/vale.
 //
-// ⚠ Bug mesuré le 21.09.2026 : monkey-patcher shutil.which ne suffit PAS — le premier
-// candidat du repli, `/usr/local/bin/vale`, est un chemin LITTÉRAL (le contrat le veut ainsi,
-// chemin épinglé de l'image de production, Containerfile), jamais un appel à shutil.which.
-// Sur la CI (job `contrats`, qui installe un vrai vale justement à cet endroit) comme sur la
-// WSL SZH-Publishing de ce poste (même image), ce fichier existe pour de vrai : le premier
-// candidat gagne avant même d'atteindre le domicile factice, et le test rougit — vert
-// seulement sous le Python DE WINDOWS de ce poste, où `/usr/local/bin/vale` n'existe pas.
-// Le pont neutralise donc aussi `os.path.isfile` : False pour CE chemin précis (jamais un
-// vrai binaire ne doit pouvoir gagner ici, quelle que soit la machine), l'implémentation
-// réelle pour tout le reste — la seule façon d'isoler ce contrôle de ce qui est réellement
-// installé sur la machine qui l'exécute.
+// Le premier candidat du repli, `/usr/local/bin/vale`, est un chemin littéral (celui de
+// l'image de production), qui existe en CI et dans la WSL. Le pont remplace donc aussi
+// `os.path.isfile` : False pour ce chemin, l'implémentation réelle pour le reste.
 //
-// Sabotage minimal : dans manuscrit_vale._resoudre_vale_bin(), retirer le candidat
-// `os.path.join(domicile, '.local', 'bin', 'vale')` de la boucle — la fonction rend alors le
-// repli littéral 'vale' au lieu du chemin du faux domicile, et l'assertion rougit.
+// Sabotage : retirer le candidat `os.path.join(domicile, '.local', 'bin', 'vale')` de la
+// boucle ; la fonction rend le repli 'vale'.
 
 test('_resoudre_vale_bin() : un vale hors PATH, dans ~/.local/bin, est retrouvé',
   { skip: sansPython }, () => {
     const fauxHome = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-vale-home-'));
     const dossierBin = path.join(fauxHome, '.local', 'bin');
     fs.mkdirSync(dossierBin, { recursive: true });
-    // Toujours 'vale' sans extension, même sous Windows : _resoudre_vale_bin() cherche ce nom
-    // littéral (le repli ~/.local/bin ne joue de toute façon que sous Linux/WSL en
-    // production — voir _lancer_vale ; ce test éprouve la fonction seule, indépendamment de
-    // l'OS qui exécute la suite).
+    // 'vale' sans extension, même sous Windows : _resoudre_vale_bin() cherche ce nom. Le test
+    // éprouve la fonction seule, quel que soit l'OS.
     const fauxVale = path.join(dossierBin, 'vale');
     fs.writeFileSync(fauxVale, '#!/bin/sh\necho vale version 3.22.0\n');
     try { fs.chmodSync(fauxVale, 0o755); } catch (e) { /* Windows : pas de bit x, ignoré */ }
@@ -688,12 +611,11 @@ test('_resoudre_vale_bin() : un vale hors PATH, dans ~/.local/bin, est retrouvé
       + 'stdout=' + JSON.stringify(r.stdout) + ' stderr=' + r.stderr);
   });
 
-// Les règles lexicales de la Zeitschrift sont GÉNÉRÉES (outils-dev/lexique/generer-lexique.py) :
-// régénérées dans un dossier jetable, elles doivent retomber sur les fichiers du dépôt (aucune
-// retouche à la main), et leurs messages sont en allemand, sans l'espace française avant « : ».
-// Les règles écrites à la main de la Zeitschrift ne portent pas non plus de « : « » à la
-// française. Sabotage : remettre le message français dans construire_regles_sigle, ou « : « %s » »
-// dans WoertlichesZitatSeite.yml.
+// Les règles lexicales de la Zeitschrift sont générées (outils-dev/lexique/generer-lexique.py) :
+// régénérées dans un dossier jetable, elles retombent sur les fichiers du dépôt, et leurs
+// messages sont en allemand, sans l'espace française avant « : ». Les règles écrites à la main
+// de la Zeitschrift n'ont pas non plus de « : « » à la française. Sabotage : remettre le message
+// français dans construire_regles_sigle, ou « : « %s » » dans WoertlichesZitatSeite.yml.
 test('règles Vale de la Zeitschrift : Lexique régénéré à l’identique, messages en allemand, ponctuation allemande',
   { skip: sansPython }, () => {
     const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-lexique-'));

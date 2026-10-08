@@ -1,57 +1,15 @@
-// pipeline/manuscrit_modele.py : les décisions du nettoyeur de manuscrit (article) — classement
-// des titres (promotion ET rétrogradation, §5.1 du contrat) et nettoyage de la mise en forme
-// manuelle (§5.2). Le module n'a pas de lecteur .docx/.odt ici : ce test passe par le mode
-// --diagnostic, qui lit un Document au format JSON documenté en tête de manuscrit_modele.py.
+// Tests des décisions du nettoyeur de manuscrit (pipeline/manuscrit_modele.py) : classement
+// des titres (promotion et rétrogradation) et nettoyage de la mise en forme manuelle. Les
+// tests passent par le mode --diagnostic, qui lit un Document JSON (format décrit en tête de
+// manuscrit_modele.py). Voir docs/ARCHITECTURE-nettoyeur-manuscrit.md.
 //
-//   node --test test/js/manuscrit-decisions.test.js
+// classer_titres() procède en quatre passes : exclusions, état déclaré, regroupement par
+// signature de mise en forme (un groupe, pas un paragraphe seul ; aucun score),
+// rétrogradation. Une passe 3 bis adopte les paragraphes qui portent la signature des titres
+// déclarés d'un niveau.
 //
-// ── Refonte du 18.09.2026 ───────────────────────────────────────────────────────────────────
-//
-// classer_titres() a été entièrement réécrite (§5.1 du contrat, refonte du 18.09.2026) : quatre
-// passes — exclusions, état déclaré, regroupement par SIGNATURE (jamais un paragraphe seul,
-// jamais un score), rétrogradation. L'ancienne conception jugeait chaque paragraphe SEUL contre
-// des valeurs ABSOLUES (MAX_MOTS=12, SEUIL_TAILLE=1.2x, ponctuation finale) ; elle détruisait 4
-// vrais titres sur 4 fichiers réels pour 6/17 pseudo-titres rattrapés sur un article sans style.
-//
-// Des 7 contrôles d'origine, ce fichier GARDE ceux qui exercent encore un mécanisme réel de la
-// nouvelle conception (adaptés à son vocabulaire de trace) et REMPLACE ceux qui ne testaient
-// qu'un mécanisme aujourd'hui disparu — en le disant à chaque fois :
-//   1. « H2 posé sur trois paragraphes »            — GARDÉ (le cas d'ouverture du chantier),
-//                                                       adapté : la trace ne parle plus de
-//                                                       « suite stylée » mais de signature.
-//   2. « style porté par 80 % du document »          — REMPLACÉ. Le garde-fou de
-//                                                       GÉNÉRALISATION PAR RATIO DE STYLE a
-//                                                       disparu : il ne distinguait rien de
-//                                                       réel (un ratio, pas une preuve). Sa
-//                                                       place est prise par le contrôle 6
-//                                                       ci-dessous (bibliographie via
-//                                                       TITRES_BIB), le vrai mécanisme que le
-//                                                       §5.1 demandait pour ce risque.
-//   3. « document déjà bien stylé -> inchangé »       — GARDÉ tel quel, c'est le contrôle le
-//                                                       plus important de tous.
-//   4. « aucun style de titre -> gras + taille »      — GARDÉ, adapté au vocabulaire de trace.
-//   5. « formatage : italique/exposant/lien survivent » — GARDÉ à l'identique : ce contrôle
-//                                                       porte sur nettoyer_mise_en_forme(),
-//                                                       que ce chantier ne touche pas.
-//   6. « 11 mots sans gras, taille du corps -> pas promu » — GARDÉ, cas dégénéré (un seul
-//                                                       candidat du document, sa signature
-//                                                       vaut donc trivialement celle du
-//                                                       corps).
-//   7. « garde-fou 1 ne protège pas un style isolé »  — REMPLACÉ. Le garde-fou 1 (« premier
-//                                                       d'une suite stylée protégé ») a
-//                                                       DISPARU de la nouvelle conception :
-//                                                       chaque paragraphe déclaré est jugé
-//                                                       individuellement par la passe 4, plus
-//                                                       de notion de suite du tout. Remplacé
-//                                                       par le contrôle 3bis ci-dessous, qui
-//                                                       prouve la même intention avec le
-//                                                       nouveau mécanisme (signature + longueur
-//                                                       plutôt que position dans une suite).
-//
-// S'y ajoutent les contrôles neufs demandés pour cette refonte (§5.1, cas dangereux et
-// critères d'acceptation) : l'italique seul (le cas qui a motivé toute la refonte), un
-// intertitre long non détruit, l'entretien hors gabarit, la bibliographie, le repli « rien ne
-// convainc », et la contrainte de trois niveaux.
+// Plusieurs tests indiquent un « sabotage » : la modification du module qui doit faire
+// rougir le test.
 'use strict';
 
 const test = require('node:test');
@@ -64,10 +22,10 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const MANUSCRIT_MODELE = path.join(RACINE, 'pipeline', 'manuscrit_modele.py');
 const CORPUS_LOT_A = path.join(RACINE, 'tmp', 'corpus-relecture', 'lot-A');
 
-// Lance manuscrit_modele.py --diagnostic sur un Document JSON, rend le résultat déjà parsé
-// (gabarit, taille_dominante, titres.{stats,trace}, formatage.{stats,trace}, et surtout
-// `document` : l'état RÉEL du document après les deux passes — c'est lui qu'il faut lire pour
-// vérifier ce qui a survécu, jamais seulement le texte d'un motif de trace.
+// Lance manuscrit_modele.py --diagnostic sur un Document JSON et rend le résultat parsé
+// (gabarit, taille_dominante, titres.{stats,trace}, formatage.{stats,trace}, `document`).
+// `document` donne l'état réel après les deux passes : c'est lui qu'on lit pour vérifier ce
+// qui a survécu, pas le texte d'un motif de trace.
 function diagnostiquer(document) {
   const r = python( [MANUSCRIT_MODELE, '--diagnostic'], {
     input: JSON.stringify(document),
@@ -101,12 +59,8 @@ function traceDocument(trace, decision) {
 }
 
 // ---------------------------------------------------------------------------------------
-// Lit un .docx RÉEL (manuscrit_docx.lire()) et lui applique classer_titres() — pour le
-// contrôle 10 ci-dessous, qui doit s'exercer sur le corpus réel et non sur une fixture
-// synthétique (§5.1, correction de Robin du 18.09.2026 : « sur 1_Résumé-article-revue-
-// CSPS.docx (corpus réel), l'adoption ne promeut pas le corps du document »). Petit script
-// autonome plutôt qu'un nouveau mode CLI de manuscrit_docx.py (patron déjà suivi par
-// encodage-sorties.test.js pour ne pas toucher aux deux fichiers de ce chantier).
+// Lit un vrai .docx (manuscrit_docx.lire()) et lui applique classer_titres(), pour le
+// contrôle 13 qui s'exerce sur le corpus et non sur une fixture.
 const CLASSER_SUR_FICHIER = [
   'import json, sys',
   'sys.path.insert(0, sys.argv[1])',
@@ -127,10 +81,9 @@ function classerSurFichier(chemin) {
 }
 
 // ---------------------------------------------------------------------------------------
-// 1. Le H2 posé sur trois paragraphes : un titre court stylé, suivi de trois paragraphes
-// longs, également stylés, mais en petite taille et sans gras — le cas d'ouverture du
-// chantier. Attendu : un seul titre, les trois autres au corps, chacun tracé avec sa
-// signature et sa longueur (la nouvelle conception ne parle plus de « suite »).
+// 1. Un titre court stylé, suivi de trois paragraphes longs du même style mais en petite
+// taille et sans gras : un seul titre, les trois autres au corps, chacun tracé avec sa
+// signature et sa longueur.
 
 test('classer_titres : H2 posé sur trois paragraphes -> un titre, trois corps, chacun tracé', { skip: sansPython }, () => {
     const doc = {
@@ -172,10 +125,8 @@ test('classer_titres : H2 posé sur trois paragraphes -> un titre, trois corps, 
   });
 
 // ---------------------------------------------------------------------------------------
-// 2. Un intertitre LONG (19 mots) mais à la signature des autres titres du document (gras,
-// taille distincte) n'est PAS rétrogradé — contrairement à l'ancienne conception, qui
-// détruisait sur le corpus réel des intertitres de 13, 17 et 19 mots au seul motif de leur
-// nombre de mots. C'est un des trois chiffres du critère d'acceptation de cette refonte.
+// 2. Un intertitre long (19 mots) à la signature des autres titres (gras, taille distincte)
+// n'est pas rétrogradé à cause de son nombre de mots.
 
 test('classer_titres : intertitre de 19 mots, à la signature des titres -> pas rétrogradé', { skip: sansPython }, () => {
     const dixNeufMots = Array.from({ length: 18 }, (_, i) => 'mot' + (i + 1)).join(' ') + ' final';
@@ -184,12 +135,9 @@ test('classer_titres : intertitre de 19 mots, à la signature des titres -> pas 
       blocs: [
         para(0, 'Titre principal de niveau un', { style: 'heading 1', niveauDeclare: 1, gras: true, taille: 28 }),
         para(1, dixNeufMots, { style: 'heading 2', niveauDeclare: 2, gras: true, taille: 24 }),
-        // Corps délibérément COURT (35-40 signes) : le titre de 19 mots (~100 signes) est
-        // donc plus long que le corps lui-même, et échoue le critère de longueur relative
-        // (RATIO_RETROGRADATION_MIN=1, « pas même plus court que le corps »). S'il survit
-        // malgré tout, c'est UNIQUEMENT parce que sa signature (gras, 24) diffère de celle du
-        // corps — exactement ce que ce contrôle doit prouver, sans un filet de longueur qui
-        // le sauverait de toute façon.
+        // Corps volontairement court : le titre de 19 mots est plus long que le corps et
+        // échoue le critère de longueur relative (RATIO_RETROGRADATION_MIN=1). S'il survit,
+        // c'est par sa signature (gras, 24), ce que ce contrôle doit prouver.
         para(2, 'Un paragraphe de corps assez bref ici.', { taille: 20 }),
         para(3, 'Encore un paragraphe de corps bref, pareil.', { taille: 20 }),
         para(4, 'Conclusion breve', { style: 'heading 2', niveauDeclare: 2, gras: true, taille: 24 }),
@@ -204,8 +152,7 @@ test('classer_titres : intertitre de 19 mots, à la signature des titres -> pas 
   });
 
 // ---------------------------------------------------------------------------------------
-// 3. Zéro faux positif : un document proprement stylé (heading 1, heading 2, corps) ressort
-// STRICTEMENT INCHANGÉ. C'est le contrôle le plus important de tous.
+// 3. Un document proprement stylé (heading 1, heading 2, corps) ressort inchangé.
 
 test('classer_titres : document déjà bien stylé -> aucun niveau_retenu ne diffère de niveau_declare', { skip: sansPython }, () => {
     const doc = {
@@ -215,11 +162,9 @@ test('classer_titres : document déjà bien stylé -> aucun niveau_retenu ne dif
         para(1, 'Contexte historique', { style: 'heading 2', niveauDeclare: 2, gras: true, taille: 24 }),
         para(2, 'Un paragraphe de corps parfaitement ordinaire qui developpe le contexte '
           + 'sur plusieurs lignes sans jamais ressembler a un titre quelconque.', { taille: 20 }),
-        // Paragraphe de corps AU BORD du seuil de promotion, exprès : court (5 mots), à la
-        // MÊME taille que le corps (20) — sa signature est donc, par construction, identique
-        // à la signature dominante du corps : aucun groupe ne peut jamais le retenir, quel
-        // que soit le réglage des seuils de longueur relative. Sans ce paragraphe, un défaut
-        // qui promouvrait « tout candidat court » resterait invisible à ce test.
+        // Paragraphe court (5 mots) à la taille du corps : sa signature est celle du corps,
+        // aucun groupe ne peut le retenir. Il rend visible un défaut qui promouvrait « tout
+        // candidat court ».
         para(3, 'Un bref rappel sans titre', { taille: 20 }),
         para(4, 'Conclusion generale', { style: 'heading 1', niveauDeclare: 1, gras: true, taille: 28 }),
         para(5, 'Un dernier paragraphe de corps qui referme cet article sans ambiguite '
@@ -238,11 +183,8 @@ test('classer_titres : document déjà bien stylé -> aucun niveau_retenu ne dif
   });
 
 // ---------------------------------------------------------------------------------------
-// 3bis. Un paragraphe déclaré titre, isolé (aucun autre du même style), dont la signature
-// est celle du corps ET dont la longueur ne tient plus dans celle d'un titre de ce document,
-// est rétrogradé — quel que soit le fait qu'il soit seul de son style. Remplace le contrôle
-// « garde-fou 1 » de l'ancienne conception : il n'existe plus de notion de suite du tout, le
-// jugement est individuel dès la passe 4.
+// 3bis. Un paragraphe déclaré titre, seul de son style, à la signature du corps et trop long
+// pour un titre de ce document, est rétrogradé (jugement individuel en passe 4).
 
 test('classer_titres : paragraphe stylé isolé, signature du corps, trop long -> rétrogradé', { skip: sansPython }, () => {
     const quaranteMots = Array.from({ length: 39 }, (_, i) => 'mot' + (i + 1)).join(' ') + ' final.';
@@ -262,19 +204,15 @@ test('classer_titres : paragraphe stylé isolé, signature du corps, trop long -
   });
 
 // ---------------------------------------------------------------------------------------
-// 4. Déduction complète : aucun style de titre, hiérarchie seulement en gras et en corps 14
-// sur corps 10. Les titres doivent être retrouvés par la seule mise en forme.
+// 4. Aucun style de titre, hiérarchie en gras et en corps 14 sur corps 10 : les titres sont
+// retrouvés par la seule mise en forme.
 
 test('classer_titres : aucun style de titre -> déduction par gras et par taille (14 sur 10)', { skip: sansPython }, () => {
     const doc = {
       styles: [],
       blocs: [
-        // Plusieurs paragraphes de corps, exprès : avec seulement deux (comme dans une
-        // première version de ce test), la médiane du corps se calcule sur un échantillon
-        // trop petit — les deux titres courts (2-3 mots) la faussent en y entrant eux-mêmes,
-        // et aucun ne ressort plus assez « court relativement au corps » pour qualifier.
-        // Mesuré : il faut une masse de corps représentative pour que le critère relatif
-        // (§5.1 passe 3) se comporte comme sur un vrai document.
+        // Plusieurs paragraphes de corps : avec deux seulement, les titres courts faussent la
+        // médiane du corps et aucun ne ressort assez court relativement au corps.
         para(0, 'Un paragraphe de corps ordinaire qui etablit la taille dominante du '
           + 'document, assez long pour etre representatif du corps de ce texte.', { taille: 10 }),
         para(1, 'Introduction generale', { gras: true }),
@@ -303,9 +241,8 @@ test('classer_titres : aucun style de titre -> déduction par gras et par taille
   });
 
 // ---------------------------------------------------------------------------------------
-// 5. Ce qui survit au nettoyage : italique, exposant et lien traversent intacts,
-// alors que police, taille et couleur du même paragraphe disparaissent. Contrôle inchangé :
-// il porte sur nettoyer_mise_en_forme(), que cette refonte ne touche pas.
+// 5. Italique, exposant et lien traversent le nettoyage ; police, taille et couleur du même
+// paragraphe disparaissent.
 
 test('nettoyer_mise_en_forme : italique, exposant et lien survivent, police/taille/couleur partent', { skip: sansPython }, () => {
     const doc = {
@@ -323,9 +260,8 @@ test('nettoyer_mise_en_forme : italique, exposant et lien survivent, police/tail
       }]
     };
     const { titres, formatage, document: doc2 } = diagnostiquer(doc);
-    // Le paragraphe est le SEUL candidat du document (voir le contrôle 6) : sa signature
-    // vaut donc trivialement celle du corps, jamais promu — ce qui garantit qu'on teste bien
-    // le retrait « corps » (gras/souligné compris s'il y en avait).
+    // Le paragraphe est le seul candidat du document : sa signature est celle du corps et il
+    // n'est pas promu. On teste donc bien le retrait « corps ».
     assert.strictEqual(trouver(titres.trace, 0).niveau_retenu, 0);
 
     const ligne = trouver(formatage.trace, 0);
@@ -334,10 +270,8 @@ test('nettoyer_mise_en_forme : italique, exposant et lien survivent, police/tail
     assert.match(ligne.motif, /taille/);
     assert.match(ligne.motif, /couleur/);
 
-    // Ce que le motif RACONTE ne prouve rien : on relit l'état réel des fragments après
-    // nettoyage (`document`, rendu par le mode --diagnostic). C'est ce contrôle-là qui manquait
-    // — sans lui, un sabotage qui détruit l'italique laissait ce test vert (constaté et rejoué,
-    // voir le rapport de chantier).
+    // On relit l'état réel des fragments (`document`) : la trace seule ne prouve pas que
+    // l'italique a survécu.
     const [f0, f1, f2, f3] = doc2.blocs[0].fragments;
     assert.strictEqual(f0.forme.italique, true, "l'italique doit survivre");
     assert.strictEqual(f1.forme.exposant, true, "l'exposant doit survivre");
@@ -351,15 +285,10 @@ test('nettoyer_mise_en_forme : italique, exposant et lien survivent, police/tail
   });
 
 // ---------------------------------------------------------------------------------------
-// 5bis. Ajouté le 19.09.2026 (revue de chantier, §5.2 du contrat) — nettoyer_mise_en_forme()
-// ne bouclait QUE sur document.blocs (premier niveau) : un paragraphe DANS une cellule de
-// tableau gardait taille/police/couleur/gras (171 paragraphes de ce genre, mesurés sur le
-// corpus réel). Elle descend maintenant à toute profondeur de cellule.
+// 5bis. nettoyer_mise_en_forme() descend dans les cellules de tableau, à toute profondeur.
 //
-// Sabotage minimal : dans nettoyer_mise_en_forme(), remplacer
-// `paragraphes_a_nettoyer = list(_paragraphes_en_profondeur(document.blocs))` par
-// `paragraphes_a_nettoyer = [b for b in document.blocs if isinstance(b, Paragraphe)]`
-// (l'ancien comportement, premier niveau seulement) — l'assertion sur la cellule rougit.
+// Sabotage : remplacer `paragraphes_a_nettoyer = list(_paragraphes_en_profondeur(document.blocs))`
+// par `paragraphes_a_nettoyer = [b for b in document.blocs if isinstance(b, Paragraphe)]`.
 
 test('nettoyer_mise_en_forme : descend dans les cellules d\'un tableau, à toute profondeur',
   { skip: sansPython }, () => {
@@ -388,17 +317,13 @@ test('nettoyer_mise_en_forme : descend dans les cellules d\'un tableau, à toute
     assert.strictEqual(fCellule.forme.couleur, null, 'la couleur doit disparaître en cellule aussi');
   });
 
-// La trace d'un paragraphe de cellule porte un `.source` LOCAL à sa cellule (0, 1, …) : deux
-// cellules distinctes d'un même tableau produisent donc chacune un « paragraphe 0 », jamais
-// ancrable et impossible à distinguer dans le rapport HTML (mesuré : 5 lignes « paragraphe 0 »
-// sur 3_VF_Chanier-Delorme_Article CSPS_290626.docx, toutes en cellule). Décision : la trace
-// porte le `.source` du TABLEAU porteur, avec `dans_tableau: true`.
+// Le `.source` d'un paragraphe de cellule est local à sa cellule (0, 1, …) : deux cellules
+// donneraient chacune un « paragraphe 0 », impossible à distinguer dans le rapport. La trace
+// porte donc le `.source` du tableau, avec `dans_tableau: true`.
 //
-// Sabotage minimal : dans _nettoyer_paragraphe(), remplacer
+// Sabotage : dans _nettoyer_paragraphe(), remplacer
 // `source = source_tableau if source_tableau is not None else paragraphe.source` par
-// `source = paragraphe.source` (revient à la position locale) — les deux assertions sur
-// `ligne.source`/`ligne.dans_tableau` rougissent (les deux paragraphes de cellule rendent
-// `0` au lieu de `1`, la source du tableau).
+// `source = paragraphe.source`.
 
 test('nettoyer_mise_en_forme : la trace d\'un paragraphe de cellule porte le source du TABLEAU porteur, pas sa position locale',
   { skip: sansPython }, () => {
@@ -433,11 +358,10 @@ test('nettoyer_mise_en_forme : la trace d\'un paragraphe de cellule porte le sou
     }
   });
 
-// Même défaut, côté notes (document.notes, devenu un dict{id: [bloc, ...]} le 19.09.2026).
+// Même chose pour les notes (document.notes, un dict {id: [bloc, ...]}).
 //
-// Sabotage minimal : dans nettoyer_mise_en_forme(), retirer la boucle
-// `for blocs_note in document.notes.values(): paragraphes_a_nettoyer.extend(...)` — l'assertion
-// sur le fragment de note rougit.
+// Sabotage : dans nettoyer_mise_en_forme(), retirer la boucle
+// `for blocs_note in document.notes.values(): paragraphes_a_nettoyer.extend(...)`.
 
 test('nettoyer_mise_en_forme : descend aussi dans document.notes', { skip: sansPython }, () => {
     const doc = {
@@ -461,16 +385,11 @@ test('nettoyer_mise_en_forme : descend aussi dans document.notes', { skip: sansP
   });
 
 // ---------------------------------------------------------------------------------------
-// 5ter. Décision du superviseur (révision du 19.09.2026, §5.2) : « signalé sans être touché »
-// était violé pour le gras — un paragraphe de corps ENTIÈREMENT gras et non retenu comme titre
-// voyait son gras RETIRÉ dans la même passe qui le SIGNALE (mesuré : 16 paragraphes sur
-// 3bis_CSPS_Revue3_2026_FLOW_Piloting_OFP.docx). Le gras intégral est désormais CONSERVÉ (une
-// relectrice doit pouvoir le voir), le signalement reste dans le rapport. Le gras PARTIEL du
-// corps, lui, part normalement — seul l'intégral déclenche l'exception.
+// 5ter. Un paragraphe de corps entièrement gras et non retenu comme titre est signalé sans
+// être touché : la relectrice doit voir le gras. Le gras partiel du corps est retiré.
 //
-// Sabotage minimal : dans _nettoyer_fragments(), remplacer `champs_corps_seul = (...)` par
-// `champs_corps_seul = FORME_RETIREE_CORPS_SEUL` (toujours retirer, jamais l'exception) —
-// l'assertion sur le gras intégral conservé rougit.
+// Sabotage : dans _nettoyer_fragments(), remplacer `champs_corps_seul = (...)` par
+// `champs_corps_seul = FORME_RETIREE_CORPS_SEUL`.
 
 test('nettoyer_mise_en_forme : le gras intégral d\'un paragraphe de corps non retenu comme titre est CONSERVÉ, signalé',
   { skip: sansPython }, () => {
@@ -479,8 +398,7 @@ test('nettoyer_mise_en_forme : le gras intégral d\'un paragraphe de corps non r
       blocs: [
         para(0, 'Un paragraphe de corps assez long pour etablir la taille dominante du '
           + 'document, largement suffisant pour ce test ici present.', { taille: 20 }),
-        // Entièrement gras, mais assez long et sans autre signal : ne sera pas retenu comme
-        // titre (signature = corps une fois le gras ignoré par la comparaison des tailles).
+        // Entièrement gras, assez long, sans autre signal : pas retenu comme titre.
         para(1, 'Ce paragraphe entierement en gras ressemble a un intertitre manque mais '
           + 'reste assez long pour ne pas etre retenu comme titre par ce test.',
           { taille: 20, gras: true })
@@ -498,13 +416,10 @@ test('nettoyer_mise_en_forme : le gras intégral d\'un paragraphe de corps non r
       'le gras intégral doit être CONSERVÉ après nettoyage, pas retiré malgré le signalement');
   });
 
-// Le gras PARTIEL du corps, lui, part normalement — sans quoi l'exception ci-dessus serait
-// devenue un blanc-seing qui protège n'importe quel gras, même un simple mot en gras au milieu
-// d'une phrase de corps (jamais l'intention du §5.2).
+// Le gras partiel est retiré : l'exception ne protège pas un mot en gras dans une phrase.
 //
-// Sabotage minimal : dans _nettoyer_fragments(), calculer `gras_integral` avec `any(...)` au
-// lieu de `all(...)` — un seul fragment gras suffirait à déclencher l'exception, le gras
-// partiel de ce contrôle survivrait aussi (rougit).
+// Sabotage : dans _nettoyer_fragments(), calculer `gras_integral` avec `any(...)` au lieu de
+// `all(...)`.
 
 test('nettoyer_mise_en_forme : le gras PARTIEL du corps est retiré normalement (l\'exception ne vaut que pour l\'intégral)',
   { skip: sansPython }, () => {
@@ -527,15 +442,11 @@ test('nettoyer_mise_en_forme : le gras PARTIEL du corps est retiré normalement 
   });
 
 // ---------------------------------------------------------------------------------------
-// 5quater. Défaut n°8c de l'en-tête de manuscrit_docx.py : tant que le lecteur rendait '\t'/
-// '\n' comme une simple espace, cette logique de _nettoyer_paragraphe() ne pouvait JAMAIS se
-// déclencher — du code mort. Depuis le 19.09.2026, le lecteur porte les vrais caractères ;
-// ce contrôle prouve que le NETTOYAGE, lui, fonctionnait déjà et fonctionne toujours une fois
-// exercé pour de vrai.
+// 5quater. Le lecteur rend '\t' et '\n' tels quels ; _nettoyer_paragraphe() retire la
+// tabulation de tête et le saut de ligne final.
 //
-// Sabotage minimal : dans _nettoyer_paragraphe(), commenter les deux blocs `if
-// dernier.texte.endswith('\n')` et `if premier.texte.startswith('\t')` — les deux assertions
-// ci-dessous rougissent (le \t et le \n restent en place).
+// Sabotage : dans _nettoyer_paragraphe(), commenter les blocs
+// `if dernier.texte.endswith('\n')` et `if premier.texte.startswith('\t')`.
 
 test('nettoyer_mise_en_forme : une tabulation en tête et un saut de ligne en fin de paragraphe sont réellement retirés', { skip: sansPython }, () => {
     const doc = {
@@ -557,10 +468,8 @@ test('nettoyer_mise_en_forme : une tabulation en tête et un saut de ligne en fi
   });
 
 // ---------------------------------------------------------------------------------------
-// 6. Le cas limite qui doit NE RIEN faire : un document d'UN SEUL paragraphe, 11 mots, sans
-// gras, à une taille quelconque, sans style. Étant l'unique candidat du document, sa
-// signature est PAR CONSTRUCTION celle du corps (il EST le corps) : aucun groupe ne peut le
-// distinguer de lui-même. Un faux titre est pire qu'un titre manqué.
+// 6. Un document d'un seul paragraphe, 11 mots, sans gras ni style : sa signature est celle
+// du corps, rien n'est promu. Un faux titre est pire qu'un titre manqué.
 
 test('classer_titres : paragraphe unique de 11 mots, sans style -> pas promu', { skip: sansPython }, () => {
     const doc = {
@@ -577,11 +486,7 @@ test('classer_titres : paragraphe unique de 11 mots, sans style -> pas promu', {
   });
 
 // ---------------------------------------------------------------------------------------
-// 7. Un document dont les titres sont SEULEMENT en italique (aucune taille distincte, aucun
-// gras) voit ses titres retrouvés — le cas qui a motivé toute cette refonte (§5.1 : l'article
-// 3_VF_Chanier-Delorme a ses titres de niveau 2 en italique, presque sans changement de
-// taille ; l'ancienne conception, qui ne regardait que le gras et la taille, n'en voyait
-// aucun).
+// 7. Des titres seulement en italique (sans taille distincte ni gras) sont retrouvés.
 
 test('classer_titres : titres en italique seul (aucune taille ni gras) -> retrouvés', { skip: sansPython }, () => {
     const doc = {
@@ -612,19 +517,15 @@ test('classer_titres : titres en italique seul (aucune taille ni gras) -> retrou
       'les deux titres en italique, même signature, doivent porter le même niveau');
     assert.notStrictEqual(l2.niveau_retenu, l0.niveau_retenu,
       'le groupe italique (corps) et le groupe gras (plus grand) doivent porter des niveaux distincts');
-    // Trois promotions au total : le titre gras (niveau 1) et les deux sous-titres en
-    // italique (niveau 2) — c'est bien l'italique SEUL, sans aucune taille ni gras propres,
-    // qui est ici sous test (para2/para5) ; le titre gras n'est là que pour donner au
-    // document une hiérarchie à deux niveaux plausible (§5.1 passe 2, bornes MIN/MAX_TITRES).
+    // Trois promotions : le titre gras (niveau 1) et les deux sous-titres en italique
+    // (niveau 2). Le titre gras donne au document une hiérarchie plausible à deux niveaux
+    // (bornes MIN/MAX_TITRES) ; c'est l'italique seul qui est testé (para2/para5).
     assert.strictEqual(titres.stats.promus, 3);
   });
 
 // ---------------------------------------------------------------------------------------
-// 8. Un entretien hors gabarit (aucun style SZH, questions simplement en gras — la passe 1
-// ne le voit pas). Arbitrage de Robin du 18.09.2026, pendant ce chantier : « c'est OK si les
-// questions sont détectées comme H2, on fera avec » — le contrôle vérifie donc que les
-// questions forment UN SEUL niveau cohérent (pas éparpillées sur deux ou trois), et que le
-// rapport SIGNALE le nombre inhabituel plutôt que de le taire.
+// 8. Un entretien hors gabarit (questions en gras, sans style) : les questions peuvent
+// devenir des H2, mais à un seul niveau, et le rapport signale leur nombre inhabituel.
 
 test('classer_titres : entretien hors gabarit -> questions promues à UN SEUL niveau, signalé', { skip: sansPython }, () => {
     const blocs = [para(0, 'Un court paragraphe d introduction qui plante le decor de cet '
@@ -659,9 +560,8 @@ test('classer_titres : entretien hors gabarit -> questions promues à UN SEUL ni
   });
 
 // ---------------------------------------------------------------------------------------
-// 9. La bibliographie n'est jamais promue — reconnue par TITRES_BIB de szh-citations.lua
-// (« Références » y figure). Les entrées, courtes et homogènes, formeraient un groupe très
-// convaincant pour la passe 3 : la passe 1 les exclut explicitement.
+// 9. Les entrées de bibliographie (repérées par TITRES_BIB de szh-citations.lua) ne sont
+// jamais promues : courtes et homogènes, elles formeraient un groupe convaincant en passe 3.
 
 test('classer_titres : la bibliographie n\'est jamais promue',
   { skip: sansPython }, () => {
@@ -686,11 +586,8 @@ test('classer_titres : la bibliographie n\'est jamais promue',
         'l\'entrée ' + source + ' ne doit jamais être candidate à la promotion');
       assert.strictEqual(ligne.niveau_retenu, 0);
     }
-    // Le titre de la rubrique elle-même (« Références », source=2) N'EST PAS dans l'étendue
-    // exclue (§5.1 : « ne peuvent jamais devenir un titre par déduction » vise les ENTRÉES,
-    // jamais la rubrique qui les introduit) : il reste un candidat ordinaire, court et à la
-    // signature distincte du corps, donc légitimement promu — seul le danger réel (les
-    // entrées) est neutralisé.
+    // Le titre « Références » (source=2) n'est pas exclu, seules les entrées le sont : court
+    // et de signature distincte, il est promu.
     const rubrique = trouver(titres.trace, 2);
     assert.strictEqual(rubrique.decision, 'promue',
       'la rubrique « Références » elle-même reste un candidat ordinaire, hors étendue exclue');
@@ -698,9 +595,7 @@ test('classer_titres : la bibliographie n\'est jamais promue',
   });
 
 // ---------------------------------------------------------------------------------------
-// 10. Quand rien ne convainc : aucun style, aucune mise en forme distinctive — rien n'est
-// promu, et un constat le dit explicitement dans la trace (§5.1 : « en cas de doute : rien,
-// et on le dit »).
+// 10. Quand rien ne convainc, rien n'est promu et un constat le dit dans la trace.
 
 test('classer_titres : rien ne convainc -> rien promu, et un constat le dit', { skip: sansPython }, () => {
     const doc = {
@@ -712,13 +607,9 @@ test('classer_titres : rien ne convainc -> rien promu, et un constat le dit', { 
           + 'dominante coherente sur ce document teste encore un peu.', { taille: 20 }),
         para(2, 'Toujours un paragraphe de corps assez long et banal, sans structure '
           + 'particuliere a signaler ici non plus vraiment.', { taille: 20 }),
-        // Un groupe existe bel et bien (taille distincte du corps, assez court, trois
-        // occurrences) mais les trois sont COLLÉES l'une à l'autre : le critère de
-        // répartition (§5.1 : « pas toutes collées », SEUIL_DISPERSION_MIN) l'écarte. Sans
-        // candidat du tout, la trace ne dirait rien de plus qu'un non_promue par paragraphe ;
-        // AVEC un groupe qui ne suffit pas, elle doit dire explicitement qu'aucune structure
-        // ne se dégage — c'est cette ligne-là que ce contrôle vérifie, pas seulement
-        // l'absence de promotion.
+        // Un groupe existe (taille distincte, court, trois occurrences) mais ses trois
+        // paragraphes se suivent : le critère de répartition (SEUIL_DISPERSION_MIN)
+        // l'écarte. Le contrôle vérifie la ligne qui dit qu'aucune structure ne se dégage.
         para(3, 'Un mot isole un', { taille: 26 }),
         para(4, 'Un mot isole deux', { taille: 26 }),
         para(5, 'Un mot isole trois', { taille: 26 })
@@ -729,31 +620,20 @@ test('classer_titres : rien ne convainc -> rien promu, et un constat le dit', { 
     for (const ligne of titres.trace) {
       if (ligne.portee === 'paragraphe') assert.strictEqual(ligne.niveau_retenu, 0);
     }
-    // « En cas de doute : rien, et on le dit » (§5.1) — le constat doit être EXPLICITE dans
-    // la trace, jamais seulement déductible de l'absence de promotion.
+    // Le constat est explicite dans la trace.
     const constat = traceDocument(titres.trace, 'aucune_promotion_decelee');
     assert.strictEqual(constat.length, 1, 'un constat explicite doit figurer dans la trace');
     assert.match(constat[0].motif, /aucune structure de titres décelable/);
   });
 
 // ---------------------------------------------------------------------------------------
-// 11. La contrainte de trois niveaux : avec QUATRE groupes qualifiants distincts, jamais plus
-// de trois NIVEAUX DISTINCTS ne sont créés — les lignes directrices plafonnent à MAX_NIVEAUX=3.
+// 11. Au plus trois niveaux (MAX_NIVEAUX=3). Avec quatre groupes qualifiants, le 4e (D,
+// souligné, le plus bas dans l'ordre) rejoint le niveau 3 du 3e groupe (C) au lieu d'être
+// perdu.
 //
-// ⚠ RÉVISION du 19.09.2026 (§5.1) : l'ancien comportement écartait purement et simplement le
-// 4e groupe (« groupe_non_retenu », jamais promu — « l'article sort sans aucun titre » dans le
-// cas dégénéré où aucun autre groupe n'existe). Rabattre l'excédent sur le niveau 3 plutôt que
-// le rejeter : un article qui distingue plus de trois mises en forme de titre existe (glossaire,
-// dossier à rubriques), et le perdre entièrement serait pire qu'un sur-classement au niveau le
-// plus bas. Le 4e groupe (D, souligné, le plus bas dans l'ordre du §5.1) rejoint donc le
-// niveau 3 du 3e groupe (C) — TOUJOURS AU PLUS trois niveaux distincts au total, jamais un
-// compromis qui en inventerait un quatrième.
-//
-// ⚠ Le rejet EN BLOC (« promotion_rejetee_contrainte_niveaux », niveaux_finaux > MAX_NIVEAUX)
-// reste un garde-fou distinct, structurellement INATTEIGNABLE avec les données d'aujourd'hui :
-// niveaux_a_chercher est TOUJOURS un sous-ensemble de {1,2,3} (Paragraphe.niveau_declare ne
-// connaît que ces trois valeurs), et le rabattage ci-dessus ne peut jamais inventer un niveau
-// hors de {1,2,3} non plus (voir le commentaire de classer_titres()).
+// Le rejet en bloc (« promotion_rejetee_contrainte_niveaux ») reste un garde-fou distinct,
+// inatteignable avec les données actuelles : niveau_declare ne prend que 1, 2 ou 3, et le
+// rabattage n'invente pas de niveau (voir classer_titres()).
 
 test('classer_titres : quatre groupes qualifiants -> jamais plus de trois NIVEAUX, le 4e rabattu sur le niveau 3', { skip: sansPython }, () => {
     const doc = {
@@ -798,11 +678,9 @@ test('classer_titres : quatre groupes qualifiants -> jamais plus de trois NIVEAU
   });
 
 // ---------------------------------------------------------------------------------------
-// 12. Passe 3 bis — ADOPTION. Correction de Robin du 18.09.2026, pendant ce chantier : un
-// titre déclaré fournit la signature de référence de son niveau ; un paragraphe non stylé qui
-// la porte est adopté à ce niveau — « typiquement quelqu'un balise 5 titres, le 6ème il le
-// met juste italique + augmente la taille ». Cinq H2 déclarés en 12 pt italique, plus un
-// sixième paragraphe SANS style en 12 pt italique : les six ressortent au niveau 2.
+// 12. Passe 3 bis, adoption : un titre déclaré fournit la signature de son niveau, et un
+// paragraphe non stylé qui la porte est adopté. Cinq H2 déclarés en 12 pt italique, plus un
+// sixième paragraphe sans style en 12 pt italique : les six ressortent au niveau 2.
 
 test('classer_titres : passe 3 bis, adoption -> le 6e paragraphe (12 pt italique, sans style) rejoint les 5 H2', { skip: sansPython }, () => {
     const blocs = [];
@@ -837,11 +715,8 @@ test('classer_titres : passe 3 bis, adoption -> le 6e paragraphe (12 pt italique
   });
 
 // ---------------------------------------------------------------------------------------
-// 12bis. Passe 3 bis — garde-fou de MAJORITÉ. « Cinq H2 avec cinq mises en forme différentes
-// ne donnent AUCUNE référence, et on n'adopte rien » (Robin, 18.09.2026). Sans ce garde-fou,
-// n'importe quelle mise en forme d'un seul titre déclaré ferait foi — en apparence anodin sur
-// cinq titres, mais c'est très exactement le mécanisme qui, mal gardé, transformerait le cas
-// d'ouverture du chantier (un vrai titre sur quatre déclarés) en fausse évidence.
+// 12bis. Passe 3 bis, majorité : cinq H2 aux mises en forme toutes différentes ne donnent
+// aucune référence, et rien n'est adopté.
 
 test('classer_titres : passe 3 bis, aucune majorité -> aucune référence, rien adopté', { skip: sansPython }, () => {
     const blocs = [
@@ -850,9 +725,8 @@ test('classer_titres : passe 3 bis, aucune majorité -> aucune référence, rien
       para(2, 'Titre H2 trois', { style: 'heading 2', niveauDeclare: 2, souligne: true, taille: 20 }),
       para(3, 'Un paragraphe de corps assez long pour établir la taille dominante '
         + 'cohérente sur ce document testé ici pour de bon et sans ambiguïté aucune.', { taille: 18 }),
-      // Ce candidat porte la signature du PREMIER H2 (gras, 24) : s'il était adopté à tort
-      // (garde-fou de majorité absent), il rejoindrait le niveau 2 sans qu'aucune majorité
-      // ne le justifie — un seul titre sur trois ne fait pas une référence.
+      // Signature du premier H2 (gras, 24) : sans garde-fou de majorité, ce candidat serait
+      // adopté au niveau 2.
       para(4, 'Paragraphe gras non stylé', { gras: true, taille: 24 }),
       para(5, 'Encore un paragraphe de corps assez long pour établir la même taille '
         + 'dominante cohérente sur ce document testé ici pour de bon et sans ambiguïté.', { taille: 18 })
@@ -870,12 +744,10 @@ test('classer_titres : passe 3 bis, aucune majorité -> aucune référence, rien
   });
 
 // ---------------------------------------------------------------------------------------
-// 12ter. Passe 3 bis — garde-fou « jamais la signature du corps ». Trois H2 courts, SANS
-// AUCUNE mise en forme directe (ils survivent la passe 4 par leur LONGUEUR, pas par leur
-// signature) : leur majorité vaut alors exactement celle du corps. Une référence adoptée
-// là-dessus adopterait N'IMPORTE QUEL paragraphe de corps du document — le filet qui
-// protège le cas d'ouverture du chantier si la rétrogradation avait laissé passer des faux
-// titres à la signature du corps.
+// 12ter. Passe 3 bis, signature du corps : trois H2 courts sans mise en forme directe
+// survivent la passe 4 par leur longueur, et leur majorité vaut la signature du corps. Une
+// référence calculée là-dessus adopterait n'importe quel paragraphe de corps : il n'y en a
+// pas.
 
 test('classer_titres : passe 3 bis, majorité = signature du corps -> aucune référence', { skip: sansPython }, () => {
     const doc = {
@@ -902,14 +774,10 @@ test('classer_titres : passe 3 bis, majorité = signature du corps -> aucune ré
   });
 
 // ---------------------------------------------------------------------------------------
-// 13. Passe 3 bis — ORDRE. « 1. rétrograder d'abord ; 2. calculer la référence ensuite, sur
-// les titres déclarés qui ont survécu ; 3. adopter enfin. » Ce n'est pas une préférence de
-// style : sur 1_Résumé-article-revue-CSPS.docx (corpus réel), un Titre 2 est posé sur QUATRE
-// paragraphes — un vrai titre et trois paragraphes de corps, ramenés à la taille du corps et
-// dégraissés. Calculée AVANT rétrogradation, la signature majoritaire de ces quatre serait
-// celle du CORPS (trois sur quatre) : on adopterait alors tout paragraphe du document portant
-// la signature du corps, soit l'article entier promu en titre. Ce contrôle vérifie que ce
-// n'est PAS ce qui se produit.
+// 13. Passe 3 bis, ordre : rétrograder, puis calculer la référence sur les titres déclarés
+// restants, puis adopter. Dans 1_Résumé-article-revue-CSPS.docx, un Titre 2 est posé sur
+// quatre paragraphes, dont trois de corps. Calculée avant la rétrogradation, la signature
+// majoritaire serait celle du corps, et tout l'article serait promu.
 
 test('classer_titres : passe 3 bis sur corpus réel (1_Résumé) -> l\'adoption ne promeut pas le corps du document',
   { skip: sansPython }, (t) => {
@@ -925,10 +793,7 @@ test('classer_titres : passe 3 bis sur corpus réel (1_Résumé) -> l\'adoption 
     const { stats, n_titres_retenus: nTitres, n_paragraphes: nParagraphes } =
       classerSurFichier(path.join(CORPUS_LOT_A, fichier));
 
-    // Le seuil n'est pas arbitraire : c'est la borne MAX_TITRES du §5.1 passe 2 elle-même
-    // (mesurée sur 36 articles réels, maximum observé 21) — un résultat qui la dépasserait
-    // serait déjà signalé par le mécanisme du contrôle 8, mais ICI on veut plus qu'un signal :
-    // la preuve que rien ne s'est emballé au point de promouvoir le corps de l'article.
+    // Borne MAX_TITRES de la passe 2 (maximum observé sur 36 articles : 21).
     assert.ok(nTitres <= 21,
       'le nombre de titres retenus (' + nTitres + '/' + nParagraphes + ') doit rester dans '
       + 'les bornes plausibles (§5.1 passe 2) : l\'adoption n\'a pas promu le corps du document');
@@ -938,21 +803,16 @@ test('classer_titres : passe 3 bis sur corpus réel (1_Résumé) -> l\'adoption 
   });
 
 // =========================================================================================
-// Reprise du 19.09.2026 — signatures effectives, titres en liste numérotée, nouvelles
-// exclusions de la passe 1 et plafond de trois groupes rabattu. Voir le §5.1 du contrat,
-// révision du 19.09.2026, pour la justification complète de chaque règle.
+// Signatures effectives, titres en liste numérotée, exclusions de la passe 1 et plafond de
+// trois groupes. Voir docs/ARCHITECTURE-nettoyeur-manuscrit.md.
 // =========================================================================================
 
 // ---------------------------------------------------------------------------------------
-// 14. Titres en liste numérotée — décision de Robin, §5.1. Un item de liste NUMÉROTÉE isolé
-// (aucun voisin non vide de la même liste), gras, portant un numéro manuel en tête de texte,
-// est promu titre : le numéro manuel est retiré du premier fragment (le gabarit numérote lui
-// -même les Titre1), et la liste elle-même disparaît (`liste = None`) — mesuré sur « Le
-// coenseignement développemental… », dont les quatre vrais titres de section sont ainsi faits.
+// 14. Un item de liste numérotée isolé (aucun voisin non vide de la même liste), gras, avec
+// un numéro manuel en tête, est promu titre : le numéro manuel est retiré (le gabarit
+// numérote lui-même les Titre1) et la liste disparaît (`liste = None`).
 //
-// Sabotage minimal : dans _item_numerote_isole(), remplacer le corps de la fonction par
-// `return False` — plus aucun item de liste n'est jamais candidat, ce contrôle rougit
-// (source=1 reste `exclu_liste`, jamais `promue_liste`).
+// Sabotage : remplacer le corps de _item_numerote_isole() par `return False`.
 
 test('classer_titres : item de liste numérotée isolé, gras, avec numéro manuel -> promu, numéro retiré', { skip: sansPython }, () => {
     const doc = {
@@ -980,12 +840,10 @@ test('classer_titres : item de liste numérotée isolé, gras, avec numéro manu
   });
 
 // ---------------------------------------------------------------------------------------
-// 15. Une suite de trois items numérotés consécutifs (ou plus) est une VRAIE liste, jamais des
-// titres — chacun a, au moins d'un côté, un voisin non vide de la même liste (numId), donc
-// aucun n'est isolé.
+// 15. Trois items numérotés consécutifs ou plus forment une vraie liste : chacun a un voisin
+// non vide de la même liste (numId), aucun n'est isolé.
 //
-// Sabotage minimal : dans _voisin_non_vide(), faire `return None` immédiatement (aucun voisin
-// jamais trouvé) — les trois items deviennent chacun « isolé » à tort, ce contrôle rougit.
+// Sabotage : dans _voisin_non_vide(), faire `return None` immédiatement.
 
 test('classer_titres : trois items numérotés consécutifs -> jamais promus (vraie liste)', { skip: sansPython }, () => {
     const doc = {
@@ -1011,12 +869,10 @@ test('classer_titres : trois items numérotés consécutifs -> jamais promus (vr
   });
 
 // ---------------------------------------------------------------------------------------
-// 16. Une liste à PUCES n'est jamais candidate, isolée ou non — seule la numérotation porte,
-// en pratique, l'ambiguïté « ceci est peut-être un titre » (§5.1).
+// 16. Une liste à puces n'est jamais candidate, isolée ou non : seule la numérotation rend un
+// item ambigu.
 //
-// Sabotage minimal : dans _item_numerote_isole(), retirer la condition `p.liste[2] != 'numero'`
-// (ne garder que `p.liste is None`) — une puce isolée devient candidate, ce contrôle rougit si
-// elle porte en plus une signature de titre (gras).
+// Sabotage : dans _item_numerote_isole(), retirer la condition `p.liste[2] != 'numero'`.
 
 test('classer_titres : item de liste À PUCES isolé -> jamais promu, même gras', { skip: sansPython }, () => {
     const doc = {
@@ -1037,14 +893,11 @@ test('classer_titres : item de liste À PUCES isolé -> jamais promu, même gras
   });
 
 // ---------------------------------------------------------------------------------------
-// 17. Un séparateur visuel (une ligne de tirets, sans aucune lettre) n'est jamais un titre,
-// même gras et à une taille distincte du corps — mesuré sur `4_La méthode Flip Flap.docx` : 5
-// lignes « ──────── » promues en Titre2/Titre3 avant cette exclusion.
+// 17. Un séparateur visuel (ligne de tirets, sans lettre) n'est jamais un titre, même gras et
+// d'une taille distincte.
 //
-// Sabotage minimal : dans _sans_aucune_lettre(), remplacer le corps par `return False` — la
-// ligne de tirets redevient un candidat ordinaire, ce contrôle rougit (elle se retrouve seule
-// candidate de sa signature, donc au corps... sauf si elle qualifie, auquel cas elle est
-// promue : ici, isolée et distincte, elle qualifie et le contrôle rougit bel et bien).
+// Sabotage : remplacer le corps de _sans_aucune_lettre() par `return False` ; isolée et
+// distincte, la ligne qualifie et le contrôle rougit.
 
 test('classer_titres : une ligne de tirets (sans aucune lettre) -> jamais promue', { skip: sansPython }, () => {
     const doc = {
@@ -1064,11 +917,9 @@ test('classer_titres : une ligne de tirets (sans aucune lettre) -> jamais promue
   });
 
 // ---------------------------------------------------------------------------------------
-// 18. Un paragraphe qui porte une adresse courriel n'est jamais un titre — un encadré de
-// coordonnées, pas un intertitre, même mis en gras.
+// 18. Un paragraphe qui porte une adresse courriel n'est jamais un titre, même en gras.
 //
-// Sabotage minimal : dans _porte_des_coordonnees(), remplacer le corps par `return False` —
-// la ligne de coordonnées redevient candidate, ce contrôle rougit.
+// Sabotage : remplacer le corps de _porte_des_coordonnees() par `return False`.
 
 test('classer_titres : une ligne avec adresse courriel -> jamais promue', { skip: sansPython }, () => {
     const doc = {
@@ -1088,12 +939,10 @@ test('classer_titres : une ligne avec adresse courriel -> jamais promue', { skip
   });
 
 // ---------------------------------------------------------------------------------------
-// 19. « Tableau 1 » (le lexique de légende RE_LEGENDE, importé de docx-titres.py) n'est jamais
-// un titre — mesuré sur « Le coenseignement développemental… » : promu Titre3 avant cette
-// exclusion.
+// 19. « Tableau 1 » (lexique de légende RE_LEGENDE, importé de docx-titres.py) n'est jamais
+// un titre.
 //
-// Sabotage minimal : commenter la branche `elif RE_LEGENDE.match(...)` dans
-// _exclusions_passe1() — « Tableau 1 » redevient candidat, ce contrôle rougit.
+// Sabotage : commenter la branche `elif RE_LEGENDE.match(...)` dans _exclusions_passe1().
 
 test('classer_titres : "Tableau 1" (lexique de légende) -> jamais promu',
   { skip: sansPython }, () => {
@@ -1114,18 +963,12 @@ test('classer_titres : "Tableau 1" (lexique de légende) -> jamais promu',
   });
 
 // ---------------------------------------------------------------------------------------
-// 20. Signatures EFFECTIVES (§5.1, révision du 19.09.2026) : un corps qui HÉRITE sa taille
-// (« effectif » rempli par la cascade des styles, `forme` vide) et un faux titre qui la
-// DÉCLARE directement (`forme` rempli, pas d'« effectif » propre — repli sur `forme`, même
-// valeur) doivent être jugés à la MÊME taille effective — et donc, faute d'autre signal,
-// rétrogradé par la longueur (« corps sans taille déclarée » et « faux
-// titre déclaré 12 pt » étaient jugés différents avant cette révision).
+// 20. Signatures effectives : un corps qui hérite sa taille (`effectif` rempli par la cascade
+// des styles, `forme` vide) et un faux titre qui la déclare directement (`forme` rempli, repli
+// sur `forme`) sont jugés à la même taille ; sans autre signal, le faux titre est rétrogradé
+// par sa longueur.
 //
-// Sabotage minimal : dans _valeur_effective(), remplacer le corps par
-// `return fragment.forme.get(cle)` (ignorer `effectif`, repli sur la mise en forme DIRECTE
-// seule, l'ancien comportement) — le corps (taille directe absente) et le faux titre (taille
-// directe 24) redeviennent « distincts » sans même regarder la longueur, ce contrôle rougit
-// (le faux titre reste conservé au lieu d'être rétrogradé).
+// Sabotage : remplacer le corps de _valeur_effective() par `return fragment.forme.get(cle)`.
 
 function paragrapheAvecEffectif(source, texte, opts = {}) {
   const { style = '', niveauDeclare = 0, formeDirecte = {}, effectif = null } = opts;
@@ -1139,13 +982,11 @@ test('classer_titres : signature EFFECTIVE (corps hérite 12pt, faux titre le d�
     const doc = {
       styles: ['heading 2'],
       blocs: [
-        // Corps : AUCUNE taille directe (`forme` vide), mais un « effectif » de 24 — simule
-        // l'hérédité résolue par la cascade des styles (docDefaults/Normal).
+        // Corps : aucune taille directe, un effectif de 24 (hérité de docDefaults/Normal).
         paragrapheAvecEffectif(0, corpsLong(1), { effectif: { taille: 24 } }),
         paragrapheAvecEffectif(1, corpsLong(2), { effectif: { taille: 24 } }),
-        // Faux titre : un H2 DÉCLARÉ, sur un paragraphe de corps ordinaire (40 mots), avec une
-        // taille DIRECTE de 24 (pas d'« effectif » propre : repli sur `forme`, même valeur que
-        // le corps une fois résolue). Aucun gras, aucun italique, aucun autre signal direct.
+        // Faux titre : H2 déclaré sur 40 mots de corps, taille directe 24 (même valeur que le
+        // corps une fois résolue), aucun autre signal direct.
         paragrapheAvecEffectif(2,
           Array.from({ length: 40 }, (_, i) => 'mot' + (i + 1)).join(' ') + '.',
           { style: 'heading 2', niveauDeclare: 2, formeDirecte: { taille: 24 } }),
@@ -1163,16 +1004,12 @@ test('classer_titres : signature EFFECTIVE (corps hérite 12pt, faux titre le d�
       + '— la trace doit le dire sans détour, jamais parler d\'une distinction qui n\'existe plus');
   });
 
-// 20bis. Garde-fou INVERSE, sur le corpus 2-fabrique (§5.1) : un faux titre fabriqué par un
-// simple remplacement de w:pStyle (AUCUN réglage direct, mais une signature EFFECTIVE qui
-// prend celle de son style de titre, gras+grand) ne doit PAS être protégé pour cette seule
-// raison — sans le garde-fou (exiger la distinction en DIRECT ET en effectif), la révision du
-// test précédent romprait ce corpus-là (mesuré : 21/34 -> 5/34 avant ce garde-fou).
+// 20bis. Un faux titre obtenu en remplaçant seulement w:pStyle (aucun réglage direct, mais
+// une signature effective de titre, gras et grand) n'est pas protégé pour cette raison : la
+// distinction doit exister en direct et en effectif.
 //
-// Sabotage minimal : dans _passe4_retrogradation(), remplacer la condition
-// `distinct_effectif and distinct_direct` par `distinct_effectif` seul (jamais exiger le
-// direct) — ce contrôle rougit : le faux titre est conservé sans que la longueur soit même
-// regardée.
+// Sabotage : dans _passe4_retrogradation(), remplacer `distinct_effectif and distinct_direct`
+// par `distinct_effectif`.
 
 test('classer_titres : signature distincte SEULEMENT en effectif (pStyle nu, aucun réglage direct) -> pas de conservation inconditionnelle', { skip: sansPython }, () => {
     const corpsLong = (n) => 'Un paragraphe de corps assez long pour établir la taille '
@@ -1180,14 +1017,11 @@ test('classer_titres : signature distincte SEULEMENT en effectif (pStyle nu, auc
     const doc = {
       styles: ['heading 2'],
       blocs: [
-        // Corps : aucune mise en forme directe NI effective déclarée (comme un vrai corps sans
-        // aucun réglage propre).
+        // Corps : aucune mise en forme directe ni effective.
         paragrapheAvecEffectif(0, corpsLong(1)),
         paragrapheAvecEffectif(1, corpsLong(2)),
-        // Faux titre « 2-fabrique » : un H2 déclaré, sur 40 mots de corps, SANS AUCUN réglage
-        // direct (`forme` vide, comme le corps) — mais dont l'« effectif » simule ce qu'une
-        // vraie cascade de style « heading 2 » donnerait (gras, 28pt), parce qu'AUCUN réglage
-        // direct ne vient le distinguer de son propre style.
+        // Faux titre : H2 déclaré sur 40 mots, sans réglage direct ; l'effectif simule la
+        // cascade du style « heading 2 » (gras, 28 pt).
         paragrapheAvecEffectif(2,
           Array.from({ length: 40 }, (_, i) => 'mot' + (i + 1)).join(' ') + '.',
           { style: 'heading 2', niveauDeclare: 2, effectif: { taille: 28, gras: true } }),
@@ -1204,10 +1038,8 @@ test('classer_titres : signature distincte SEULEMENT en effectif (pStyle nu, auc
   });
 
 // ---------------------------------------------------------------------------------------
-// 21. Le plafond de trois groupes REJOINT le niveau 3 plutôt que d'être rejeté en bloc — voir
-// aussi le contrôle 11 ci-dessus (mis à jour pour cette révision), qui exerce le même mécanisme
-// avec quatre groupes. Ici, cinq groupes qualifiants : les deux excédentaires (D et E) doivent
-// tous deux rejoindre le niveau 3, aucun n'est perdu.
+// 21. Au-delà de trois groupes, les excédentaires rejoignent le niveau 3 (voir aussi le
+// contrôle 11). Ici cinq groupes : D et E rejoignent tous deux le niveau 3.
 
 test('classer_titres : cinq groupes qualifiants -> les deux excédentaires rejoignent tous deux le niveau 3', { skip: sansPython }, () => {
     const doc = {
@@ -1240,17 +1072,12 @@ test('classer_titres : cinq groupes qualifiants -> les deux excédentaires rejoi
   });
 
 // ---------------------------------------------------------------------------------------
-// 22. Le niveau « sinon l'ordre des signatures » des titres de liste numérotée (§5.1) groupe
-// sur la signature TYPOGRAPHIQUE, sans l'alignement — mesuré sur « Le coenseignement
-// développemental… » : ses quatre titres de section partagent gras/taille/police, mais deux
-// sur quatre héritent un alignement justifié (« both ») que les deux autres n'ont pas ;
-// grouper sur la signature complète les aurait à tort scindés en deux niveaux pour un
-// attribut hérité incidemment.
+// 22. Les titres de liste numérotée se groupent par niveau sur la signature typographique,
+// sans l'alignement : un alignement justifié hérité ne doit pas scinder des titres
+// gras/taille/police identiques en deux niveaux.
 //
-// Sabotage minimal : dans _detecter_titres_liste(), remplacer
-// `cle = _signature_typographique(sig)` par `cle = sig` (grouper sur la signature COMPLÈTE,
-// alignement compris) — les deux candidats d'alignements différents se retrouvent sur deux
-// niveaux distincts, ce contrôle rougit.
+// Sabotage : dans _detecter_titres_liste(), remplacer `cle = _signature_typographique(sig)`
+// par `cle = sig`.
 
 test('classer_titres : titres de liste numérotée, même gras/taille mais alignements différents -> même niveau', { skip: sansPython }, () => {
     const doc = {
@@ -1277,31 +1104,19 @@ test('classer_titres : titres de liste numérotée, même gras/taille mais align
   });
 
 // ---------------------------------------------------------------------------------------
-// 23. Reprise du 21.09.2026 — hiérarchie portée par le gras SEUL, avec des titres réels de
-// longueurs très inégales (1 à 10 mots). Mesuré sur `3bis_CSPS_Revue3_2026_FLOW_Piloting_OFP`
-// (LISEZMOI du corpus : « tout le document en style Normal 11 pt, 20 pseudo-titres, aucun
-// changement de corps » — la hiérarchie n'est portée QUE par le gras) : le corps N'EST PAS
-// gras (mesuré : 3/44 paragraphes longs seulement, contre une hypothèse initiale erronée de
-// « corps globalement gras ») ; le vrai coupable était le critère d'homogénéité de longueurs
-// de la passe 3, dont le plancher à 1 mot rejetait le seul groupe qualifiant (1 à 10 mots,
-// dès qu'un titre à un seul mot — « Résumé », « Perspectives », « Références » — y figurait) :
-// 1/17 pseudo-titres retrouvés avant cette révision.
+// 23. Hiérarchie portée par le gras seul, titres de 1 à 10 mots (« Résumé », « Perspectives »
+// …) : le critère d'homogénéité de longueur de la passe 3, avec son plancher
+// PLANCHER_HOMOGENEITE_MOTS, garde le groupe entier.
 //
-// Sabotage minimal : dans _filtrer_groupes(), remplacer
+// Sabotage : dans _filtrer_groupes(), remplacer
 // `SEUIL_HOMOGENEITE_MOTS * max(mn, PLANCHER_HOMOGENEITE_MOTS)` par
-// `SEUIL_HOMOGENEITE_MOTS * max(mn, 1)` (l'ancien plancher) — le groupe entier redevient
-// rejeté, ce contrôle rougit.
+// `SEUIL_HOMOGENEITE_MOTS * max(mn, 1)`.
 
 test('classer_titres : hiérarchie portée par le gras seul, titres de 1 à 10 mots -> un seul groupe, tous promus', { skip: sansPython }, () => {
-    // Corps délibérément LONG (~300 signes chacun, proche des 274 signes médians mesurés sur
-    // 3bis_CSPS_Revue3_2026_FLOW_Piloting_OFP) et en MAJORITÉ (7 paragraphes de corps pour 5
-    // titres, comme un vrai document) : sans cette majorité, la MÉDIANE du corps se calcule à
-    // cheval entre les titres courts et les paragraphes longs (piège déjà noté par le
-    // contrôle 4 plus haut : « il faut une masse de corps représentative ») et le titre le
-    // plus long du groupe (10 mots, 74 signes) échoue à tort le seuil relatif de la passe 3
-    // (RATIO_LONGUEUR_TITRE=3) — mesuré : avec seulement 5 paragraphes de corps pour 5 titres,
-    // la médiane tombe à 182,5 (entre 74 et 291) et exclut ce candidat AVANT même le critère
-    // d'homogénéité que ce contrôle vise à exercer.
+    // Corps long (~300 signes) et majoritaire (7 paragraphes pour 5 titres). Sinon la
+    // médiane du corps tombe entre titres et paragraphes, et le titre de 10 mots échoue le
+    // seuil relatif de la passe 3 (RATIO_LONGUEUR_TITRE=3) avant le critère d'homogénéité
+    // visé ici.
     const corpsLong = (n) => 'Un paragraphe de corps assez long pour établir la taille '
       + 'dominante cohérente sur ce document testé ici pour de bon, non gras comme tout le '
       + 'corps, numéro ' + n + ', avec largement assez de texte pour représenter fidèlement '
@@ -1319,10 +1134,8 @@ test('classer_titres : hiérarchie portée par le gras seul, titres de 1 à 10 m
         para(6, corpsLong(4), { taille: 22 }),
         para(7, 'Perspectives', { gras: true, taille: 22 }),
         para(8, corpsLong(5), { taille: 22 }),
-        // Les deux paragraphes de corps SUPPLÉMENTAIRES viennent AVANT « Références » — placés
-        // après, ils tomberaient dans l'étendue de bibliographie que ce titre déclenche
-        // (§5.1 : TITRES_BIB de szh-citations.lua), exclus de la médiane du corps comme le
-        // fait, à raison, la passe 1 sur le vrai fichier.
+        // Les paragraphes de corps supplémentaires précèdent « Références » : placés après,
+        // ils tomberaient dans l'étendue de bibliographie et sortiraient de la médiane.
         para(9, corpsLong(6), { taille: 22 }),
         para(10, corpsLong(7), { taille: 22 }),
         para(11, 'Références', { gras: true, taille: 22 })
@@ -1339,12 +1152,11 @@ test('classer_titres : hiérarchie portée par le gras seul, titres de 1 à 10 m
     assert.strictEqual(titres.stats.promus, 5);
   });
 
-// ---- Titres numérotés par leur style (07.10.2026) -------------------------------------
+// ---- Titres numérotés par leur style --------------------------------------------------
 //
-// Constaté par Robin sur un manuscrit réel de 2027 : la numérotation qu'un titre Word tient
-// de son style (« 1 », « 1.1 ») était lue comme une liste, et l'écrivain la reposait en
-// « 1. », « 2. » à la place de celle du gabarit ; deux sections numérotées par la même liste,
-// mais restées en corps de texte, sortaient en items de liste.
+// Un titre Word numéroté par son style (« 1 », « 1.1 ») perd cette liste et prend la
+// numérotation du gabarit. Un paragraphe de corps numéroté par la même liste devient un titre
+// du niveau de son item, et non un item de liste.
 const TITRES_DU_PLAN = [
   'import json, sys',
   'sys.path.insert(0, sys.argv[1])',

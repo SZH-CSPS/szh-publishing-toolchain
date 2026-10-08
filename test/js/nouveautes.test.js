@@ -1,12 +1,8 @@
-// « Quoi de neuf » : ce que la fenêtre a le droit de montrer, et à qui.
+// « Quoi de neuf » : ce que la fenêtre montre, et à qui.
 //
-//   node --test "test/js/nouveautes.test.js"
-//
-// La règle tient en une phrase : on annonce un MEDIUM, jamais une mineure. À deux releases
-// par jour — quarante et une pour le seul mois de septembre 2026 — une fenêtre qui s'ouvre à
-// chaque correction ne serait plus lue au bout d'une semaine. Ce fichier garde les quatre
-// décisions qui en découlent, plus la forme du fichier de notes lui-même : il est livré avec
-// le toolkit et personne ne le relit avant qu'une rédactrice ne l'ouvre.
+// On annonce une version medium, jamais une mineure : avec plusieurs releases par jour, une
+// fenêtre ouverte à chaque correction ne serait plus lue. Le fichier de notes est livré avec
+// le toolkit ; sa forme est vérifiée ici.
 'use strict';
 
 const test = require('node:test');
@@ -38,8 +34,8 @@ test('le medium se lit sur deux nombres, et l’ancienne ère n’en a pas', () 
   assert.strictEqual(mediumVersion('1.2.13'), '1.2');
   assert.strictEqual(mediumVersion('v1.2.13'), '1.2');
   assert.strictEqual(mediumVersion('1.10.0'), '1.10');
-  // 2026 est une année : l'ancienne numérotation ne porte pas de medium, donc rien ne
-  // s'annonce pour elle — ce qui est juste, aucune note n'a jamais été écrite.
+  // 2026 est une année : l'ancienne numérotation n'a pas de medium, et rien ne s'annonce
+  // pour elle.
   assert.strictEqual(mediumVersion('2026.09.42'), '');
   assert.strictEqual(mediumVersion('0.0.0-dev+f153f92'), '');
   assert.strictEqual(mediumVersion(''), '');
@@ -63,20 +59,20 @@ test('un saut de plusieurs mediums les montre tous, du plus récent au plus anci
 });
 
 test('jamais la note d’un medium que ce poste n’a pas encore', () => {
-  // Le fichier voyage avec le toolkit et ne peut pas porter plus récent que lui — mais une
-  // note d'avance annoncerait une fonction introuvable, et c'est le pire des messages.
+  // Le fichier voyage avec le toolkit : une note plus récente que lui annoncerait une
+  // fonction introuvable.
   assert.deepStrictEqual(titres(notesAMontrer('1.0', '1.1', TABLE, 'fr')), ['1.1']);
 });
 
 test('personne n’a rien vu : seule la note du jour, pas tout l’historique', () => {
-  // Un poste neuf n'a pas de « nouveautés » — tout y est nouveau. Dérouler quatre notes à
-  // la première ouverture serait un mur de texte devant quelqu'un qui découvre l'outil.
+  // Sur un poste neuf, tout est nouveau : on ne déroule pas quatre notes à la première
+  // ouverture.
   assert.deepStrictEqual(titres(notesAMontrer('', '2.0', TABLE, 'fr')), ['2.0']);
 });
 
 test('une version de poste illisible ne montre rien', () => {
-  // Poste de développement (0.0.0-dev) : le logiciel y est celui du dépôt ouvert, et aucune
-  // note ne décrit ce qu'il contient à cet instant.
+  // Poste de développement (0.0.0-dev) : le logiciel est celui du dépôt ouvert, aucune note
+  // ne le décrit.
   assert.deepStrictEqual(notesAMontrer('1.0', '', TABLE, 'fr'), []);
   assert.deepStrictEqual(notesAMontrer('1.0', '2026.09.42', TABLE, 'fr'), []);
 });
@@ -104,7 +100,7 @@ test('les clés de service et les notes vides sont ignorées', () => {
 });
 
 test('un fichier absent ou illisible rend une table vide, jamais une exception', () => {
-  // Ouvrir un numéro ne doit pas pouvoir échouer parce qu'un fichier de notes manque.
+  // Ouvrir un numéro n'échoue pas parce qu'un fichier de notes manque.
   assert.deepStrictEqual(lireTable(path.join(RACINE, 'ce-fichier-n-existe-pas.json')), {});
   assert.deepStrictEqual(lireTable(path.join(RACINE, 'README.md')), {});
   assert.deepStrictEqual(notesAMontrer('1.0', '1.1', null, 'fr'), []);
@@ -120,8 +116,8 @@ test('nouveautes.json est un JSON valide, et chaque note existe dans les DEUX la
   for (const cle of mediums) {
     for (const langue of ['fr', 'de']) {
       const note = table[cle][langue];
-      // La Zeitschrift est germanophone : une note qui n'existe qu'en français laisse la
-      // moitié de la rédaction devant un texte qu'elle ne lit pas.
+      // La Zeitschrift est germanophone : une note seulement en français ne serait pas lue
+      // par la moitié de la rédaction.
       assert.ok(note, 'la note ' + cle + ' manque en ' + langue);
       assert.ok(String(note.titre || '').trim() !== '', 'note ' + cle + ' (' + langue + ') sans titre');
       assert.ok(Array.isArray(note.points) && note.points.length > 0,
@@ -131,8 +127,8 @@ test('nouveautes.json est un JSON valide, et chaque note existe dans les DEUX la
         assert.ok(point.trim() !== '', 'point vide dans ' + cle + ' (' + langue + ')');
       }
     }
-    // Les deux langues disent la même chose : un point ajouté d'un côté et oublié de
-    // l'autre est le défaut le plus probable de ce fichier.
+    // Les deux langues disent la même chose : un point ajouté d'un côté et oublié de l'autre
+    // est le défaut le plus probable.
     assert.strictEqual(table[cle].fr.points.length, table[cle].de.points.length,
       'la note ' + cle + ' n’a pas le même nombre de points en fr et en de');
   }
@@ -145,7 +141,7 @@ test('le fichier de notes part bien dans le toolkit, sinon aucun poste ne le ver
 });
 
 test('la fenêtre est atteignable après coup, pas seulement quand elle s’ouvre seule', () => {
-  // Une note refusée d'un clic serait perdue pour toujours sans cette commande.
+  // Sans cette commande, une note refusée d'un clic serait perdue.
   const pkg = JSON.parse(fs.readFileSync(path.join(COCKPIT, 'package.json'), 'utf8'));
   const commandes = pkg.contributes.commands.map((c) => c.command);
   assert.ok(commandes.includes('szh.nouveautes'), 'la commande « Quoi de neuf » a disparu');

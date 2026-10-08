@@ -1,14 +1,11 @@
-// Validation PDF/UA en arrière-plan (lib/pdfua-hote.js) : après chaque compilation
-// réussie, sans bloquer la rédaction, avec un badge par article dans la barre d'état et
-// un cache par empreinte du PDF pour ne pas revalider ce qui n'a pas changé.
+// Validation PDF/UA en arrière-plan (lib/pdfua-hote.js) : après chaque compilation réussie,
+// sans bloquer la rédaction, avec un badge par article dans la barre d'état et un cache par
+// empreinte du PDF pour ne pas revalider ce qui n'a pas changé.
 //
-//   node --test "test/js/*.test.js"
-//
-// Un seul hôte, réellement activé, pour tout le fichier : les scénarios s'enchaînent sur
-// le même numéro, comme test/js/controles.test.js. child_process.spawn n'est pas simulé
-// par le harnais (voir hote-factice.js) : le lancement réel du validateur est remplacé par
-// un faux `lancerValidateur` injecté via pdfuaHote.configurer(), après celui que
-// extension.js a déjà posé à l'activation — configurer() fusionne, il ne remplace pas.
+// Un seul hôte activé pour tout le fichier : les scénarios s'enchaînent sur le même numéro,
+// comme dans test/js/controles.test.js. Le harnais ne simule pas child_process.spawn (voir
+// hote-factice.js) : le validateur est remplacé par un faux `lancerValidateur` passé à
+// pdfuaHote.configurer(), après celui qu'extension.js a posé. configurer() fusionne.
 'use strict';
 
 const test = require('node:test');
@@ -32,16 +29,15 @@ const CACHE = path.join(REVUE, '.szh-pdfua.json');
 
 const HOTE = activerHote(REVUE);
 
-// Même module que celui chargé par extension.js (require('./lib/pdfua-hote') depuis
-// extension.js résout le même chemin absolu) : le cache de require le garantit, c'est ce
-// qui permet à configurer() ci-dessous d'atteindre le module que l'hôte utilise vraiment.
+// Le même module que celui chargé par extension.js (cache de require) : configurer()
+// atteint ainsi le module que l'hôte utilise.
 const pdfuaHote = require(path.join(COCKPIT, 'lib', 'pdfua-hote.js'));
 
 // ---- Le faux validateur --------------------------------------------------------------
 //
-// Chaque appel est retenu (chemins relatifs reçus), et répond selon `prochaineReponse` :
-// un objet { lignes, code, erreur } résolu tout de suite, ou une fonction qui rend elle-
-// même une promesse — pour le scénario où le test contrôle à la main quand elle se résout.
+// Chaque appel est retenu (chemins relatifs reçus) et reçoit `prochaineReponse` : un objet
+// { lignes, code, erreur } résolu tout de suite, ou une fonction qui rend une promesse, pour
+// le scénario où le test décide quand elle se résout.
 const appelsValidateur = [];
 let prochaineReponse = { lignes: [], code: 0, erreur: null };
 
@@ -58,8 +54,8 @@ function reponseConforme(fichier) {
   return { lignes: ['[pdf-ua] PDF/UA-1 : ' + fichier + ' — conforme.'], code: 0, erreur: null };
 }
 
-// Le format de pipeline/rapport-ua.py : un bloc par langue, chaque règle suivie de sa
-// cause, de son geste (repliés sur deux lignes ici) et de son repère ISO.
+// Le format de pipeline/rapport-ua.py : un bloc par langue, chaque règle suivie de sa cause,
+// de son geste (ici sur deux lignes) et de son repère ISO.
 function reponseNonConforme(fichier, n) {
   return {
     lignes: [
@@ -97,9 +93,9 @@ function lireCache() {
   try { return JSON.parse(fs.readFileSync(CACHE, 'utf8')); } catch (e) { return null; }
 }
 
-// Laisse la chaîne de promesses (relireJournal -> planifier -> unTravail -> …) atteindre
-// son prochain point d'arrêt : aucun de ces maillons ne dépend d'un minuteur, seulement de
-// l'ordonnancement des micro-tâches, qu'un setImmediate laisse toujours se vider avant lui.
+// Laisse la chaîne de promesses (relireJournal -> planifier -> unTravail -> …) atteindre son
+// prochain point d'arrêt : elle ne dépend d'aucun minuteur, seulement des micro-tâches, qu'un
+// setImmediate laisse se vider avant lui.
 function laisserDecanter() { return new Promise((r) => setImmediate(r)); }
 
 // ---- 1. Un PDF conforme, validé une fois, badge conforme ----------------------------
@@ -169,14 +165,12 @@ test('un PDF modifié et non conforme est compté bloquant et montré dans les C
     + JSON.stringify(charge.lignes.map((l) => l.meta)));
   // Une carte par article, plusieurs défauts dessous : la phrase est dans l'un d'eux.
   const phrases = (carte.messages || []).map((m) => m.texte).join(' | ');
-  // Le résumé « 3 règle(s) ne sont pas respectées » ne double plus les règles qui suivent :
-  // la carte les nomme une par une, le chiffre n'y ajoutait rien.
+  // La carte nomme les règles une par une, sans résumé « 3 règle(s) ne sont pas respectées ».
   assert.doesNotMatch(phrases, /règle\(s\) ne sont pas respectées|PDF non conforme PDF\/UA/,
     'le résumé PDF/UA double les règles détaillées : ' + phrases);
   assert.strictEqual(carte.messages.length, 2, 'une phrase par règle, et rien d’autre : ' + phrases);
-  // Le compte seul ne se corrige pas : la règle, sa cause et son geste doivent suivre. La
-  // règle est le titre du message (la carte dit déjà « Accessibilité du PDF ») ; le geste
-  // est sa consigne ; la cause et le repère ISO sont passés dans l'infobulle (29.09.2026).
+  // La règle est le titre du message (la carte dit déjà « Accessibilité du PDF ») ; le geste
+  // est sa consigne ; la cause et le repère ISO sont dans l'infobulle.
   const regleTitre = (carte.messages || []).find((m) => /pas de titre/.test(m.titre || ''));
   assert.ok(regleTitre, 'la règle en échec n’est pas nommée : ' + phrases);
   assert.strictEqual(regleTitre.titre, 'Le document n’a pas de titre (1 fois, page(s) 3)');
@@ -186,7 +180,7 @@ test('un PDF modifié et non conforme est compté bloquant et montré dans les C
     'la cause de la règle s’est perdue : ' + regleTitre.infobulle);
   assert.match(regleTitre.infobulle, /ISO 14289-1 7\.1-9/, 'le repère ISO s’est perdu');
   assert.doesNotMatch(phrases, /ISO 14289|Titel/, 'le repère ou la moitié allemande a fui : ' + phrases);
-  // La flèche de la règle mène à la fiche, sur le champ du titre ; un défaut de la chaîne
+  // La flèche de la règle mène à la fiche, sur le champ du titre. Un défaut de la chaîne
   // (police non incorporée) n'en a pas : rien à corriger dans l'article.
   const titre = carte.messages.find((m) => /pas de titre/.test(m.texte));
   assert.ok(titre && titre.action, 'la règle du titre n’a pas de flèche : ' + JSON.stringify(titre));
@@ -201,8 +195,8 @@ test('un verdict non conforme mis en cache sans ses règles est rejugé', async 
   const cache = lireCache();
   delete cache.verdicts['01-essai'].details;
   fs.writeFileSync(CACHE, JSON.stringify(cache));
-  // Le cache se relit au premier accès à une racine : on repart d'un état mémoire neuf,
-  // dans un second exemplaire du module, sans toucher à celui de l'hôte.
+  // Le cache se relit au premier accès à une racine : on repart d'un état mémoire neuf, dans
+  // un second exemplaire du module, sans toucher à celui de l'hôte.
   const cleModule = require.resolve(path.join(COCKPIT, 'lib', 'pdfua-hote.js'));
   const original = require.cache[cleModule];
   delete require.cache[cleModule];
@@ -282,9 +276,8 @@ test('un verdict qui revient après le début d’une nouvelle compilation est j
 // ---- 7. Réglage désactivé : rien ne se lance, le badge se tait ----------------------
 
 test('réglage désactivé : le validateur n’est pas appelé et le badge se cache', async () => {
-  // Un état de départ net : un verdict conforme à jour, pour prouver que le badge
-  // disparaît à cause du réglage et non d'un verdict simplement périmé (voir le
-  // scénario 6, qui laisse justement un verdict périmé derrière lui).
+  // État de départ : un verdict conforme à jour, pour prouver que le badge disparaît à cause
+  // du réglage et non d'un verdict périmé (le scénario 6 en laisse un).
   fs.writeFileSync(PDF, 'EEEEE');
   prochaineReponse = reponseConforme('01-essai.pdf');
   await HOTE.finirTache(NOM_TACHE_BUILD, 0);
@@ -300,8 +293,8 @@ test('réglage désactivé : le validateur n’est pas appelé et le badge se ca
   assert.strictEqual(appelsValidateur.length, avant,
     'le validateur a été appelé alors que le réglage est désactivé');
 
-  // Le badge ne se recalcule qu'au changement d'article : on en simule un pour vérifier
-  // qu'il se cache pour de bon, et pas seulement qu'il n'a pas été retouché depuis.
+  // Le badge ne se recalcule qu'au changement d'article : on en simule un pour vérifier qu'il
+  // se cache.
   await HOTE.executer('szh.ouvrirArticle', '02-sans-fiche', { sansApercu: true });
   await HOTE.executer('szh.ouvrirArticle', '01-essai', { sansApercu: true });
   await laisserDecanter();
@@ -351,12 +344,10 @@ test('le résumé PDF/UA ne sort que si aucune règle détaillée ne suit', asyn
   }
 });
 
-// ---- 9. Un verdict sous un nom que plus aucun article ne porte ----------------------
+// ---- 9. Un verdict sous un nom qu'aucun article ne porte plus -----------------------
 //
-// Mesuré sur 2025-02 (29.09.2026) : .szh-pdfua.json gardait 4 clés fantômes après une
-// renumérotation (00-origf-massie, 02-origf-hug-schnyder…), comptées bloquantes dans la vue
-// ET dans la barre d'état : le test `actuels[cle] !== undefined && …` de constats() laissait
-// passer toute clé absente de listerCles().
+// Après une renumérotation, .szh-pdfua.json peut garder des clés d'anciens slugs. Elles ne
+// doivent compter ni dans la vue ni dans la barre d'état.
 
 test('un verdict de l’ancien slug n’apparaît plus, et quitte le cache', async () => {
   const sauve = fs.readFileSync(CACHE, 'utf8');
@@ -405,8 +396,8 @@ test('voile : posé au démarrage, levé seulement après le journal ET la valid
   HOTE.demarrerTache(NOM_TACHE_BUILD);                // Ctrl+S : article inconnu
   const pose = derniereAnalyse(p);
   assert.ok(pose && pose.actif === true, 'aucun voile au démarrage de la compilation');
-  // Aucun enregistrement ne l'a précédée : article inconnu, aucune carte voilée (la page
-  // n'affiche que le bandeau), jamais toute la liste.
+  // Aucun enregistrement ne l'a précédée : article inconnu, aucune carte voilée (seul le
+  // bandeau s'affiche).
   assert.strictEqual(pose.cle, '', 'slug inconnu : aucune carte ne doit être visée');
   assert.deepStrictEqual(pose.cles, []);
   assert.strictEqual(pose.texte, 'Analyse en cours…');
@@ -499,9 +490,9 @@ test('après une renumérotation, aucun constat ni verdict sous un ancien slug',
     'des verdicts restent sous les anciens slugs : ' + cles);
   assert.strictEqual(HOTE.barreQuiDit('à corriger'), null,
     'la barre d’état compte encore les défauts d’un ancien slug');
-  // Le journal, lui, nomme toujours 03-trois : relu tel quel à la fin d'une tâche (même
-  // lecture qu'au redémarrage), il ne doit rien réinjecter. Une tâche réussie : un échec
-  // sans cause lisible poserait sa propre carte au numéro.
+  // Le journal nomme toujours 03-trois : relu à la fin d'une tâche (comme au redémarrage), il
+  // ne doit rien réinjecter. Une tâche réussie, car un échec sans cause lisible poserait sa
+  // propre carte au numéro.
   prochaineReponse = { lignes: [], code: 0, erreur: null };
   HOTE.finirTache(NOM_TACHE_BUILD, 0);
   await laisserDecanter();

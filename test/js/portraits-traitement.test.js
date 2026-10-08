@@ -1,19 +1,14 @@
 // traiterPortraits (lib/portraits.js) pilote wsl.exe : recadrage du visage (YuNet) et
-// détourage (rembg) dans la distro, une ligne JSON par image sur stdout. Aucun test ne
-// l'appelait — portrait.test.js éprouve le RENDU PDF du portrait (span décoratif dans le
-// gabarit), un sujet totalement différent ; grep confirmé, aucun fichier de ce dépôt
-// n'exerçait les lignes 31-92 de lib/portraits.js.
+// détourage (rembg) dans la distribution, une ligne JSON par image sur stdout.
+// portrait.test.js teste un autre sujet, le rendu du portrait dans le PDF.
 //
-// Terrain neuf ici : lib/portraits.js et lib/wsl.js capturent `spawn` par déstructuration
-// au chargement (`const { spawn } = require('child_process')`), sans paramètre
-// d'injection. On patche donc `require('child_process').spawn` AVANT le premier require de
-// lib/portraits.js — même ruse que le crochet Module._load de test/js/hote-factice.js pour
-// `vscode`, jamais essayée pour child_process dans ce dépôt avant ce fichier. Le patch pose
-// un indirecteur (appelé à CHAQUE spawn, pas seulement au chargement) : `impl` se change
-// librement d'un test à l'autre après coup.
+// lib/portraits.js et lib/wsl.js prennent `spawn` par déstructuration au chargement
+// (`const { spawn } = require('child_process')`), sans paramètre d'injection. Le test remplace
+// donc `require('child_process').spawn` avant le premier require de lib/portraits.js, par un
+// relais appelé à chaque spawn : `impl` peut changer d'un test à l'autre.
 //
-// traiterPortraits() commence par reveillerWsl() (lib/wsl.js), qui spawn lui aussi — un seul
-// patch, posé une fois, couvre les deux : même objet child_process, même processus de test.
+// traiterPortraits() commence par reveillerWsl() (lib/wsl.js), qui lance aussi un spawn : le
+// même relais couvre les deux.
 'use strict';
 
 const test = require('node:test');
@@ -43,8 +38,7 @@ function fauxProcessus() {
 }
 
 // L'appel de reveillerWsl() (lib/wsl.js) est toujours ['-d', DISTRO, '--', 'true'] : un
-// processus qui sort tout de suite convient à tous les scénarios ci-dessous, succès comme
-// échec de l'appel principal.
+// processus qui sort tout de suite convient à tous les scénarios.
 function estAppelReveil(args) {
   return Array.isArray(args) && args[args.length - 1] === 'true';
 }

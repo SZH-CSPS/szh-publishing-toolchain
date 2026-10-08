@@ -1,23 +1,17 @@
-// LE CONTRÔLE LE PLUS IMPORTANT du lecteur du gabarit (pronto_modele.py, le noyau neutre ;
-// pronto_docx.py, le lecteur ; pronto-lire.py, la CLI) : le même gabarit, livré en .docx et en
-// .odt, doit produire la MÊME fiche et les MÊMES lignes d'instructions. Le lecteur ne lit que
-// le .docx : le .odt passe par la vraie chaîne de l'import, pipeline/conversion_odt.py
-// (LibreOffice, présent dans la WSL), puis pronto-lire.py. Sans ce contrôle, rien ne
-// prouverait que la conversion garde ce que le lecteur attend.
+// Le même gabarit Pronto, en .docx et en .odt, doit produire la même fiche et les mêmes lignes
+// d'instructions (pronto_modele.py, le noyau ; pronto_docx.py, le lecteur ; pronto-lire.py,
+// la CLI). Le lecteur ne lit que le .docx : le .odt passe par la chaîne de l'import,
+// pipeline/conversion_odt.py (LibreOffice, dans la WSL), puis pronto-lire.py.
 //
-//   node --test "test/js/*.test.js"
-//
-// Les gabarits comparés ici sont ceux du dépôt (revue-template/), pas des fabrications de
-// test : un par langue depuis le 29.09.2026 — `Pronto - modele d'article_FR.docx` (Revue) et
-// `_DE.docx` (Zeitschrift), versions V4 de Robin (le « V4 » disparaît du nom : le dépôt
-// versionne, pas le nom de fichier) — et leurs `.odt`, conversions LibreOffice produites par :
+// Les gabarits comparés sont ceux du dépôt (revue-template/), un par langue :
+// `Pronto - modele d'article_FR.docx` (Revue), `_DE.docx` (Zeitschrift), et leurs `.odt`,
+// produits par :
 //
 //   soffice --headless --convert-to odt --outdir <dossier> "<le .docx>"
 //
-// C'est cette commande qu'il faudra rejouer le jour où quelqu'un modifiera un .docx sans
-// toucher à son .odt — ce qui arrivera, et c'est exactement ce que le second contrôle
-// (parité de STRUCTURE) est là pour détecter. Les contrôles sur le .odt tournent dans la WSL
-// (LibreOffice) et sautent, ou échouent avec SZH_WSL_OBLIGATOIRE, quand elle manque.
+// Commande à rejouer après toute modification d'un .docx : le contrôle de parité de structure
+// détecte un .odt resté en arrière. Les contrôles sur le .odt tournent dans la WSL et
+// sautent, ou échouent avec SZH_WSL_OBLIGATOIRE, quand elle manque.
 'use strict';
 
 const test = require('node:test');
@@ -47,7 +41,7 @@ function dossierJetable() {
 }
 
 // ---- Conversion .odt -> .docx, dans la WSL (LibreOffice), comme l'import ------------------
-// Le gabarit .odt livré, converti en .docx par pipeline/conversion_odt.py ; une fois par
+// Le gabarit .odt livré, converti en .docx par pipeline/conversion_odt.py, une fois par
 // gabarit et par processus. Rend le chemin du .docx (dans un dossier jetable, nettoyé en fin
 // de fichier).
 const DOSSIERS_CONVERSION = [];
@@ -74,10 +68,10 @@ test.after(() => {
   for (const d of DOSSIERS_CONVERSION) { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
-// Lance pronto-lire.py sur `chemin` (le .docx ou le .odt du dépôt), rend { fiche,
-// instructions, avertissements (codes seuls, triés), bloquant }. Un gabarit tapé juste ne
-// devrait jamais bloquer (voir plus bas) : le statut de sortie reste donc vérifié strict ici,
-// contrairement à importer() de pronto-lire.test.js qui doit, lui, laisser passer le code 1.
+// Lance pronto-lire.py sur `chemin` (le .docx ou le .odt du dépôt) et rend { fiche,
+// instructions, avertissements (codes seuls, triés), bloquant }. Un gabarit livré ne bloque
+// pas : le statut de sortie est vérifié strictement, à la différence d'importer() dans
+// pronto-lire.test.js, qui laisse passer le code 1.
 function lire(chemin, slug, produit) {
   const base = dossierJetable();
   try {
@@ -101,19 +95,18 @@ function lire(chemin, slug, produit) {
   }
 }
 
-// La seule ligne de la fiche qui a le droit de différer entre les deux formats : `source:`
-// porte le nom du fichier déposé.
+// Seule ligne de la fiche qui peut différer entre les deux formats : `source:` porte le nom
+// du fichier déposé.
 function sansLigneSource(fiche) {
   return (fiche || '').split(/\r?\n/).filter((l) => l.indexOf('source:') !== 0).join('\n');
 }
 
-// La seule instruction qui a le droit de différer entre les deux formats : le ou les NOMS DE
-// FICHIER de l'image d'un bloc figure (ligne FI). Word et LibreOffice ne nomment pas les médias
-// pareil — media/image1.png + media/image2.svg d'un côté (l'aperçu PNG et le SVG qu'il cache),
-// « 1000038800000A0600000A067B9F4EE9.svg » de l'autre — et c'est sans conséquence : ce nom ne
-// sert qu'à retrouver LA MÊME image dans le .md que pandoc vient d'écrire depuis LE MÊME
-// fichier. Tout le reste de la ligne (légende, texte alternatif, crédit, source) doit, lui,
-// être identique au caractère près, et c'est ce que ce masquage laisse comparer.
+// Seule instruction qui peut différer entre les deux formats : les noms de fichier de l'image
+// d'un bloc figure (ligne FI). Word et LibreOffice nomment les médias différemment
+// (media/image1.png + media/image2.svg d'un côté, « 1000038800000A0600000A067B9F4EE9.svg » de
+// l'autre), sans conséquence : ce nom ne sert qu'à retrouver l'image dans le .md que pandoc
+// écrit depuis le même fichier. Le reste de la ligne (légende, texte alternatif, crédit,
+// source) doit être identique.
 function sansNomsImages(instructions) {
   return (instructions || '').replace(/^(FI\t)[^\t\n]*/gm, '$1<image>');
 }
@@ -143,19 +136,17 @@ test('pronto-lire.py : le même gabarit ' + G.code + ' en .docx et en .odt (conv
     'les avertissements (codes) diffèrent entre le .docx et le .odt : docx=['
     + vuDocx.avertissements.join(', ') + '] odt=[' + vuOdt.avertissements.join(', ') + ']');
 
-  // Les deux gabarits livrés sont tapés juste (c'est même le fait qui rend ce fichier utile) :
-  // aucune de leurs étiquettes ne doit jamais déclencher les clés tolérantes — ni approximée,
-  // ni ambiguë. Un gabarit qui en déclencherait une serait lui-même fautif (ou le mécanisme
-  // trop sensible), les deux à corriger avant tout autre chantier.
+  // Les deux gabarits livrés sont tapés juste : aucune étiquette ne déclenche les clés
+  // tolérantes (approximée ou ambiguë). Sinon le gabarit est fautif, ou le mécanisme trop
+  // sensible.
   assert.deepStrictEqual(vuDocx.avertissements.filter((c) => c.indexOf('cle-approximee') !== -1
     || c.indexOf('cle-ambigue') !== -1), [],
     'le gabarit réel (tapé juste) déclenche pourtant une clé tolérante : '
     + vuDocx.avertissements.join(', '));
 
-  // Décision de Robin (22.09.2026) : les gabarits livrés n'ont, PAR NATURE, aucune clé remplie
-  // — chaque champ y est donc « attendu mais absent », une simple information
-  // (cle-attendue-absente), jamais un blocage. Ni etiquette-*-inconnue ni cle-ambigue (les
-  // codes BLOQUANTS, voir GRAVITE_CODES dans pronto_modele.py) ne devraient jamais y figurer.
+  // Les gabarits livrés n'ont aucune clé remplie : chaque champ y est « attendu mais absent »
+  // (cle-attendue-absente), une information. Les codes bloquants (etiquette-*-inconnue,
+  // cle-ambigue, voir GRAVITE_CODES dans pronto_modele.py) n'y figurent pas.
   assert.strictEqual(vuDocx.bloquant, false,
     'le gabarit .docx (tapé juste, vide par nature) a pourtant bloqué l’import');
   assert.strictEqual(vuOdt.bloquant, false,
@@ -167,21 +158,17 @@ test('pronto-lire.py : le même gabarit ' + G.code + ' en .docx et en .odt (conv
 });
 }
 
-// ---- Parité de STRUCTURE ------------------------------------------------------------------
+// ---- Parité de structure ------------------------------------------------------------------
 //
-// Le contrôle ci-dessus compare ce que pronto-lire.py PRODUIT. Celui-ci compare directement
-// ce que les deux lecteurs VOIENT dans le modèle neutre — étiquettes du tableau des
-// métadonnées, nombre de rangées du tableau des auteurs et leurs étiquettes de champ,
-// étiquettes du bloc figure/tableau — même quand la VALEUR saisie est vide (le gabarit,
-// justement, n'a que des valeurs vides : le premier contrôle ne verrait donc pas une
-// étiquette disparue ou renommée d'un seul côté, puisqu'une étiquette sans valeur n'écrit
-// rien dans la fiche). Il tombera le jour où quelqu'un modifiera un seul des deux fichiers.
+// Le contrôle ci-dessus compare ce que pronto-lire.py produit. Celui-ci compare ce que les
+// deux lecteurs voient dans le modèle neutre : étiquettes du tableau des métadonnées, rangées
+// du tableau des auteurs et leurs étiquettes, étiquettes des blocs figure/tableau, même quand
+// la valeur est vide. Or le gabarit n'a que des valeurs vides : sans ce contrôle, une
+// étiquette retirée d'un seul côté passerait.
 //
-// Écrit une fois en tant que script Python dans un dossier jetable, comme FABRICANTE_PY dans
-// pronto-lire.test.js : plus lisible qu'un programme -c pour une inspection aussi précise du
-// modèle neutre. Importe pronto_docx/pronto_modele DIRECTEMENT (pas via la CLI)
-// pour lire, sous chaque étiquette « SZH Cle » d'une cellule, son texte aplati — QU'IL Y AIT
-// UNE VALEUR OU NON, ce que pronto_modele.principal() ne rend jamais tel quel.
+// Script Python écrit dans un dossier jetable, comme FABRICANTE_PY dans pronto-lire.test.js.
+// Il importe pronto_docx/pronto_modele pour lire, sous chaque étiquette « SZH Cle », son
+// texte aplati, qu'il y ait une valeur ou non, ce que pronto_modele.principal() ne rend pas.
 
 const STRUCTURE_PY = `#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
@@ -318,29 +305,24 @@ test('pronto-lire.py : mêmes étiquettes, même nombre de rangées d’auteur, 
     + JSON.stringify(structDocx.blocs_nouvelle_forme) + ' odt='
     + JSON.stringify(structOdt.blocs_nouvelle_forme));
 
-  // Le gabarit réel porte quatre étiquettes de métadonnées — « Langue de l'article » en a été
-  // retirée le 22.09.2026, la langue venant désormais de la revue du numéro —, quatre rangées
-  // dans le tableau des
-  // auteurs (l'en-tête « Photo »/« Autrice ou auteur », puis trois rangées-modèle) — mesuré à
-  // la main sur les deux fichiers. Depuis la révision du 21.09.2026 (plus de tableau
-  // enveloppe), il ne porte plus AUCUN bloc à l'ancienne forme, et deux à la nouvelle (les
-  // exemples de bloc figure et de bloc tableau), chacun à cinq étiquettes (Note depuis le 30.09.2026). Si ces nombres
-  // changent un jour, c'est que le gabarit a changé : les deux assertions deepStrictEqual
-  // ci-dessus l'auraient déjà dit, celles-ci ne font que documenter la forme attendue pour
-  // qui lit ce test.
+  // Forme attendue du gabarit : quatre étiquettes de métadonnées ; quatre rangées dans le
+  // tableau des auteurs (l'en-tête « Photo »/« Autrice ou auteur », puis trois
+  // rangées-modèle) ; aucun bloc à l'ancienne forme et deux à la nouvelle (exemples de bloc
+  // figure et de bloc tableau), à cinq étiquettes chacun. Les deepStrictEqual ci-dessus
+  // détectent déjà tout changement ; ces assertions décrivent la forme.
   assert.strictEqual(structDocx.table1_labels.length, 4);
   assert.strictEqual(structDocx.table2_lignes.length, 4);
   assert.strictEqual(structDocx.blocs_ancienne_forme.length, 0);
   assert.strictEqual(structDocx.blocs_nouvelle_forme.length, 2);
   assert.strictEqual(structDocx.blocs_nouvelle_forme[0].length, 5);
-  // « Source : » manquait au second bloc depuis la v3 du gabarit, alors que l'aide dit
-  // « Copiez ces quatre paragraphes » : rétablie le 23.09.2026.
+  // Le second bloc a cinq étiquettes, « Source : » comprise, comme le dit l'aide (« Copiez
+  // ces quatre paragraphes »).
   assert.strictEqual(structDocx.blocs_nouvelle_forme[1].length, 5);
 });
 }
 
-// Le .odt n'est plus lu directement : pronto-lire.py le refuse en le disant, l'import le
-// convertit d'abord (voir plus haut).
+// Le .odt n'est pas lu directement : pronto-lire.py le refuse en le disant, l'import le
+// convertit d'abord.
 test('pronto-lire.py : un .odt passé directement est refusé, avec un message fr puis de', { skip: sansPython }, () => {
   const base = dossierJetable();
   try {
@@ -354,20 +336,17 @@ test('pronto-lire.py : un .odt passé directement est refusé, avec un message f
 
 // ── Le choix du lecteur, document par document ────────────────────────────────────────────
 //
-// C'est LA décision du branchement (22.09.2026) : pipeline/import-docx.sh demande
-// `pronto-lire.py --reconnaitre` pour chaque document déposé, et envoie au lecteur du gabarit
-// ceux qui en déclarent les styles, à l'ancien docx-meta.py tous les autres. Un réglage de
-// poste aurait été un pis-aller — la rédaction reçoit les deux sortes de documents, souvent le
-// même jour.
+// pipeline/import-docx.sh demande `pronto-lire.py --reconnaitre` pour chaque document
+// déposé : ceux qui déclarent les styles du gabarit vont au lecteur du gabarit, les autres à
+// docx-meta.py. La rédaction reçoit les deux sortes de documents, souvent le même jour.
 //
 // Le critère porte sur styles.xml, pas sur le corps : un document parti du gabarit reste
-// reconnu même si l'autrice a effacé toutes les lignes d'aide, et un Word hérité ne peut pas
-// le devenir par accident.
+// reconnu même sans les lignes d'aide, et un Word hérité ne le devient pas par accident.
 
 const CHAPITRE_HERITE = path.join(RACINE, 'livre-template', 'Modele-chapitre-SZH.docx');
 
-// Codes de --reconnaitre : 0 = au gabarit, 10 = pas au gabarit, tout autre = panne (le shell
-// la signale au lieu de la prendre pour un « non »).
+// Codes de --reconnaitre : 0 = au gabarit, 10 = pas au gabarit, autre = panne (le shell la
+// signale au lieu de la prendre pour un « non »).
 const PAS_AU_GABARIT = 10;
 
 function reconnait(chemin) {
@@ -396,8 +375,8 @@ test('pronto-lire.py --reconnaitre : les deux gabarits livrés sont reconnus, un
 });
 
 test('pronto-lire.py --reconnaitre : un fichier absent ou illisible n’est jamais « au gabarit »', { skip: sansPython }, () => {
-  // Un document qu'on ne sait pas ouvrir doit partir chez l'ancien lecteur, dont le message
-  // d'échec dit mieux que nous ce qui ne va pas : « pas au gabarit » (10), jamais une panne.
+  // Un document illisible part chez l'ancien lecteur, dont le message d'échec est plus
+  // précis : « pas au gabarit » (10), pas une panne.
   assert.strictEqual(python([PRONTO_LIRE, '--reconnaitre',
     path.join(RACINE, 'nulle-part-du-tout.docx')]).status, PAS_AU_GABARIT);
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-pronto-'));

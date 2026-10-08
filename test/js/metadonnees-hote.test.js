@@ -1,13 +1,8 @@
-// Le focus d'un bouton de constat jusqu'aux formulaires de métadonnées — revue F03
-// (22.09.2026). lib/constats.js écrit le contrat en tête de sa table : la commande d'un
-// bouton est appelée avec { slug, focus }. Sur les huit destinations, « fiche » et
-// « numero » (szh.metadonneesArticle, szh.metadonnees) jetaient tout : les cinq commandes
-// visées étaient enregistrées avec une fonction fléchée SANS paramètre, donc rien ne leur
-// parvenait, pas même le slug. Ce fichier tient le focus au niveau de l'hôte (la charge
-// postée au panneau) ; test/js/controles.test.js tient le même geste depuis un vrai clic de
-// constat, et test/js/webviews.test.js prouve que le champ visé reçoit vraiment le curseur.
-//
-//   node --test test/js/metadonnees-hote.test.js
+// Le focus d'un bouton de constat jusqu'aux formulaires de métadonnées. lib/constats.js
+// appelle la commande d'un bouton avec { slug, focus } ; ce fichier vérifie, au niveau de
+// l'hôte, que « fiche » et « numero » (szh.metadonneesArticle, szh.metadonnees) transmettent
+// ce focus au panneau. test/js/controles.test.js part d'un vrai clic de constat, et
+// test/js/webviews.test.js vérifie que le champ visé reçoit le curseur.
 'use strict';
 
 const test = require('node:test');
@@ -26,13 +21,11 @@ function dernieresValeurs(panneau) {
 
 // ---- « fiche » (szh.metadonneesArticle -> ouvrirMetadonneesArticle) ----------------------
 //
-// Le panneau des fiches est un singleton (panneauArticles, lib/metadonnees-hote.js) : les
-// quatre tests qui suivent partagent donc le MÊME panneau, comme un rédacteur qui cliquerait
-// plusieurs constats sans refermer le formulaire. Un seul test envoie « pret » — celui qui
-// ouvre le panneau la première fois : le renvoyer sur un panneau déjà ouvert réveillerait le
-// gestionnaire de messages posé à la CRÉATION du panneau, dont le focus est figé sur la
-// toute première ouverture — exactement le piège que le commentaire d'ouvrirApercuMetadonnees
-// signale (« on ne réveille pas la page par un pret »).
+// Le panneau des fiches est unique (panneauArticles, lib/metadonnees-hote.js) : les quatre
+// tests suivants partagent le même panneau, comme un rédacteur qui clique plusieurs constats
+// sans refermer le formulaire. Seul le test qui ouvre le panneau envoie « pret » : sur un
+// panneau déjà ouvert, il réveillerait le gestionnaire posé à la création, dont le focus est
+// figé sur la première ouverture (voir ouvrirApercuMetadonnees).
 function panneauFiche() { return HOTE.panneauDeType('szhApercuMetadonnees'); }
 
 test('fiche, panneau neuf : le focus part dans la charge initiale', async () => {
@@ -63,9 +56,8 @@ test('fiche : un slug sans focus n’envoie aucune clé focus (comportement d’
   assert.strictEqual(valeurs.focus, undefined);
 });
 
-// Le focus n'est validé nulle part côté hôte — c'est la webview qui, ne trouvant pas de
-// [data-cle] pour ce nom, ne fait rien (test/js/webviews.test.js). L'hôte ne doit ni lever
-// ni afficher d'erreur pour un focus qui ne correspond à aucun champ connu.
+// Le focus n'est pas validé côté hôte : la webview, sans [data-cle] pour ce nom, ne fait rien
+// (test/js/webviews.test.js). L'hôte ne lève pas et n'affiche pas d'erreur.
 test('fiche : un focus qui ne correspond à aucun champ ne fait rien lever côté hôte', async () => {
   HOTE.erreurs.length = 0;
   const p = panneauFiche();
@@ -93,9 +85,7 @@ test('fiche : interface allemande sur un numéro français, la liste des types e
 
 // ---- « numero » (szh.metadonnees -> ouvrirMetadonnees) -----------------------------------
 //
-// Avant la revue F03, cette commande était enregistrée SANS paramètre du tout : ni slug
-// (sans importance, un seul numéro par dossier), ni focus. Les deux mêmes chemins que pour
-// la fiche : panneau neuf, panneau déjà ouvert.
+// Les deux mêmes chemins que pour la fiche : panneau neuf, panneau déjà ouvert.
 
 test('numero, panneau neuf : le focus part avec les valeurs du numéro', async () => {
   await HOTE.executer('szh.metadonnees', { focus: 'title' });
@@ -128,17 +118,12 @@ test('numero : sans item du tout (démarrage, palette), la commande n’échoue 
   assert.ok(p, 'le formulaire du numéro doit s’ouvrir même sans argument');
 });
 
-// ---- Les trois destinations sans focus utile : acceptent l'objet sans se casser ----------
+// ---- Les trois destinations sans focus utile acceptent l'objet sans erreur ---------------
 //
-// constats.js ne vise ni « reglages », ni « documentation », ni (depuis la revue F03,
-// 22.09.2026) « apercu » avec un focusChamp/focusFixe : pipeline/pdf-verrouille visait
-// « apercu » à tort et vise désormais « pdf » (szh.voirPdfArticle), qui sait viser un
-// article précis — basculerApercu (lib/apercu.js) reste un INTERRUPTEUR sur l'article
-// actif, pas un « ouvrir l'aperçu de tel article ». Les trois doivent au moins ne pas lever
-// quand on leur passe
-// { slug, focus }, ce qu'elles ignoraient déjà avant (une fonction fléchée sans paramètre
-// n'échoue pas non plus sur un argument surnuméraire) — la revue F03 demande la
-// déclaration explicite du paramètre, pas un nouveau comportement ici.
+// constats.js ne vise « reglages », « documentation » ou « apercu » avec aucun
+// focusChamp/focusFixe. basculerApercu (lib/apercu.js) est un interrupteur sur l'article
+// actif ; pour viser un article précis, pipeline/pdf-verrouille vise « pdf »
+// (szh.voirPdfArticle). Ces trois commandes doivent seulement accepter { slug, focus }.
 for (const id of ['szh.reglages', 'szh.documentation', 'szh.basculerApercu']) {
   test(id + ' accepte { slug, focus } sans lever', async () => {
     HOTE.erreurs.length = 0;
@@ -147,9 +132,8 @@ for (const id of ['szh.reglages', 'szh.documentation', 'szh.basculerApercu']) {
 }
 
 // szh.vueWord : le focus (un nom de fichier Word) est accepté, mais la liste partagée
-// (SZH.listeCartes, media/_commun.js) n'a aucun moyen de désigner une ligne précise — voir
-// le commentaire d'extension.js à cet enregistrement. On prouve seulement que l'argument ne
-// casse rien et que la vue s'ouvre comme avant.
+// (SZH.listeCartes, media/_commun.js) ne sait pas désigner une ligne (voir extension.js à cet
+// enregistrement). On vérifie que l'argument ne casse rien et que la vue s'ouvre.
 test('szh.vueWord accepte { slug, focus } sans lever et ouvre la vue', async () => {
   HOTE.erreurs.length = 0;
   await assert.doesNotReject(HOTE.executer('szh.vueWord', { slug: '9_Essai.docx', focus: '9_Essai.docx' }));

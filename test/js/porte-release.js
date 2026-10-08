@@ -1,34 +1,26 @@
 #!/usr/bin/env node
 'use strict';
-// La porte locale qui rejoue, AVANT de committer un `release: X.Y.Z`, ce que ci.yml et
-// release.yml vérifient APRÈS coup — pour qu'un rouge se voie ici, pas après une pose de tag
-// ratée. La 1.2.0 (21.09.2026) a coûté trois poses : vert en local, rouge sur le runner. Le
-// problème n'était pas la sévérité de la CI, c'est qu'elle parlait après coup et que ses
-// règles ne vivaient que dans son propre code — ce fichier les rejoue depuis les mêmes
-// sources (test/js/gardes.js, test/js/verifier-tap.js, .github/workflows/*.yml).
+// Porte locale : rejoue, avant de committer un `release: X.Y.Z`, ce que ci.yml et release.yml
+// vérifient après coup, pour qu'un échec se voie avant la pose du tag. Les règles viennent des
+// mêmes sources que la CI (test/js/gardes.js, test/js/verifier-tap.js,
+// .github/workflows/*.yml).
 //
 //   node test/js/porte-release.js [--runner ubuntu|windows|poste|tous] [--version X.Y.Z] [--rapide]
 //
-// Sans --runner : poste. --runner tous = poste, puis ubuntu, puis windows (le poste d'abord :
-// c'est le moins coûteux à corriger). --version : requis pour le contrôle CHANGELOG/
-// nouveautes (sinon sauté — utile hors contexte de release). --rapide : seulement les
-// contrôles rapides (YAML, typographie, bump, CHANGELOG) plus un balayage statique des
-// `t.skip(` sans assistant — jamais la suite complète ; c'est ce que le crochet pre-push
-// utilise, sous 30 s.
+// Sans --runner : poste. --runner tous = poste, puis ubuntu, puis windows (le poste d'abord,
+// le moins coûteux à corriger). --version : requis pour le contrôle CHANGELOG/nouveautes
+// (sinon sauté). --rapide : seulement les contrôles rapides (YAML, typographie, bump,
+// CHANGELOG) et un balayage statique des `t.skip(` sans assistant, sans la suite complète ;
+// c'est ce qu'utilise le crochet pre-push, en moins de 30 s.
 //
-// Chaque étape s'arrête au premier rouge, avec un message qui dit quoi corriger. Code de
-// sortie 0 si tout est vert, 1 sinon.
+// Chaque étape s'arrête au premier échec, avec un message qui dit quoi corriger. Code de
+// sortie 0 si tout passe, 1 sinon.
 //
-// ⚠ Étape (e), portée volontairement différente de la ligne brute donnée par le brief :
-// sous --runner ubuntu/windows (simulés), seul test/js/*.test.js tourne — exactement le
-// glob des jobs réels `contrats`/`contrats-windows` de ci.yml. test/filtres-pandoc.test.js
-// et test/filtres-import.test.js DEMANDENT un vrai pandoc et ne sont, en CI réelle, JAMAIS
-// lancés par ces deux jobs : ils appartiennent au job `pdf-ua` (ubuntu-24.04, jamais simulé
-// ici, toujours avec un vrai pandoc). Les inclure sous une simulation où pandoc est bloqué
-// ferait rougir la porte pour un scénario qu'aucun job réel ne rencontre à cet endroit — un
-// faux rouge n'est pas plus utile qu'un faux vert. Sous --runner poste (réel), les trois
-// globs tournent ensemble, comme le fait déjà la ronde manuelle documentée dans la mémoire
-// « publier-une-release » (§0 bis).
+// Étape (e) : sous --runner ubuntu/windows (simulés), seul test/js/*.test.js tourne, comme
+// dans les jobs `contrats`/`contrats-windows` de ci.yml. test/filtres-pandoc.test.js et
+// test/filtres-import.test.js demandent un vrai pandoc et relèvent du job `pdf-ua`, non
+// simulé : les lancer sous une simulation où pandoc est bloqué donnerait un faux échec. Sous
+// --runner poste, les trois globs tournent ensemble.
 
 const fs = require('fs');
 const os = require('os');
@@ -51,7 +43,7 @@ function resumerEchec(r) {
 
 // ---- (a) YAML des deux workflows -----------------------------------------------------------
 // PyYAML vit dans le venv de développement de la WSL (outils-dev/venv-dev.sh) : si le venv
-// manque, échec explicite plutôt qu'un contrôle tu.
+// manque, l'étape échoue explicitement.
 function verifierYaml() {
   const fichiers = ['.github/workflows/ci.yml', '.github/workflows/release.yml']
     .map((f) => path.join(RACINE, f));
@@ -92,8 +84,8 @@ function verifierTypographie() {
 }
 
 // ---- (c) bump des extensions modifiées depuis le dernier tag -----------------------------
-// Même critère que l’étape « Vérifier le bump de version des extensions » de release.yml :
-// comparer au tag, pas au fichier local.
+// Même critère que l'étape « Vérifier le bump de version des extensions » de release.yml :
+// on compare au tag, pas au fichier local.
 function dernierTag() {
   const r = spawnSync('git', ['describe', '--tags', '--abbrev=0'], { cwd: RACINE, encoding: 'utf8' });
   return r.status === 0 ? r.stdout.trim() : null;
@@ -170,14 +162,11 @@ function verifierChangelogEtNouveautes(version) {
 }
 
 // ---- (e), version --rapide : balayage statique des t.skip() sans assistant ----------------
-// Un `t.skip(` qui n'appelle ni sauter.*, ni un des deux échappatoires historiques déjà
-// signalés dans le rapport de livraison (documentés, hors périmètre) est un motif potentiel
-// que rien ne garantit conforme à MOTIFS — la porte rapide le signale avant même de lancer
-// quoi que ce soit.
+// Un `t.skip(` qui n'appelle pas sauter.* et ne figure pas dans EXCEPTIONS_CONNUES peut
+// écrire un motif absent de MOTIFS : la porte rapide le signale sans rien lancer.
 const EXCEPTIONS_CONNUES = [
-  // [fichier relatif, sous-chaîne du motif] — documentées dans le rapport de livraison du
-  // chantier « porte de release » : deux échappatoires ad hoc, jamais atteintes en CI
-  // (gardées derrière un retour anticipé sur corpus absent / fichier livré présent).
+  // [fichier relatif, sous-chaîne du motif] : deux exceptions, jamais atteintes en CI
+  // (derrière un retour anticipé quand le corpus manque ou que le fichier livré existe).
   ['test/js/manuscrit-annoter.test.js', 'manuscrit-nettoyer.py en échec'],
   ['test/js/manuscrit-docx.test.js', 'gabarit livré absent'],
 ];
@@ -201,9 +190,8 @@ function verifierSautsStatiques() {
       if (/^\s*\/\//.test(l)) { continue; } // ligne de commentaire pure : rien à exécuter
       if (!/\bt\.skip\(/.test(l)) { continue; }
       if (/sauter\.\w+\(/.test(l)) { continue; } // routé par un assistant : voir gardes.js
-      // Un motif écrit à la main mais qui cite déjà littéralement un fragment admis (par
-      // exemple un chemin de corpus précis, ajouté après le fragment générique de
-      // sauter.corpus) est admis tel quel par verifier-tap.js — pas d'assistant à forcer ici.
+      // Un motif écrit à la main qui cite déjà un fragment admis (un chemin de corpus précis,
+      // par exemple) est admis tel quel par verifier-tap.js.
       if (TOUS_LES_FRAGMENTS.some((frag) => l.includes(frag))) { continue; }
       const exception = EXCEPTIONS_CONNUES.find(([ef, motif]) => ef === f && l.includes(motif));
       if (exception) { continue; }
@@ -237,21 +225,17 @@ function envPourRunner(runner) {
   if (runner === 'ubuntu') {
     env.SZH_SIMULER_RUNNER = 'ubuntu';
     env.SZH_PYTHON_OBLIGATOIRE = '1'; // job `contrats`
-    // PAS SZH_VALE_OBLIGATOIRE ici, à dessein, malgré ci.yml qui le pose (job `contrats`,
-    // vale réellement installé sur le PATH du runner) : la simulation locale ne peut PAS
-    // faire apparaître un outil qui manque vraiment sur ce poste — seulement en faire
-    // disparaître un qui y est. Sur un poste où vale n'est joignable que par la WSL (jamais
-    // sur le PATH Windows), le forcer ferait échouer le CHARGEMENT du module pour tout le
-    // fichier (gardes.js jette avant le premier test), masquant le verdict de tout le
-    // reste — bien moins utile qu'un skip ciblé, correctement signalé « non admis sur
-    // ubuntu » par verifier-tap.js. Documenté dans le rapport de livraison.
+    // Pas de SZH_VALE_OBLIGATOIRE, bien que ci.yml le pose : la simulation peut faire
+    // disparaître un outil présent, pas apparaître un outil absent. Sur un poste où vale
+    // n'est joignable que par la WSL, l'exiger ferait échouer le chargement de tout le
+    // fichier (gardes.js lève avant le premier test) ; un saut ciblé, signalé « non admis sur
+    // ubuntu » par verifier-tap.js, est plus utile.
   } else if (runner === 'windows') {
     env.SZH_SIMULER_RUNNER = 'windows';
     env.SZH_PS_OBLIGATOIRE = '1'; // job `contrats-windows`
   } else {
-    // poste réel : mode exigeant (mémoire « publier-une-release », §0 bis) — mais PAS
-    // SZH_VALE_OBLIGATOIRE : ADMIS.poste admet un saut `vale` (un poste de dev peut
-    // légitimement ne pas encore l’avoir installé).
+    // Poste réel : mode exigeant, sauf SZH_VALE_OBLIGATOIRE : ADMIS.poste admet un saut
+    // `vale` (un poste de développement peut ne pas l'avoir installé).
     env.SZH_WSL_OBLIGATOIRE = '1';
     env.SZH_PS_OBLIGATOIRE = '1';
     env.SZH_PANDOC_OBLIGATOIRE = '1';
@@ -265,12 +249,12 @@ function verifierSuite(runner) {
   const tap = path.join(scratch, 'porte-' + runner + '.tap');
   const args = [];
   if (runner !== 'poste') {
-    // Patche child_process AVANT que le premier fichier de test ne fasse sa propre
-    // destructuration de spawnSync/exec — voir gardes.js, section « interposition ».
+    // Remplace child_process avant que le premier fichier de test ne déstructure
+    // spawnSync/exec (voir la section « interposition » de gardes.js).
     args.push('--require', GARDES_JS);
   }
-  // Les délais de la suite exigeante de CLAUDE.md : sur /mnt/c, l'unittest des moissonneurs
-  // dépasse à lui seul trois minutes, et la suite entière dix.
+  // Les délais de la suite exigeante de CLAUDE.md : sur /mnt/c, les tests unittest des
+  // moissonneurs dépassent à eux seuls trois minutes, et la suite entière dix.
   args.push('--test', '--test-timeout=300000', '--test-reporter=tap',
     '--test-reporter-destination=' + tap);
   args.push(...fichiers);

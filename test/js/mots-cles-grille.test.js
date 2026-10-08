@@ -1,21 +1,16 @@
 // La grille de mots-clés (media/_commun.js, SZH.motsCles) et son autocomplétion edudoc.ch
-// (media/_fiches.js, attacherAutocompletionMotsCles) : le thésaurus comme chemin par défaut
-// de la saisie, un second rideau pour ce qu'il ne connaît pas, et la pastille qui dit à
-// l'avance ce que l'export fera d'une case.
+// (media/_fiches.js, attacherAutocompletionMotsCles) : le thésaurus comme saisie par défaut,
+// un second choix pour ce qu'il ne connaît pas, et la pastille qui dit d'avance ce que
+// l'export fera d'une case.
 //
-//   node --test "test/js/*.test.js"
+// La pastille annonce « ce mot-clé ne partira pas à l'export » : sa règle de reconnaissance
+// doit rester celle de lib/mots-cles-edudoc.js (apparierDescripteurs, qui décide de
+// l'export). Le test « accord pastille / export » compare les deux sur des cas difficiles.
 //
-// Le point le plus fragile n'est pas visible à l'oeil : la pastille promet « ce mot-clé ne
-// partira pas à l'export » — si sa règle de reconnaissance divergeait de celle de
-// lib/mots-cles-edudoc.js (apparierDescripteurs, qui décide réellement de l'export), elle
-// mentirait. Le test « accord pastille / export », plus bas, compare les deux sur un corpus
-// de cas coriaces plutôt que de faire confiance à une seule réimplémentation.
-//
-// Le harnais (test/js/dom-minimal.js) ne fait pas bouillonner les événements comme un vrai
-// navigateur, alors que _fiches.js pose son écoute EN DÉLÉGATION sur le conteneur de la
-// grille (elle survit ainsi à toute reconstruction de SZH.motsCles.rendre()). `taper()` et
-// consorts, plus bas, redéclenchent donc l'événement à la racine de la délégation, `target`
-// pointé sur le champ — exactement ce qu'un vrai bouillonnement ferait remonter.
+// Le harnais (test/js/dom-minimal.js) ne fait pas remonter les événements comme un
+// navigateur, alors que _fiches.js écoute par délégation sur le conteneur de la grille (pour
+// survivre à SZH.motsCles.rendre()). `taper()` et les fonctions voisines déclenchent donc
+// l'événement à la racine de la délégation, avec `target` sur le champ.
 'use strict';
 
 const test = require('node:test');
@@ -33,9 +28,9 @@ const motsClesEdudoc = require(path.join(COCKPIT, 'lib', 'mots-cles-edudoc.js'))
 const LICENCES = LICENCES_ARTICLE.map((l) => ({ valeur: l.cle, libelle: T('licence.' + l.cle) }));
 const TYPES = [{ valeur: 'article', libelle: 'Article' }];
 
-// Une carte, un article, une grille de mots-clés. Par défaut les trois langues sont déjà
-// visibles (une case vide chacune) : la plupart des tests n'ont pas besoin de cocher « +
-// Allemand »/« + Italien » ni de cliquer « Ajouter un mot-clé » pour obtenir un champ où taper.
+// Une carte, un article, une grille de mots-clés. Les trois langues sont visibles par défaut
+// (une case vide chacune) : pas besoin de cocher « + Allemand »/« + Italien » ni de cliquer
+// « Ajouter un mot-clé » pour avoir un champ.
 function pageAvecCarte(keywords) {
   const page = ouvrir({
     racine: RACINE, page: 'metadata-articles',
@@ -52,10 +47,9 @@ function pageAvecCarte(keywords) {
   return page;
 }
 
-// L'hôte réel envoie « valeurs » AVANT « mots-cles-connus » (envoyerValeurs puis
-// envoyerMotsClesConnus, lib/metadonnees-hote.js) : les cartes existent déjà quand le
-// thésaurus arrive. C'est cet ordre-là, le plus exigeant pour les marqueurs, qu'on rejoue ici
-// par défaut plutôt que l'ordre confortable où le thésaurus précéderait les cartes.
+// L'hôte envoie « valeurs » avant « mots-cles-connus » (envoyerValeurs puis
+// envoyerMotsClesConnus, lib/metadonnees-hote.js) : les cartes existent quand le thésaurus
+// arrive. C'est l'ordre le plus exigeant pour les marqueurs.
 function envoyerThesaurus(page, liste) {
   page.envoyer({ type: 'mots-cles-connus', motsCles: liste });
 }
@@ -63,14 +57,12 @@ function envoyerThesaurus(page, liste) {
 function carteDe(page) { return page.conteneur().querySelectorAll('.carte')[0]; }
 
 // `input[data-langue]` seul trouverait aussi le titre, le sous-titre et le résumé, qui
-// portent la même marque par langue : on reste sous « .mc », le conteneur propre à la grille.
+// portent la même marque : on reste sous « .mc », le conteneur de la grille.
 function champsMc(carte, langue) { return carte.querySelectorAll('.mc input[data-langue="' + langue + '"]'); }
 function champMc(carte, langue, rang) { return champsMc(carte, langue)[rang || 0]; }
 function rangeeMc(champ) { return champ.closest('.mc-rangee'); }
-// Une rangée porte plusieurs cases (une par langue) : sans le filtre par langue, compter les
-// pastilles de la rangée mélangerait celle du français et celle de l'allemand. Le sélecteur
-// combiné classe+attribut n'est pas de ceux que dom-minimal reconnaît (voir son en-tête) :
-// on filtre donc en JS plutôt qu'en CSS.
+// Une rangée porte une case par langue : on filtre les pastilles par langue. dom-minimal ne
+// reconnaît pas le sélecteur combiné classe+attribut (voir son en-tête), d'où le filtre en JS.
 function marques(champ) {
   return rangeeMc(champ).querySelectorAll('.mc-hors-thesaurus')
     .filter((m) => m.dataset.langue === champ.dataset.langue);
@@ -124,8 +116,7 @@ test('mots-clés : la valeur tapée survit quand on quitte le champ sans rien co
   const saisie = 'un terme jamais vu, jamais confirmé';
   taper(champ, saisie);
   quitterChamp(champ);
-  // La contrainte absolue posée par Robin : rien ne gate jamais une frappe, quoi qu'il
-  // arrive à la boîte de suggestions.
+  // Aucune frappe n'est bloquée, quoi qu'il arrive à la boîte de suggestions.
   assert.strictEqual(champ.value, saisie, 'la frappe a été perdue au départ du champ');
   assert.strictEqual(carte.querySelectorAll('.szh-sugg').length, 0,
     'la boîte de suggestions reste accrochée après le départ du champ');
@@ -183,8 +174,8 @@ test('mots-clés : choisir une suggestion remplace aussi un autre descripteur du
   const carte = carteDe(page);
   const champFr = champMc(carte, 'fr', 0);
   const champDe = champMc(carte, 'de', 0);
-  // L'allemand porte déjà un AUTRE descripteur reconnu du thésaurus (une rangée mal remplie
-  // au départ, ou héritée d'un ancien choix) : il doit céder la place lui aussi.
+  // L'allemand porte déjà un autre descripteur reconnu (rangée mal remplie au départ, ou
+  // ancien choix) : il cède la place lui aussi.
   taper(champDe, 'Übergänge (CSPS)');
   taper(champFr, 'inclusion');
   const item = carte.querySelector('.szh-sugg-item');
@@ -196,9 +187,9 @@ test('mots-clés : choisir une suggestion remplace aussi un autre descripteur du
 });
 
 test('mots-clés : une paire incomplète du thésaurus ne touche pas à l’autre langue (rien à effacer)', () => {
-  // Le thésaurus edudoc.ch peut manquer une langue pour un descripteur : côté hôte c'est le
-  // champ `manque`, ici on l'imite en envoyant un fr vide. La case allemande, elle, garde
-  // ce que Robin y a tapé — l'écraser par du vide serait une perte pure.
+  // Le thésaurus peut manquer une langue pour un descripteur (champ `manque` côté hôte), imité
+  // ici par un fr vide. La case allemande garde ce qui y a été tapé : l'écraser par du vide
+  // serait une perte.
   const THESAURUS_INCOMPLET = [{ de: 'Barrierefreiheit (szh)', fr: '' }];
   const page = pageAvecCarte();
   envoyerThesaurus(page, THESAURUS_INCOMPLET);
@@ -258,7 +249,7 @@ test('mots-clés : un choix fait en FR ou en DE ne touche jamais la colonne ital
 
 test('mots-clés : un mot-clé hérité hors thésaurus est marqué dès l’ouverture de la fiche', () => {
   // « valeurs » arrive avant « mots-cles-connus » (voir pageAvecCarte/envoyerThesaurus) :
-  // c'est justement cet ordre qui expose un marqueur posé avant que le thésaurus n'existe.
+  // cet ordre expose un marqueur posé avant que le thésaurus n'existe.
   const page = pageAvecCarte({ fr: ['mot totalement inconnu'], de: ['Unbekanntes Wort'] });
   envoyerThesaurus(page, THESAURUS_SIMPLE);
   const carte = carteDe(page);
@@ -290,29 +281,25 @@ test('mots-clés : l’italien n’a ni suggestion ni marqueur', () => {
   assert.strictEqual(marques(champIt).length, 0, 'l’italien a été marqué hors thésaurus');
 });
 
-// ---- L'accord pastille / export : le point qui compte le plus dans ce lot ----
+// ---- L'accord pastille / export ----
 //
-// Le thésaurus ci-dessous réunit les cas coriaces demandés : un qualificatif — (SZH), (na),
-// (CSPS) — en casses mélangées, des accents, une apostrophe courbe dans le thésaurus lui-même
-// et une apostrophe droite (ou l'autre courbe, U+2018) côté saisie, des espaces multiples.
-// Si la pastille et apparierDescripteurs (l'export réel) divergent sur UN SEUL cas, le test
-// échoue : c'est la garantie que ce lot devait livrer.
+// Le thésaurus ci-dessous réunit des cas difficiles : qualificatifs (SZH), (na), (CSPS) en
+// casses mélangées, accents, apostrophe courbe dans le thésaurus et apostrophe droite (ou
+// U+2018) à la saisie, espaces multiples. La pastille et apparierDescripteurs (l'export)
+// doivent donner le même verdict sur chaque cas.
 const THESAURUS_CORIACE = [
   { de: 'Inklusion (SZH)', fr: 'inclusion (SZH)' },
   { de: 'Sonderpädagogik', fr: 'pédagogie spécialisée' },
   { de: 'Elternrechte (na)', fr: 'droits des parents (na)' },
   { de: 'Übergänge (CSPS)', fr: 'transitions (CSPS)' },
   { de: 'Kinderrechte (na)', fr: 'droits de l’enfant (na)' },
-  // (a) collision exact / dé-qualifié : la forme DÉ-QUALIFIÉE de cette entrée
-  // (« ressources », une fois « (SZH) » ôté) est aussi, caractère pour caractère, la clé
-  // EXACTE de l'entrée suivante. La priorité exact > dé-qualifié doit départager les
-  // deux dans CE sens précis, jamais dans l'autre — ni par l'ordre d'apparition.
+  // (a) Collision exact / sans qualificatif : « ressources », la forme sans « (SZH) » de
+  // cette entrée, est aussi la clé exacte de l'entrée suivante. La priorité exact > sans
+  // qualificatif départage les deux, indépendamment de l'ordre.
   { de: 'Ressourcen (SZH)', fr: 'ressources (SZH)' },
-  // (b) entrée incomplète : jamais relevée en allemand (edudoc.ch ne porte pas toujours
-  // les deux langues). C'est aussi l'entrée que la collision ci-dessus vise : un
-  // descripteur TROUVÉ mais dont une langue manque ne doit jamais suffire, ni à la
-  // pastille ni à l'export — et un chercheur qui la trouverait par erreur à la place de
-  // l'entrée complète ci-dessus le prouverait tout de suite.
+  // (b) Entrée incomplète, sans allemand (edudoc.ch ne porte pas toujours les deux langues).
+  // C'est elle que la collision ci-dessus vise : un descripteur trouvé dont une langue manque
+  // ne suffit ni à la pastille ni à l'export.
   { de: '', fr: 'ressources' }
 ];
 
@@ -323,10 +310,10 @@ const CAS_CORIACES = [
   'droits des parents (na)', 'droits des parents', 'droits des parents (NA)',
   'Übergänge', 'ubergange', 'transitions', 'transitions (csps)', 'Transitions (CSPS)',
   "droits de l'enfant (na)", "droits de l'enfant", 'droits de l’enfant', 'droits de l‘enfant',
-  // (a) la clé EXACTE de l'entrée complète (« ressources (SZH) ») doit gagner sur la clé
-  // DÉ-QUALIFIÉE de l'entrée incomplète (« ressources ») — jamais l'inverse.
+  // (a) La clé exacte de l'entrée complète (« ressources (SZH) ») l'emporte sur la clé sans
+  // qualificatif de l'entrée incomplète (« ressources »).
   'ressources (SZH)', 'RESSOURCES (Szh)', 'Ressourcen (SZH)',
-  // (b) l'entrée incomplète elle-même, trouvée mais jamais suffisante à elle seule.
+  // (b) L'entrée incomplète elle-même, trouvée mais insuffisante.
   'ressources', 'RESSOURCES', '  ressources  ',
   'mot totalement inconnu', '   ', ''
 ];
@@ -357,9 +344,8 @@ test('mots-clés : ajouter puis retirer une rangée laisse des marqueurs justes 
   assert.strictEqual(marques(champMc(carte, 'fr', 0)).length, 1,
     'la rangée d’origine devrait déjà être marquée');
 
-  // Ajouter une rangée reconstruit tout le DOM interne de la grille (SZH.motsCles.rendre()) :
-  // le marqueur de la première rangée doit survivre, et la nouvelle — un descripteur connu —
-  // ne doit pas se marquer.
+  // Ajouter une rangée reconstruit le DOM de la grille (SZH.motsCles.rendre()) : le marqueur
+  // de la première rangée survit, et la nouvelle, un descripteur connu, n'est pas marquée.
   const bouton = carte.querySelector('.mc-pied button');
   assert.ok(bouton, 'bouton « Ajouter un mot-clé » introuvable');
   bouton.click();
@@ -371,8 +357,8 @@ test('mots-clés : ajouter puis retirer une rangée laisse des marqueurs justes 
   assert.strictEqual(marques(champFr1).length, 0,
     'un descripteur connu s’est marqué sur la rangée ajoutée');
 
-  // Retirer cette même rangée reconstruit le DOM une seconde fois : la première rangée doit
-  // encore porter son marqueur.
+  // Retirer cette rangée reconstruit le DOM une seconde fois : la première rangée garde son
+  // marqueur.
   const retirer = rangeeMc(champFr1).querySelector('.mc-retirer');
   assert.ok(retirer, 'bouton de retrait introuvable sur la rangée ajoutée');
   retirer.click();

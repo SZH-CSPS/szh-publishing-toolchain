@@ -1,20 +1,12 @@
-// pipeline/manuscrit_biblio.py — vérification de bibliographie APA 7 (nettoyeur de
-// manuscrit, contrat §7 bis). Module PUR : pas de .docx ici, seulement du texte de paragraphe
-// déjà extrait — les fonctions s'appellent par python() de gardes.js, exactement comme
-// docx-meta-titre.test.js pour docx-meta.py.
+// Tests de pipeline/manuscrit_biblio.py, la vérification de bibliographie APA 7 du nettoyeur
+// de manuscrit. Le module travaille sur du texte de paragraphe déjà extrait ; ses fonctions
+// s'appellent par python() de gardes.js.
 //
-//   node --test test/js/manuscrit-biblio.test.js
+// Le réseau n'est pas appelé : chaque contrôle Crossref remplace manuscrit_biblio._requete
+// par une fonction Python injectée dans le programme -c. `reseau=False` est éprouvé à part.
 //
-// Le réseau n'est JAMAIS appelé ici : chaque contrôle Crossref remplace
-// manuscrit_biblio._requete par une fonction Python injectée dans le programme -c, avant
-// d'appeler resoudre_crossref()/retrouver_doi(). `reseau=False` est éprouvé séparément :
-// aucune tentative, et crossref.indisponible vaut True.
-//
-// La fixture FR vient du corpus réel (tmp/corpus-relecture/lot-A, voir son LISEZMOI) —
-// 12 références passées une à une dans la WSL avant d'être recopiées ici. La fixture DE n'a
-// PAS de corpus réel équivalent (§12 du contrat : « L'allemand n'est calibré par rien ») :
-// ses 6 références sont les exemples travaillés du guide Redaktionsrichtlinien Zeitschrift
-// (Muster, Meier, Bonaparte...), seule source allemande faisant autorité dans ce dépôt.
+// La fixture fr vient du corpus tmp/corpus-relecture/lot-A (12 références). La fixture de
+// reprend les 6 exemples du guide rédactionnel de la Zeitschrift, faute de corpus allemand.
 'use strict';
 
 const test = require('node:test');
@@ -47,7 +39,7 @@ function executer(corps) {
 }
 
 // ---------------------------------------------------------------------------------
-// 1. La fixture — 12 fr (corpus réel) + 6 de (guide Zeitschrift) — vérité champ par champ.
+// 1. La fixture : 12 fr (corpus) + 6 de (guide Zeitschrift), vérifiée champ par champ.
 
 const FIXTURE_FR = [
   {
@@ -97,8 +89,8 @@ const FIXTURE_FR = [
       + "scolaire. Ressources, 22, 64-72.",
     attendu: {
       nb_auteurs: 1, auteurs: [{ nom: 'Toullec-Théry', initiales: 'M.' }], annee: 2020,
-      // Nombre NU dans l'original (« Ressources, 22, 64-72 », pas de parenthèses) : c'est un
-      // volume, pas un numéro — voir _regles_article() dans le module.
+      // Nombre sans parenthèses dans l'original : c'est un volume, pas un numéro (voir
+      // _regles_article()).
       conteneur: 'Ressources', volume: '22', numero: '', pages: '64-72', doi: '',
       type: 'article', confiance: 'haute',
     },
@@ -117,13 +109,12 @@ const FIXTURE_FR = [
       + "pédagogie spécialisée, 3, 20-29.",
     attendu: {
       nb_auteurs: 1, annee: 2016, conteneur: 'Revue suisse de pédagogie spécialisée',
-      // Nombre NU (pas de parenthèses dans l'original) : volume, pas numéro — même règle
-      // que Toullec-Théry ci-dessus.
+      // Nombre sans parenthèses : volume, pas numéro.
       volume: '3', numero: '', pages: '20-29', type: 'article', confiance: 'haute',
     },
   },
   {
-    // « et » (sans esperluette) entre deux auteurs, un des tours de la Revue.
+    // « et » (sans esperluette) entre deux auteurs.
     texte: "Vial, M. et Caparros-Mencacci, N. (2007) L’accompagnement professionnel "
       + "? Méthode à l’usage des praticiens exerçant une fonction éducative. "
       + "Bruxelles, De Boeck.",
@@ -135,8 +126,7 @@ const FIXTURE_FR = [
     },
   },
   {
-    // Ponctuation absente après l'année (« (2022) Quels… », pas de point) — mesuré tel
-    // quel sur le corpus, 4 auteurs séparés par virgules et un « et » final sans virgule.
+    // Pas de point après l'année ; 4 auteurs séparés par des virgules et un « et » final.
     texte: "Allenbach, M, Gabola, P., Leblanc, M. et Rebetez, F. (2022) Quels soutiens au "
       + "développement de pratiques inclusives? La nouvelle revue - Education et société "
       + "inclusives, 95, 91-109. Editions Inshea",
@@ -145,10 +135,8 @@ const FIXTURE_FR = [
       auteurs: [{ nom: 'Allenbach', initiales: 'M' }, { nom: 'Gabola', initiales: 'P.' },
         { nom: 'Leblanc', initiales: 'M.' }, { nom: 'Rebetez', initiales: 'F.' }],
       annee: 2022,
-      // Un éditeur commercial oublié APRÈS les pages (pas de comportement prescrit par les
-      // guides, mais vu tel quel sur le corpus) : la référence reste un article, pages et
-      // conteneur compris, l'éditeur en trop atterrit dans 'editeur' plutôt que de faire
-      // échouer tout le motif et rejeter titre/conteneur/volume/pages en bloc.
+      // Éditeur commercial ajouté après les pages : la référence reste un article et
+      // l'éditeur en trop va dans 'editeur', au lieu de faire échouer tout le motif.
       conteneur: 'La nouvelle revue - Education et société inclusives', volume: '95',
       numero: '', pages: '91-109', editeur: 'Editions Inshea', type: 'article',
       confiance: 'haute',
@@ -167,7 +155,7 @@ const FIXTURE_FR = [
     },
   },
   {
-    // « habilitation », pas « thèse » — même famille de genre entre crochets.
+    // « habilitation » : même famille de genre entre crochets que « thèse ».
     texte: "Margolinas, C. (2004). Points de vue de l’élève et du professeur. Essai "
       + "de développement de la théorie des situations didactiques [Note de synthèse pour "
       + "l’habilitation à diriger des recherches, Université de Provence - "
@@ -179,7 +167,7 @@ const FIXTURE_FR = [
     },
   },
   {
-    // Auteur institutionnel, sans initiales, avec URL — pas de DOI.
+    // Auteur institutionnel, sans initiales, avec URL et sans DOI.
     texte: "Comité des droits des personnes handicapées. (2022). Observations finales "
       + "concernant le rapport initial de la Suisse. Nations Unies. "
       + "https://www.ebgb.admin.ch/fr/presentation-du-rapport-cdph",
@@ -192,12 +180,9 @@ const FIXTURE_FR = [
     },
   },
   {
-    // Construite (aucun exemple trouvé dans les 117 références réelles du corpus lot-A) :
-    // particule APRÈS les initiales, convention de classement APA des noms composés
-    // (« Chambrier, A.-F. de » — le nom de famille seul, « Chambrier », commande le
-    // classement alphabétique ; « de » n'est qu'un complément écrit à la suite). Sans
-    // _decouper_initiales_et_particule(), le sabotage minimal §... du rapport prouve que
-    // ce cas retombe sur DEUX faux auteurs au lieu d'un.
+    // Cas construit : particule après les initiales (« Chambrier, A.-F. de »), convention
+    // APA des noms composés où seul « Chambrier » commande le classement. Sans
+    // _decouper_initiales_et_particule(), ce cas donne deux faux auteurs.
     texte: 'Chambrier, A.-F. de. (2020). Un titre encore. Revue Z, 2(1), 1-9.',
     attendu: {
       nb_auteurs: 1, auteurs: [{ nom: 'de Chambrier', initiales: 'A.-F.' }], annee: 2020,
@@ -209,18 +194,18 @@ const FIXTURE_FR = [
 
 const FIXTURE_DE = [
   {
-    // volume(numéro) ESPACÉ en allemand (« 27 (3) »), collé en français (« 12(3) »).
+    // volume(numéro) espacé en allemand (« 27 (3) »), collé en français (« 12(3) »).
     texte: 'Muster, E. (2010). Über die Plausibilität von Schmetterlingseffekten. '
       + 'Zeitschrift für Umweltfragen, 27 (3), 56–78.',
     attendu: {
       nb_auteurs: 1, auteurs: [{ nom: 'Muster', initiales: 'E.' }], annee: 2010,
       conteneur: 'Zeitschrift für Umweltfragen', volume: '27', numero: '3',
-      // Le demi-cadratin du guide survit à la lecture (il était rabattu en trait d'union).
+      // Le demi-cadratin du guide est conservé.
       pages: '56–78', type: 'article', confiance: 'haute',
     },
   },
   {
-    // « & » sans virgule devant (« Schneider, H. & Hugentobler, G. ») — 4 auteurs.
+    // « & » sans virgule devant ; 4 auteurs.
     texte: 'Muster, E., Meier, T., Schneider, H. & Hugentobler, G. (2009). Von '
       + 'Schmetterlingen und Wirbelstürmen. Musterverlag.',
     attendu: {
@@ -239,7 +224,7 @@ const FIXTURE_DE = [
     },
   },
   {
-    // Deux éditeurs, marqueur anglais « (Eds.) » dans une référence par ailleurs allemande.
+    // Deux éditeurs, marqueur anglais « (Eds.) » dans une référence allemande.
     texte: "Bonaparte, A. & Marchand, D. (Eds.) (2012). L'effet papillon. Editions "
       + 'Papillon.',
     attendu: {
@@ -249,7 +234,7 @@ const FIXTURE_DE = [
     },
   },
   {
-    // Particule EN TÊTE, classée sous sa lettre propre au Literaturverzeichnis allemand.
+    // Particule en tête, classée sous sa propre lettre en allemand.
     texte: 'von Arx, R. (2014). Der Schmetterlingseffekt. Musterverlag.',
     attendu: {
       nb_auteurs: 1, auteurs: [{ nom: 'von Arx', initiales: 'R.' }], annee: 2014,
@@ -257,8 +242,8 @@ const FIXTURE_DE = [
     },
   },
   {
-    // Auteur institutionnel avec sigle EN TÊTE et développement entre parenthèses (sans
-    // chiffre : le repérage de l'année ne doit pas s'y arrêter).
+    // Auteur institutionnel avec sigle en tête et développement entre parenthèses, sans
+    // chiffre : le repérage de l'année ne doit pas s'y arrêter.
     texte: 'GbS (Gesellschaft für bedrohte Schmetterlinge) (2015). Länderbericht über '
       + 'erneuerbare Energie durch Flügelschläge von Schmetterlingen. Musterverlag.',
     attendu: {
@@ -316,10 +301,8 @@ test('analyser_reference : au moins 80% de confiance haute sur les 18 référenc
     'taux de confiance haute trop bas : ' + haute + '/' + confiances.length);
 });
 
-// Trouvaille du superviseur (rejeu réel) : un chapitre dont les pages sont données SANS
-// « (pp. x-x) » (forme non prescrite par les guides mais vue sur le corpus) faisait prendre
-// le TROISIÈME NOM D'ÉDITEUR pour le titre de l'ouvrage collectif — titre ET éditeurs perdus
-// d'un coup. Trois éditeurs, virgules comprises, doivent être reconnus et retirés de tête.
+// Chapitre dont les pages sont données sans « (pp. x-x) » : les trois éditeurs, virgules
+// comprises, sont reconnus et retirés de tête, sinon le troisième passe pour le titre.
 test('analyser_reference : un chapitre à trois éditeurs et pages SANS "(pp.)" garde son '
   + 'titre d\'ouvrage', { skip: sansPython }, () => {
   const programme = 'r = mb.analyser_reference(sys.argv[1])\nprint(json.dumps(r))';
@@ -334,17 +317,14 @@ test('analyser_reference : un chapitre à trois éditeurs et pages SANS "(pp.)" 
   assert.strictEqual(d.pages, '151-167');
   assert.strictEqual(d.editeur, 'Berne : SZH/CSPS');
   assert.strictEqual(d.confiance, 'haute');
-  // Les trois éditeurs de l'ouvrage collectif eux-mêmes, retirés de tête : sans
-  // _consommer_editeurs_de_tete(), ce champ reste vide (rien n'est reconnu comme éditeur) et
-  // mise_en_forme_apa() rend « In (Éd.), » sans les noms — un cas que le test du titre seul,
-  // ci-dessus, ne suffit pas à prouver (le repli sur les pages nues isole déjà le bon titre
-  // même sans cette consommation, puisqu'il ne prend que le DERNIER segment avant les pages).
+  // Sans _consommer_editeurs_de_tete(), ce champ reste vide et mise_en_forme_apa() rend
+  // « In (Éd.), » sans les noms. Le test du titre seul ne le prouve pas : le repli sur les
+  // pages nues trouve le bon titre même sans cette consommation.
   assert.strictEqual(d.editeurs_ouvrage, 'G. Pelgrims, T. Assude, & J.-M. Perez',
     'les éditeurs de l\'ouvrage collectif ont été perdus : ' + JSON.stringify(d));
 });
 
-// Trouvaille du superviseur : le genre entre crochets (« [Thèse de doctorat] ») disparaissait
-// de la proposition de mise en forme — une information prescrite par les deux guides.
+// Le genre entre crochets (« [Thèse de doctorat] ») est prescrit par les deux guides.
 test('analyser_reference + mise_en_forme_apa : le genre entre crochets d\'un rapport '
   + 'survit à la mise en forme', { skip: sansPython }, () => {
   const programme = [
@@ -361,10 +341,8 @@ test('analyser_reference + mise_en_forme_apa : le genre entre crochets d\'un rap
     'le genre a disparu de la mise en forme : ' + d.rendu);
 });
 
-// Constaté par Robin (30.09.2026) : la remise en forme APA d'un article réécrivait
-// « 152–160 » en « 152-160 », en révision. En allemand, la plage d'un article prend le
-// Halbgeviertstrich (guide Zeitschrift : « 27 (3), 56–78 ») ; en français, elle reste telle
-// que l'entrée la porte.
+// En allemand, la plage de pages d'un article prend le demi-cadratin (guide Zeitschrift :
+// « 27 (3), 56–78 ») ; en français, elle reste telle que l'entrée la porte.
 test('mise_en_forme_apa : pages d\'un article, demi-cadratin en allemand, gardé tel quel en français',
   { skip: sansPython }, () => {
     const programme = [
@@ -389,13 +367,11 @@ test('mise_en_forme_apa : pages d\'un article, demi-cadratin en allemand, gardé
   });
 
 // ---------------------------------------------------------------------------------
-// 1 bis. _calculer_confiance() : plausibilité des champs (révision du 22.09.2026).
+// 1 bis. _calculer_confiance() : plausibilité des champs.
 //
-// Défaut réel (corpus tmp/docx-cleaner-error/1408_Alves.docx) : « United Nations, 2016.
-// General Comment No. 4 (2016), Article 24… » porte une SECONDE parenthèse à 4 chiffres, celle
-// du titre du texte cité. `_trouver_annee()` s'y arrête, `analyser_reference()` découpe dessus,
-// et l'« éditeur » qui en ressort vaut « 1-24 » — une plage de pages, jamais un éditeur. Avant
-// ce correctif, `_calculer_confiance()` accordait 'haute' sur la seule non-vacuité du champ.
+// « United Nations, 2016. General Comment No. 4 (2016), Article 24… » porte une seconde
+// parenthèse à 4 chiffres, dans le titre. `_trouver_annee()` s'y arrête et l'« éditeur » qui
+// en ressort vaut « 1-24 », une plage de pages : la confiance ne doit pas être haute.
 const TEXTE_UNITED_NATIONS = 'United Nations, 2016. General Comment No. 4 (2016), Article 24: '
   + 'Right to Inclusive Education. UN Committee on the Rights of Persons With Disabilities '
   + '(CRPD), pp. 1-24';
@@ -428,14 +404,11 @@ test('analyser_bibliographie : l\'entrée "United Nations, 2016…" ne reçoit p
     + JSON.stringify(r.alertes));
 });
 
-// Non-régression (à ne jamais affaiblir) : les 18 références de la fixture ci-dessus — dont 12
-// viennent du corpus réel — gardent leur confiance haute, vérifiée champ par champ pour CHACUNE
-// (tests ci-dessus, "12 références fr…"/"6 références de…") et par le seuil global "au moins
-// 80%" (juste après). Si le contrôle de plausibilité introduit ici affaiblissait l'une de ces
-// références réellement APA, ces trois tests rougiraient déjà — nul besoin de les dupliquer.
+// Les 18 références de la fixture gardent leur confiance haute : les tests « 12 références
+// fr… », « 6 références de… » et le seuil « au moins 80 % » le vérifient déjà.
 
 // ---------------------------------------------------------------------------------
-// 2. citations_du_corps() — narrative, parenthétique, et al., plusieurs années, particule,
+// 2. citations_du_corps() : narrative, parenthétique, et al., plusieurs années, particule,
 //    année isolée hors citation exclue.
 
 test('citations_du_corps : les formes narrative et parenthétique, dont "et al." et les '
@@ -462,26 +435,20 @@ test('citations_du_corps : les formes narrative et parenthétique, dont "et al."
   assert.strictEqual(parNom.Wenzlaff[0].et_al, false);
   assert.strictEqual(parNom.Pelgrims.length, 2, 'Pelgrims (2001, 2006) : deux citations');
   assert.deepStrictEqual(parNom.Pelgrims.map((c) => c.annee).sort(), [2001, 2006]);
-  // Aucune citation sur « En 2010, » : une année isolée hors parenthèse de citation.
+  // Aucune citation sur « En 2010, » : année isolée hors parenthèse de citation.
   assert.ok(!citations.some((c) => c.annee === 2010 && c.para === 11));
-  // Particule : narrative « De Chambrier » (majuscule de phrase) ET parenthétique minuscule.
+  // Particule : narrative « De Chambrier » (majuscule de phrase) et parenthétique minuscule.
   assert.ok(parNom['De Chambrier'], 'particule en tête de phrase perdue');
   assert.ok(parNom['de Chambrier'], 'particule en parenthèse perdue');
 });
 
-// Audit des ancrages (demande du coordinateur, 22.09.2026) — défaut RÉEL mesuré sur le
-// corpus (« Le coenseignement développemental… », citation « Akerson et Montgomery, 2017 »
-// répétée deux fois dans le même paragraphe) : `span` ne visait que l'ANNÉE (4 caractères),
-// jamais toute la citation portée par `texte`/`found` — `manuscrit_annoter._localizar()`
-// refusait alors ce span (`texto[d:f] != found`) ET son propre repli (found ambigu, deux
-// occurrences dans le paragraphe, sans span pour départager) : APA.CitationAbsente retombait
-// TOUJOURS sur un commentaire du paragraphe entier dans ce cas. `span` doit désormais couvrir
-// EXACTEMENT `texte`, forme narrative ET parenthétique, pour que `texto[d:f] == found` motive
-// une localisation exacte même quand la citation se répète.
+// `span` couvre toute la citation (`texte`), pas seulement l'année : quand une citation se
+// répète dans le paragraphe, manuscrit_annoter._localizar() ne peut la localiser que par
+// `texto[d:f] == found`. Sinon APA.CitationAbsente retombe sur un commentaire du paragraphe
+// entier.
 //
-// Sabotage minimal : dans citations_du_corps(), remplacer `span_texte = [m.start(), m.end()]`
-// par `span_texte = [m.start(2), m.start(2) + 4]` (repro l'ancien "année seule") — la
-// vérification narrative ci-dessous rougit.
+// Sabotage : dans citations_du_corps(), remplacer `span_texte = [m.start(), m.end()]` par
+// `span_texte = [m.start(2), m.start(2) + 4]` ; la vérification narrative rougit.
 
 test('citations_du_corps : `span` couvre EXACTEMENT `texte`, formes narrative et '
   + 'parenthétique (jamais seulement l\'année)', { skip: sansPython }, () => {
@@ -503,9 +470,8 @@ test('citations_du_corps : `span` couvre EXACTEMENT `texte`, formes narrative et
   }
 });
 
-// Cas réel qui a déclenché ce correctif : la MÊME citation répétée deux fois dans le même
-// paragraphe ne peut se désambiguïser que par un span EXACT (le repli « found unique dans le
-// paragraphe » échoue par construction dès qu'il y a deux occurrences).
+// Deux occurrences de la même citation ne se départagent que par un span exact : le repli
+// « found unique dans le paragraphe » échoue dans ce cas.
 test('citations_du_corps + croiser : une citation répétée deux fois dans le même paragraphe '
   + 'reste localisable (span exact, pas de repli sur found seul)', { skip: sansPython }, () => {
   const programme = [
@@ -532,9 +498,8 @@ test('citations_du_corps + croiser : une citation répétée deux fois dans le m
   }
 });
 
-// 29.09.2026, gzdf_Huttner : « (z. B. Kristen, 2005; Tetzchner & Martinsen, 2000) » — le
-// préfixe « z. B. » laissait la zone commencer par une minuscule, Kristen disparaissait et sa
-// référence était déclarée non citée. Même chose pour les autres abréviations d'exemple.
+// Avec le préfixe « z. B. » (et les autres abréviations d'exemple), la zone commençait par une
+// minuscule : le premier auteur était perdu et sa référence déclarée non citée.
 test('citations_du_corps : les préfixes « z. B. », « vgl. z. B. », « e.g. », « p. ex. » sont '
   + 'écartés', { skip: sansPython }, () => {
   const programme = [
@@ -551,12 +516,12 @@ test('citations_du_corps : les préfixes « z. B. », « vgl. z. B. », « e.g. 
 });
 
 // ---------------------------------------------------------------------------------
-// 3. croiser() — absente/non citée/suffixe/et al.
+// 3. croiser() : absente, non citée, suffixe, et al.
 
-// 29.09.2026 — un intitulé de bibliographie suivi d'un complément entre parenthèses
+// Un intitulé de bibliographie suivi d'un complément entre parenthèses
 // (« 3 Literatur (gemäss Redaktionsrichtlinien) ») est reconnu par le nettoyeur ; un titre qui
-// ne fait que COMMENCER par un mot du lexique ne l'est toujours pas.
-// Un seul prédicat, pronto_modele.titre_est_biblio : le nettoyeur tolère le complément, la
+// commence seulement par un mot du lexique ne l'est pas.
+// Prédicat unique, pronto_modele.titre_est_biblio : le nettoyeur tolère le complément, la
 // chaîne d'import garde la comparaison exacte de szh-citations.lua.
 test('titre_est_biblio : « Literatur (gemäss Redaktionsrichtlinien) » est un intitulé de '
   + 'bibliographie pour le nettoyeur seulement', { skip: sansPython }, () => {
@@ -574,7 +539,7 @@ test('titre_est_biblio : « Literatur (gemäss Redaktionsrichtlinien) » est un 
       [false, false], [false, false], [false, false]]);
 });
 
-// Les quatre lecteurs du titre de bibliographie n'en recopient plus la comparaison.
+// Les lecteurs du titre de bibliographie appellent tous pronto_modele.titre_est_biblio.
 test('titre_est_biblio : aucune copie de la comparaison hors de pronto_modele', () => {
   for (const f of ['manuscrit_modele.py', 'manuscrit_entete.py', 'manuscrit_corpus.py',
     'manuscrit_biblio.py', 'manuscrit-nettoyer.py']) {
@@ -583,8 +548,8 @@ test('titre_est_biblio : aucune copie de la comparaison hors de pronto_modele', 
   }
 });
 
-// 29.09.2026, gzdf_Huttner : « Beukelman & Mirenda, 1993 » dans le texte, 2013 dans la
-// bibliographie — c'est l'année qui cloche, pas le « & ». Le message doit le dire.
+// « Beukelman & Mirenda, 1993 » dans le texte, 2013 dans la bibliographie : c'est l'année qui
+// diffère, et le message le dit.
 test('croiser : même nom, autre année -> le message pointe l\'année de la bibliographie',
   { skip: sansPython }, () => {
   const programme = [
@@ -613,11 +578,8 @@ test('croiser : citation absente de la bibliographie -> error', { skip: sansPyth
   assert.strictEqual(alertes[0].severity, 'error');
 });
 
-// Trouvaille du superviseur sur le manuscrit « coenseignement » (27 références, 49
-// citations) : « Bullough Jr, R. V., Young, J., … (2002) » en bibliographie contre
-// « Bullough et al., 2002 » dans le texte — la citation ne répète jamais le suffixe
-// générationnel du premier auteur, la bibliographie si. Sans le retirer de la clé
-// d'appariement, ces 3 citations ressortaient comme absentes à tort.
+// « Bullough Jr, R. V., … (2002) » en bibliographie, « Bullough et al., 2002 » dans le texte :
+// la citation ne répète pas le suffixe générationnel. Il est retiré de la clé d'appariement.
 test('croiser : un suffixe générationnel (Jr/Sr/II/III) ne casse pas l\'appariement',
   { skip: sansPython }, () => {
     const programme = [
@@ -638,11 +600,9 @@ test('croiser : un suffixe générationnel (Jr/Sr/II/III) ne casse pas l\'appari
       '« Jr » aurait dû être ignoré dans la clé d\'appariement : ' + JSON.stringify(alertes));
   });
 
-// Trouvaille du superviseur : un auteur institutionnel MULTI-MOTS cité en entier
-// (« Ministère de l'Éducation nationale & DEPP, 2006, 2024 ») ne s'appariait qu'à son
-// PREMIER mot (« Ministère »), jamais présent seul dans la bibliographie (qui porte le nom
-// entier, sans virgule interne). Les deux années de la citation doivent apparier chacune SA
-// référence.
+// Auteur institutionnel de plusieurs mots cité en entier (« Ministère de l'Éducation
+// nationale & DEPP, 2006, 2024 ») : chacune des deux années apparie sa référence, au lieu
+// d'un appariement sur le seul premier mot.
 test('croiser : un auteur institutionnel multi-mots cité en entier s\'apparie (repli sur '
   + 'nom_brut)', { skip: sansPython }, () => {
     const programme = [
@@ -713,10 +673,9 @@ test('croiser : "et al." manquant dès trois auteurs, et posé à tort pour deux
   });
 
 // ---------------------------------------------------------------------------------
-// 3 bis. signaler_references_non_verifiees() — l'appel, dans le corps, d'une référence de
-// confiance non haute (§7 bis, révision du 22.09.2026). `mise_en_forme_apa()` refuse déjà de
-// réécrire une telle référence ; la relectrice doit néanmoins être avertie, mais SUR L'APPEL,
-// jamais sur l'entrée de bibliographie.
+// 3 bis. signaler_references_non_verifiees() : l'appel, dans le corps, d'une référence de
+// confiance non haute. `mise_en_forme_apa()` refuse déjà de réécrire une telle référence ;
+// l'avertissement se pose sur l'appel, pas sur l'entrée de bibliographie.
 
 const BIBLIO_UNESCO_NON_APA = [{ source: 20,
   texte: "UNESCO, 2017. Rapport mondial de suivi sur l'éducation. Éditions UNESCO." }];
@@ -801,7 +760,7 @@ test('analyser_bibliographie : le message de APA.ReferenceNonVerifiee est locali
 });
 
 // ---------------------------------------------------------------------------------
-// 4. verifier_ordre() — alphabétique/chronologique, suffixes a/b requis.
+// 4. verifier_ordre() : alphabétique, chronologique, suffixes a/b requis.
 
 test('verifier_ordre : ordre alphabétique rompu, et suffixes manquants sur même '
   + 'auteur/année', { skip: sansPython }, () => {
@@ -825,11 +784,8 @@ test('verifier_ordre : ordre alphabétique rompu, et suffixes manquants sur mêm
     'deux Muster (2015) sans suffixe a/b non signalés');
 });
 
-// Trouvaille du superviseur (rejeu des 12 manuscrits, lot4) : une bibliographie DÉJÀ triée
-// correctement (25 références réelles) voyait TOUTES ses entrées signalées « mal classées »
-// dès qu'UNE SEULE d'entre elles (ici une entrée fabriquée, sans année) atterrissait au
-// mauvais endroit — la comparaison position par position décalait tout ce qui suit. Seule
-// l'entrée réellement fautive doit ressortir.
+// Une seule entrée mal placée (ici fabriquée, sans année) dans une bibliographie triée :
+// seule cette entrée ressort, pas toutes celles qui la suivent.
 test('verifier_ordre : une seule entrée mal placée ne fait pas rougir tout le reste de la '
   + 'liste (pas de cascade)', { skip: sansPython }, () => {
   const noms = ['Caron', 'Claparede', 'Cnesco', 'Coen', 'Connac', 'Dottrens', 'Dupriez'];
@@ -849,10 +805,8 @@ test('verifier_ordre : une seule entrée mal placée ne fait pas rougir tout le 
   assert.strictEqual(alertes[0].found, 'Intrus');
 });
 
-// Trouvaille du superviseur : « Le Prévost » (particule EN FRANÇAIS) se classe en L, jamais
-// en P — les Lignes directrices Revue le disent explicitement (§3.2.1, « écrite en
-// majuscule »). En allemand, à l'inverse, la particule est ignorée pour le tri (guide
-// Zeitschrift, Literaturverzeichnis/Anordnung).
+// « Le Prévost » se classe en L en français (Lignes directrices de la Revue, particule écrite
+// en majuscule). En allemand, la particule est ignorée pour le tri (guide Zeitschrift).
 test('verifier_ordre : la particule compte dans le tri fr, pas en de', { skip: sansPython }, () => {
   const refs = "references = ["
     + "{'auteurs': [{'nom': 'Haramein', 'initiales': 'A.'}], 'annee': 1981, 'suffixe': '', "
@@ -867,10 +821,9 @@ test('verifier_ordre : la particule compte dans le tri fr, pas en de', { skip: s
   assert.deepStrictEqual(fr, [], '« Le Prévost » entre Haramein et Leroux : ordre fr correct, '
     + 'rien à signaler : ' + JSON.stringify(fr));
 
-  // Même liste, mais « Le Prévost » n'a plus sa place en allemand une fois la particule
-  // ignorée pour le tri (elle se classerait sous P, après Leroux) : Haramein/Prévost/Leroux
-  // n'est plus monotone, une des deux entrées en cause doit ressortir — laquelle des deux
-  // n'est pas déterministe en cas d'égalité de longueur, seul le NOMBRE l'est ici.
+  // En allemand, « Le Prévost » se classe sous P, après Leroux : la suite n'est plus
+  // monotone et une des deux entrées ressort. Laquelle n'est pas déterministe à longueur
+  // égale ; seul le nombre est vérifié.
   const programmeDe = [refs, "print(json.dumps(mb.verifier_ordre(references, 'de')))"].join('\n');
   const de = executer(programmeDe);
   assert.strictEqual(de.length, 1,
@@ -880,7 +833,7 @@ test('verifier_ordre : la particule compte dans le tri fr, pas en de', { skip: s
 });
 
 // ---------------------------------------------------------------------------------
-// 5. doi_normaliser() — toutes les formes ramenées à https://doi.org/10....
+// 5. doi_normaliser() : toutes les formes ramenées à https://doi.org/10....
 
 test('doi_normaliser : doi:, DOI :, dx.doi.org/, http:// -> forme canonique ; déjà '
   + 'canonique -> rien', { skip: sansPython }, () => {
@@ -905,7 +858,7 @@ test('doi_normaliser : doi:, DOI :, dx.doi.org/, http:// -> forme canonique ; d�
 });
 
 // ---------------------------------------------------------------------------------
-// 6. resoudre_crossref() / retrouver_doi() — réseau TOUJOURS injecté, jamais réel.
+// 6. resoudre_crossref() / retrouver_doi() : réseau injecté.
 
 test('resoudre_crossref : confirme quand auteur/année/titre concordent, divergent sinon', { skip: sansPython }, () => {
   const programme = [
@@ -1002,11 +955,9 @@ test('retrouver_doi : accepte seulement une similarité de titre >= 0.9 avec aut
 });
 
 // ---------------------------------------------------------------------------------
-// 8. langue_ref et séparateur titre/sous-titre composé selon CETTE langue (lot du
-//    21.09.2026, trouvaille du superviseur sur « Le coenseignement développemental… » :
-//    l'insécable française posée à tort devant le ':' d'un titre ANGLAIS cité dans une
-//    bibliographie française — « Coaching : The effects » au lieu de « Coaching: The
-//    effects »).
+// 8. langue_ref : le séparateur titre/sous-titre suit la langue de la référence. Un titre
+//    anglais dans une bibliographie française garde « Coaching: The effects », sans
+//    insécable devant le deux-points.
 
 test('analyser_reference : un titre anglais cité dans une bibliographie française garde le '
   + 'séparateur anglais (pas d\'insécable, majuscule d\'origine conservée)', { skip: sansPython }, () => {
@@ -1032,9 +983,8 @@ test('analyser_reference : un titre français garde l\'insécable devant son sé
     "r = mb.analyser_reference(sys.argv[1], langue_doc='fr')",
     'print(json.dumps(r))',
   ].join('\n');
-  // Deux-points SANS insécable dans le texte source (manuscrit tapé au clavier) : la
-  // composition doit quand même la poser, la référence étant détectée française (aucun
-  // mot-outil anglais/allemand).
+  // Deux-points sans insécable dans la source : la composition la pose, la référence étant
+  // détectée française (aucun mot-outil anglais ou allemand).
   const texte = 'Pelgrims, G. (2016). Une question de terrain: enjeux pour la pratique. '
     + 'Revue suisse de pédagogie spécialisée, 3, 20-29.';
   const r = lancerPython(PREAMBULE + '\n' + programme, [texte]);
@@ -1061,7 +1011,7 @@ test('analyser_reference : un titre allemand (mots-outils der/die/das/und/für) 
 });
 
 // ---------------------------------------------------------------------------------
-// 9. mise_en_forme_apa() — italique du volume SEUL (pas le numéro entre parenthèses), et
+// 9. mise_en_forme_apa() : italique du volume seul (pas du numéro entre parenthèses), et
 //    suggested_texte sans astérisques sur l'alerte APA.MiseEnForme.
 
 test('mise_en_forme_apa : seul le volume est en italique — "*37*(3)", jamais "*37(3)*"',
@@ -1099,15 +1049,12 @@ test('analyser_bibliographie : APA.MiseEnForme porte suggested_texte, sans asté
 });
 
 // ---------------------------------------------------------------------------------
-// 10. APA.DoiRetrouve — désormais une RÉVISION (insertion pure), plus un commentaire (lot du
-//     21.09.2026, demande de Robin).
+// 10. APA.DoiRetrouve : une révision (insertion pure), pas un commentaire.
 
-// Révision du 21.09.2026 quater (demande de Robin, mesuré sur le manuscrit réel
-// « coenseignement » : 10 DOI retrouvés, seulement 2/10 en révision avant ce correctif) :
-// quand une remise en forme est de toute façon proposée pour la référence, le DOI retrouvé est
-// FUSIONNÉ dans `r['doi']` AVANT mise_en_forme_apa() — une seule révision par référence, jamais
-// deux qui se disputent le même paragraphe (`APA.MiseEnForme`, span = toute la référence,
-// gagnait systématiquement contre `APA.DoiRetrouve`, 'suggestion' — la sévérité la plus basse).
+// Quand une remise en forme est proposée pour la référence, le DOI retrouvé est fusionné dans
+// `r['doi']` avant mise_en_forme_apa() : une seule révision par référence. Deux révisions sur
+// le même paragraphe se disputeraient la place, et APA.MiseEnForme (span = toute la
+// référence) l'emporterait toujours.
 test('analyser_bibliographie : un DOI retrouvé pour une référence à reformer est fusionné '
   + 'dans APA.MiseEnForme — une seule révision, zéro APA.DoiRetrouve séparée', { skip: sansPython }, () => {
   const texteRef = "Ploessl, D. M., et Rock, M. L. (2014). Coaching: The effects on co-teachers' "
@@ -1126,9 +1073,8 @@ test('analyser_bibliographie : un DOI retrouvé pour une référence à reformer
     'print(json.dumps({"alertes": alertes, "stats": stats}))',
   ].join('\n');
   const r = executer(programme);
-  // Depuis le 30.09.2026, une APA.DoiRetrouve accompagne la mise en forme, marquée comme son
-  // REPLI (même `groupe`) : manuscrit_annoter.py ne l'écrit que si la mise en forme perd sa
-  // place de révision — le DOI part toujours en suivi de modifications, jamais deux fois.
+  // Une APA.DoiRetrouve accompagne la mise en forme comme repli (même `groupe`) :
+  // manuscrit_annoter.py ne l'écrit que si la mise en forme perd sa place de révision.
   const drs = r.alertes.filter((a) => a.rule === 'APA.DoiRetrouve');
   assert.strictEqual(drs.length, 1, JSON.stringify(drs));
   assert.strictEqual(drs[0].role_groupe, 'repli');
@@ -1145,9 +1091,8 @@ test('analyser_bibliographie : un DOI retrouvé pour une référence à reformer
   assert.strictEqual(r.stats.doi_retrouves, 1);
 });
 
-// Le repli en insertion `track` AUTONOME (aucune remise en forme possible pour cette
-// référence) reste éprouvé, isolé de la question de confiance par injection de dépendance
-// (mb.mise_en_forme_apa remplacée) — patron déjà utilisé dans ce fichier pour `_requete`.
+// Le repli en insertion `track` autonome (aucune remise en forme possible) est isolé de la
+// question de confiance en remplaçant mb.mise_en_forme_apa.
 test('analyser_bibliographie : sans remise en forme possible, le DOI retrouvé reste sa propre '
   + 'insertion track', { skip: sansPython }, () => {
   const programme = [
@@ -1168,16 +1113,14 @@ test('analyser_bibliographie : sans remise en forme possible, le DOI retrouvé r
   const dr = r.alertes.find((a) => a.rule === 'APA.DoiRetrouve');
   assert.ok(dr, 'aucune alerte APA.DoiRetrouve : ' + JSON.stringify(r.alertes));
   assert.strictEqual(dr.action, 'track', 'doit être une révision, pas un commentaire');
-  // Ancre : le plus court suffixe unique, point final compris — le DOI se pose APRÈS lui
-  // (« 12-34. https://… »), plus avant lui comme lorsque l'ancre était les pages seules.
+  // Ancre : le plus court suffixe unique, point final compris ; le DOI se pose après lui.
   assert.strictEqual(dr.found, '12-34.', 'l\'ancrage doit être la fin de la référence');
   assert.strictEqual(dr.suggested, '12-34. https://doi.org/10.1/bon',
     'insertion pure du DOI en fin de référence, jamais une réécriture');
   assert.strictEqual(r.alertes.filter((a) => a.rule === 'APA.MiseEnForme').length, 0);
 });
 
-// Jusqu'au 30.09.2026, ce cas finissait en commentaire. Le dernier mot, unique dans la
-// référence, suffit désormais d'ancre : le DOI y est inséré en révision.
+// Le dernier mot, unique dans la référence, sert d'ancre : le DOI y est inséré en révision.
 test('analyser_bibliographie : un DOI retrouvé sans pages ni point final ni remise en forme '
   + 's\'insère quand même en révision, après le dernier mot', { skip: sansPython }, () => {
   const programme = [
@@ -1189,7 +1132,7 @@ test('analyser_bibliographie : un DOI retrouvé sans pages ni point final ni rem
     'mb._requete = fausse_requete',
     'mb.mise_en_forme_apa = lambda *a, **k: None',
     "corps = []",
-    // Un chapitre SANS pages ET SANS point final.
+    // Un chapitre sans pages et sans point final.
     "biblio = [{'source': 10, 'texte': 'Tremblay, A. (2023). Un chapitre presque identique "
       + "la. In G. Pelgrims (\\u00c9d.), Un ouvrage collectif'}]",
     "alertes, stats = mb.analyser_bibliographie(corps, biblio, 'fr', reseau=True)",
@@ -1204,17 +1147,13 @@ test('analyser_bibliographie : un DOI retrouvé sans pages ni point final ni rem
 });
 
 // ---------------------------------------------------------------------------------
-// 11. Chapitre d'ouvrage collectif — révision du 21.09.2026 quinquies, référence réelle du
-//     manuscrit de Robin : « … Dans E. Guyton et J. Ranier (dir.), Research on meeting
-//     standards in the preparation of teachers (p. 11-24). Kendall-Hunt. » perdait ses DEUX
-//     éditeurs (connecteur "et" jamais reconnu, seul "&" l'était) et proposait « In (Éd. »,
-//     un marqueur hybride absent des deux guides. Vérifié dans les deux PDF
-//     Redaktionsrichtlinien (§3.2.2.2 Revue, Sammelwerke/Herausgeberschaft Zeitschrift) :
-//     « In » dans les deux langues, « (Ed.) »/« (Eds.) » (jamais accentué, jamais « (dir.) »)
-//     pour un ouvrage cité en anglais OU en français, « (Hrsg.) » pour un ouvrage cité en
-//     allemand — décidé par LA LANGUE DE L'OUVRAGE CITÉ, jamais celle du produit ; « pp. »
-//     (Revue) contre « S. » (Zeitschrift, vu tel quel dans son exemple « S. 113–156 ») pour la
-//     plage de pages d'un chapitre — un choix de STYLE DE CITATION, donc la langue du produit.
+// 11. Chapitre d'ouvrage collectif. Règles des deux guides rédactionnels :
+//     - « In » dans les deux langues ;
+//     - « (Ed.) »/« (Eds.) » pour un ouvrage cité en anglais ou en français, « (Hrsg.) »
+//       pour un ouvrage cité en allemand : c'est la langue de l'ouvrage cité qui décide ;
+//     - « pp. » (Revue) ou « S. » (Zeitschrift) devant les pages : c'est la langue du
+//       produit qui décide.
+//     Les éditeurs se reconnaissent avec « et », « und » ou « & ».
 
 const TEXTE_GUYTON = 'Untel, A. (2020). Une pratique de coenseignement. Dans E. Guyton et '
   + 'J. Ranier (dir.), Research on meeting standards in the preparation of teachers '
@@ -1265,8 +1204,8 @@ test('mise_en_forme_apa : la Zeitschrift (langue du produit) prescrit "S.", mêm
   assert.match(d.rendu, /\(S\. 11–24\)/,
     'la Zeitschrift (DGPs) prescrit "S." et le demi-cadratin, même pour un ouvrage cité en '
     + 'anglais : ' + d.rendu);
-  // L'ouvrage cité reste anglais (langue_ref) : le marqueur d'éditeur reste "(Eds.)", jamais
-  // "(Hrsg.)" — seul le PRÉFIXE de pages suit la langue du produit.
+  // L'ouvrage cité reste anglais : le marqueur d'éditeur reste "(Eds.)" ; seul le préfixe de
+  // pages suit la langue du produit.
   assert.match(d.rendu, /\(Eds\.\)/);
 });
 
@@ -1288,12 +1227,8 @@ test('mise_en_forme_apa : un ouvrage collectif cité en ALLEMAND prend "(Hrsg.)"
   assert.match(d.rendu, /T\. Meier & H\. Schneider/, 'connecteur "und" normalisé en "&" : ' + d.rendu);
 });
 
-// Défaut réel repéré en marge (corpus tmp/docx-cleaner-error/1408_Alves.docx, entrée
-// « Alves, I., & Fernandes, D. (2022)… ») : la branche `chapitre` posait « (Ed.) »/« (Eds.) »
-// sans jamais vérifier que `_consommer_editeurs_de_tete()` avait effectivement isolé des noms
-// d'éditeurs — une entrée par ailleurs bien formée et légitimement en confiance haute rendait
-// « In (Ed.), *Conteneur*… », un marqueur d'éditeur sans nom, jamais correct dans aucun des
-// deux guides.
+// Un chapitre dont _consommer_editeurs_de_tete() n'a isolé aucun éditeur ne doit pas rendre
+// « In (Ed.), *Conteneur*… », un marqueur sans nom.
 test('mise_en_forme_apa : un chapitre sans éditeur identifié ne produit plus "In (Ed.), "',
   { skip: sansPython }, () => {
   const programme = [
@@ -1317,19 +1252,14 @@ test('mise_en_forme_apa : un chapitre sans éditeur identifié ne produit plus "
     'le "In" et le conteneur doivent survivre, sans marqueur creux entre eux : ' + d.rendu);
 });
 
-// Le garde-fou général (§7 bis, révision du 21.09.2026 quinquies) : reproduit le défaut réel
-// EXACT (sabotage LOCAL au test, jamais le fichier de production) — sous l'ancien regex qui ne
-// reconnaissait "&" et jamais "et"/"und", les deux éditeurs disparaissent de la forme
-// canonique. Le garde-fou doit alors bloquer TOUTE proposition (pas seulement celle des
-// éditeurs) et compter la perte dans stats.non_proposees, jamais laisser sortir une révision
-// qui efface une information.
+// Garde-fou « aucun jeton perdu » : si les éditeurs disparaissent de la forme canonique, toute
+// proposition est bloquée et comptée dans stats.non_proposees. Le défaut est provoqué dans le
+// test seul.
 test('analyser_bibliographie : le garde-fou "aucun jeton perdu" bloque la proposition si les '
   + 'éditeurs disparaissent (rejoue le défaut réel corrigé)', { skip: sansPython }, () => {
   const programme = [
-    // Sabotage LOCAL au test (jamais le fichier de production) : un motif qui ne reconnaît
-    // plus qu'UN SEUL éditeur, quel que soit le connecteur — reproduit fidèlement « le
-    // connecteur d'un deuxième éditeur n'est jamais reconnu », sans reproduire l'intégralité
-    // de l'ancien motif caractère pour caractère.
+    // Motif saboté dans le test seul : il ne reconnaît plus qu'un éditeur, quel que soit le
+    // connecteur.
     "mb.RE_EDITEUR_INITIALES_NOM = __import__('re').compile(r\"^(?:[A-Z]\\.-?){1,3}\\s+[A-Z][\\w'-]*$\")",
     'corps = []',
     'biblio = [{"source": 7, "texte": ' + JSON.stringify(TEXTE_GUYTON) + '}]',
@@ -1345,7 +1275,7 @@ test('analyser_bibliographie : le garde-fou "aucun jeton perdu" bloque la propos
 });
 
 // ---------------------------------------------------------------------------------
-// 7. analyser_bibliographie() — reseau=False : aucune tentative, indisponible=True.
+// 7. analyser_bibliographie() : reseau=False, aucune tentative, indisponible=True.
 
 test('analyser_bibliographie : reseau=False ne tente jamais Crossref', { skip: sansPython }, () => {
   const programme = [
@@ -1366,10 +1296,10 @@ test('analyser_bibliographie : reseau=False ne tente jamais Crossref', { skip: s
 });
 
 // ---------------------------------------------------------------------------------
-// 8. Manuscrit Sahli Lozano et al. (tmp/origf_Sahli Lozano et al.docx) : noms composés,
-// références coupées sur plusieurs paragraphes, textes juridiques sans année entre parenthèses.
+// 8. Noms composés, références coupées sur plusieurs paragraphes, textes juridiques sans
+// année entre parenthèses.
 
-// Les références telles que le manuscrit les porte (auteurs, année, titre : réels).
+// Les références telles qu'un manuscrit les porte.
 const REFS_SAHLI = [
   'Sahli Lozano, C. (2019). Haltung von Lehrpersonen gegenüber schulischer Inklusion. '
     + 'Berner Schule, 152 (5), 26-30.',
@@ -1438,8 +1368,8 @@ test('croiser : un nom composé INCONNU de la bibliographie reste absent, et l\'
   assert.match(autre.alertes[0].message, /2019, 2021, 2026/);
 });
 
-// Les références coupées du manuscrit, telles que Word les porte : une ligne = un paragraphe,
-// la suite commence par une minuscule, un chiffre, ou après un tiret.
+// Références coupées, telles que Word les porte : une ligne = un paragraphe, la suite commence
+// par une minuscule, un chiffre, ou après un tiret.
 const BIBLIO_COUPEE = [
   { source: 70, texte: 'Brägger, M. (2024). Die Berufszufriedenheit der Deutschschweizer '
     + 'Lehrerinnen und Lehrer. Büro Brägger.' },
@@ -1505,9 +1435,9 @@ test('analyser_bibliographie : une référence coupée sur trois paragraphes est
       JSON.stringify(regles('APA.ReferenceNonVerifiee')));
     assert.deepStrictEqual(regles('APA.OrdreBiblio'), []);
     assert.deepStrictEqual(regles('APA.CitationAbsente'), []);
-    // Un DOI reste corrigé sur le paragraphe qui le porte, pas sur le premier morceau.
+    // Un DOI est corrigé sur le paragraphe qui le porte, pas sur le premier morceau.
     assert.deepStrictEqual(regles('APA.DoiForme').map((a) => a.para).sort(), [76, 81, 84]);
-    // Une référence jamais citée porte le texte de son PREMIER paragraphe.
+    // Une référence non citée porte le texte de son premier paragraphe.
     const nonCitee = regles('APA.ReferenceNonCitee').find((a) => a.para === 74);
     assert.ok(nonCitee, 'Collie n\'est pas citée : ' + JSON.stringify(r.alertes));
     assert.strictEqual(nonCitee.found, BIBLIO_COUPEE[3].texte);
