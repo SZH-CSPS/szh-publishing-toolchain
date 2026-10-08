@@ -1,23 +1,27 @@
 #!/bin/sh
-# Applique à un WeasyPrint installé les correctifs de sa version (image/patches/).
-# Appelé par image/Containerfile après l'installation, et par la CI sur son propre venv,
-# pour que la CI valide le même WeasyPrint que les postes.
+# Applique à un WeasyPrint installé les correctifs SZH de SA version (image/patches/).
+# Appelé par image/Containerfile juste après l'installation épinglée, et par la CI
+# (.github/workflows/ci.yml) sur son propre venv : sans cela, la porte PDF/UA de la CI
+# ne jugerait pas le WeasyPrint de la flotte.
 #
 # Usage : patch-weasyprint.sh <python du venv WeasyPrint> <dossier des patchs>
 #
-# Les correctifs de la version X sont dans <dossier>/weasyprint-X/, un fichier par sujet,
-# appliqués dans l'ordre de leur nom. Chacun s'applique seul. Un fichier renommé en
-# .patch.off est ignoré, et le journal le dit. La liste des patchs appliqués est écrite
-# dans weasyprint/szh-patchs.txt, que lit test/weasyprint-patch-check.py.
+# Les correctifs de la version X vivent dans <dossier>/weasyprint-X/, un fichier par sujet,
+# posés dans l'ordre de leur nom (10-…, 20-…). Chacun s'applique sans les autres. Pour en
+# désactiver un, le renommer en .patch.off : il est alors annoncé comme ignoré. La liste
+# des patchs posés est écrite dans weasyprint/szh-patchs.txt, que lit
+# test/weasyprint-patch-check.py pour ne juger que ceux-là.
 #
-# Le script échoue :
-#   - s'il n'y a pas de dossier pour la version installée : une montée de WeasyPrint
-#     oblige à revoir les correctifs ;
+# Échoue BRUYAMMENT, et c'est voulu :
+#   - s'il n'existe pas de dossier weasyprint-<version installée>/ : une montée de
+#     version de WeasyPrint (image/requirements.txt) oblige à rejuger les correctifs —
+#     l'amont les a peut-être intégrés, ou le code a bougé ;
 #   - si le dossier contient autre chose que des .patch et des .patch.off ;
-#   - si un patch ne s'applique pas exactement (--fuzz=0) ou est déjà appliqué ;
+#   - si un patch ne s'applique pas au caractère près (--fuzz=0), ou s'il est déjà
+#     appliqué (--forward, et le témoin szh-patchs.txt déjà présent) ;
 #   - si un module patché ne s'importe plus.
-# Tous les patchs sont d'abord essayés sur une copie du paquet, pour ne jamais laisser
-# WeasyPrint à moitié patché.
+# La passe à blanc d'abord, sur une copie du paquet et patch après patch : un demi-patch
+# serait pire que pas de patch.
 set -eu
 export LC_ALL=C
 

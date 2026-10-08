@@ -9,6 +9,9 @@ est faite. Les questions à trancher sont marquées « À décider ».
   À décider : la cadence (mensuelle ou trimestrielle), et ce que la reconstruction doit
   vérifier avant de publier (banc rendu dans la nouvelle image et comparé au pixel, ou
   ouverture d'une issue).
+- À la prochaine reconstruction de l'image : reprendre les commentaires réécrits de
+  `image/Containerfile` et `image/patch-weasyprint.sh` (branche locale `commentaires-image`).
+  Ils ont été retirés de la version 3.11.0 pour ne pas reconstruire l'image.
 - Retirer `.szh-arrow { opacity: 0.9 }` de `pipeline/styles/print.css` : une flèche avec
   transparence hors de la page de titre ferait échouer PDF/UA (règle 7.1-3).
 - Ajouter un portrait aux articles des contrôles PDF/UA : tous les auteurs de
