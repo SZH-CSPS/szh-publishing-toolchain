@@ -11,6 +11,30 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.10.6
+
+Mineure : la documentation et les commentaires du code réécrits pour être lus par quelqu'un
+qui découvre le dépôt, et un poste neuf installé en production.
+
+**Production.**
+- Installation : `bootstrap.ps1` règle un poste neuf sur les dossiers de production
+  (`"emplacementRevues": "production"`) au lieu des dossiers de test. Le mode test se choisit
+  dans Accueil → Paramètres. Le message de fin d'installation indique Accueil → Nouveau
+  pour créer un numéro.
+
+**Documentation.**
+- `docs/ECRIRE-LA-DOC.md` : la règle d'écriture de la doc et des commentaires, citée par
+  `CLAUDE.md`.
+- `docs/ARCHITECTURE.md` réécrit avec quatre schémas et un vocabulaire ; `docs/MAINTENANCE.md`
+  devient un guide d'exploitation (installation, mises à jour, mise à jour de la WSL,
+  dépannage par symptôme, moissonneurs, gestes récurrents) ; tous les autres documents de
+  `docs/` et les README techniques réécrits, une cinquantaine d'erreurs corrigées d'après le
+  code.
+- `docs/TODO/`, `docs/DEV/` et le journal des lots retirés ; ce qui reste à faire est dans
+  `docs/A-FAIRE.md`.
+- Commentaires du code et des tests réécrits (environ 47 000 lignes ramenées à 33 000), sans
+  aucune ligne de code modifiée.
+
 ## 3.10.5
 
 Mineure : des messages d’import qui nomment ce qui est en cause et se ferment, et des titres
