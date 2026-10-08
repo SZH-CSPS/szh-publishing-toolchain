@@ -76,6 +76,7 @@ est faite. Les questions à trancher sont marquées « À décider ».
 - Documentation : l'édition d'une fiche archivée n'est pas branchée (icône grisée), et le
   bouton « Publier sur le site web » n'a pas d'action.
 - La règle CSS `.szh-liste.szh-analyse-cible` de `media/vue-ensemble.css` semble inutilisée.
+- `lib/courriel.js` passe `nomsAuteurs` au gabarit, mais aucun texte ne s'en sert.
 - `lib/cantons.js` n'a plus d'appelant : le supprimer ou le rebrancher.
 - Piste : ranger `lib/` en sous-dossiers par domaine, si les tests suivent sans réécriture.
 
@@ -119,6 +120,9 @@ est faite. Les questions à trancher sont marquées « À décider ».
 - Lexique des noms : vérifier que la forme « Nom, Prénom » est bien prise en compte ; ajouter
   des sources allemandes, autrichiennes et italiennes.
 
+- Bug probable : `construireBibliographie` (`outils/rendre-gabarit.js`) lit
+  `rapport.bibliographie.stats`, alors que le nettoyeur range les statistiques directement
+  dans `rapport.bibliographie` : la section bibliographie du rapport ne s'afficherait jamais.
 - Valider la sortie avec la rédaction sur une dizaine de documents ; trouver un manuscrit
   réel déjà au gabarit pour l'éprouver.
 - Apparier un auteur institutionnel cité par son sigle.
