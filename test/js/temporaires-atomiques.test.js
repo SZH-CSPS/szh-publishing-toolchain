@@ -1,27 +1,13 @@
-// Les fichiers temporaires des écritures atomiques : leur NOM, et leur disparition quand
-// l'écriture échoue.
+// Les fichiers temporaires des écritures atomiques de rapports d'erreur, côté cockpit
+// (lib/rapport-erreur.js) et côté lanceur (Write-SzhRapportSurDisque, windows/szh-rapport.ps1) :
+// - le temporaire porte le préfixe « ~$ », que OneDrive ne synchronise pas ;
+// - il est supprimé quand l'écriture échoue, sinon il resterait dans le dossier partagé.
+// Une écriture réussie ne montre ni l'un ni l'autre : les tests observent le nom du
+// temporaire pendant l'écriture et font échouer le renommage.
 //
 //   node --test test/js/temporaires-atomiques.test.js
-//   node --test "test/js/*.test.js"
 //
-// Le défaut que ce banc garde est un défaut de SYNCHRONISATION, pas de correction : les deux
-// écrivains de rapports d'erreur — ecrireJsonAtomique / ecrireRapportSurDisque
-// (lib/rapport-erreur.js) et Write-SzhRapportSurDisque (windows/szh-rapport.ps1) — écrivaient
-// bien leur fichier, mais :
-//
-//   * ils nommaient leur temporaire « <cible>.tmp-… », SANS le préfixe « ~$ » que le reste du
-//     dépôt emploie précisément parce que OneDrive l'IGNORE. Chaque écriture faisait donc
-//     voyager un fichier de plus vers tous les postes ;
-//   * ni l'un ni l'autre ne supprimait ce temporaire quand l'écriture échouait — il manquait
-//     un `finally` côté JavaScript, et côté PowerShell l'exception était avalée sans rien
-//     nettoyer. Les orphelins s'accumulaient dans le dossier PARTAGÉ, donc sur tous les
-//     postes à la fois.
-//
-// Aucun de ces deux défauts ne se voit dans le résultat d'une écriture réussie : il faut
-// observer le NOM du temporaire pendant l'écriture, et faire ÉCHOUER le renommage pour voir
-// ce qui reste derrière. C'est ce que font les tests ci-dessous.
-//
-// Rien ici ne touche le vrai dossier SharePoint : tout se passe dans des dossiers jetables.
+// Tout se passe dans des dossiers jetables.
 'use strict';
 
 const test = require('node:test');
@@ -49,9 +35,8 @@ function jetable(prefixe) { return fs.mkdtempSync(path.join(os.tmpdir(), prefixe
 // 1. Le nom du temporaire, observé pendant l'écriture
 // ---------------------------------------------------------------------------------------
 //
-// lib/rapport-erreur.js requiert `fs` comme ce banc : c'est le MÊME objet. Remplacer
-// writeFileSync le temps d'un appel donne donc le chemin réel que le module a choisi, sans
-// rien deviner de sa source.
+// lib/rapport-erreur.js partage l'objet `fs` de ce banc : remplacer writeFileSync le temps
+// d'un appel donne le chemin que le module a réellement écrit.
 function espionnerEcriture() {
   const vus = [];
   const vrai = fs.writeFileSync;
@@ -108,8 +93,6 @@ test('cockpit : un rapport écrit pour de vrai passe par « ~$ » et ne laisse r
       fs.mkdirSync(dossier, { recursive: true });
       const sortie = rapportErreur.emettreRapport(CHAMPS_MINIMAUX);
       assert.ok(sortie && sortie.ecrit, 'le rapport n’a pas été écrit : ' + JSON.stringify(sortie));
-      // Le chemin réellement écrit, pas celui qu'on suppose : fs est le même objet des deux
-      // côtés, le module n'a donc rien pu choisir d'autre.
       const dansLeDossier = espion.vus.filter((c) => path.dirname(c) === dossier);
       assert.ok(dansLeDossier.length >= 1, 'aucune écriture vue dans le dossier de rapports');
       for (const c of dansLeDossier) {
@@ -133,10 +116,8 @@ test('cockpit : un renommage qui échoue n’abandonne pas son temporaire', () =
   try {
     avecSandbox(travail, (dossier) => {
       fs.mkdirSync(dossier, { recursive: true });
-      // Le mode d'échec réel : le renommage refusé (fichier tenu par le synchroniseur,
-      // dossier disparu entre-temps, disque plein). Le temporaire, lui, a bien été écrit —
-      // c'est exactement ce que l'ancien code abandonnait sur place, dans le dossier
-      // PARTAGÉ, d'où il se répliquait ensuite sur tous les postes.
+      // Renommage refusé (fichier tenu par le synchroniseur, dossier disparu, disque plein)
+      // alors que le temporaire est déjà écrit.
       fs.renameSync = function () { throw new Error('EPERM simulé'); };
       const sortie = rapportErreur.emettreRapport(CHAMPS_MINIMAUX);
       fs.renameSync = vraiRename;
@@ -160,8 +141,8 @@ test('cockpit : un renommage qui échoue n’abandonne pas son temporaire', () =
 });
 
 test('lib/yaml.js : le motif de référence, inchangé', () => {
-  // C'est de LUI que les deux écrivains de rapports viennent d'être alignés : préfixe « ~$ »,
-  // même dossier, et un finally. Si ce motif changeait, les trois devraient changer ensemble.
+  // Les deux écrivains de rapports suivent ce motif : préfixe « ~$ », même dossier, finally.
+  // S'il change, les trois changent ensemble.
   const travail = jetable('szh-tmp-yaml-');
   const espion = espionnerEcriture();
   try {
@@ -222,17 +203,14 @@ test('lanceur : écriture réussie puis écriture ratée, aucun orphelin dans le
       const sortie = path.join(travail, 'sortie.json');
       const contenu = [
         "$ErrorActionPreference = 'Stop'",
-        // La mise en forme du JSON est une dépendance de la fonction éprouvée, mais ce n'est
-        // pas le sujet ici : elle a son propre banc, qui compare sa sortie caractère par
-        // caractère à celle du cockpit (test/js/rapport-erreur-ps.test.js). Un doublure d'une
-        // ligne suffit — ce qu'on éprouve ci-dessous, c'est le fichier temporaire.
+        // Doublure de la mise en forme JSON, éprouvée à part dans rapport-erreur-ps.test.js.
         'function ConvertTo-SzhRapportJsonTexte { param($Objet) return (($Objet | ConvertTo-Json -Depth 20) + "`n") }',
         corpsFonction(SOURCE_RAPPORT_PS, 'Write-SzhRapportSurDisque'),
         '$sortie = [ordered]@{ }',
         "$rapport = [ordered]@{ schema = 'szh-rapport-erreur/1'; id = 'essai-01' }",
         "$sortie['reussi'] = (Write-SzhRapportSurDisque -Dossier '" + d + "' -Id 'essai-01' -Rapport $rapport)",
-        // Deuxième passage, cible tenue ouverte SANS partage : le renommage échoue, et le
-        // temporaire a bel et bien été écrit avant lui.
+        // Deuxième passage, cible ouverte sans partage : le renommage échoue après
+        // l'écriture du temporaire.
         "$cible = Join-Path '" + d + "' 'essai-01.json'",
         "$flux = [System.IO.File]::Open($cible, 'Open', 'ReadWrite', 'None')",
         "try {",

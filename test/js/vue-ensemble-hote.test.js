@@ -73,8 +73,8 @@ test('vue-ensemble-hote seul : sans rapport d’import, rien à lire ; vue ferm�
   assert.equal(vu.panneaux.length, 0);
 });
 
-// Constaté par Robin (07.10.2026) : trois cartes « Article « x » » pour un même Word, des
-// titres sans l'étiquette en cause, aucun geste, et un seul « champ laissé vide » pour quatre.
+// Une carte par Word, des titres qui nomment l'étiquette en cause, une action proposée, et un
+// constat par champ laissé vide.
 test('vue-ensemble-hote seul : le rapport d’import fait une carte par article, qui nomme ce qui est en cause et dit quoi faire', () => {
   const m = charger();
   const ligne = (code, champs) => '[import-avertissement] ' + code + ' | article « 01-essai » | '

@@ -3,19 +3,12 @@
 //
 //   node --test "test/js/versions.test.js"
 //
-// Le 18.09.2026, le dépôt quitte la numérotation année.mois.compteur (v2026.09.42, 41 tags
-// pour le seul mois de septembre) pour majeure.medium.mineure, à partir de 1.0.0. Deux
-// conséquences, gardées ici parce qu'aucune n'est visible en lisant le code du dialogue :
-//
-//   * le numéro BAISSE (2026.09.42 -> 1.0.0), et Sort-SzhVersions trie par [version] : sans
-//     filtre, l'ancienne ère resterait en tête de liste pour toujours, et le dialogue --
-//     qui présélectionne la première ligne -- proposerait de réinstaller 2026.09.42 ;
-//   * une ligne par mineure était illisible. Le sélecteur ne montre donc que la dernière
-//     mineure de chaque medium (1.2.13, pas 1.2.12), une version intermédiaire ne se
-//     distinguant de la suivante que par des correctifs.
-//
-// Revenir à une version d'avant 1.0.0 reste possible, mais seulement en ligne de commande
-// (`update.ps1 -Version 2026.09.42`) : c'est délibéré, pas un oubli.
+// Les tags suivent majeure.medium.mineure depuis 1.0.0 ; les plus anciens suivent
+// année.mois.compteur (v2026.09.42). Le sélecteur :
+//   * écarte l'ancienne numérotation : Sort-SzhVersions trie par [version], 2026.09.42
+//     passerait en tête, et le dialogue présélectionne la première ligne ;
+//   * ne montre que la dernière mineure de chaque medium (1.2.13, pas 1.2.12).
+// Une version d'avant 1.0.0 s'installe en ligne de commande : `update.ps1 -Version 2026.09.42`.
 'use strict';
 
 const test = require('node:test');
@@ -35,8 +28,7 @@ const VERSIONS = fs.readFileSync(VERSIONS_PS1, 'utf8');
 const LANCEUR = fs.readFileSync(path.join(RACINE, 'windows', 'open-revue.ps1'), 'utf8');
 const TEXTES = fs.readFileSync(path.join(RACINE, 'windows', 'szh-textes.ps1'), 'utf8');
 
-// La liste d'épreuve, mélangée exprès : l'ordre d'entrée ne doit jamais transparaître dans
-// l'ordre de sortie, c'est Sort-SzhVersions qui décide.
+// Liste mélangée exprès : l'ordre de sortie vient de Sort-SzhVersions.
 const ENTREE = [
   '1.2.12', '2026.09.42', '1.0.0', '1.2.13', 'v2026.07.0', '2.0.0',
   '1.2.0', '0.0.0-dev+f153f92', '1.4.0-rc1', '1.4.0', '1.3.1', '1.5.0-rc1',
@@ -55,8 +47,8 @@ const bilan = (function () {
     '$r = [ordered]@{}',
     '$r.proposables = @(Select-SzhVersionsProposables $entree)',
     '$r.mediums = @(foreach ($v in $entree) { Get-SzhMediumVersion $v })',
-    // Aucune version de la nouvelle ère : la liste doit être vide, jamais $null -- un $null
-    // ferait « Count » sur rien et le dialogue planterait au lieu de dire « aucune version ».
+    // Sans version proposable, la liste est vide et non $null, sur quoi le dialogue
+    // planterait au lieu de dire « aucune version ».
     '$r.vide = @(Select-SzhVersionsProposables @(' + "'2026.09.42', '0.0.0-dev'" + '))',
     '$r.rien = @(Select-SzhVersionsProposables @())',
     '$r | ConvertTo-Json -Depth 4 | Set-Content -Path "' + sortie.replace(/\\/g, '\\\\') + '" -Encoding UTF8'
@@ -99,8 +91,8 @@ test('rien d’avant 1.0.0 n’est proposé, ni l’ancienne ère, ni le poste d
       assert.ok(!r.proposables.includes(ecartee.replace(/^v/, '')),
         ecartee + ' est revenue dans le sélecteur');
     }
-    // Et un numéro qui n'est pas un numéro ne s'y glisse pas non plus : la valeur part en
-    // argument de update.ps1, Test-SzhVersionTag n'étant qu'un second rempart.
+    // Une valeur qui n'est pas un numéro est écartée aussi : elle part en argument de
+    // update.ps1, et Test-SzhVersionTag n'est qu'un second rempart.
     assert.ok(!r.proposables.includes('brouillon'), '« brouillon » proposé comme une version');
     assert.ok(!r.proposables.includes('1.2'), 'un numéro à deux composants proposé');
   });
@@ -122,33 +114,30 @@ test('le medium se lit sur la majeure et la mineure, et l’année n’en est pa
     assert.strictEqual(lu['2.0.0'], '2.0');
     assert.strictEqual(lu['v1.0.1'], '1.0');
     assert.strictEqual(lu['1.4.0-rc1'], '1.4', 'une pré-version appartient au medium de son numéro');
-    // 2026 est une année, pas une majeure : c'est cette borne, et elle seule, qui sépare les
-    // deux ères — les deux numérotations ayant exactement la même forme.
+    // Les deux numérotations ont la même forme : seule la borne sur la majeure les sépare.
     assert.strictEqual(lu['2026.09.42'], '');
     assert.strictEqual(lu['0.0.0-dev+f153f92'], '');
     assert.strictEqual(lu['brouillon'], '');
     assert.strictEqual(lu['1.2'], '');
   });
 
-// ---- Le dialogue passe bien ses DEUX sources par le filtre ----------------------------
-// Sans cette garde, une version de l'ancienne ère restée en staging (toolkit-2026.09.42.zip)
-// reviendrait par la porte « installable hors ligne », que rien n'aurait filtrée.
+// ---- Le dialogue passe ses deux sources par le filtre -------------------------------
+// Les versions publiées et celles du staging (toolkit-2026.09.42.zip, installable hors ligne).
 
 test('Show-SzhVersions filtre les versions publiées ET celles du staging', () => {
   assert.match(VERSIONS, /\$locales = @\(Select-SzhVersionsProposables \(Get-SzhVersionsLocales\)\)/,
     'les versions du staging ne passent plus par le filtre');
   assert.match(VERSIONS, /\$publiees = @\(Select-SzhVersionsProposables \$publieesBrutes\)/,
     'les versions publiées ne passent plus par le filtre');
-  // Le message « hors ligne » juge la réponse de GitHub, pas le résultat du filtre : un
-  // réseau qui répond mais ne rend que de l'ancienne ère n'est pas un poste hors ligne.
+  // Le message « hors ligne » juge la réponse de GitHub, avant le filtre : un réseau qui ne
+  // rend que l'ancienne numérotation n'est pas un poste hors ligne.
   assert.match(VERSIONS, /if \(\$publieesBrutes\.Count -gt 0\)/,
     'le message hors ligne se décide sur la liste filtrée, et ment donc au premier jour');
 });
 
 test('la ligne présélectionnée n’est pas la version installée quand une autre est proposée', () => {
-  // Régression possible du filtre lui-même : une version d'avant 1.0.0 n'étant plus
-  // proposable, elle s'insère en tête de liste comme « installée » — et la présélection à 0
-  // faisait alors du bouton « Installer » une réinstallation à l'identique.
+  // Une version installée d'avant 1.0.0 s'insère en tête comme « installée » : présélectionner
+  // la ligne 0 ferait du bouton « Installer » une réinstallation à l'identique.
   assert.match(VERSIONS, /\$premier = 0\r?\n\s*if \(\(\$disponibles\.Count -gt 1\) -and \(\$disponibles\[0\] -eq \$installee\)\) \{ \$premier = 1 \}/,
     'la présélection est revenue à la première ligne, quelle qu’elle soit');
   assert.match(VERSIONS, /\$liVersions\.SelectedIndex = \$premier/);
@@ -180,9 +169,7 @@ test('la note qui explique la liste courte existe dans les trois langues', () =>
 });
 
 // ---- L'avertissement de maquette (cockpit) --------------------------------------------
-// Il était posé sur l'égalité des chaînes : à quarante et une releases par mois, il criait à
-// chaque fois, donc il ne disait plus rien. Depuis 1.0.0, seule la MAJEURE le déclenche —
-// c'est elle qui change quand la maquette change.
+// Seule la majeure le déclenche : c'est elle qui change quand la maquette change.
 
 const { versionsDivergent } = require(path.join(
   RACINE, 'vscodium-extension', 'szh-cockpit', 'lib', 'archivage.js'));
@@ -190,16 +177,14 @@ const { versionsDivergent } = require(path.join(
 test('deux mineures ou deux mediums de la même majeure ne divergent pas', () => {
   assert.strictEqual(versionsDivergent('1.0.0', '1.0.1'), false);
   assert.strictEqual(versionsDivergent('1.2.13', '1.9.0'), false);
-  // Le cas qui rendait l'avertissement inaudible : un numéro commencé lundi, un poste mis à
-  // jour mercredi, et une alerte sur un écart qui ne change rien de ce qu'on voit.
+  // Un numéro commencé avant une mise à jour mineure du poste.
   assert.strictEqual(versionsDivergent('1.4.0', '1.4.12'), false);
 });
 
 test('une majeure différente diverge, et l’ancienne ère diverge de la nouvelle', () => {
   assert.strictEqual(versionsDivergent('1.9.3', '2.0.0'), true);
   assert.strictEqual(versionsDivergent('2.0.0', '1.9.3'), true);
-  // Exact : la maquette a bel et bien bougé entre v2026.09.42 et 1.0.0. L'avertissement
-  // s'éteindra de lui-même quand les numéros auront été ré-estampillés.
+  // La maquette a changé entre v2026.09.42 et 1.0.0.
   assert.strictEqual(versionsDivergent('2026.09.42', '1.0.0'), true);
 });
 
@@ -208,8 +193,8 @@ test('une version inconnue, illisible ou de développement n’avertit jamais', 
   assert.strictEqual(versionsDivergent('1.0.0', ''), false, 'poste sans VERSION lisible');
   assert.strictEqual(versionsDivergent(null, undefined), false);
   assert.strictEqual(versionsDivergent('brouillon', '1.0.0'), false);
-  // Sur un poste de développement la maquette est celle du dépôt ouvert : l'avertissement
-  // n'aurait aucune version à désigner, et se déclencherait sur chaque numéro ouvert.
+  // Sur un poste de développement, la maquette est celle du dépôt ouvert : pas de version à
+  // comparer.
   assert.strictEqual(versionsDivergent('1.0.0', '0.0.0-dev+f153f92'), false);
   assert.strictEqual(versionsDivergent('0.0.0-dev+f153f92', '1.0.0'), false);
 });

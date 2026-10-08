@@ -1,17 +1,13 @@
 // Créer un numéro par son année et son numéro, et non par un nom de dossier.
 //
-//   node --test "test/js/*.test.js"
+//   node --test test/js/volume-numero.test.js
 //
-// Ce que ce fichier garde :
-//   * la FORMULE DU VOLUME. Le volume s'imprime sur la couverture (szh-maquette.lua) et
-//     part dans OJS en <volume>. Se tromper d'un cran étiquetterait faux tous les numéros
-//     à venir sans qu'aucun message le dise — c'est le genre d'erreur qu'on ne découvre
-//     qu'imprimée. Les deux tables ci-dessous sont un relevé de l'archive publique, pas une
-//     déduction ; la formule est jugée contre elles.
-//   * le REFUS DU DOUBLON. Un numéro s'identifie par son couple volume + numéro, jamais par
-//     son nom de dossier : deux dossiers de noms différents peuvent porter le même couple, et
-//     c'est exactement ce qu'il faut refuser. Les archives comptent — un numéro archivé reste
-//     un numéro publié.
+// Deux sujets :
+//   * la formule du volume. Le volume s'imprime sur la couverture (szh-maquette.lua) et part
+//     dans OJS en <volume> ; une erreur d'un cran fausserait tous les numéros suivants sans
+//     message. La formule est jugée contre un relevé de l'archive publique ;
+//   * le refus du doublon. Un numéro s'identifie par son couple volume + numéro, pas par son
+//     nom de dossier, et un numéro archivé compte.
 'use strict';
 
 const test = require('node:test');
@@ -35,11 +31,9 @@ const psProduits = fs.readFileSync(PRODUITS, 'utf8');
 const jsNouveau = fs.readFileSync(NOUVEAU, 'utf8');
 const psCreation = fs.readFileSync(CREATION, 'utf8');
 
-// ---- Le relevé, et lui seul --------------------------------------------------------
-// Relevé sur https://ojs.szh.ch/index.php/revue/issue/archive et .../zeitschrift/... le
-// 24.08.2026, page par page jusqu'au plus ancien numéro en ligne. Neuf millésimes de suite
-// pour chacune des deux revues, sans trou. Deux points ne prouvent pas une droite ; neuf,
-// oui — et si un jour le compte se décale, c'est ici que cela doit se voir d'abord.
+// ---- Le relevé ---------------------------------------------------------------------
+// Relevé sur https://ojs.szh.ch/index.php/revue/issue/archive et .../zeitschrift/...,
+// jusqu'au plus ancien numéro en ligne : neuf millésimes de suite pour chaque revue.
 const RELEVE = {
   // « Vol. 16 No 02 (2026) » … « Vol. 8 No 1 (2018) »
   revue: { 2018: 8, 2019: 9, 2020: 10, 2021: 11, 2022: 12, 2023: 13, 2024: 14, 2025: 15, 2026: 16 },
@@ -48,7 +42,7 @@ const RELEVE = {
 };
 
 test('volume : les deux ancres déclarées reproduisent le relevé de ojs.szh.ch', () => {
-  // L'année zéro est écrite une seule fois dans le dépôt, ici.
+  // L'année zéro est écrite une seule fois dans le dépôt, dans szh-produits.ps1.
   const bloc = psProduits.match(/\$script:SzhVolumeAnneeZero = @\{([^}]*)\}/);
   assert.ok(bloc, 'SzhVolumeAnneeZero a disparu de szh-produits.ps1');
   const ancres = {};
@@ -57,7 +51,7 @@ test('volume : les deux ancres déclarées reproduisent le relevé de ojs.szh.ch
   }
   assert.deepStrictEqual(ancres, { revue: 2010, zeitschrift: 1994 },
     'les années zéro ont changé : le relevé ci-dessus doit être refait avant');
-  // Et la soustraction rend bien, année par année, ce que l'archive publie.
+  // La soustraction rend, année par année, ce que l'archive publie.
   for (const produit of Object.keys(RELEVE)) {
     for (const [annee, volume] of Object.entries(RELEVE[produit])) {
       assert.strictEqual(Number(annee) - ancres[produit], volume,
@@ -66,15 +60,14 @@ test('volume : les deux ancres déclarées reproduisent le relevé de ojs.szh.ch
   }
 });
 
-// Le code seul, commentaires retirés : une année citée en commentaire documente, elle ne
-// calcule pas.
+// Le code sans ses lignes de commentaire : une année citée en commentaire ne calcule rien.
 function codeSeul(source) {
   return source.split(/\r?\n/).filter((l) => !/^\s*#/.test(l)).join('\n');
 }
 
 test('volume : la formule ne se laisse pas écrire ailleurs', () => {
-  // Une deuxième copie de 1994 ou de 2010 quelque part, et les deux se décaleraient
-  // séparément. Get-SzhVolumePour est le seul chemin.
+  // Une seconde copie de 1994 ou de 2010 pourrait diverger : Get-SzhVolumePour est le seul
+  // chemin.
   const copies = (codeSeul(psProduits).match(/\b(1994|2010)\b/g) || []).length;
   assert.strictEqual(copies, 2, 'les années zéro apparaissent ' + copies + ' fois dans szh-produits.ps1');
   // Le formulaire de l'Accueil, et tout autre script de windows/.
@@ -93,12 +86,10 @@ test('volume : la formule ne se laisse pas écrire ailleurs', () => {
 
 const { POWERSHELL, sansPowerShell } = require('./gardes');
 
-// Les quatre dossiers du poste, sous une racine jetable, avec les numéros demandés.
-// `Get-SzhBaseRevuesPour` est remplacée dans le pilote : rien n'est lu de config.json et
-// aucune racine réelle n'est touchée.
-// Les quatre chemins de $SzhSousDossiers (windows/szh-produits.ps1), lus dans la source : un
-// numéro en cours DIRECTEMENT sous son dossier produit, les archives des produits regroupées
-// sous un « _Archive » unique. Le livre n'a pas de volume, il n'entre pas ici.
+// Les quatre dossiers du poste, sous une racine jetable, avec les numéros demandés. Leurs
+// chemins viennent de $SzhSousDossiers (windows/szh-produits.ps1) : un numéro en cours
+// directement sous son dossier produit, les archives sous un « _Archive » commun. Le livre
+// n'a pas de volume.
 const SOUS = {};
 {
   const source = fs.readFileSync(PRODUITS, 'utf8');
@@ -130,8 +121,8 @@ function poserArbre(numeros) {
   return base;
 }
 
-// Un numéro d'exemple par cas de figure. Les noms de dossier sont volontairement variés :
-// c'est le couple volume + numéro qui identifie, et rien d'autre.
+// Un numéro d'exemple par cas de figure. Les noms de dossier varient exprès : seul le couple
+// volume + numéro identifie.
 const NUMEROS = [
   { produit: 'revue', etat: 'encours', nom: '2026-02', volume: 16, numero: '02' },
   { produit: 'revue', etat: 'encours', nom: 'numero-de-printemps', volume: 16, numero: '4' },
@@ -174,8 +165,8 @@ test('doublon : le couple volume + numéro est cherché en cours ET dans les arc
     const casJson = path.join(travail, 'cas.json');
     const pilote = path.join(travail, 'chercher.ps1');
     fs.writeFileSync(casJson, JSON.stringify(CAS), 'utf8');
-    // La racine est impos\u00e9e au socle en rempla\u00e7ant la seule fonction qui la connaît :
-    // config.json n'est pas lu, et aucune racine réelle n'entre dans le test.
+    // Get-SzhBaseRevuesPour, seule fonction qui connaît la racine, est remplacée : config.json
+    // n'est pas lu.
     fs.writeFileSync(pilote, [
       '$ErrorActionPreference = \'Stop\'',
       '. "' + COMMUN + '"',
@@ -195,11 +186,9 @@ test('doublon : le couple volume + numéro est cherché en cours ET dans les arc
     assert.strictEqual(sortie.status, 0, 'le pilote PowerShell a échoué : ' + (sortie.stderr || ''));
     const rendus = String(sortie.stdout).split(/\r?\n/).filter((l) => l.trim() !== '');
     assert.strictEqual(rendus.length, CAS.length, 'PowerShell n’a pas répondu à tous les cas');
-    // `base` vient de Node (fs.mkdtempSync, forme courte possible sur un runner de CI dont
-    // le dossier temporaire est exposé en 8.3, ex. C:\Users\RUNNER~1\...) ; `chemin` vient
-    // de PowerShell (Get-ChildItem le rend toujours en forme longue). Comparer les deux
-    // chaînes telles quelles peut faire échouer une correspondance pourtant juste --
-    // fs.realpathSync.native résout les deux côtés vers la même forme canonique.
+    // `base` vient de Node et peut être en forme courte 8.3 sur un runner de CI
+    // (C:\Users\RUNNER~1\...) ; `chemin` vient de PowerShell, en forme longue.
+    // fs.realpathSync.native ramène les deux à la même forme.
     const baseLongue = fs.realpathSync.native(base);
     for (let i = 0; i < CAS.length; i++) {
       const [nom, archive, chemin] = rendus[i].split('|');
@@ -208,12 +197,11 @@ test('doublon : le couple volume + numéro est cherché en cours ET dans les arc
         assert.strictEqual(archive, CAS[i].archive ? 'True' : 'False',
           'l’état d’archive est mal rapporté, cas : ' + CAS[i].quoi);
         const cheminLong = fs.realpathSync.native(chemin);
-        // Le message doit pouvoir dire OÙ : le chemin complet nomme le dossier ET son état.
+        // Le chemin complet permet au message de nommer le dossier et son état.
         assert.ok(cheminLong.indexOf(nom) !== -1 && cheminLong.indexOf(baseLongue) === 0,
           'le chemin rendu ne mène pas au numéro trouvé : ' + chemin);
-        // Le segment `_Archive` et LUI SEUL distingue les deux états : les deux racines se
-        // terminent maintenant par le même nom de produit (« Revue » / « _Archive\Revue »),
-        // c'est donc au segment de tête qu'on reconnaît une archive, jamais à la feuille.
+        // Les deux racines finissent par le même nom de produit (« Revue » / « _Archive\Revue ») :
+        // seul le segment `_Archive` distingue une archive.
         assert.strictEqual(/[\\/]_Archive[\\/]/.test(cheminLong), CAS[i].archive,
           'le chemin ne dit pas si le numéro est archivé : ' + chemin);
       }
@@ -252,7 +240,7 @@ test('nom de dossier et lecture des nombres : la convention AAAA-NN, et « 01 »
     assert.deepStrictEqual(l.slice(4, 10), ['1', '1', '7', '0', '0', '0']);
     // Le relevé, cette fois par la fonction elle-même.
     assert.deepStrictEqual(l.slice(10, 14), ['8,24', '16,32', '17,33', '0,11']);
-    // Première année de chaque revue : jamais un volume nul proposé.
+    // Première année de chaque revue, pour ne pas proposer de volume nul.
     assert.strictEqual(l[14], '2011,1995');
     // Un produit inconnu ne donne pas un volume au hasard.
     assert.strictEqual(l[15], '0');
@@ -269,16 +257,15 @@ test('création : le volume est écrit, et le « 44 » du gabarit ne survit jama
   assert.match(psCreation, /\[int\]\$Annee = 0/);
   assert.match(psCreation, /\[int\]\$Numero = 0/);
   assert.match(psCreation, /\[int\]\$Volume = 0/);
-  // Le volume est posé dans les deux cas : calculé s'il est connu, vidé sinon. Sans le
-  // second, le « volume: "44" » du gabarit resterait sur un numéro neuf.
+  // Le volume est posé dans les deux cas : calculé s'il est connu, vidé sinon, pour que le
+  // « volume: "44" » du gabarit ne reste pas sur un numéro neuf.
   assert.match(psCreation, /Set-SzhAusgabeCle \$chemin 'volume' \(\[string\]\$vol\) \$true \$false/,
     'le volume calculé n’est plus écrit');
   assert.match(psCreation, /Set-SzhAusgabeCle \$chemin 'volume' '' \$true \$true/,
     'un volume inconnu doit vider la clé, pas laisser celle du gabarit');
-  // Et le repli est bien un calcul, non une valeur en dur.
+  // Le repli est un calcul, pas une valeur en dur.
   assert.match(psCreation, /\$vol = Get-SzhVolumePour \$jetonVolume \$annee/);
-  // La date, elle, reste vide : c'est la règle de test/js/date-numero.js, rappelée ici
-  // parce que le même bloc l'écrit.
+  // La date reste vide (voir test/js/date-numero.js) ; le même bloc l'écrit.
   const poses = [...psCreation.matchAll(/Set-SzhAusgabeCle\s+\$chemin\s+'date'\s+(\S+)/g)]
     .map((m) => m[1]);
   assert.deepStrictEqual(poses, ["''"], 'une date est revenue à la création du numéro');
@@ -287,8 +274,8 @@ test('création : le volume est écrit, et le « 44 » du gabarit ne survit jama
 test('gabarit : le fichier livré documente le volume', () => {
   const brut = fs.readFileSync(path.join(RACINE, 'revue-template', 'ausgabe.yaml'), 'utf8');
   assert.match(brut, /^volume:/m, 'la clé `volume:` a disparu du gabarit');
-  // Le commentaire dit d'où vient le volume : sans lui, la valeur d'exemple se lit comme
-  // une valeur à garder, et c'est ainsi que « 44 » a voyagé.
+  // Le commentaire dit d'où vient le volume : sans lui, la valeur d'exemple se lirait comme
+  // une valeur à garder.
   assert.match(brut, /#\s+volume\s+:/, 'le gabarit ne documente pas `volume`');
   assert.match(brut, /ann\u00e9e - 1994/, 'le gabarit ne dit pas comment le volume se calcule');
   assert.match(brut, /ann\u00e9e - 2010/);
@@ -296,10 +283,8 @@ test('gabarit : le fichier livré documente le volume', () => {
 
 // ---- La forme des fichiers ----------------------------------------------------------
 
-// Deux contrôles de nature différente, séparés : la forme des fichiers (BOM,
-// CRLF) se vérifie sur TOUT poste, sans outil externe, et doit donc tourner toujours ; seule
-// l'analyse syntaxique a besoin de powershell.exe, et c'est elle seule qui se saute — avec
-// le motif nommé de gardes.js — quand il est absent.
+// La forme (BOM, CRLF) se vérifie partout ; seule l'analyse syntaxique demande
+// powershell.exe et se saute sans lui.
 test('forme : les trois scripts gardent leur BOM et leurs CRLF', () => {
   for (const fichier of [COMMUN, PRODUITS, CREATION]) {
     const octets = fs.readFileSync(fichier);

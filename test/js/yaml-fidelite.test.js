@@ -1,9 +1,7 @@
-// Fidélité de lib/yaml.js : ce que l'analyseur maison ne peut pas lire fidèlement doit se
-// déclarer infidèle, et aucun sérialiseur ne doit réécrire par-dessus une clé qu'il n'a pas
-// comprise. Chaque sonde reprend une construction YAML réelle mais hors de portée d'un
-// analyseur ligne à ligne : scalaire de bloc, chaîne citée qui déborde sur deux lignes
-// physiques, tabulation. Une clé non touchée par la construction douteuse continue de
-// s'écrire normalement — le refus est ciblé, jamais un blocage de tout le fichier.
+// Fidélité de lib/yaml.js : une construction que l'analyseur ligne à ligne ne lit pas
+// fidèlement (scalaire de bloc, chaîne citée sur deux lignes physiques, tabulation) est
+// déclarée infidèle, et aucun sérialiseur ne réécrit cette clé. Les autres clés du fichier
+// s'écrivent normalement.
 'use strict';
 
 const test = require('node:test');
@@ -29,7 +27,7 @@ test('sonde (a) : scalaire de bloc « | » -> infidèle, écriture de CETTE clé
   assert.strictEqual(r.lang, 'de', 'une clé saine plus loin dans le fichier doit rester lisible');
   assert.throws(() => yaml.serialiserAusgabe(SRC_A, { title: 'Autre' }), /title/,
     'l’écriture de la clé infidèle doit être refusée, message nommant la clé');
-  // Une clé SAINE du même fichier continue de s'écrire : le refus est ciblé.
+  // Une clé saine du même fichier continue de s'écrire.
   const sortie = yaml.serialiserAusgabe(SRC_A, { lang: 'fr' });
   assert.match(sortie, /^lang: fr$/m);
   assert.match(sortie, /^title: \|$/m, 'le scalaire de bloc doit rester intact si on ne le touche pas');
@@ -56,13 +54,13 @@ test('sonde (c) : \\n \\t \\uXXXX \\" \\\\ décodés puis ré-encodés, sans dou
   assert.strictEqual(r1._infidele, undefined,
     'une chaîne échappée sur une seule ligne physique n’est pas une construction infidèle');
 
-  // Premier aller-retour : réécrire la même valeur ne doit rien changer de mal.
+  // Premier aller-retour : la valeur réécrite se relit à l'identique.
   const sortie1 = yaml.serialiserFrontmatter(SRC_C, { title: r1.title });
   const r2 = yaml.analyserFrontmatter(yaml.separerFrontmatter(sortie1).fm);
   assert.strictEqual(r2.title, r1.title, 'la valeur diverge au premier aller-retour');
 
-  // Second aller-retour : le bogue classique double un échappement déjà posé
-  // (\ -> \\ -> \\\\...) ; ici la valeur ET la représentation textuelle doivent se stabiliser.
+  // Second aller-retour : un échappement déjà posé ne double pas (\ -> \\ -> \\\\...) ; la
+  // valeur et le texte se stabilisent.
   const sortie2 = yaml.serialiserFrontmatter(sortie1, { title: r2.title });
   const r3 = yaml.analyserFrontmatter(yaml.separerFrontmatter(sortie2).fm);
   assert.strictEqual(r3.title, r1.title, 'la valeur double au second aller-retour');
@@ -106,7 +104,7 @@ test('listeYamlEnLigne lit un flux à guillemets sans casser un jeton à espace'
   assert.deepStrictEqual(yaml.listeYamlEnLigne('["a b", "c"]'), ['a b', 'c']);
 });
 
-// ---- (f) fiche .meta.yaml avec BOM : déjà corrigé, on garde le test ----
+// ---- (f) fiche .meta.yaml avec BOM ----
 
 test('sonde (f) : la fiche .meta.yaml avec BOM se lit malgré tout', () => {
   const SRC_F = '\uFEFF' + 'type: article\nlang: fr\n';
@@ -126,7 +124,7 @@ test('sonde (g) : indentation par tabulation sous un bloc -> infidèle', () => {
     /impression\.grammage/, 'l’écriture doit être refusée, message nommant la clé');
 });
 
-// ---- Le contrat vaut pour les trois sérialiseurs, pas seulement pour ausgabe.yaml ----
+// ---- Le contrat vaut pour les trois sérialiseurs -------------------------------------
 
 test('tout sérialiseur refuse d’écrire : serialiserMeta lève si _infidele porte des entrées', () => {
   const SRC = 'type: |\n  article\nlang: fr\n';
@@ -138,12 +136,10 @@ test('tout sérialiseur refuse d’écrire : serialiserMeta lève si _infidele p
 
 // ---- (h) frontmatter legacy `author:` en liste de blocs à sous-champs ----------------
 //
-// Format antérieur au .meta.yaml : le frontmatter du <slug>.md porte encore, chez les
-// articles jamais réenregistrés depuis, un bloc `author:` fait de tirets à sous-champs
-// (name/affiliation/orcid — pas prenom/nom, cette distinction n'existait pas) et un bloc
-// `keywords:` en simple liste, sans langue. Personne dans le dépôt ne touchait ces deux
-// lectures (lib/yaml.js:473-528) avant ce lot : elles ne servent qu'à
-// migrerFrontmatterVersMeta (lib/metadonnees-hote.js), éprouvée plus bas.
+// Format antérieur au .meta.yaml : le frontmatter du <slug>.md porte un bloc `author:` de
+// tirets à sous-champs (name/affiliation/orcid, sans prenom/nom) et un bloc `keywords:` en
+// simple liste, sans langue. Ces lectures ne servent qu'à migrerFrontmatterVersMeta
+// (lib/metadonnees-hote.js), éprouvée plus bas.
 
 test('frontmatter legacy : author en liste de blocs se lit champ par champ, dans l’ordre', () => {
   const SRC = ['---', 'author:', '- name: "Anne Dupont"', '  affiliation: "HEP Vaud"',
@@ -191,13 +187,11 @@ test('frontmatter legacy : author et keywords réécrits par lignesCleFrontmatte
 
 // ---- La migration réelle : un vieux frontmatter devient un .meta.yaml, via l’hôte -----
 //
-// migrerFrontmatterVersMeta (lib/metadonnees-hote.js:622) est idempotente et destructrice :
-// elle lit le frontmatter legacy, écrit le .meta.yaml, puis EFFACE le frontmatter dans le
-// même appel. Une inversion de champs à la lecture serait donc irréversible sans recours à
-// git — d'où ce test bout-en-bout, et non plus seulement la lecture isolée ci-dessus.
-// « Ouvrir l'arbre » suffit à la déclencher : le panneau « Métadonnées des articles »
-// (szh.apercuMetadonnees) migre chaque article listé avant de construire sa réponse
-// (lireMetadonneesArticles, lib/metadonnees-hote.js:709).
+// migrerFrontmatterVersMeta (lib/metadonnees-hote.js) est idempotente et destructrice : elle
+// lit le frontmatter legacy, écrit le .meta.yaml, puis efface le frontmatter dans le même
+// appel. Une inversion de champs serait irréversible sans git, d'où ce test de bout en bout.
+// Le panneau « Métadonnées des articles » (szh.apercuMetadonnees) migre chaque article listé
+// avant de construire sa réponse (lireMetadonneesArticles).
 test('migration : un vieux .md à frontmatter complet migre en .meta.yaml identique, frontmatter effacé', async () => {
   const revue = revueDEssai();
   const slug = '03-legacy';
@@ -223,11 +217,8 @@ test('migration : un vieux .md à frontmatter complet migre en .meta.yaml identi
   ].join(LF);
   fs.writeFileSync(path.join(dossier, slug + '.md'), SRC);
 
-  // L’attendu EN DUR, recopié du SRC ci-dessus à la main — pas relu par
-  // analyserFrontmatter() : comparer le résultat de la migration à une relecture par le
-  // même analyseur qu'elle emploie en interne ne prouverait rien (une inversion de champs
-  // à la lecture tromperait les deux côtés pareil, et resterait invisible). L'oracle doit
-  // être indépendant du code qu'il éprouve, ici comme ailleurs dans ce fichier.
+  // L’attendu est écrit à la main, pas relu par analyserFrontmatter() : une inversion de
+  // champs dans l'analyseur tromperait les deux côtés de la comparaison.
   const ancien = {
     title: 'Un vieux titre',
     subtitle: 'Un vieux sous-titre',
@@ -251,7 +242,7 @@ test('migration : un vieux .md à frontmatter complet migre en .meta.yaml identi
   assert.ok(fs.existsSync(cheminMeta), 'le .meta.yaml n’a pas été créé par la migration');
   const migre = yaml.analyserMeta(fs.readFileSync(cheminMeta, 'utf8'));
 
-  // Les auteur·e·s : EXACTEMENT les mêmes champs, name -> nom, rien perdu, rien inventé.
+  // Les auteur·e·s : les mêmes champs, name -> nom, rien perdu, rien inventé.
   assert.strictEqual(migre.author.length, ancien.author.length, 'nombre d’auteurs changé');
   for (let i = 0; i < ancien.author.length; i++) {
     assert.strictEqual(migre.author[i].nom, ancien.author[i].name, 'nom perdu, auteur ' + i);
@@ -266,7 +257,7 @@ test('migration : un vieux .md à frontmatter complet migre en .meta.yaml identi
   assert.strictEqual(migre.subtitle.fr, ancien.subtitle, 'sous-titre changé par la migration');
   assert.strictEqual(migre.doi, ancien.doi, 'DOI changé par la migration');
 
-  // Le frontmatter a disparu, et lui seul : le corps du .md n’a pas bougé d’un caractère.
+  // Le frontmatter a disparu ; le corps du .md est inchangé.
   const md = fs.readFileSync(path.join(dossier, slug + '.md'), 'utf8');
   const partieApres = yaml.separerFrontmatter(md);
   assert.strictEqual(partieApres.fm, null, 'le frontmatter aurait dû être effacé');

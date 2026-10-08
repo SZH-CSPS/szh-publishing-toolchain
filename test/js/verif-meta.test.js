@@ -1,15 +1,13 @@
 // La feuille « Vérifier les méta (print) » : lib/verif-meta.js et son gabarit
 // print-templates/verification-meta.twig.
 //
-// Ce qui est tenu ici :
-//   — TOUT champ du formulaire figure sur la feuille. C'est la demande d'origine, et la
-//     liste des champs se prend dans yaml.js (CHAMPS_AUTEUR), pas dans une copie : un
-//     huitième champ d'auteur·e ajouté au formulaire fera tomber ce banc.
-//   — un champ vide s'imprime, marqué LEER. Une feuille de contrôle qui tait un champ
-//     absent ne sert à rien : personne ne relève ce qu'il ne voit pas.
-//   — le HTML est échappé. Le moteur de gabarits ne le fait pas tout seul ; un titre
-//     contenant « < » doit rester du texte.
-//   — un article ne partage jamais sa feuille avec un autre.
+// Contrôles :
+//   — chaque champ du formulaire figure sur la feuille. La liste vient de yaml.js
+//     (CHAMPS_AUTEUR) : un champ d'auteur·e ajouté au formulaire sans intitulé fait échouer
+//     ce banc ;
+//   — un champ vide s'imprime, marqué LEER, pour que le relecteur le voie ;
+//   — le HTML est échappé : le moteur de gabarits ne le fait pas seul ;
+//   — une page par article.
 //
 //   node --test test/js/verif-meta.test.js
 'use strict';
@@ -66,12 +64,11 @@ const COMPLET = {
   }]
 };
 
-// ---- Le contrat d'origine : tout le formulaire est sur la feuille ------------------
+// ---- Tout le formulaire est sur la feuille ------------------------------------------
 
 test('chaque champ d’auteur·e du formulaire porte son intitulé sur la feuille', () => {
   const html = feuille([article(COMPLET)]);
-  // `photo` est le seul champ du formulaire qui ne se relit pas sur papier : une image
-  // ne se vérifie pas en lisant. Tous les autres doivent être là.
+  // `photo` est le seul champ absent de la feuille : une image ne se vérifie pas en lisant.
   const attendus = {
     prenom: TEXTES.prenom, nom: TEXTES.nom, fonction: TEXTES.fonction,
     affiliation: TEXTES.affiliation, ror: TEXTES.ror, orcid: TEXTES.orcid,
@@ -115,7 +112,7 @@ test('un champ traduisible s’empile : une ligne par langue, la langue nommée'
   assert.equal(fiche.textes[0].libelle, TEXTES.titre);
   assert.equal(fiche.textes[0].debutChamp, true);
   assert.equal(fiche.textes[0].langueLibelle, LIBELLES.langues.fr);
-  // La deuxième ligne du même champ ne répète pas l’intitulé, et ouvre pas un champ.
+  // La deuxième ligne du même champ ne répète pas l’intitulé et n’ouvre pas de champ.
   assert.equal(fiche.textes[1].libelle, '');
   assert.equal(fiche.textes[1].debutChamp, false);
   assert.equal(fiche.textes[1].langueLibelle, LIBELLES.langues.de);
@@ -146,7 +143,7 @@ test('le résumé passe en pleine largeur : étiquette sur sa ligne, texte desso
   const fiche = verif.construireFiche(article(COMPLET), { libelles: LIBELLES, textes: TEXTES }, 1, 1);
   const resumes = fiche.textes.filter((r) => r.pleineLargeur);
   assert.equal(resumes.length, 2, 'les deux langues du résumé, et elles seules');
-  // Chaque bloc porte l’intitulé du champ ET sa langue : il se lit seul.
+  // Chaque bloc porte l’intitulé du champ et sa langue : il se lit seul.
   for (const r of resumes) { assert.equal(r.libelle, TEXTES.resume); }
   assert.equal(resumes[0].langueLibelle, LIBELLES.langues.fr);
   assert.equal(resumes[1].langueLibelle, LIBELLES.langues.de);
@@ -178,12 +175,12 @@ test('chaque ligne à vérifier porte DEUX cases : une par relecteur', () => {
   const paires = html.split(paire).length - 1;
   const cases = html.split('<span class="case">').length - 1;
   assert.ok(paires > 10, 'trop peu de rangées à cocher : ' + paires);
-  // Aucune case orpheline : toutes vont par deux. La ligne de texte d'un bloc pleine
-  // largeur n'en porte aucune — c'est son étiquette, juste au-dessus, qui se coche.
+  // Les cases vont toutes par deux. La ligne de texte d'un bloc pleine largeur n'en porte
+  // pas : c'est son étiquette, au-dessus, qui se coche.
   assert.equal(cases, paires * 2, 'des cases isolées : ' + cases + ' pour ' + paires + ' paires');
 });
 
-// ---- Ce qui a été retiré de la feuille ------------------------------------------------
+// ---- Ni note d'en-tête, ni légende, ni signature --------------------------------------
 
 test('la feuille ne porte ni note d’en-tête, ni légende, ni ligne de signature', () => {
   const html = feuille([article(COMPLET)]);

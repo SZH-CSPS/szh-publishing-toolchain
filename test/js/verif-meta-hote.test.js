@@ -1,12 +1,11 @@
 // « Vérifier les méta (print) » vu depuis l'hôte : le bouton du formulaire jusqu'au
 // fichier rendu au navigateur.
 //
-// Ce que ce banc tient, et que lib/verif-meta.js seul ne peut pas tenir :
-//   — ENREGISTREMENT D'ABORD. La feuille se lit du disque. Une carte modifiée mais non
-//     enregistrée doit être écrite AVANT la génération, sans quoi la feuille et le
-//     fichier divergent — et l'empreinte imprimée en pied de page ne vaudrait plus rien.
-//   — la feuille part vraiment au navigateur (env.openExternal), puisqu'une webview
-//     VSCodium ne sait pas imprimer.
+// En plus de lib/verif-meta.js seul :
+//   — la feuille se lit du disque : une carte modifiée est enregistrée avant la génération,
+//     sinon l'empreinte en pied de page ne correspondrait pas au fichier ;
+//   — la feuille part au navigateur (env.openExternal), une webview VSCodium ne sachant pas
+//     imprimer.
 //
 //   node --test test/js/verif-meta-hote.test.js
 'use strict';
@@ -109,19 +108,16 @@ test('la vue « Articles » offre le bouton, et il tire la feuille de tout le nu
     'la feuille n’a pas été rendue au navigateur');
 });
 
-// ---- Le refus « feuille non enregistrée », jamais exercé (revue adverse) -------------
+// ---- Le refus « feuille non enregistrée » ------------------------------------------
 //
-// imprimerFeuilleVerifTous() (le bouton de la vue « Articles », ci-dessus) refuse de tirer
-// la feuille tant qu'une carte a été modifiée dans le formulaire des fiches sans être
-// enregistrée — sinon l'empreinte imprimée en pied de page mentirait sur ce qui a vraiment
-// été vérifié. Rien dans le dépôt ne posait l'état modifié (le message MSG.MODIFIE que
-// media/_fiches.js envoie à chaque frappe) avant d'appeler ce bouton : la garde
-// `if (fichesModifie) { … return; }` pouvait être neutralisée sans qu'aucun test ne rougisse.
+// imprimerFeuilleVerifTous() (le bouton de la vue « Articles ») refuse de tirer la feuille
+// tant qu'une carte du formulaire des fiches est modifiée sans être enregistrée : l'empreinte
+// en pied de page ne correspondrait pas à ce qui est vérifié.
 test('le bouton de la vue « Articles » refuse la feuille tant qu’une carte n’est pas enregistrée',
   async () => {
     const p = await panneauFiches();
-    // Le message que la webview envoie dès qu'un champ change : c'est lui, et lui seul, qui
-    // arme fichesModifie côté hôte (lib/metadonnees-hote.js).
+    // Le message que la webview envoie dès qu'un champ change ; lui seul arme fichesModifie
+    // côté hôte (lib/metadonnees-hote.js).
     await p._recepteur({ type: 'modifie', modifie: true });
 
     await hote.executer('szh.vueArticles');
@@ -129,12 +125,10 @@ test('le bouton de la vue « Articles » refuse la feuille tant qu’une carte n
     await vue._recepteur({ type: 'pret' });
 
     try { fs.unlinkSync(FEUILLE); } catch (e) { /* pas encore écrite */ }
-    // hote.ouvertures() accumule depuis le début du fichier (aucun oubli entre tests, à la
-    // différence de commandesJouees()/fermetures()) : on compte un AVANT/APRÈS plutôt que
-    // de chercher FEUILLE, déjà ouverte par un test précédent.
+    // hote.ouvertures() accumule depuis le début du fichier et FEUILLE y est déjà : on
+    // compare les longueurs avant et après.
     const ouvertesAvant = hote.ouvertures().length;
-    // hote-factice.js ne journalise pas showInformationMessage() : on l'intercepte ici,
-    // comme le fait déjà hote.test.js (voirPdfEtNoter) pour le même besoin.
+    // hote-factice.js ne journalise pas showInformationMessage() : on l'intercepte.
     const infoOriginal = hote.stub.window.showInformationMessage;
     const infos = [];
     hote.stub.window.showInformationMessage = (m) => { infos.push(String(m)); return Promise.resolve(undefined); };

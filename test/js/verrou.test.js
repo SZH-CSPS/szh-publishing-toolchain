@@ -1,7 +1,6 @@
 // lib/verrou.js : settings.json est du JSONC (VS Code y tolère commentaires et virgules
-// traînantes), et un fichier qu'on ne sait plus lire ne doit jamais faire croire à un
-// déverrouillage réussi — mieux vaut le supposer verrouillé (voir hote.test.js pour le
-// scénario complet, à travers appliquerEtVerifierVerrou dans extension.js).
+// traînantes), et un fichier illisible se lit comme verrouillé. Le scénario complet, par
+// appliquerEtVerifierVerrou, est dans hote.test.js.
 'use strict';
 
 const test = require('node:test');
@@ -59,9 +58,8 @@ test('settings.json en JSONC : une clé étrangère survit à un déverrouillage
   }
 });
 
-// Sonde du point 3(b) : un settings.json qu'on ne sait plus lire (JSON cassé) doit se
-// supposer VERROUILLÉ, jamais déverrouillé — l'inverse laisserait éditer un numéro que
-// l'interface prétend protégé, silencieusement.
+// Un settings.json cassé se lit comme verrouillé : l'inverse laisserait éditer un numéro que
+// l'interface montre protégé.
 test('settings.json illisible : verrouPose se replie sur « verrouillé », jamais sur « libre »', () => {
   const racine = racineEssai();
   const dossier = path.join(racine, '.vscode');

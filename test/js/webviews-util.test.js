@@ -1,9 +1,8 @@
 // lib/webviews/util.js : construireHtml() assemble une webview à partir de fragments
-// statiques, et injecte deux choses fournies par l'hôte — `remplacements` (du JSON, posé
-// tel quel dans le <script>) et `titre` (du texte, posé tel quel dans le <title>). Aucune
-// des deux ne doit pouvoir casser le document qui les porte.
+// statiques et y injecte deux valeurs de l'hôte : `remplacements` (du JSON, dans le
+// <script>) et `titre` (du texte, dans le <title>). Aucune ne doit pouvoir casser le document.
 //
-//   node --test "test/js/*.test.js"
+//   node --test test/js/webviews-util.test.js
 'use strict';
 
 const test = require('node:test');
@@ -14,9 +13,7 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 const util = require(path.join(COCKPIT, 'lib', 'webviews', 'util.js'));
 
-// __TXT__ est le marqueur réel de media/accueil.js (`var TXT = __TXT__;`) : ce test
-// rejoue l'assemblage tel qu'extension.js le fait, pas un marqueur inventé qui n'apparaîtrait
-// nulle part dans le fragment.
+// __TXT__ est le marqueur réel de media/accueil.js (`var TXT = __TXT__;`).
 test('construireHtml : un remplacement JSON contenant « </script> » ne referme jamais la balise', () => {
   const donnee = JSON.stringify({ texte: '</script><script>alert(1)</script>' });
   const html = util.construireHtml('accueil', 'abc123', {

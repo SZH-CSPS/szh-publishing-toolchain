@@ -1,15 +1,9 @@
-// Les webviews du cockpit, réellement exécutées.
+// Les webviews du cockpit, réellement exécutées : chaque formulaire est chargé dans le DOM
+// minimal de dom-minimal.js, reçoit le message que l'hôte lui envoie et doit rendre ce qu'on
+// attend. Toute exception remonte. contrats.test.js vérifie les libellés et les tables de
+// protocole sans construire de page : une erreur au rendu ne se voit qu'ici.
 //
-//   node --test "test/js/*.test.js"
-//
-// contrats.test.js vérifie que les libellés existent et que les tables de protocole ne
-// mentent pas. Il ne construit aucune page : une erreur au rendu passait donc inaperçue —
-// la webview garde son titre, sa note et son bouton, les cartes n'arrivent jamais, et rien
-// ne le dit. C'est arrivé deux fois, dont une où `motsCles(...)` était appelé sans son
-// préfixe `SZH.` et levait une ReferenceError à chaque carte.
-//
-// Ici, chaque formulaire est chargé dans le DOM minimal de dom-minimal.js, reçoit le
-// message que l'hôte lui envoie, et doit rendre ce qu'on attend. Toute exception remonte.
+//   node --test test/js/webviews.test.js
 'use strict';
 
 const test = require('node:test');
@@ -27,10 +21,8 @@ const {
 const { T } = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'i18n.js'));
 const { MSG } = require(path.join(COCKPIT, 'lib', 'messages.js'));
 
-// Les licences offertes, exactement comme licencesTraduites() de l'hôte les envoie : la
-// liste vient de lib/yaml.js, les libellés de lib/i18n.js. Sans elle, le sélecteur de
-// licence des cartes se construisait vide dans ce harnais, et le contrôle passait quand
-// même — un harnais doit rendre ce que rend l'hôte, ou il ne prouve rien.
+// Les licences offertes, comme licencesTraduites() de l'hôte les envoie : la liste vient de
+// lib/yaml.js, les libellés de lib/i18n.js. Sans elles, le sélecteur de licence serait vide.
 const LICENCES = LICENCES_ARTICLE.map((l) => ({ valeur: l.cle, libelle: T('licence.' + l.cle) }));
 
 // Les fiches du corpus de rendu : de vraies métadonnées, deux langues, mots-clés, auteurs.
@@ -68,21 +60,19 @@ test('métadonnées des articles : une carte remplie par article', () => {
   assert.strictEqual(page.compter('[data-cle="licence"] option'),
     articles.length * LICENCES.length, 'sélecteur de licence rendu vide');
   // Traductions cachées par défaut : les champs des autres langues sont construits et
-  // marqués, et le conteneur porte la classe qui les masque. Le CSS n'est pas évalué ici,
-  // c'est donc le marquage que l'on contrôle — sans lui, le bouton n'a rien à révéler.
+  // marqués, et le conteneur porte la classe qui les masque. Le CSS n'est pas évalué ici :
+  // on contrôle le marquage.
   assert.ok(page.conteneur().classes.has('sans-trad'), 'les traductions ne sont pas cachées au départ');
   assert.ok(page.compter('.champ-trad') >= articles.length * 4,
     'champs de traduction non marqués : le bouton ne peut rien afficher');
-  // Les auteur·e·s ne sont plus six champs par personne mais une fiche affichée, la même
-  // que dans le gestionnaire des médias. Sans elle, la carte perdrait ses auteur·e·s sans
-  // rien dire.
+  // Les auteur·e·s s'affichent en fiche, la même que dans le gestionnaire des médias.
   assert.ok(page.compter('.auteur-fiche') >= 2, 'fiches d’auteur·e absentes des cartes');
   assert.ok(page.textes().join(' | ').indexOf('Morand') !== -1,
     'nom d’auteur·e absent du rendu');
-  // Une carte muette est le symptôme exact du défaut qu'on garde : on exige des champs.
+  // Une carte sans champ trahit une erreur au rendu.
   assert.ok(page.compter('input') > 10, 'cartes sans champ : le rendu s’est arrêté en route');
-  // Les valeurs du corpus doivent arriver dans les champs : titre, résumé, mots-clés.
-  // C'est la grille de mots-clés qui levait, et elle est construite en dernier.
+  // Les valeurs du corpus arrivent dans les champs : titre, résumé, mots-clés (la grille de
+  // mots-clés est construite en dernier).
   const valeurs = page.valeurs();
   for (const article of articles) {
     const titre = (article.valeurs.title || {}).fr;
@@ -120,11 +110,9 @@ test('métadonnées des articles : la carte suit les capacités de chaque profil
   }
 });
 
-// Point 6 (lot câblage hôte) : SZH.annoncerPret pose un jeton dans « pret », que ce test
-// récupère dans page.messages[0] comme le ferait l'hôte réel ; deux « valeurs » qui le
-// recopient à l'identique (l'aller-retour lent qui fait répondre l'hôte deux fois à
-// « pret ») ne doivent reconstruire la page qu'une fois — sauf `rechargement: true`, qui
-// passe toujours.
+// SZH.annoncerPret pose un jeton dans « pret », récupéré ici dans page.messages[0] comme
+// l'hôte le ferait. Deux « valeurs » qui le recopient (l'hôte qui répond deux fois à un
+// « pret » lent) ne reconstruisent la page qu'une fois, sauf `rechargement: true`.
 test('métadonnées des articles : deux « valeurs » avec le même jeton ne reconstruisent qu’une fois', () => {
   const page = ouvrir({
     racine: RACINE, page: 'metadata-articles',
@@ -191,14 +179,13 @@ test('métadonnées des articles : le retour à l’article n’existe que filtr
   assert.strictEqual(retour.hidden, true, 'retour offert sur un filtre de plusieurs articles');
 });
 
-// ---- Revue F03 (22.09.2026) : le focus d'un bouton de constat, jusqu'au champ -----------
+// ---- Le focus d'un bouton de constat, jusqu'au champ ----------------------------------
 //
 // lib/constats.js déclare un focusChamp/focusFixe (« title », « doi », « keywords »…) pour
-// une quinzaine de codes visant « fiche » ; ouvrirMetadonneesArticle le fait maintenant
-// suivre jusqu'ici (test/js/metadonnees-hote.test.js le tient côté hôte, le clic complet
-// depuis un vrai constat est dans test/js/controles.test.js). Ce qui manquait aux deux :
-// la preuve que le champ visé reçoit VRAIMENT le curseur — dom-minimal.js pose _focused et
-// _scrolled sur l'élément quand la page appelle .focus()/.scrollIntoView().
+// les codes qui visent « fiche » ; ouvrirMetadonneesArticle le transmet jusqu'ici (côté
+// hôte : metadonnees-hote.test.js ; clic complet : controles.test.js). On vérifie ici que le
+// champ visé reçoit le curseur : dom-minimal.js pose _focused et _scrolled sur l'élément
+// quand la page appelle .focus()/.scrollIntoView().
 test('métadonnées des articles : focus amène le bon champ à l’écran et lui pose le curseur', () => {
   const cible = articlesDuCorpus()[0];
   const page = ouvrir({
@@ -222,10 +209,8 @@ test('métadonnées des articles : focus amène le bon champ à l’écran et lu
 // focaliserChamp() le retrouve comme les autres champs, et pose le curseur sur sa première
 // case plutôt que sur le bloc lui-même (qui n'est pas saisissable).
 test('métadonnées des articles : focus « keywords » vise la grille de mots-clés', () => {
-  // Une grille sans aucun mot-clé n'a AUCUNE rangée à l'écran (SZH.motsCles, _commun.js,
-  // nbRangees()) : rien à focaliser tant qu'on n'a pas cliqué « Ajouter ». Un mot-clé
-  // existant donne à la grille au moins une case, comme le cas réel que vise le constat
-  // meta/marque-motcle (un mot-clé déjà là, marqué à compléter).
+  // Une grille sans mot-clé n'a aucune rangée à l'écran (nbRangees() de _commun.js) : il
+  // faut un mot-clé existant, comme dans le cas que vise meta/marque-motcle.
   const valeurs = analyserMeta('');
   valeurs.lang = 'fr';
   valeurs.keywords = { fr: ['un mot-clé'] };
@@ -248,10 +233,9 @@ test('métadonnées des articles : focus « keywords » vise la grille de mots-c
     'aucune case de la grille de mots-clés n’a reçu le curseur');
 });
 
-// Un focus qui ne désigne aucun champ de CETTE carte (« pièce », « chapitre » : propres au
-// formulaire du numéro/livre — lib/constats.js en porte pour « numero ») ne doit rien
-// focaliser et surtout ne rien lever ; un filtre qui ne vaut pas une seule carte (« Voir
-// tous les articles ») ne devine pas laquelle viser, et ne focalise rien non plus.
+// Un focus qui ne désigne aucun champ de la carte (« pièce », « chapitre » : propres au
+// formulaire du numéro ou du livre) ne focalise rien et ne lève pas ; un filtre sur plusieurs
+// cartes (« Voir tous les articles ») ne focalise rien non plus.
 test('métadonnées des articles : focus introuvable ou filtre ambigu ne focalisent rien, sans lever', () => {
   const articles = articlesDuCorpus().slice(0, 2);
   assert.ok(articles.length >= 2, 'corpus trop maigre pour éprouver le filtre ambigu');
@@ -278,10 +262,9 @@ test('métadonnées des articles : focus introuvable ou filtre ambigu ne focalis
   assert.ok(aucunFocalise(page), 'un filtre ambigu a quand même focalisé un champ');
 });
 
-// « Markdown » : le texte de l'article à droite de sa fiche. La page ne décide de RIEN —
-// elle demande la bascule et se peint sur la réponse de l'hôte, qui seul sait ce que les
-// onglets portent. Un bouton qui tiendrait son propre état resterait allumé devant un
-// onglet fermé à la croix, et le clic suivant ne ferait rien de visible.
+// « Markdown » : le texte de l'article à droite de sa fiche. La page demande la bascule et
+// se peint sur la réponse de l'hôte, seul à savoir quels onglets sont ouverts : un état tenu
+// par le bouton resterait allumé devant un onglet fermé à la croix.
 test('métadonnées des articles : le bouton « Markdown » vise une carte et suit l’hôte', () => {
   const articles = articlesDuCorpus();
   const page = ouvrir({
@@ -368,8 +351,7 @@ test('métadonnées : le DOI est verrouillé sur le calculé, et l’échappatoi
 });
 
 // La forme des DOI de la revue du numéro (message valeurs.formeDoi), et le doublon entre
-// cartes : deux notes discrètes, jamais bloquantes — la maison ne bloque jamais la saisie
-// (voir le compteur de résumé plus haut), seul l'export refuse (export-ojs.test.js).
+// cartes : deux notes discrètes, non bloquantes. Seul l'export refuse (export-ojs.test.js).
 const FORME_DOI_FR = {
   motif: '^10\\.57161\\/r\\d{4}-\\d{2}-\\d{2}$',
   exemple: '10.57161/r2026-03-05'
@@ -403,8 +385,7 @@ test('métadonnées : la note de forme apparaît sur une saisie fausse, dispara�
   champ.value = '10.57161/r2026-01-01';
   champ.dispatchEvent({ type: 'input' });
   assert.strictEqual(noteForme.hidden, true, 'la note de forme survit à une saisie corrigée');
-  // Jamais bloquant : la carte se marque modifiée comme n’importe quelle saisie, et
-  // l’enregistrement part quand même.
+  // Non bloquant : la carte se marque modifiée comme toute saisie, et l’enregistrement part.
   assert.ok(carte.classList.contains('modifie'), 'la saisie fautive n’a pas marqué la carte modifiée');
   page.parId.enregistrer.dispatchEvent({ type: 'click' });
   assert.ok(page.messages.some((m) => m.type === 'enregistrer'),
@@ -447,15 +428,15 @@ test('métadonnées : deux cartes au même DOI manuel se signalent l’une l’a
     'le doublon reste affiché sur la seconde carte après sa propre correction');
 });
 
-// ---- La langue de l'article pilote les champs (lot A, 25.08.2026) ----
+// ---- La langue de l'article pilote les champs ----
 //
-// Trois règles, chacune avec son moyen de casser en silence :
-//  1. l'ORDRE des colonnes suit l'article — sa langue d'abord, la langue par défaut de la
-//     revue ensuite — et non plus la langue du numéro pour tout le monde ;
-//  2. les CASES sont dynamiques : une par langue manquante de {fr, de, it}, cochée
-//     d'office quand la fiche porte déjà des contenus dans cette langue ;
-//  3. changer la langue PERMUTE les contenus entre l'ancienne et la nouvelle langue —
-//     mots-clés compris — et la collecte repart fidèle : rien ne se perd.
+// Trois règles :
+//  1. l'ordre des colonnes suit l'article : sa langue d'abord, la langue par défaut de la
+//     revue ensuite ;
+//  2. les cases sont dynamiques : une par langue manquante de {fr, de, it}, cochée d'office
+//     quand la fiche porte déjà des contenus dans cette langue ;
+//  3. changer la langue permute les contenus entre l'ancienne et la nouvelle langue,
+//     mots-clés compris, sans perte.
 
 function pageFiches(articles, langueNumero) {
   const page = ouvrir({
@@ -599,9 +580,8 @@ test('métadonnées : changer la langue permute les contenus, mots-clés compris
 });
 
 test('métadonnées : une fiche sans langue permute depuis la langue du numéro', () => {
-  // Une fiche sans `lang` s'affiche sous la langue du numéro — c'est là que ses contenus
-  // sont montrés. Déclarer une autre langue permute donc depuis elle : le geste cohérent,
-  // le titre suit la langue qu'on vient de déclarer.
+  // Une fiche sans `lang` s'affiche sous la langue du numéro : déclarer une autre langue
+  // permute depuis elle, et le titre suit la langue déclarée.
   const page = pageFiches([{ slug: '01-sans', valeurs: ficheDe('title:\n  fr: "Titre"\n') }], 'fr');
   const carte = carteDe(page, '01-sans');
   const sel = carte.querySelector('select[data-cle=lang]');
@@ -630,28 +610,25 @@ test('vérification de l’import : les mêmes cartes, badges et section des ima
     articles.length * LICENCES.length, 'sélecteur de licence rendu vide');
   assert.ok(page.compter('.badge') > 5, 'badges « détecté / à compléter » absents');
   assert.strictEqual(page.compter('.image-ligne'), articles.length, 'section des images absente');
-  // Le DOI ne compte plus dans les champs vides : il est calculé, il n'y a rien à
-  // compléter — donc plus de badge sur son intitulé non plus.
+  // Le DOI, calculé, ne compte pas dans les champs vides et ne porte pas de badge.
   assert.strictEqual(page.compter('[data-champ="doi"]'), 0,
     'un badge « à compléter » subsiste sur le DOI calculé');
 });
 
-// ---- Gestionnaire des médias : une carte par FIGURE, repliée ----
+// ---- Gestionnaire des médias : une carte par figure, repliée ----
 //
-// La refonte du 29.08.2026. L'unité de la liste n'est plus le fichier mais la figure : une
-// image seule, ou toutes les images d'une même grille. Repliée, une carte ne montre que
-// ses aperçus et la zone « Ajouter une image à côté » ; le clic sur un aperçu déplie le
-// formulaire de CETTE image, sous la rangée entière. Ce qui se casse en silence, et que
-// ces contrôles tiennent :
-//   * un formulaire par image empilé revient (l'ancienne carte), et la page redevient
-//     illisible sans qu'aucune erreur ne soit levée ;
-//   * deux formulaires s'ouvrent dans la même figure, ou le clic n'en referme aucun ;
-//   * la légende de la figure quitte l'accordéon du groupe, ou reparaît sur les images
-//     suivantes, qui n'en portent pas ;
-//   * l'ancre de « Ajouter une image à côté » glisse d'une image à l'autre : le geste
-//     part alors sur la mauvaise figure ;
-//   * un défaut — basse résolution, image muette, doublon — n'est plus visible tant que le
-//     formulaire est replié, c'est-à-dire jamais.
+// L'unité de la liste est la figure : une image seule, ou toutes les images d'une même
+// grille. Repliée, une carte montre ses aperçus et la zone « Ajouter une image à côté » ; le
+// clic sur un aperçu déplie le formulaire de cette image, sous la rangée entière. Ce qui
+// peut casser sans erreur :
+//   * un formulaire par image empilé, qui rend la page illisible ;
+//   * deux formulaires ouverts dans la même figure, ou un clic qui n'en referme aucun ;
+//   * la légende de la figure hors de l'accordéon du groupe, ou répétée sur les images
+//     suivantes ;
+//   * l'ancre de « Ajouter une image à côté » sur une autre image : l'ajout part sur la
+//     mauvaise figure ;
+//   * un défaut (basse résolution, image muette, doublon) invisible tant que le formulaire
+//     est replié.
 const MEDIAS_TXT = () => libellesHote(RACINE, ['textesMedias', 'textesAuteur']);
 
 // Le corpus des figures : une image seule et très insérée, une grille de trois, et une
@@ -729,7 +706,7 @@ test('médias : une carte par figure, tout replié sauf les aperçus et l’ajou
   assert.ok(page.conteneur().querySelectorAll('.depot-acote')
     .every((d) => d.closest('.media-form') === null),
     'la zone d’ajout est enfermée dans un formulaire replié : on ne la verrait jamais');
-  // « Remplacer cette image » n'apparaît qu'au dépliement : elle vit DANS le formulaire.
+  // « Remplacer cette image » n'apparaît qu'au dépliement : elle vit dans le formulaire.
   assert.strictEqual(page.compter('.media-form .szh-depot'), 5,
     '« Remplacer cette image » doit vivre dans le formulaire de chaque image');
   assert.strictEqual(page.compter('.szh-depot'), 8, 'zones de dépôt attendues : 5 remplacements + 3 ajouts');
@@ -757,7 +734,7 @@ test('médias : le clic sur un aperçu déplie ce seul formulaire, et le referme
   assert.deepStrictEqual(marquees(), ['fig-03.png'], 'l’image ouverte n’est pas marquée');
   assert.strictEqual(vignetteDe(page, 'fig-03.png').getAttribute('aria-expanded'), 'true');
 
-  // Une autre image de la MÊME grille : la première se referme, une seule reste ouverte.
+  // Une autre image de la même grille : la première se referme, une seule reste ouverte.
   vignetteDe(page, 'fig-04.png').dispatchEvent({ type: 'click' });
   assert.deepStrictEqual(ouverts(), ['fig-04.png'], 'deux formulaires ouverts dans la même figure');
   assert.deepStrictEqual(marquees(), ['fig-04.png']);
@@ -792,13 +769,13 @@ test('médias : l’accordéon du groupe porte les réglages de la grille, et el
     'le mode automatique ne nomme pas la disposition qu’il choisirait');
   assert.ok(dedans.indexOf('2 + 1') !== -1, 'la disposition « 2-1 » n’est pas libellée');
   // La légende de la figure appartient au groupe : elle est dans l'accordéon, portée par
-  // l'ancre (fig-02.png, deuxième média reçu), et nulle part ailleurs.
+  // l'ancre (fig-02.png, deuxième média reçu).
   assert.strictEqual(page.compter('.groupe-corps input'), 2, 'la légende et la note de la figure ne sont pas dans l’accordéon');
   assert.strictEqual(corps.querySelectorAll('input')[0].id, 'ch-legende-1');
   assert.strictEqual(corps.querySelectorAll('input')[1].id, 'ch-note-1', 'la note de la figure n’est pas dans l’accordéon');
   assert.ok(dedans.indexOf(txt.grilleLegende) !== -1, 'l’intitulé ne dit pas que la légende vaut pour la grille');
   assert.strictEqual(corps.querySelectorAll('input')[0].value, 'Les trois moments');
-  // Les images suivantes n'ont plus de champ légende du tout : la figure n'en porte qu'une.
+  // Les images suivantes n'ont pas de champ légende : la figure n'en porte qu'une.
   assert.strictEqual(champId(page, 'ch-legende-2').length, 0, 'une image suivante garde un champ légende');
   assert.strictEqual(champId(page, 'ch-legende-3').length, 0, 'une image suivante garde un champ légende');
   assert.strictEqual(champId(page, 'ch-note-2').length, 0, 'une image suivante garde un champ note');
@@ -819,9 +796,9 @@ test('médias : l’ancien bloc de grille et sa notification de suiveuse ont dis
     'la notification de suiveuse n’a plus lieu d’être : la légende vit dans l’accordéon');
 });
 
-// Les deux sorties d'une grille agissent sur UNE image : elles restent donc dans le
-// formulaire de cette image-là. Un booléen inversé, et « sortir de la grille » effacerait
-// l'insertion au lieu de la déplacer — sans que rien à l'écran ne change.
+// Les deux sorties d'une grille agissent sur une image : elles restent dans le formulaire
+// de cette image. Un booléen inversé ferait effacer l'insertion au lieu de la déplacer, sans
+// changement visible.
 test('médias : les deux sorties de grille vivent dans le formulaire, et postent le bon geste', () => {
   const txt = MEDIAS_TXT();
   const page = pageMedias(txt);
@@ -869,8 +846,8 @@ test('médias : la zone d’ajout d’une grille est ancrée sur sa première im
   assert.strictEqual(ajout[0].ajout, 'fig-09.png');
 });
 
-// Un défaut caché par un pli est un défaut qu'on ne corrige pas : ce qui ne va pas se lit
-// sur la vignette, formulaire replié. Le verdict complet, lui, reste dans le formulaire.
+// Ce qui ne va pas se lit sur la vignette, formulaire replié ; le verdict complet reste dans
+// le formulaire.
 test('médias : l’état d’une image se lit sur son aperçu, formulaire replié', () => {
   const page = pageMedias(MEDIAS_TXT());
   const etat = (r) => vignetteDe(page, r).textContent;
@@ -891,14 +868,13 @@ test('médias : l’état d’une image se lit sur son aperçu, formulaire repli
   assert.ok(forme.indexOf('fig-01.png') !== -1, 'le doublon ne nomme pas le fichier jumeau');
   // Trois avis « attention » : la qualité de l'image insuffisante et les deux doublons.
   assert.strictEqual(page.compter('.szh-notif--attention'), 3, 'avis attendus : qualité et deux doublons');
-  // La pastille « en grille » n'a plus de sens : les images d'une grille sont dans la
-  // même carte, on le voit.
+  // Pas de pastille « en grille » : les images d'une grille sont dans la même carte.
   assert.strictEqual(page.textes().join(' | ').indexOf('en grille'), -1,
     'la pastille « en grille » survit alors que le groupement se voit');
 });
 
-// La corbeille et l'agrandissement quittent la tête de carte — il n'y en a plus — pour
-// l'en-tête du formulaire : deux gestes qui portent sur UNE image, à côté de son nom.
+// La corbeille et l'agrandissement sont dans l'en-tête du formulaire, à côté du nom : ils
+// portent sur une image.
 test('médias : corbeille et agrandissement sont dans l’en-tête du formulaire', () => {
   const page = pageMedias(MEDIAS_TXT());
   assert.ok(page.conteneur().querySelectorAll('.szh-tete')
@@ -932,24 +908,22 @@ test('médias : corbeille et agrandissement sont dans l’en-tête du formulaire
 // est le même signe que celui de l'accordéon du groupe, et il pivote pareil.
 test('médias : l’aperçu et l’accordéon portent le même chevron, et il pivote', () => {
   const page = pageMedias(MEDIAS_TXT());
-  // Compté dans la ligne du nom, et non dans la vignette entière : depuis que les
-  // pastilles de gravité portent leur pictogramme, une vignette contient légitimement
-  // d'autres icônes que son chevron. Ce contrôle parle du chevron, pas de leur nombre.
+  // Compté dans la ligne du nom : la vignette porte aussi les pictogrammes des pastilles de
+  // gravité.
   const chevron = (e) => e.querySelectorAll('.vignette-nom-ligne svg');
   assert.strictEqual(chevron(vignetteDe(page, 'fig-01.png')).length, 1,
     'la vignette ne dit pas qu’elle commande un pli');
   assert.ok(page.conteneur().querySelectorAll('.vignette').every((v) => chevron(v).length === 1),
     'une vignette est sans chevron');
-  // Le chevron de l'accordéon vient AVANT son intitulé : à l'autre bout d'un bouton pleine
-  // largeur, il ne se rattache plus à rien.
+  // Le chevron de l'accordéon vient avant son intitulé : à l'autre bout d'un bouton pleine
+  // largeur, il ne se rattache à rien.
   const tete = page.conteneur().querySelectorAll('.groupe-tete')[0];
   assert.strictEqual(tete.enfants[0].balise, 'svg',
     'le chevron de l’accordéon doit précéder son intitulé');
 });
 
-// La légende d'une figure est le champ le plus utilisé d'une grille, et elle vit désormais
-// dans un accordéon replié. L'en-tête la redit donc telle quelle : on la lit sans ouvrir, et
-// on voit du premier coup d'œil laquelle des figures n'en a pas.
+// La légende d'une figure de grille vit dans un accordéon replié. L'en-tête la redit telle
+// quelle : on la lit sans ouvrir, et on voit quelle figure n'en a pas.
 test('médias : l’en-tête de l’accordéon redit la légende de la figure, et la suit', () => {
   const txt = MEDIAS_TXT();
   const page = pageMedias(txt);
@@ -975,20 +949,17 @@ test('médias : l’en-tête de l’accordéon redit la légende de la figure, e
     'libellé « sans légende » absent de l’hôte');
 });
 
-// Ce qui suit le premier rendu : les trois réponses ciblées de l'hôte, et l'ouverture sur
-// une image visée. Elles étaient sûres tant qu'une carte valait un fichier ; avec des
-// cartes de figure elles visent maintenant trois nœuds différents — la vignette, le
-// formulaire, la carte — et se trompent de cible sans lever la moindre erreur.
+// Après le premier rendu : les trois réponses ciblées de l'hôte, et l'ouverture sur une
+// image visée. Elles visent trois nœuds différents (la vignette, le formulaire, la carte) et
+// peuvent se tromper de cible sans lever d'erreur.
 
-// La gravité se voit AUTOUR DE L'IMAGE, et pas seulement en pastille : c'est l'image qui
-// est fautive, et c'est elle qu'on cherche des yeux dans une liste de vingt. Le cadre de
-// l'image porte donc le ton — jamais la carte, qui garde sa bordure d'accent pour dire
-// « ouverte » — et la pastille gagne un pictogramme, pour que la couleur ne soit pas seule
-// à porter l'information.
+// La gravité se voit autour de l'image, pas seulement en pastille : le cadre de l'image
+// porte le ton. La carte garde sa bordure d'accent, qui dit « ouverte ». La pastille porte
+// un pictogramme, pour que la couleur ne soit pas seule à porter l'information.
 //
-// Le code couleur est celui de tout le cockpit : rouge ce qui refuse (une image muette fait
-// échouer la validation PDF/UA, donc l'export), ambre ce qui part tel quel si personne n'y
-// touche (basse résolution, doublon, jamais insérée).
+// Le code couleur est celui du cockpit : rouge ce qui bloque (une image muette fait échouer
+// la validation PDF/UA, donc l'export), ambre ce qui part tel quel si personne n'y touche
+// (basse résolution, doublon, jamais insérée).
 test('médias : le cadre de l’image porte la gravité, et la pastille son pictogramme', () => {
   const page = pageMedias(MEDIAS_TXT());
   const cadre = (r) => {
@@ -1014,8 +985,8 @@ test('médias : le cadre de l’image porte la gravité, et la pastille son pict
   assert.ok(!/danger|attention/.test(String(carte.className)),
     'le ton a débordé sur la carte : ' + carte.className);
 
-  // Le pictogramme : une pastille de ton en porte un, une pastille neutre n'en a pas
-  // besoin. Sans lui, deux personnes sur cent ne voient pas la différence.
+  // Le pictogramme : une pastille de ton en porte un, une pastille neutre non. Sans lui, la
+  // différence ne tiendrait qu'à la couleur.
   const pastilles = page.conteneur().querySelectorAll('.szh-pastille');
   const deTon = pastilles.filter((p) => /--danger|--attention/.test(String(p.className)));
   assert.ok(deTon.length >= 3, 'trop peu de pastilles de ton dans le corpus : ' + deTon.length);
@@ -1025,11 +996,9 @@ test('médias : le cadre de l’image porte la gravité, et la pastille son pict
   }
 });
 
-// Le triangle rouge du coin de l'aperçu : il suit le seul défaut bloquant d'une image, et
-// il suit la saisie. Ce qui se casse en silence : un triangle qui reste après la
-// correction (on n'ose plus exporter), un triangle qui s'allume sur l'ambre (le rouge cesse
-// de vouloir dire « bloque »), ou un triangle posé dans .vignette-image, que le
-// remplacement d'un fichier vide sans le reposer.
+// Le triangle rouge du coin de l'aperçu suit le seul défaut bloquant d'une image, et la
+// saisie. À éviter : un triangle qui reste après correction, un triangle sur l'ambre, ou un
+// triangle posé dans .vignette-image, que le remplacement d'un fichier vide.
 test('médias : un triangle rouge sur l’aperçu d’une image sans description, en direct', () => {
   const txt = MEDIAS_TXT();
   const page = pageMedias(txt);
@@ -1068,9 +1037,8 @@ test('médias : un triangle rouge sur l’aperçu d’une image sans description
   assert.strictEqual(alerte('fig-03.png').hidden, false, 'le triangle disparaît au remplacement du fichier');
 });
 
-// Ctrl+Alt+F insère une image puis ouvre le formulaire SUR elle. Replié par défaut, le
-// formulaire doit s'ouvrir : sinon le geste dépose le rédacteur devant une carte fermée,
-// avec la légende à écrire cachée derrière un clic qu'il ne sait pas devoir faire.
+// Ctrl+Alt+F insère une image puis ouvre le formulaire sur elle : le formulaire, replié par
+// défaut, doit s'ouvrir, sans quoi la légende à écrire reste cachée.
 test('médias : l’ouverture sur une image visée déplie son formulaire', () => {
   const page = pageMedias(MEDIAS_TXT(), 'fig-04.png');
   const ouverts = () => page.conteneur().querySelectorAll('.media-form')
@@ -1085,8 +1053,7 @@ test('médias : l’ouverture sur une image visée déplie son formulaire', () =
 });
 
 // « Insérer une figure » pose une légende provisoire : à l'ouverture, elle est sélectionnée
-// pour que la première frappe la remplace, au lieu de partir à l'impression si on l'oublie.
-// Une légende déjà écrite, elle, n'est jamais sélectionnée.
+// pour que la première frappe la remplace. Une légende déjà écrite n'est pas sélectionnée.
 test('médias : la légende provisoire est sélectionnée à l’ouverture, une vraie légende non', () => {
   const txt = MEDIAS_TXT();
   assert.ok(txt.legendeProvisoire, 'la page ne reçoit pas le texte de la légende provisoire');
@@ -1104,8 +1071,7 @@ test('médias : la légende provisoire est sélectionnée à l’ouverture, une 
   assert.strictEqual(ecrite._selected, false, 'une légende déjà écrite a été sélectionnée');
 });
 
-// Un fichier remplacé : l'aperçu, le poids et le verdict changent. Trois écritures, sur
-// trois nœuds qui ne sont plus dans la même carte qu'avant.
+// Un fichier remplacé : l'aperçu, le poids et le verdict changent, sur trois nœuds distincts.
 test('médias : une image remplacée refait son aperçu, son poids et son verdict', () => {
   const page = pageMedias(MEDIAS_TXT());
   assert.strictEqual(page.compter('.szh-notif--attention'), 3);
@@ -1125,7 +1091,7 @@ test('médias : une image remplacée refait son aperçu, son poids et son verdic
 });
 
 // La zone occupée pendant un dépôt : la classe se pose et se retire au même endroit, sinon
-// les deux zones de dépôt de la figure restent grisées pour toujours, sans rien dire.
+// les deux zones de dépôt de la figure restent grisées.
 test('médias : « occupé » se pose et se retire sur la carte de figure', () => {
   const page = pageMedias(MEDIAS_TXT());
   const carte = page.conteneur().querySelectorAll('.carte-figure')
@@ -1182,12 +1148,10 @@ test('médias : une image retirée emporte sa vignette, son formulaire et sa car
   assert.strictEqual(page.compter('.media-form'), 3);
 });
 
-// L'éditeur de tableau ne reçoit pas ses libellés par gabarit mais dans le message
-// « charger », déjà dépouillés de leur préfixe « table. ». On rejoue ici textesTable()
-// depuis sa liste de clés, relue dans extension.js — comme libellesHote, pour parler
-// exactement la langue de l'hôte sans recopier une liste qui divergerait.
+// L'éditeur de tableau reçoit ses libellés dans le message « charger », sans leur préfixe
+// « table. ». textesTable() est rejouée ici depuis sa liste de clés, relue dans la source.
 function libellesTable() {
-  // Concaténé à lib/ : préalable au découpage d'extension.js, voir hote-factice.js.
+  // extension.js et lib/ concaténés : textesTable peut vivre dans l'un ou l'autre.
   const src = sourceExtensionEtLib(COCKPIT);
   const i = src.indexOf('function textesTable');
   assert.notStrictEqual(i, -1, 'fonction de libellés introuvable : textesTable');
@@ -1210,8 +1174,7 @@ test('éditeur de tableau : grille, champs et texte d’aide de la description',
     '<table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>');
   page.envoyer({ type: 'charger', modele: modele, disposition: disposition(modele),
                  accent: '', teintes: {}, presets: [], i18n: libellesTable() });
-  // La page accroche ses morceaux à #champs et #zone, jamais à <body> : on les prend par
-  // leur identifiant, comme la page elle-même.
+  // La page accroche ses morceaux à #champs et #zone : on les prend par leur identifiant.
   const boite = page.parId.champs;
   const inputs = boite.querySelectorAll('input');
   assert.strictEqual(inputs.length, 5, 'champs du tableau absents (légende, crédits, note, alt)');
@@ -1256,10 +1219,9 @@ test('éditeur de tableau : le champ Note montre data-note et le renvoie modifi�
   assert.strictEqual(envoi.modele.attrs.note, 'Autre note.');
 });
 
-// Le clic droit sur la POIGNÉE de la 2e ligne doit offrir « les 2 premières lignes en
-// en-tête » : l'ancien sensEntete exigeait une sélection partant de la ligne 1, et la
-// 2e rangée d'un en-tête à deux niveaux était indéfinissable depuis son propre menu.
-// On rejoue le geste entier : menu, libellé chiffré, opération postée, grille rechargée.
+// Le clic droit sur la poignée de la 2e ligne offre « les 2 premières lignes en en-tête » :
+// la 2e rangée d'un en-tête à deux niveaux se définit depuis son propre menu. On rejoue le
+// geste entier : menu, libellé chiffré, opération postée, grille rechargée.
 test('éditeur de tableau : la 2e ligne se définit en en-tête depuis son clic droit', () => {
   const table = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'table-model.js'));
   const page = ouvrir({
@@ -1323,7 +1285,7 @@ test('éditeur de tableau : le clic droit pose et retire un titre de section', (
   modele = table.appliquerOperationTable('section', opMsg.modele, opMsg.args);
   page.envoyer({ type: 'charger', modele: modele, disposition: table.disposition(modele) });
   // La rangée fusionnée est rendue en <th> (2 du thead + 1 de section) et le menu
-  // propose désormais le retrait.
+  // propose le retrait.
   assert.strictEqual(page.parId.zone.querySelectorAll('th.cell').length, 3,
     'le titre de section ne rend pas son <th>');
   poignee(2).dispatchEvent({ type: 'contextmenu', clientX: 0, clientY: 0 });
@@ -1361,11 +1323,11 @@ test('éditeur de tableau : Ctrl+C copie la cellule, ou la plage en TSV', () => 
     'la plage doit partir en <table> minimal : ' + plage['text/html']);
 });
 
-// ---- Autocomplétion des auteur·e·s publiés (media/_auteurs.js, lot 9) ----
+// ---- Autocomplétion des auteur·e·s publiés (media/_auteurs.js) ----
 //
 // L'hôte envoie « auteurs-connus » avec les valeurs ; la modale suggère à la frappe dans
 // prénom ou nom, insensible à la casse et aux accents, pilotable au clavier comme au clic,
-// et ne remplit QUE prénom et nom. Sans liste reçue : aucune UI.
+// et ne remplit que prénom et nom. Sans liste reçue, aucune suggestion.
 
 function pageAvecModaleAuteur() {
   const page = ouvrir({
@@ -1381,8 +1343,8 @@ function pageAvecModaleAuteur() {
 }
 
 // La modale s’ouvre par le bouton « Ajouter » de la zone des auteur·e·s (fiche vide, un
-// seul bouton). Les champs se prennent dans l'ordre de construction — NOM d'abord, puis
-// prénom : c'est par le nom qu'on cherche et qu'on désigne quelqu'un.
+// seul bouton). Les champs se prennent dans l'ordre de construction : nom d'abord, puis
+// prénom, car c'est par le nom qu'on cherche quelqu'un.
 function ouvrirModaleAuteur(page) {
   page.conteneur().querySelector('.auteurs button').click();
   const champs = page.document.body.querySelectorAll('.auteur-grille input');
@@ -1432,12 +1394,11 @@ test('modale auteur : suggestions à la frappe, clavier et clic', () => {
   // « nunez » sans accents trouve « Núñez ».
   taper(champs.nom, 'nunez');
   assert.strictEqual(page.compterPage('.szh-sugg-item'), 1);
-  // Le début de CHAQUE MOT compte : sans cela « wilde » ne trouverait pas « Wood de Wilde »,
-  // et nos particules — « de », « von », « van » — rendraient la moitié des noms
-  // introuvables autrement qu'en tapant la particule.
+  // Le début de chaque mot compte : « wilde » trouve « Wood de Wilde », malgré les
+  // particules « de », « von », « van ».
   taper(champs.nom, 'wilde');
   assert.strictEqual(page.compterPage('.szh-sugg-item'), 1, 'le début de mot ne compte pas');
-  // La saisie de plusieurs mots cherche à travers prénom ET nom.
+  // La saisie de plusieurs mots cherche à travers prénom et nom.
   taper(champs.nom, 'hilary wood');
   assert.strictEqual(page.compterPage('.szh-sugg-item'), 1, 'l’ordre « prénom nom » ne trouve pas');
   // Aucune correspondance : la boîte disparaît, pas d'UI parasite.
@@ -1454,14 +1415,14 @@ test('modale auteur : suggestions à la frappe, clavier et clic', () => {
   assert.strictEqual(champs.nom.value, 'Morand');
   assert.strictEqual(page.compterPage('.szh-sugg-item'), 0, 'liste restée ouverte après le choix');
 
-  // Clic : la frappe dans PRÉNOM suggère aussi, et le clic remplit les deux champs.
+  // Clic : la frappe dans prénom suggère aussi, et le clic remplit les deux champs.
   taper(champs.prenom, 'hila');
   assert.strictEqual(page.compterPage('.szh-sugg-item'), 1);
   page.document.body.querySelector('.szh-sugg-item').click();
   assert.strictEqual(champs.prenom.value, 'Hilary');
   assert.strictEqual(champs.nom.value, 'Wood de Wilde');
 
-  // Échap ferme la LISTE et coupe la propagation : la modale, elle, reste ouverte.
+  // Échap ferme la liste et coupe la propagation : la modale reste ouverte.
   taper(champs.nom, 'mor');
   assert.strictEqual(page.compterPage('.szh-sugg-item'), 1);
   let propagationCoupee = false;
@@ -1474,8 +1435,8 @@ test('modale auteur : suggestions à la frappe, clavier et clic', () => {
     1, 'la modale ne devrait pas se fermer avec la liste');
 });
 
-// Le tri demandé : on cherche presque toujours par nom de famille. Les noms passent donc
-// devant, un filet les sépare des prénoms, et chaque groupe est trié dans l'alphabet.
+// Le tri : on cherche presque toujours par nom de famille. Les noms passent devant, un filet
+// les sépare des prénoms, et chaque groupe est trié dans l'alphabet.
 test('modale auteur : noms de famille d’abord, filet, puis prénoms — la part trouvée en gras', () => {
   const page = pageAvecModaleAuteur();
   page.envoyer({ type: 'auteurs-connus', auteurs: [
@@ -1556,12 +1517,10 @@ test('modale auteur : sans liste reçue, aucune UI — et une liste difforme ne 
 
 // ---- Le compteur de caractères du résumé (media/_fiches.js, seuilResume) ----
 //
-// La mise en page bascule un résumé en page 2 selon un seuil PAR PALIER : ~830 caractères
-// jusqu'à 5 mots-clés, ~730 dès le sixième — la même langue que le résumé, puisque c'est ce
-// qui s'imprime avec lui. Le compteur affiché reste prudemment en deçà (750, puis 700), et
-// c'est cette seule marche — le passage du 5e au 6e mot-clé — qui peut se tromper en
-// silence : un seuil qui resterait figé à 750 se tromperait de cent caractères sans qu'aucun
-// autre contrôle ne le remarque.
+// La mise en page bascule un résumé en page 2 selon un seuil par palier : ~830 caractères
+// jusqu'à 5 mots-clés, ~730 dès le sixième, comptés dans la langue du résumé. Le compteur
+// affiché reste en deçà (750, puis 700). Le passage du 5e au 6e mot-clé est le point à
+// éprouver : un seuil figé à 750 se tromperait de cent caractères sans autre signe.
 
 function compteurResume(carte, langue) {
   return carte.querySelectorAll('.compteur-resume').find((el) => el.dataset.langue === langue);
@@ -1575,8 +1534,8 @@ test('compteur du résumé : le seuil bascule de 750 à 700 au sixième mot-clé
     valeurs: {
       lang: 'fr',
       resume: { fr: resumeFr, de: resumeDe },
-      // FR : 5 mots-clés -> seuil 750 au départ. DE : déjà 6 -> seuil 700 dès le rendu,
-      // pour prouver que le calcul est bien PAR LANGUE et non un seuil unique de carte.
+      // FR : 5 mots-clés -> seuil 750 au départ. DE : déjà 6 -> seuil 700 dès le rendu.
+      // Le seuil se calcule par langue, pas par carte.
       keywords: {
         fr: ['un', 'deux', 'trois', 'quatre', 'cinq'],
         de: ['eins', 'zwei', 'drei', 'vier', 'fuenf', 'sechs']
@@ -1595,7 +1554,7 @@ test('compteur du résumé : le seuil bascule de 750 à 700 au sixième mot-clé
   assert.ok(carte, 'carte absente');
 
   // Deux résumés (fr, de hérité car ses mots-clés portent déjà du contenu), deux
-  // compteurs indépendants — chacun avec SON seuil, pas celui de l'autre langue.
+  // compteurs indépendants, chacun avec son seuil.
   const cFr = compteurResume(carte, 'fr');
   const cDe = compteurResume(carte, 'de');
   assert.ok(cFr, 'compteur du résumé français absent');
@@ -1609,9 +1568,7 @@ test('compteur du résumé : le seuil bascule de 750 à 700 au sixième mot-clé
   assert.ok(cDe.classes.has('compteur-resume--depasse'),
     '720 caractères avec 6 mots-clés (seuil 700) doivent se lire comme dépassés');
 
-  // Le compteur suit aussi la frappe EN DIRECT dans le résumé lui-même, espaces
-  // comprises, sans toucher aux mots-clés : dix caractères de plus doivent se lire
-  // aussitôt, avant même que quoi que ce soit ne soit enregistré.
+  // Le compteur suit la frappe dans le résumé, espaces comprises, avant tout enregistrement.
   const champResumeFr = carte.querySelectorAll('.champs-textes textarea')
     .find((t) => t.dataset.cle === 'resume' && t.dataset.langue === 'fr');
   assert.ok(champResumeFr, 'champ du résumé français introuvable');
@@ -1619,13 +1576,10 @@ test('compteur du résumé : le seuil bascule de 750 à 700 au sixième mot-clé
   champResumeFr.dispatchEvent({ type: 'input' });
   assert.match(cFr.textContent, /730/, 'le compteur ne suit pas la frappe dans le résumé');
 
-  // Le basculement du seuil au sixième mot-clé lui-même : la grille de mots-clés est
-  // UNE SEULE grille par article, dont l'absorption des cases vers le modèle (_commun.js)
-  // n'est pas rejouable dans ce DOM minimal (son sélecteur « :not() » n'y est pas
-  // implémenté, voir dom-minimal.js) — on rejoue donc l'arrivée d'une fiche à 6 mots-clés
-  // français exactement comme l'hôte la renverrait après un enregistrement, plutôt que de
-  // simuler la frappe case par case. Le calcul exercé (seuilResume, compterMotsClesLangue)
-  // est le même dans les deux cas.
+  // Le passage au sixième mot-clé : l'absorption des cases de la grille vers le modèle
+  // (_commun.js) ne se rejoue pas dans ce DOM minimal (« :not() » n'y est pas implémenté,
+  // voir dom-minimal.js). On rejoue l'arrivée d'une fiche à 6 mots-clés français, comme
+  // l'hôte la renverrait après un enregistrement ; le calcul exercé est le même.
   const article6 = {
     slug: '01-essai',
     valeurs: {
@@ -1642,8 +1596,8 @@ test('compteur du résumé : le seuil bascule de 750 à 700 au sixième mot-clé
   const carte6 = page.conteneur().querySelectorAll('.carte')[0];
   const cFr6 = compteurResume(carte6, 'fr');
   const cDe6 = compteurResume(carte6, 'de');
-  // Le sixième mot-clé français fait basculer SEULEMENT le seuil français à 700 — celui
-  // de l'allemand, déjà à 6 mots-clés avant comme après, ne bouge pas.
+  // Le sixième mot-clé français fait basculer le seul seuil français à 700 ; celui de
+  // l'allemand, à 6 mots-clés avant comme après, ne bouge pas.
   assert.match(cFr6.textContent, /700/,
     'le seuil français ne suit pas son sixième mot-clé : ' + cFr6.textContent);
   assert.ok(cFr6.classes.has('compteur-resume--depasse'),
@@ -1654,20 +1608,16 @@ test('compteur du résumé : le seuil bascule de 750 à 700 au sixième mot-clé
   assert.ok(cDe6.classes.has('compteur-resume--depasse'));
 });
 
-// ---- La Documentation : rubriques et fiches dans un seul formulaire (lot du 02.09.2026) --
+// ---- La Documentation : rubriques et fiches dans un seul formulaire --------------------
 //
-// Cette page est la plus grosse du cockpit et la plus récente : la charger pour de vrai est
-// le seul contrôle qui attrape une faute de frappe dans une fonction rarement atteinte —
-// c'est exactement ce que l'en-tête de ce fichier raconte. Ce qui est vérifié ici tient aux
-// quatre demandes du jour : tout est pliable, rien ne dépasse d'une carte repliée, une fiche
-// incomplète s'enregistre quand même, et un sommaire dit la structure.
+// La plus grosse page du cockpit. Contrôles : tout est pliable, rien ne dépasse d'une carte
+// repliée, une fiche incomplète s'enregistre, chaque section affiche son compte.
 const DOC_TXT = () => libellesHote(RACINE, ['textesDocumentation']);
 
-// La configuration que l'hôte envoie, recomposée ici depuis le module pur
-// lib/kirby-contenu.js — comme configChamp()/typesRessourceConfig() de
-// lib/documentation-hote.js, dont ce fichier ne peut pas charger le require('vscode')
-// transitif (cycle-vie.js, apercu.js…) dans ce DOM minimal. Toute divergence entre les
-// deux est ce que test/js/actualite.test.js (hôte réellement activé) attraperait.
+// La configuration que l'hôte envoie, recomposée depuis le module pur lib/kirby-contenu.js
+// comme configChamp()/typesRessourceConfig() de lib/documentation-hote.js, qui ne se charge
+// pas dans ce DOM minimal (require('vscode') transitif). L'hôte réel est éprouvé dans
+// test/js/actualite.test.js.
 const kirby = require(path.join(COCKPIT, 'lib', 'kirby-contenu.js'));
 function optionsInstrument(canton, langue) {
   return kirby.ordreInstruments(canton).map((jeton) => {
@@ -1696,7 +1646,7 @@ function configChamp(champ, langue) {
     if (champ.liste === 'instrument') { c.dependDe = 'canton'; c.optionsParCanton = tableInstrumentsParCanton(langue); }
   }
   if (champ.saisie === 'liste_multiple') {
-    // Même tri que documentation-hote.js#configChamp : par nom, jamais l'ordre du JSON.
+    // Même tri que documentation-hote.js#configChamp : par nom, pas dans l'ordre du JSON.
     c.options = optionsListe(champ.liste, langue)
       .sort((a, b) => a.libelle.localeCompare(b.libelle, langue, { sensitivity: 'base', numeric: true }));
   }
@@ -1784,8 +1734,8 @@ test('documentation : les rubriques d’abord, les catégories de fiches ensuite
   assert.ok(txt.badgeVide && txt.badgeIncomplet, 'les deux pastilles doivent être fournies');
 });
 
-// Le contrat porte un libellé COURT pour certains types (types[].libelleCourt) — « Agenda »,
-// jamais « Agenda et formation continue » (le titre imprimé) dans le cockpit (Robin, 23.09.2026).
+// Le contrat porte un libellé court pour certains types (types[].libelleCourt) : le cockpit
+// affiche « Agenda », pas le titre imprimé « Agenda et formation continue ».
 test('documentation : la section « agenda » affiche le libellé COURT du contrat, pas le titre imprimé', () => {
   const rangAgenda = configFiches().findIndex((t) => t.valeur === 'agenda');
   assert.ok(rangAgenda !== -1, 'le type agenda doit exister dans le contrat');
@@ -1796,10 +1746,9 @@ test('documentation : la section « agenda » affiche le libellé COURT du contr
 
 test('documentation : rien ne dépasse d’une carte repliée — lien et image compris', () => {
   const { page } = pageDocumentation();
-  // Le défaut signalé le 02.09.2026 : le lien, la zone d'image et l'état de la fiche
-  // vivaient HORS du corps pliable, et restaient donc visibles sous un en-tête replié.
-  // Une carte qui porte une zone d'image : « intervention » (sans image) précède « livre »
-  // dans l'ordre des types du contrat, .doc-fiche[0] ne désigne donc plus forcément un livre.
+  // Le lien, la zone d'image et l'état de la fiche vivent dans le corps pliable, cachés sous
+  // un en-tête replié. « intervention » (sans image) précède « livre » dans l'ordre des types
+  // du contrat : .doc-fiche[0] n'est pas forcément un livre.
   const fiche = page.conteneur().querySelectorAll('.doc-fiche').find((f) => f.querySelectorAll('.doc-image').length > 0);
   assert.ok(fiche, 'aucune carte avec zone d’image trouvée');
   const corps = fiche.querySelectorAll('.doc-corps')[0];
@@ -1810,7 +1759,7 @@ test('documentation : rien ne dépasse d’une carte repliée — lien et image 
       corps.querySelectorAll(classe).length,
       classe + ' se trouve encore hors du corps pliable : il dépasserait d’une carte repliée');
   }
-  // La note « le texte du lien est composé automatiquement » a été supprimée.
+  // Pas de note « le texte du lien est composé automatiquement ».
   assert.ok(!page.textes().some((t) => t.indexOf('composé automatiquement') !== -1),
     'la note sur la composition du lien devait disparaître');
 });
@@ -1838,8 +1787,8 @@ test('documentation : la pastille « non complet » remplace le pavé « à comp
 });
 
 // Un select est identifié par le préfixe de son id (champ(), media/documentation.js :
-// « ch-<cle>-<index> ») — jamais par sa position, puisque chaque type porte désormais
-// plusieurs listes fermées (categorie, etat, source…), pas seulement le canton.
+// « ch-<cle>-<index> »), pas par sa position : un type porte plusieurs listes fermées
+// (categorie, etat, source…).
 function selectDuChamp(page, cle) {
   return page.conteneur().querySelectorAll('select').find((s) => s.id.indexOf('ch-' + cle + '-') === 0);
 }
@@ -1862,7 +1811,7 @@ test('documentation : une valeur hors liste n’est pas perdue au chargement', (
   page.envoyer({
     type: 'charger', slug: 'documentation', accent: 'bleuacier', i18n: txt,
     typesConfig: configFiches(), typesRubrique: [], rubriques: [],
-    // Une fiche écrite à la main, avant la liste fermée : « Berne » n'est pas un code.
+    // Une fiche écrite à la main : « Berne » n'est pas un code.
     ressources: [{ id: 'r9', type: 'intervention', apercu: null,
       valeurs: { title: 'Ancienne', canton: 'Berne', categorie: '', numero: '', date: '',
                  lien: '', descriptif: 'd' } }]
@@ -1883,8 +1832,8 @@ test('documentation : le menu des instruments se recompose quand le canton chang
   canton.value = 'BS';
   canton.dispatchEvent({ type: 'change' });
   const optionsApres = categorie.options.map((o) => o.value);
-  // « anzug » (local, propre à BS) doit passer devant un instrument qu'on n'y observe pas,
-  // une fois BS choisi — ce n'était pas forcément le cas avant (canton initial : ZH).
+  // « anzug » (local, propre à BS) passe devant un instrument qu'on n'y observe pas, une
+  // fois BS choisi (canton initial : ZH).
   assert.notDeepStrictEqual(optionsAvant, optionsApres,
     'le menu des instruments n’a pas bougé quand le canton a changé');
   assert.ok(optionsApres.indexOf('anzug') !== -1 &&
@@ -1903,7 +1852,7 @@ test('documentation : le champ curia s’affiche en lecture seule, recalculé de
   assert.strictEqual(derive.textContent, '6', 'curia doit suivre la catégorie choisie');
 });
 
-// ---- Champ `liste_multiple` (genre et pays d'un film, 23.09.2026) ---------------------
+// ---- Champ `liste_multiple` (genre et pays d'un film) ---------------------------------
 //
 // Deux rendus selon le nombre d'options (media/documentation.js#champListeMultiple) : genre
 // (9 jetons) se coche, pays (250 jetons) se cherche et se pose en étiquettes retirables.
@@ -1982,8 +1931,7 @@ test('documentation : genre et pays repartent comme des tableaux de jetons à l�
   assert.ok(filmEnvoye, 'la carte film neuve doit partir avec les autres');
   assert.ok(Array.isArray(filmEnvoye.valeurs.genre) && filmEnvoye.valeurs.genre.length === 2,
     'genre doit repartir comme un tableau de deux jetons : ' + JSON.stringify(filmEnvoye.valeurs.genre));
-  // Array.from() : le tableau vient du royaume vm de la page, pas celui du test (même piège
-  // que le réservoir en lot, plus haut).
+  // Array.from() : le tableau vient du royaume vm de la page, pas de celui du test.
   assert.deepStrictEqual(Array.from(filmEnvoye.valeurs.pays), ['FR']);
 });
 
@@ -1997,20 +1945,19 @@ test('documentation : enregistrer envoie les fiches remplies et TOUTES les rubri
   bouton.dispatchEvent({ type: 'click' });
   const envoi = page.messages.filter((m) => m.type === 'enregistrer').pop();
   assert.ok(envoi, 'aucun message d’enregistrement : ' + JSON.stringify(page.messages));
-  // Les trois fiches partent, l'incomplète comprise : c'est l'hôte qui tranche désormais.
+  // Les trois fiches partent, l'incomplète comprise : c'est l'hôte qui tranche.
   assert.strictEqual(envoi.ressources.map((r) => r.id).sort().join(','), 'r1,r2,r3');
   // Toutes les rubriques partent, les vides comprises : c'est ainsi que l'hôte apprend qu'un
-  // bloc doit SORTIR du fichier de page.
+  // bloc doit sortir du fichier de page.
   assert.strictEqual(envoi.rubriques.length, nbRubriques);
   const remplie = envoi.rubriques.filter((r) => r.type === 'podcasts')[0];
   assert.strictEqual(remplie.contenu, 'Une brève **importante**.',
     'le markdown de la rubrique doit repartir au caractère près');
 });
 
-// Le sommaire latéral a disparu (23.09.2026) : la navigation entre catégories vit dans
-// l'arbre (test/js/actualite.test.js), qui affiche déjà les mêmes comptes. Seul le compteur
-// posé sur l'en-tête de CHAQUE section de fiches survit — à jour dès le chargement, que la
-// catégorie soit la vue affichée ou non (une seule l'est à la fois, appliquerFiltreNumero).
+// La navigation entre catégories vit dans l'arbre (test/js/actualite.test.js). Chaque
+// section de fiches porte son compteur sur l'en-tête, à jour dès le chargement, que la
+// catégorie soit affichée ou non (une seule l'est à la fois, appliquerFiltreNumero).
 test('documentation : le compteur de chaque section de fiches est à jour dès le chargement', () => {
   const { page } = pageDocumentation();
   const rangLivre = configFiches().findIndex((t) => t.valeur === 'livre');
@@ -2040,9 +1987,8 @@ test('documentation : ouvrir une carte referme les autres, et une seule reste ou
   assert.strictEqual(corps.filter((c) => c.hidden === false).length, 0);
 });
 
-// « Retirer du numéro » (rendre orpheline) et « Supprimer » (effacer pour de bon) sont deux
-// gestes DISTINCTS sur une carte de « Documentation du numéro » (23.09.2026) — deux icônes,
-// deux messages, jamais confondus.
+// « Retirer du numéro » (rendre orpheline) et « Supprimer » (effacer) sont deux gestes
+// distincts sur une carte de « Documentation du numéro » : deux icônes, deux messages.
 test('documentation : une carte de fiche porte « Retirer » ET « Supprimer », deux gestes distincts', () => {
   const { page } = pageDocumentation();
   const cartes = page.conteneur().querySelectorAll('.doc-fiche');
@@ -2086,9 +2032,9 @@ test('documentation : vider une rubrique ne demande rien à l’hôte, et garde 
   const { page } = pageDocumentation();
   const nbRubriques = configRubriques().length;
   page.messages.length = 0;
-  // La corbeille d'une rubrique : le premier bouton-icône de sa carte. Vider une rubrique ne
-  // passe plus par un message dédié — c'est « enregistrer » qui la sort du fichier de page
-  // (voir le test « enregistrer… TOUTES les rubriques » plus haut).
+  // La corbeille d'une rubrique : le premier bouton-icône de sa carte. Vider une rubrique
+  // passe par « enregistrer », qui la sort du fichier de page (voir le test
+  // « enregistrer… TOUTES les rubriques » plus haut).
   const remplie = page.conteneur().querySelectorAll('.doc-rubrique')
     .filter((c) => c.querySelectorAll('textarea')[0].value !== '')[0];
   assert.ok(remplie, 'la rubrique remplie devrait être trouvable');
@@ -2102,8 +2048,8 @@ test('documentation : une fiche neuve s’ouvre aussitôt, et le compteur de sa 
   const { page } = pageDocumentation();
   const avant = page.compter('.doc-fiche');
   // Le bouton « Ajouter un livre » : celui de la section « livre », pas forcément le
-  // premier — l'ordre des types suit désormais ordreTypes du contrat (horizon d'abord). Les
-  // sections se construisent dans cet ordre : même rang côté <h2> et côté conteneur.
+  // premier : l'ordre des types suit ordreTypes du contrat (horizon d'abord). Les sections
+  // se construisent dans cet ordre : même rang côté <h2> et côté conteneur.
   const rangLivre = configFiches().findIndex((t) => t.valeur === 'livre');
   const section = page.conteneur().querySelectorAll('.doc-section')[rangLivre];
   assert.ok(section, 'le conteneur de la section « livre » est introuvable');
@@ -2118,14 +2064,12 @@ test('documentation : une fiche neuve s’ouvre aussitôt, et le compteur de sa 
 
 // ---- Navigation : Documentation du numéro | Traductions à faire | Réservoir | Archive -----
 //
-// Demande de Robin (23.09.2026), révisée le même jour : toute la navigation vit dans
-// l'arbre — la page n'a plus de barre d'onglets ni de sommaire latéral. « Documentation du
-// numéro » (rubriques + UNE catégorie de fiches à la fois — jamais toutes en même temps),
-// ouvert par défaut sur « Rubriques » ; « Mes orphelines » est une PARTIE de la vue Réservoir.
+// Toute la navigation vit dans l'arbre : la page n'a ni barre d'onglets ni sommaire latéral.
+// « Documentation du numéro » montre les rubriques et une seule catégorie de fiches à la
+// fois, et s'ouvre sur « Rubriques » ; « Mes orphelines » est une partie de la vue Réservoir.
 // La vue choisie survit à un rechargement complet (rendre() rejoué, comme après une action
-// côté hôte). `extra` : des champs supplémentaires fusionnés dans le premier « charger »
-// envoyé — sert à éprouver vueInitiale (l'arbre, ouverture directe sur une vue) sans
-// dupliquer tout ce message.
+// côté hôte). `extra` : des champs fusionnés dans le premier « charger », pour éprouver
+// vueInitiale (ouverture directe sur une vue depuis l'arbre).
 function pageDocumentationAvecOnglets(extra) {
   const txt = DOC_TXT();
   const page = ouvrir({
@@ -2164,8 +2108,7 @@ function pageDocumentationAvecOnglets(extra) {
 }
 function panneau(page, cle) { return page.parId['panel-' + cle]; }
 // La bascule d'un panneau déjà ouvert (documentation-hote.js#ouvrirDocumentation,
-// MSG.ONGLET_ACTIVER) — remplace le clic sur un onglet, qui n'existe plus : toute la
-// navigation vient de l'arbre.
+// MSG.ONGLET_ACTIVER), demandée depuis l'arbre.
 function allerVue(page, onglet, categorie) {
   page.envoyer({ type: MSG.ONGLET_ACTIVER, cle: onglet, categorie: categorie });
 }
@@ -2214,7 +2157,7 @@ test('vue Réservoir : titre, panneaux, et « Mes orphelines » qui en fait part
   assert.strictEqual(panneau(page, 'numero').hidden, true);
   assert.strictEqual(panneau(page, 'traductions').hidden, true);
   assert.strictEqual(page.parId.titreVue.textContent, txt.ongletReservoir);
-  // « Mes orphelines » vit DANS la vue Réservoir.
+  // « Mes orphelines » vit dans la vue Réservoir.
   const orph = panneau(page, 'reservoir').querySelector('.doc-vue-orphelines');
   assert.ok(orph, 'la partie « Mes orphelines » doit être dans le panneau Réservoir');
   assert.ok(orph.textContent.indexOf(txt.orphelinesTitre) !== -1);
@@ -2235,12 +2178,12 @@ test('la vue choisie survit à un rechargement complet (mémorisée pour la sess
   assert.strictEqual(page.parId.titreVue.textContent, txt.ongletTraductions);
 });
 
-// ---- vueInitiale / ongletActiver : les raccourcis de l'arbre (23.09.2026) -------------
+// ---- vueInitiale / ongletActiver : les raccourcis de l'arbre ---------------------------
 //
 // Deux protocoles distincts (documentation-hote.js#ouvrirDocumentation) : vueInitiale ne
-// voyage QUE dans le tout premier « charger » d'un panneau qui vient de naître ; ongletActiver
-// bascule un panneau qui vit déjà, sans rien recharger. Le fournisseur d'arbre et l'hôte sont
-// éprouvés côté hôte (test/js/actualite.test.js) ; ici, uniquement ce que la page en fait.
+// voyage que dans le premier « charger » d'un panneau neuf ; ongletActiver bascule un
+// panneau ouvert, sans recharger. L'arbre et l'hôte sont éprouvés dans
+// test/js/actualite.test.js ; ici, seulement ce que la page en fait.
 
 test('vueInitiale : le premier « charger » ouvre directement la vue demandée par l’arbre', () => {
   const { page } = pageDocumentationAvecOnglets({ vueInitiale: { onglet: 'reservoir' } });
@@ -2254,8 +2197,8 @@ test('vueInitiale : absente d’un rechargement suivant, elle ne reprend jamais 
   // Le rédacteur quitte la vue que l’arbre avait demandée…
   allerVue(page, 'traductions');
   assert.strictEqual(panneau(page, 'traductions').hidden, false);
-  // … un rechargement complet SANS vueInitiale (l'hôte ne la pose plus après le tout
-  // premier « pret ») doit laisser ce choix intact, pas revenir sur « reservoir ».
+  // … un rechargement complet sans vueInitiale (l'hôte ne la pose qu'au premier « pret »)
+  // garde ce choix, sans revenir sur « reservoir ».
   const rechargement = Object.assign({}, message);
   delete rechargement.vueInitiale;
   page.envoyer(rechargement);
@@ -2282,14 +2225,13 @@ test('ongletActiver : porte aussi la catégorie — bascule « Documentation du 
   assert.strictEqual(page.conteneur().querySelector('.doc-rubrique').hidden, true);
 });
 
-// ---- Onglet Archive : bibliothèque de PRODUCTION, lue à la demande (23.09.2026) -------
+// ---- Onglet Archive : bibliothèque de production, lue à la demande -------------------
 //
-// Le protocole (media/documentation.js) : ARCHIVE_CHARGER au premier clic (une seule fois
-// par session de panneau), ARCHIVE_DONNEES en réponse, ARCHIVE_IMAGE à part au clic sur un
-// aperçu, ARCHIVE_REPRENDRE désigné par (ficheType, slug) — jamais par un Uuid, la fiche
-// archivée n'en garde la trace que côté hôte (origine). Les intégrations avec
-// lib/kirby-contenu.js (production réelle, reprise, origine) vivent dans
-// test/js/documentation-archive.test.js ; ici, uniquement le rendu et les interactions DOM.
+// Le protocole (media/documentation.js) : ARCHIVE_CHARGER au premier clic (une fois par
+// session de panneau), ARCHIVE_DONNEES en réponse, ARCHIVE_IMAGE à part au clic sur un
+// aperçu, ARCHIVE_REPRENDRE désigné par (ficheType, slug) : la fiche archivée n'a pas
+// d'Uuid côté page, son origine reste côté hôte. Les liens avec lib/kirby-contenu.js sont
+// éprouvés dans test/js/documentation-archive.test.js ; ici, le rendu et le DOM.
 function ficheArchive(over) {
   return Object.assign({
     type: 'livre', slug: 's-arch-1',
@@ -2422,8 +2364,8 @@ test('Archive : un champ `liste_multiple` (genre, pays) s’affiche par ses LIBE
   const boutonApercu = panneauArchive(page).querySelector('.doc-archive-apercu');
   boutonApercu.dispatchEvent({ type: 'click' });
   const corps = panneauArchive(page).querySelector('.doc-archive-corps');
-  // « FR » seul apparaît légitimement (l’en-tête de langue « FR », majuscule) : ce qu’on
-  // exclut, c’est le JOINT de jetons bruts que produirait un aperçu non labellisé.
+  // « FR » seul apparaît légitimement (l’en-tête de langue « FR », majuscule) : on exclut
+  // la jointure de jetons bruts que produirait un aperçu non labellisé.
   assert.strictEqual(corps.textContent.indexOf('FR, CH'), -1,
     'jamais les jetons ISO bruts joints tels quels dans l’aperçu : ' + corps.textContent);
   assert.match(corps.textContent, /France/);
@@ -2451,8 +2393,8 @@ test('Archive : « Reprendre dans ce numéro » envoie (ficheType, slug), se dé
     'réactivé après la réponse');
 });
 
-// Trois icônes par ligne (23.09.2026) : Reprendre, Aperçu, Éditer — cette dernière grisée,
-// « à venir », rien de branché derrière.
+// Trois icônes par ligne : Reprendre, Aperçu, Éditer, cette dernière grisée (« à venir »,
+// sans action).
 test('Archive : trois icônes par ligne — Reprendre, Aperçu, Éditer (grisée, à venir)', () => {
   const { page } = pageDocumentationAvecOnglets();
   allerVue(page, 'archive');
@@ -2468,14 +2410,14 @@ test('Archive : trois icônes par ligne — Reprendre, Aperçu, Éditer (grisée
   assert.strictEqual(page.messages.length, 0, 'un clic sur Éditer ne doit rien envoyer à l’hôte');
 });
 
-// ---- Réservoir : sélection multiple (23.09.2026, deuxième relecture) ------------------
+// ---- Réservoir : sélection multiple -------------------------------------------------
 //
-// Une case par ligne, une case « Tout sélectionner » (sur les lignes VISIBLES après filtre),
+// Une case par ligne, une case « Tout sélectionner » (sur les lignes visibles après filtre),
 // une barre d'actions en lot active seulement si au moins une ligne est cochée, et les
 // boutons par ligne restent. Un seul message par geste en lot, un tableau d'uuid.
 function listeReservoirSeule(page) {
-  // Le PREMIER .doc-vue-liste de l'onglet Réservoir : celui du réservoir lui-même, avant
-  // celui — distinct — de « Mes orphelines » niché plus bas dans le même panneau.
+  // Le premier .doc-vue-liste de l'onglet Réservoir : celui du réservoir lui-même, avant
+  // celui de « Mes orphelines », plus bas dans le même panneau.
   return panneau(page, 'reservoir').querySelector('.doc-vue-liste');
 }
 function barreLotBoutons(page) {
@@ -2513,9 +2455,8 @@ test('réservoir : une case par ligne, la sélection alimente la barre en lot, u
   boutonATraduire.dispatchEvent({ type: 'click' });
   assert.strictEqual(page.messages.length, 1, 'un seul message pour tout le lot');
   assert.strictEqual(page.messages[0].type, MSG.MARQUER_A_TRADUIRE);
-  // Array.from() (celui du test, pas celui du contexte vm de la page) pour comparer des
-  // tableaux d'un même « univers » — sans quoi deepStrictEqual les refuse en silence, deux
-  // Array cross-royaume aux mêmes éléments n'étant pas de la même classe pour lui.
+  // Array.from() du test : deepStrictEqual refuse deux tableaux de royaumes vm différents,
+  // même aux éléments égaux.
   assert.deepStrictEqual(Array.from(page.messages[0].uuids).sort(), ['u1', 'u2']);
   assert.strictEqual(page.messages[0].uuid, undefined, 'un geste en lot ne porte pas `uuid`, seulement `uuids`');
 });
@@ -2535,7 +2476,7 @@ test('réservoir : « Tout sélectionner » coche les lignes visibles, se recalc
   const [boutonATraduire] = barreLotBoutons(page);
   assert.ok(boutonATraduire.textContent.indexOf('(2)') !== -1);
 
-  // Décocher UNE ligne doit décocher « Tout sélectionner », sans toucher à l’autre ligne.
+  // Décocher une ligne décoche « Tout sélectionner », sans toucher à l’autre ligne.
   cases[0].checked = false;
   cases[0].dispatchEvent({ type: 'change' });
   assert.strictEqual(panneau(page, 'reservoir').querySelector('.doc-reservoir-case-tout').checked, false);
@@ -2602,16 +2543,15 @@ test('traduction : le placeholder d’un mot-clé vide est dans la langue de l�
   assert.notStrictEqual(input.placeholder, 'TO BE TRANSLATED', 'la sentinelle anglaise ne doit jamais s’afficher');
 });
 
-// ---- Vue d'ensemble : le focus d'un bouton de constat jusqu'à la carte (revue F03, 22.09.2026) --
+// ---- Vue d'ensemble : le focus d'un bouton de constat jusqu'à la carte ----------------
 //
 // « Word en attente », « Traductions » et « Contrôles » partagent SZH.listeCartes
-// (media/_commun.js) : rien n'y posait d'identifiant sur une carte DOM, donc rien ne
-// permettait de retrouver une ligne depuis l'extérieur (import/echec, import/word-redepose,
-// import/origine-inconnue, import/reimport-* visent « word » avec un focus qui vaut un nom
-// de fichier). Trois choses à prouver : la bonne carte est marquée, une carte sans
-// identifiant (le rapport de conversion, `cle: ''`) ne change pas, un focus introuvable ne
-// marque rien et ne lève pas — les deux chemins (charge initiale, message à un panneau déjà
-// ouvert) empruntent le même code de marquage.
+// (media/_commun.js). Les constats import/echec, import/word-redepose,
+// import/origine-inconnue et import/reimport-* visent « word » avec un nom de fichier en
+// focus. Trois choses à prouver : la bonne carte est marquée, une carte sans identifiant
+// (le rapport de conversion, `cle: ''`) ne change pas, un focus introuvable ne marque rien
+// et ne lève pas. La charge initiale et le message à un panneau ouvert passent par le même
+// code de marquage.
 function pageVueEnsemble() {
   return ouvrir({
     racine: RACINE, page: 'vue-ensemble',
@@ -2642,8 +2582,7 @@ test('vue d’ensemble : le focus de la charge initiale marque la bonne carte, e
     'la carte visée par le focus n’est pas amenée à l’écran');
   assert.strictEqual(parCle('10_Autre.docx').classes.has('szh-carte--focus'), false,
     'une carte voisine, non visée, est marquée par erreur');
-  // La carte du rapport (cle: '') ne porte aucun [data-cle] : additif et neutre, elle se
-  // rend exactement comme avant.
+  // La carte du rapport (cle: '') ne porte pas de [data-cle].
   const carteRapport = cartes.find((c) => c.querySelectorAll('.szh-tete-nom')
     .some((n) => n.textContent === 'Conversion du 22.09.2026'));
   assert.ok(carteRapport, 'la carte du rapport a disparu');
@@ -2659,8 +2598,8 @@ test('vue d’ensemble : un message « focaliser » marque une carte sans recons
   assert.strictEqual(cartes.every((c) => !c.classes.has('szh-carte--focus')), true,
     'une carte est déjà marquée sans qu’aucun focus n’ait été envoyé');
   page.envoyer({ type: 'focaliser', focus: '10_Autre.docx' });
-  // Même liste DOM qu’avant (pas de « valeurs » reçu entre-temps) : la marque doit porter
-  // sur EXACTEMENT les mêmes nœuds (même référence), pas sur une liste reconstruite à côté.
+  // Même liste DOM (aucun « valeurs » reçu entre-temps) : la marque porte sur les mêmes
+  // nœuds (même référence), pas sur une liste reconstruite.
   const memesCartes = page.conteneur().querySelectorAll('.szh-carte');
   assert.strictEqual(memesCartes.length, cartes.length,
     'le message « focaliser » a changé le nombre de cartes');

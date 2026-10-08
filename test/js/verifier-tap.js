@@ -7,22 +7,16 @@
 //
 // Quatre contrôles, tous nécessaires :
 //   1. `# fail` vaut 0 ;
-//   2. `# cancelled` vaut 0 — un test bloqué que --test-timeout a coupé sort en
-//      `cancelled`, jamais en `fail` (mesuré) ;
-//   3. chaque ligne `# SKIP` cite un motif ADMIS pour ce runner : sur ubuntu, l'absence de
-//      PowerShell, de la WSL ou de pandoc est normale ; sur windows-latest, PowerShell est
-//      exigé (SZH_PS_OBLIGATOIRE) et seuls la WSL, pandoc, le corpus hors dépôt et le
-//      processus élevé du runner sont admis. Tout autre motif, ou un saut sans motif, fait
-//      échouer : c'est ce qui remplace l'ancien plancher « # pass >= 950 » et l'égalité
-//      stricte sur un compte statique, tous deux aveugles aux `t.skip()` posés au corps
-//      des tests ;
-//   4. moins de la moitié des tests sautés — une suite qui saute la moitié de ses tests
-//      n'est pas une suite, quel que soit le motif.
-// Le code de sortie du process `node --test` (pipefail dans ci.yml) reste la première porte.
+//   2. `# cancelled` vaut 0 : un test coupé par --test-timeout sort en `cancelled`, pas en
+//      `fail` ;
+//   3. chaque ligne `# SKIP` cite un motif admis pour ce runner : sur ubuntu, l'absence de
+//      PowerShell, de la WSL ou de pandoc ; sur windows-latest, où PowerShell est exigé
+//      (SZH_PS_OBLIGATOIRE), l'absence de la WSL, de pandoc, du corpus hors dépôt, ou le
+//      processus élevé du runner. Un autre motif, ou un saut sans motif, fait échouer ;
+//   4. moins de la moitié des tests sautés, quel que soit le motif.
+// Le code de sortie de `node --test` (pipefail dans ci.yml) est vérifié avant.
 const fs = require('fs');
-// Table partagée avec gardes.js (qui ÉCRIT ces motifs via ses assistants `sauter.*`) : un
-// seul endroit décide de ce qu'un motif de saut doit dire pour être admis, plutôt que deux
-// copies qui peuvent diverger sans que rien ne le signale.
+// Table partagée avec gardes.js, qui écrit ces motifs par ses assistants `sauter.*`.
 const { MOTIFS, ADMIS } = require('./motifs-saut');
 
 function lireCompte(tap, cle) {

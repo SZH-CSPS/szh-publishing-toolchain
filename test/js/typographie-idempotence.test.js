@@ -16,7 +16,8 @@
 // filtre doit laisser intacte la sortie de la règle sur un titre, et rendre le même texte sur sa
 // sortie et sur l'entrée brute pour une plage de pages.
 //
-// Tout cas qui échoue est déclaré `todo` avec sa description exacte, jamais corrigé ici.
+// Un cas qui échoue est déclaré `todo` avec sa description exacte ; la correction se fait
+// dans le filtre.
 'use strict';
 
 const test = require('node:test');

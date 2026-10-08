@@ -1,13 +1,10 @@
-// demarrerDormeurWsl / arreterDormeurWsl / reveillerWsl (lib/wsl.js) n'ont aucun test dans le
-// dépôt : test/js/hote-factice.js les neutralise systématiquement (son crochet Module._load
-// remplace les trois par des no-op dès qu'un autre module requiert lib/wsl.js), justement
-// pour qu'aucun test ne garde une VM WSL en vie ni ne la réveille pour de vrai — mais ça
-// veut dire que le VRAI comportement de ces trois fonctions n'est éprouvé nulle part.
+// demarrerDormeurWsl / arreterDormeurWsl / reveillerWsl (lib/wsl.js). hote-factice.js les
+// remplace par des fonctions vides pour qu'aucun autre test ne lance la WSL ; elles sont
+// éprouvées ici.
 //
-// lib/wsl.js n'a aucune dépendance à `vscode` : il se charge seul, sans hote-factice.js.
-// Même ruse d'injection que test/js/portraits-traitement.test.js — patch de
-// `require('child_process').spawn` posé avant le premier require du module, avec un
-// indirecteur (`impl`) réglable par test.
+// lib/wsl.js ne dépend pas de `vscode` et se charge seul. `require('child_process').spawn`
+// est remplacé avant le premier require du module, par un indirecteur (`impl`) réglé à
+// chaque test.
 'use strict';
 
 const test = require('node:test');

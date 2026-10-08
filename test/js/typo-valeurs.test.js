@@ -1,20 +1,17 @@
-// La typographie que la rédaction a TAPÉE dans Word arrive-t-elle intacte dans la fiche ?
-// Les deux lecteurs de l'import (pipeline/pronto-lire.py pour le gabarit, pipeline/docx-meta.py
-// pour les Word hérités) écrivent le titre, le sous-titre, le résumé, les champs d'auteur et
-// les valeurs de bloc (légende…) dans <slug>.meta.yaml et $SZH_META. szh-typographie.lua ne
-// compose ensuite que ce qu'il reçoit : un demi-cadratin passé au trait d'union, une insécable
-// passée à l'espace ne se reconstruisent plus (audit du 30.09.2026).
+// La typographie tapée dans Word arrive intacte dans la fiche. Les deux lecteurs de l'import
+// (pipeline/pronto-lire.py pour le gabarit, pipeline/docx-meta.py pour les Word hérités)
+// écrivent titre, sous-titre, résumé, champs d'auteur et valeurs de bloc (légende…) dans
+// <slug>.meta.yaml et $SZH_META. szh-typographie.lua ne reconstruit pas un demi-cadratin
+// devenu trait d'union ni une insécable devenue espace.
 //
-//   node --test "test/js/*.test.js"
+//   node --test test/js/typo-valeurs.test.js
 //
-// Trois défauts, un contrôle chacun au moins :
-//   D1  <w:noBreakHyphen/> (Ctrl+Maj+-) et <w:sym> étaient ignorés : « Jean‑Éric » devenait
-//       « JeanÉric » ;
-//   D2  les valeurs passaient par la forme de COMPARAISON (tirets -> '-', insécables ->
-//       espace) : « 1990–2000 » sortait « 1990-2000 » ;
-//   D3  docx-meta.py déduisait la langue du document (premier résumé…) sans regarder le
-//       produit du numéro : un article de la Zeitschrift au résumé français en tête était
-//       composé en français.
+// Repères des noms de test :
+//   D1  <w:noBreakHyphen/> (Ctrl+Maj+-) et <w:sym> sont lus : « Jean‑Éric » reste entier ;
+//   D2  les valeurs gardent tirets et insécables (la forme de comparaison sert seulement à
+//       reconnaître les clés) ;
+//   D3  docx-meta.py prend la langue du produit du numéro ; la langue déduite du document ne
+//       fait qu'avertir.
 'use strict';
 
 const test = require('node:test');
@@ -185,14 +182,13 @@ test('pronto-lire.py (D2) : titre, sous-titre, résumé et légende gardent ins�
   const fi = vu.instructions.split('\n').find((l) => l.startsWith('FI\t')) || '';
   assert.strictEqual(fi.split('\t')[2], 'Élèves 1990–2000',
     'légende dégradée dans la ligne FI : ' + JSON.stringify(fi));
-  // La reconnaissance, elle, ne dépend pas de la forme de valeur : la clé à l'insécable du
-  // gabarit est toujours reconnue, et les deux tableaux fixes consommés.
+  // La clé à l'insécable du gabarit est reconnue, et les deux tableaux fixes consommés.
   assert.strictEqual(vu.stats.bloquant, false, 'import bloqué : ' + vu.stderr);
   assert.strictEqual(vu.stats.tableau1_consomme, true);
 });
 
-// D9 : les phrases que le lecteur écrit lui-même suivent la typographie de LEUR langue. Le
-// français sépare («U+00A0…U+00A0», U+00A0 devant le deux-points), l'allemand colle.
+// D9 : les messages du lecteur suivent la typographie de leur langue. Le français sépare
+// («U+00A0…U+00A0», U+00A0 devant le deux-points), l'allemand colle.
 test('pronto-lire.py (D9) : ses avertissements sont composés dans la typographie de chaque langue', { skip: sansPython }, () => {
   const vu = lire(PRONTO_LIRE, SPEC_PRONTO, 'revue');
   const ligne = vu.stderr.split(/\r?\n/).find((l) => l.includes('cle-attendue-absente')) || '';
@@ -204,8 +200,8 @@ test('pronto-lire.py (D9) : ses avertissements sont composés dans la typographi
     'phrase allemande mal composée : ' + JSON.stringify(de));
 });
 
-// Une étiquette tapée en NFD (e + U+0301) est la même étiquette : reconnue exactement, sans
-// l'avertissement « Légende lue comme Légende (proximité 0,93) » qu'elle levait.
+// Une étiquette tapée en NFD (e + U+0301) est reconnue exactement, sans l'avertissement de
+// proximité « Légende lue comme Légende ».
 test('pronto_modele.identifier_cle : une étiquette en NFD se reconnaît comme en NFC, exactement', { skip: sansPython }, () => {
   const programme = [
     'import json, sys',
@@ -236,7 +232,7 @@ test('docx-meta.py (D1, D2) : le titre hérité garde U+2011, le demi-cadratin e
     'titre hérité dégradé : ' + JSON.stringify(vu.fiche));
 });
 
-// Un article allemand dont le PREMIER résumé est français : la Zeitschrift en publie ainsi.
+// Un article allemand dont le premier résumé est français, comme la Zeitschrift en publie.
 const SPEC_HERITE_DE = {
   paragraphes: [
     ['Title', run('Die Schule und dann')],

@@ -1,26 +1,15 @@
 // Le remplacement atomique du toolkit : Install-SzhToolkitDepuisArchive (szh-common.ps1).
 //
-//   node --test "test/js/*.test.js"
+//   node --test test/js/toolkit-remplacement.test.js
 //
-// Le défaut corrigé ici : update.ps1, update-launcher.ps1 et bootstrap.ps1 faisaient
-// Remove-SzhToolkitOrphelins puis `Expand-Archive -Force` directement dans l'arbre vivant —
-// extraction fichier par fichier, avec une fenêtre où le toolkit est amputé, et un VERSION
-// qui peut arriver avant les autres fichiers si la mise à jour est interrompue en cours de
-// route. Install-SzhToolkitDepuisArchive construit désormais la nouvelle version à part
-// (<toolkit>.neuf : copie de l'actuel, complétée par l'archive, nettoyée de ses orphelins),
-// puis bascule par un renommage NTFS ([System.IO.Directory]::Move) — tout ou rien.
+// La fonction construit la nouvelle version à part (<toolkit>.neuf : copie de l'actuel,
+// complétée par l'archive, nettoyée de ses orphelins), puis bascule par un renommage NTFS
+// ([System.IO.Directory]::Move), qui réussit ou échoue en entier. Move-Item ne convient pas :
+// il recopie dossier par dossier et peut, sur un fichier verrouillé, laisser le toolkit
+// coupé en deux sans lever d'erreur.
 //
-// Piège vérifié en bac à sable avant d'écrire ce fichier : PowerShell Move-Item, lui,
-// RECOPIE récursivement dossier par dossier et peut laisser le toolkit coupé en deux si un
-// fichier est verrouillé en cours de route (un fichier resté dans l'ancien dossier ET un
-// dossier « neuf » imbriqué dans l'ancien, sans la moindre erreur levée). D'où
-// [System.IO.Directory]::Move dans l'implémentation : un renommage NTFS est une seule
-// opération sur le NOM du dossier, jamais sur son contenu, qui réussit ou échoue en entier.
-//
-// $SZH_BASE : la variable d'environnement qui redirige $SzhBase (et donc $SzhToolkit,
-// $SzhStaging) vers une arborescence jetable, lue par szh-common.ps1 à son propre
-// chargement — c'est elle qui rend ce fichier possible sans jamais toucher
-// C:\ProgramData\SZH.
+// $SZH_BASE, lue par szh-common.ps1 à son chargement, redirige $SzhBase (donc $SzhToolkit et
+// $SzhStaging) vers une arborescence jetable, à la place de C:\ProgramData\SZH.
 'use strict';
 
 const test = require('node:test');
@@ -35,15 +24,13 @@ const COMMUN_PS1 = path.join(RACINE, 'windows', 'szh-common.ps1');
 
 const { POWERSHELL, sansPowerShell } = require('./gardes');
 
-// Windows PowerShell 5.1 lit un .ps1 SANS BOM avec la page de code ANSI du poste, pas en
-// UTF-8 : sans ce préfixe, les accents des pilotes ci-dessous ressortiraient mojibake une
-// fois relus (même remarque, et même geste, que test/js/orphelins-toolkit.test.js).
+// Windows PowerShell 5.1 lit un .ps1 sans BOM dans la page de code ANSI du poste : le BOM
+// garde les accents des pilotes.
 function ecrirePs1(chemin, contenu) {
   fs.writeFileSync(chemin, '\uFEFF' + contenu, 'utf8');
 }
 
-// Pose un arbre de fichiers plats sous $racine, un par entrée de `relatifs` (contenu
-// arbitraire, seul le nom compte pour ce que Remove-SzhToolkitOrphelins en fait).
+// Pose un fichier par entrée de `relatifs` sous `racine` ; seul le nom compte.
 function poserArbre(racine, relatifs) {
   for (const rel of relatifs) {
     const p = path.join(racine, rel);
@@ -55,8 +42,8 @@ function poserArbre(racine, relatifs) {
 // ---- Scénario (a) : nominal, avec une vraie archive .zip ----
 //
 // L'ancien toolkit porte un fichier en trop (pipeline/vieux-filtre.py) et un VERSION
-// périmé ; le zip apporte VERSION à jour et les cinq dossiers gérés. Le résultat doit être
-// EXACTEMENT le contenu du zip : plus de vieux-filtre.py, VERSION à jour.
+// périmé ; le zip apporte VERSION à jour et les cinq dossiers gérés. Le résultat est
+// exactement le contenu du zip.
 
 const bilanNominal = (function () {
   if (!POWERSHELL) { return null; }
@@ -138,13 +125,9 @@ test('remplacement atomique, cas nominal : aucun .neuf ni .vieux ne survit à un
 
 // ---- Scénario (b) : la bascule échoue (fichier encore ouvert) ----
 //
-// Un handle exclusif est ouvert par le pilote lui-même, AVANT d'appeler la fonction, sur un
-// fichier du toolkit courant — ce qui, en bac à sable, fait échouer le premier renommage
-// NTFS (Toolkit -> Toolkit.vieux) plutôt que le second : Directory.Move est tout ou rien,
-// et un fichier verrouillé dans l'arbre qu'on renomme suffit à le refuser en bloc, sans
-// laisser le moindre reste. C'est ce que ce test observe : quel que soit le renommage qui
-// échoue en interne, le contrat tenu par Install-SzhToolkitDepuisArchive est le même —
-// erreur claire, toolkit d'origine intact, aucun .neuf ni .vieux ne reste.
+// Le pilote ouvre un handle exclusif sur un fichier du toolkit avant l'appel : le premier
+// renommage (toolkit -> toolkit.vieux) est refusé en bloc. Quel que soit le renommage qui
+// échoue, on attend une erreur claire, le toolkit d'origine intact, ni .neuf ni .vieux.
 
 const bilanEchec = (function () {
   if (!POWERSHELL) { return null; }
@@ -169,8 +152,7 @@ const bilanEchec = (function () {
     "$sortie = '" + sortie + "'",
     "$zip = '" + zip + "'",
     "Compress-Archive -Path (Join-Path '" + zipSource + "' '*') -DestinationPath $zip -Force",
-    // Le handle est ouvert ICI, dans CE processus, et reste ouvert pendant tout l'appel :
-    // FileShare.None (le défaut de File.Open) empêche même une lecture par un autre acteur.
+    // Le handle reste ouvert pendant tout l'appel ; FileShare.None interdit même la lecture.
     '$verrou = [System.IO.File]::Open((Join-Path $SzhToolkit "windows\\update.ps1"), ' +
       '[System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)',
     '$leve = $false; $message = ""',

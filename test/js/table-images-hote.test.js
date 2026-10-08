@@ -30,7 +30,7 @@ async function ouvrirEditeur(extra) {
 }
 
 // La réponse du sélecteur de fichier : une image hors de l'article, de même nom que celle
-// qui y est déjà — la copie doit prendre un nom libre, jamais écraser.
+// qui y est déjà : la copie doit prendre un nom libre.
 function imageSource(nom) {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-table-hote-'));
   const f = path.join(d, nom);

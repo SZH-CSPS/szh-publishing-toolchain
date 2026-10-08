@@ -1,6 +1,6 @@
 'use strict';
-// La porte de la CI est elle-même un garde-fou : si elle laissait passer un saut inconnu
-// ou un test annulé, tout ce chantier de tests ne tiendrait qu'à un vert par défaut.
+// verifier-tap.js, la vérification de la CI sur un run TAP : saut sans motif admis, test
+// annulé ou échoué, trop de sauts.
 const test = require('node:test');
 const assert = require('node:assert');
 const { verifier } = require('./verifier-tap');

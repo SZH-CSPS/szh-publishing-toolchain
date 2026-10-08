@@ -3,11 +3,10 @@
 //
 //   node --test "test/js/table-images.test.js"
 //
-// Le cas d'origine : le bloc de présentation d'une autrice, importé du Word avec son
-// portrait dans une cellule (<img src="media/…" alt="" width="173">). L'éditeur de tableau
-// ne montrait pas l'image, et un enregistrement la faisait disparaître du fichier — puis du
-// PDF. L'hôte et la copie dans media/ sont éprouvés dans table-images-hote.test.js, qui
-// active l'extension dans son propre processus.
+// Cas type : le bloc de présentation d'une autrice, importé du Word avec son portrait dans
+// une cellule (<img src="media/…" alt="" width="173">). L'image doit s'afficher dans
+// l'éditeur et survivre à l'enregistrement. L'hôte et la copie dans media/ sont éprouvés
+// dans table-images-hote.test.js.
 'use strict';
 
 const test = require('node:test');
