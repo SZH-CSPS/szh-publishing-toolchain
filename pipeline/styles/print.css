@@ -1,114 +1,59 @@
-/* Feuille de style d'impression de la maquette SZH/CSPS (CSS Paged Media, rendue par
-   WeasyPrint 69). Pas de JavaScript au rendu : CSS statique, compteurs et jetons
-   précalculés. La couleur annuelle (repli gris déclaré au socle) est surchargée à la
-   compilation par accent-css.py, qui écrit out/.szh-accent.css — voir couleurs.css.
+/* Feuille d'impression de la maquette de la revue (CSS Paged Media, rendue par
+   WeasyPrint). CSS statique : compteurs et jetons sont calculés à l'avance. La couleur
+   annuelle (repli gris déclaré dans socle.css) est remplacée à la compilation par
+   out/.szh-accent.css, écrit par accent-css.py (voir couleurs.css).
 
-   Les polices et l'échelle typographique ne sont pas ici : elles vivent dans le :root de
-   socle.css, que le Makefile empile avant cette feuille, et que la maquette web lira
-   aussi. Une variable ne se déclare qu'à un seul endroit.
-   Le :root ci-dessous (§3) est un second :root, propre à cette feuille : il porte la
-   géométrie PAGINÉE — marges de @page, hero — qui n'a justement pas sa place au socle
-   (« une boîte, une marge, un @page, une grille appartiennent à la feuille de leur média »,
-   doctrine en tête de socle.css). Ce n'est pas la duplication que le socle existe pour
-   éviter : aucun de ces jetons n'existe ailleurs, donc rien n'y dérive. Le reste de cette
-   feuille reste ce qu'il a toujours été : de la mise en page, et elle seule.
+   Polices et échelle typographique sont dans le :root de socle.css, chargé avant cette
+   feuille par le Makefile. Le :root de la section 3 ne porte que la géométrie paginée
+   (marges de @page, hero), propre à l'impression.
 
    Plan : 3. géométrie de page · 4. typographie de base · 5. couverture ·
-   6. éléments de corps · 7. tableaux .szh-tableau · 8. bloc auteurs. Les numéros
-   commencent à 3 : les §1 et §2 sont partis au socle et gardent leur rang, pour que les
-   renvois « print.css §5 » semés dans les filtres et les tests restent justes. */
+   6. éléments de corps · 7. tableaux .szh-tableau · 8. bloc auteurs. Les sections 1 et 2
+   sont dans socle.css ; d'autres fichiers renvoient à ces numéros (« print.css §5 »). */
 
 /* ═══ 3. Géométrie de page ════════════════════════════════════════════════════
    A4. Les marges des pages courantes réservent l'en-tête et le pied, éléments « running »
    posés une fois par le template et tirés ici dans des margin boxes. */
 
-/* Jetons de géométrie paginée (09.09.2026). Les quatre marges de @page étaient répétées
-   TROIS FOIS en dur : ici, dans les marges négatives de .szh-hero (qui doivent égaler
-   exactement la marge @page en cours, sinon une bande blanche apparaît en haut de la
-   couverture — voir sa note plus bas) et dans `.szh-hero-meta { left: … }`. Un seul jeton
-   par bord referme cet invariant fragile : les trois endroits, plus le filet pleine
-   largeur (.szh-filet) qui annule la même marge par le même procédé, consomment
-   maintenant tous var(--page-marge-*).
-   ⚠ --page-marge-droite et --page-marge-gauche valent la même chose aujourd'hui (72px),
-   mais restent deux jetons distincts : une marge de gauche et une marge de droite sont
-   deux idées différentes qui se trouvent coïncider, pas une seule valeur à factoriser —
-   une maquette à gouttière (reliure) les ferait diverger le jour venu.
-   ⚠ szh-titre-lignes.lua RECOPIE --page-marge-droite/-gauche dans son LARGEUR_COLONNE, au
-   même titre que --hero-ratio-colonne juste en dessous : voir l'avertissement du filtre,
-   qui pointe ici en retour. Le changer là sans le changer ici ferait mesurer l'escalier du
-   titre sur une colonne qui n'existe plus. */
+/* Marges de page, un jeton par bord. Elles servent à @page, aux marges négatives de
+   .szh-hero et de .szh-filet (qui doivent égaler la marge de @page, sinon une bande blanche
+   apparaît) et à `.szh-hero-meta { left: … }`.
+   Droite et gauche valent toutes deux 72px mais restent deux jetons : une maquette avec
+   reliure les ferait diverger.
+   szh-titre-lignes.lua recopie --page-marge-droite/-gauche et --hero-ratio-colonne dans
+   son LARGEUR_COLONNE : changer l'un sans l'autre fausse la mesure de l'escalier du
+   titre. */
 :root {
   --page-marge-haut:   86px;
   --page-marge-droite: 72px;
   --page-marge-bas:    78px;
   --page-marge-gauche: 72px;
 
-  /* Hero de couverture (§5). Ratio de la colonne de titre/sous-titre — même avertissement
-     que les marges ci-dessus, szh-titre-lignes.lua le recopie dans LARGEUR_COLONNE. */
+  /* Hero de couverture (§5). Ratio de la colonne de titre et sous-titre, recopié par
+     szh-titre-lignes.lua (voir ci-dessus). */
   --hero-ratio-colonne:    67%;
   --hero-hauteur:          380px;   /* hauteur fixe : titre, DOI et licence toujours au même endroit */
   --hero-hauteur-plancher: 220px;   /* mode condensé : bannière minimale (.szh-entete-condensee) */
 
-  /* Espaces internes du hero, remontés ici depuis .szh-entete-condensee (09.09.2026) : le
-     mode condensé est devenu CE JOUR la maquette PAR DÉFAUT de tous les numéros (bascule
-     dans pipeline/filters/szh-maquette.lua), ces trois espaces sont donc désormais
-     l'espacement normal de la couverture et non plus le réglage d'un cas particulier.
-     ⚠ Leurs USAGES restent au §5, dans les règles .szh-entete-condensee : ne pas les y
-     chercher a fait perdre du temps à plus d'une personne — c'est la cascade qui reste
-     inchangée, seule la déclaration a changé de toit. */
+  /* Espaces internes du hero. Le mode condensé est la maquette par défaut
+     (szh-maquette.lua) ; ces espaces sont utilisés au §5, dans les règles
+     .szh-entete-condensee. */
   --hero-espace-titre:     20px;   /* bloc revue/dossier -> titre */
-  /* 0 et non une marge positive (décision du 09.09.2026) : le responsable demande que le
-     titre et le sous-titre de la couverture se lisent comme UN SEUL BLOC, « sans rentrer
-     dans l'aberrant ». Mesuré sur 2027-02-hero-A-condensee, article
-     07-developper-ses-competences (extrema d'encre d'un GROUPE de caractères, pas d'un
-     seul — hampes et jambages ne sont pas portés par la même lettre) : à 12px, interligne
-     du titre 2,06pt, interligne du sous-titre 4,03pt, titre -> sous-titre 18,18pt contre
-     sous-titre -> auteur·e·s 16,75pt. L'espace interne au bloc titre/sous-titre était donc
-     PLUS GRAND que celui qui sépare l'ensemble des crédits : la règle de proximité jouait
-     à l'envers, rien ne pouvait se lire comme un bloc.
-     ⚠ De ces 18,18pt, seuls 9pt venaient de cette marge : les 9,18pt restants viennent de
-     la boîte de ligne du sous-titre, sur laquelle la marge n'a aucune prise. Le plancher
-     accessible en ne jouant que sur --hero-espace-soustitre est donc 9,18pt, pas 0 — c'est
-     une borne du modèle de boîte, pas un choix.
-     0 ramène l'espace mesuré à ≈9,2pt, soit ≈55 % des 16,75pt qui séparent l'ensemble des
-     crédits : on s'approche du seuil classique de regroupement typographique (espace
-     interne au plus égal à la moitié de l'espace externe) sans valeur négative et sans
-     toucher au corps ni à l'interligne (2,06pt et 4,03pt ci-dessus, inchangés).
-     ⚠ 0 n'est pas un oubli, c'est la décision : ne pas remettre « une petite marge, ça
-     manque » dans six mois, elle rouvrirait l'écart que cette mesure vient de fermer. */
-  /* Mesures définitives (09.09.2026, closent le chantier ouvert ci-dessus). Formule de la
-     séparation minimale sûre entre le titre et le sous-titre, établie aux boîtes de
-     caractères du PDF :
+  /* Titre et sous-titre doivent se lire comme un seul bloc : l'espace entre eux doit être
+     nettement plus petit que celui qui sépare l'ensemble des crédits (16,75pt). La boîte de
+     ligne du sous-titre ajoute déjà environ 9,2pt, que la marge ne peut pas réduire.
+     Séparation minimale sûre, mesurée aux boîtes de caractères du PDF :
        0,239 × corps du titre + 0,945 × corps du sous-titre + 1,5 pt de garde optique
-     Les deux coefficients sont mesurés aux boîtes de caractères, pas devinés : 0,239 em
-     est le jambage le plus profond du titre, 0,945 em la hampe d'une CAPITALE ACCENTUÉE du
-     sous-titre — É vaut 1,406 fois une hampe ordinaire, c'est donc É/À/È qui commande
-     cette formule, jamais d/h/l.
-     À 25/15 px (les corps réels de .szh-title et .szh-subtitle) la formule exige 16,61 pt ;
-     les 2px ci-dessous en donnent 16,68 pt mesurés. Garde du pire alignement imaginable :
-     1,49 pt ; garde réelle mesurée sur l'article d'essai (2027-02-hero-A-condensee,
-     07-developper-ses-competences) : 3,80 pt, entre le « g » de « grâce » et le « i » de
-     « situation ».
-     ⚠ Éprouvé sur le cas redouté (dossier tmp/essai-accent/) : un sous-titre commençant
-     par « Étude », donc par une capitale accentuée. Elle monte à 10,71 pt et ne touche
-     rien, parce qu'elle tombe sous « relationnelles », qui n'a aucun jambage.
-     ⚠ La valeur DÉPEND DES DEUX CORPS : changer le titre ou le sous-titre oblige à la
-     recalculer par cette formule, elle n'est pas une constante universelle. */
+     0,239 em est le jambage le plus profond du titre ; 0,945 em la hampe d'une capitale
+     accentuée du sous-titre (É, À, È), plus haute que d, h ou l.
+     Avec les corps de .szh-title et .szh-subtitle (25 et 15 px), la formule exige
+     16,61 pt ; 2px donnent 16,68 pt. Changer l'un des deux corps oblige à recalculer. */
   --hero-espace-soustitre: 2px;    /* titre -> sous-titre */
-  /* 13px et non 22px (décision du 09.09.2026) : le responsable demande les deux espaces
-     du hero condensé identiques, ou à défaut le plus proche possible — celui du dessus
-     (sous-titre -> auteur·e·s) contre celui du dessous (auteur·e·s -> DOI, `.szh-doi
-     { margin-top: 15px }` plus bas). Mesuré sur 2027-02-hero-A-condensee, article
-     07-developper-ses-competences, à 22px : 23,51pt en haut (16,5pt de marge + 7,01pt de
-     surcoût d'interligne) contre 16,79pt en bas (11,25pt de marge + 5,54pt de surcoût) —
-     écart de 6,72pt. Les deux surcoûts diffèrent (7,01 contre 5,54), l'égalité ne
-     s'obtient donc pas en posant la même valeur des deux côtés.
-     ⚠ Deux directions mesurées, resserrer le haut ou pousser le DOI vers 24px pour aligner
-     sur 23,5pt : la seconde est écartée, elle allongerait le hero et rognerait le gain de
-     place du mode compact qui fait tenir « Introduction » et le début du corps sur la
-     page 1 (vérifié : présents en compact, absents en hauteur fixe). 13px resserre donc le
-     haut sans toucher au DOI ni à la hauteur du hero, et donne 9,75pt + 7,01pt = 16,76pt,
-     à 0,03pt du bas (16,79pt) — écart largement sous le pt demandé. */
+  /* Espace sous-titre -> auteur·e·s, réglé pour égaler l'espace auteur·e·s -> DOI
+     (`.szh-doi { margin-top: 15px }`) : les surcoûts d'interligne diffèrent des deux côtés
+     (7,01pt et 5,54pt), d'où une marge plus petite ici. 13px donne 16,76pt contre 16,79pt
+     en bas. Agrandir plutôt la marge du DOI allongerait le hero et ferait perdre le début
+     du corps en page 1. */
   --hero-espace-meta:      13px;   /* titre (ou sous-titre) -> auteur·e·s */
 }
 @page {
@@ -122,9 +67,8 @@
   @top-center    { content: element(enteteCourante); vertical-align: bottom; width: 100%; }
   @bottom-center { content: element(piedCourant);    vertical-align: top;    width: 100%; }
 
-  /* Zone des notes de bas de page (CSS GCPM, WeasyPrint 69). Elle s'insère entre le
-     contenu et le pied courant, et n'apparaît que sur les pages qui portent une note.
-     Le filet la sépare du texte ; celui du pied, lui, reste dessous. */
+  /* Zone des notes de bas de page (CSS GCPM). Elle s'insère entre le contenu et le pied
+     courant, sur les pages qui portent une note. Son filet la sépare du texte. */
   @footnote {
     margin-top: 14px;
     padding-top: 6px;
@@ -132,9 +76,9 @@
   }
 }
 
-/* Couverture = première page. Les marges sont héritées de @page (le corps coule avec
-   marges dès la 1re page) et le hero déborde jusqu'aux bords par marges négatives
-   (.szh-hero). Seul l'en-tête courant est masqué, le hero le remplaçant ; le pied reste. */
+/* Couverture = première page. Les marges viennent de @page et le hero déborde jusqu'aux
+   bords par marges négatives (.szh-hero). L'en-tête courant est masqué, le hero le
+   remplace ; le pied reste. */
 @page :first {
   @top-center { content: none; }
 }
@@ -151,34 +95,17 @@
 .szh-entete-courante .g { color: var(--c-ink2); }
 .szh-entete-courante .d { color: var(--c-ink3); font-variant-numeric: tabular-nums; }
 
-/* Le « o » de l'abréviation « Nᵒ », posé en Superscript pandoc par szh-maquette.lua (§ son
-   ABREV_NUMERO, qui dit pourquoi ce n'est ni « ° » ni U+00BA). Les deux boîtes qui portent
-   cette ligne — l'en-tête courant ici, la ligne de volume du hero au §5 — sont en
-   capitales et interlettrées : sans cette règle, l'exposant sortirait en « O » capital,
-   qui n'est pas l'abréviation, avec un interlettrage traîné derrière une seule lettre.
-   Taille et hauteur choisies sur rendu comparé (08.09.2026) ; `line-height: 0` empêche
-   l'exposant de faire grandir sa ligne, comme pour ::footnote-call au §4.
-   ⚠ RESSOUDAGE DU « Nᵒ » (décision du 09.09.2026, voie N1). Diagnostic mesuré aux boîtes
-   de caractères du PDF : le `letter-spacing` du parent (0,14em pour l'en-tête courant,
-   0,16em pour .szh-hero-vol) s'ajoute APRÈS chaque lettre, donc après le N — ce qui écarte
-   l'exposant de son N — tandis que `letter-spacing: 0` ci-dessus le supprime après le ᵒ,
-   ce qui colle l'exposant au chiffre qui suit. L'œil lisait « N °02 ». Blancs mesurés avant
-   correction : N→ᵒ 1,68pt (en-tête) / 1,92pt (hero) contre une référence de ligne de
-   1,29pt / 1,51pt ; ᵒ→chiffre 0,45pt / 0,47pt, très en dessous de cette même référence.
-   ⚠ PIÈGE D'UNITÉ : une marge ou un `letter-spacing` posé ICI, sur le `sup`, se calcule sur
-   l'em DU SUP (`font-size: 0.72em` ci-dessous), pas sur celui de la ligne. Pour annuler
-   0,14em du parent il faut donc −0,14 / 0,72 ≈ −0,19em de marge gauche, et autant de
-   letter-spacing en positif pour restituer l'espace manquant après l'exposant — d'où les
-   deux `calc()` ci-dessous, qui portent la formule elle-même plutôt qu'une valeur figée :
-   si la taille de l'exposant (0.72em) ou l'interlettrage du parent changent un jour, la
-   valeur redevient fausse et doit être recalculée à la main, mais la formule reste lisible
-   ici pour le faire.
-   ⚠ DÉCISION DU RESPONSABLE : une seule valeur, calée sur l'interlettrage de l'en-tête
-   (0,14em), et non deux valeurs séparées pour les deux boîtes malgré leurs interlettrages
-   différents (0,14 / 0,16em) — mesuré comme le meilleur choix : écart au rythme de
-   +0,10pt dans l'en-tête et −0,04pt dans le hero, contre +0,10pt dans les deux avec des
-   valeurs séparées par boîte. La valeur unique est donc aussi bonne, et même légèrement
-   meilleure dans le hero, pour la moitié du code. */
+/* Le « o » de l'abréviation « Nᵒ », posé en Superscript pandoc par szh-maquette.lua (voir
+   son ABREV_NUMERO). L'en-tête courant et la ligne de volume du hero (§5) sont en capitales
+   interlettrées : sans cette règle, l'exposant sortirait en « O » capital. `line-height: 0`
+   empêche l'exposant d'agrandir sa ligne, comme pour ::footnote-call (§4).
+   Le `letter-spacing` du parent s'ajoute après chaque lettre : il écarte l'exposant du N,
+   et le `letter-spacing` nul de l'exposant le colle au chiffre suivant (« N °02 »). La
+   marge négative referme l'espace après le N, le letter-spacing le rend après le ᵒ.
+   Ces valeurs se calculent sur l'em du `sup` (0.72em), d'où la division par 0,72 dans les
+   `calc()`. Une seule valeur, calée sur l'en-tête (0,14em), sert aussi au hero (0,16em) :
+   l'écart est négligeable. À recalculer si la taille de l'exposant ou l'interlettrage
+   changent. */
 .szh-entete-courante sup, .szh-hero-vol sup {
   text-transform: none;
   margin-left: calc(-0.14em / 0.72);    /* referme l'espace ouvert après le N par l'interlettrage du parent */
@@ -213,87 +140,47 @@ body {
 p { margin: 0 0 0.7em; text-align: justify; hyphens: auto; overflow-wrap: break-word; }
 p:last-child { margin-bottom: 0; }
 /* ── Liens ─────────────────────────────────────────────────────────────────
-   Corps : bleu SZH #002A56, souligné léger, survol noir. La flèche « lien sortant »,
-   posée ici en ::after, est retirée depuis le 09.09.2026 (demande du responsable de la
-   revue) : plus aucune flèche après un lien du corps. Hero : liens clairs, PLUS de
-   soulignement non plus (même demande, ci-dessous) ; la flèche, elle, y reste — ce n'est
-   pas un ::after mais un <svg class="szh-arrow"> inline posé par
-   templates/szh-article.html (voir .szh-hero .szh-arrow plus bas), donc rien à faire ici
-   pour la garder. */
+   Corps : bleu SZH #002A56, souligné léger, survol noir, sans flèche. Hero : liens clairs
+   et non soulignés ; leur flèche est un élément `.szh-arrow` posé par
+   templates/szh-article.html (voir .szh-hero .szh-arrow plus bas). */
 a[href] {
   color: #002A56;
   text-decoration: underline; text-decoration-thickness: 0.06em; text-underline-offset: 0.15em;
 }
 a[href]:hover { color: #000000; }
-/* Plus spécifique que `.szh-doi, .szh-licence` du §5 : c'est cette règle-ci qui décide de
-   la couleur du DOI et de la licence, qui sont des liens. Les deux doivent bouger
-   ensemble, et test/apca-check.py mesure les deux.
-   ⚠ DÉFAUT CONFIRMÉ AU RENDU, corrigé le 09.09.2026 : `text-decoration: none` posé sur
-   `.szh-doi, .szh-licence` (§5) ne suffisait pas à retirer le soulignement du DOI et de
-   la licence dans le PDF — ce sont des liens, et `a[href]` ci-dessus (0,1,1) l'emportait
-   sur `.szh-doi`/`.szh-licence` (0,1,0). Le soulignement doit donc tomber sur un
-   sélecteur qui gagne contre `a[href]` : `.szh-hero a[href]` vaut (0,2,1), une classe et
-   un attribut de plus que lui. */
+/* Couleur et soulignement des liens du hero, dont le DOI et la licence (test/apca-check.py
+   mesure les deux). `a[href]` (0,1,1) l'emporte sur `.szh-doi`/`.szh-licence` (0,1,0) ;
+   il faut donc `.szh-hero a[href]` (0,2,1) pour retirer le soulignement. */
 .szh-hero a[href] { color: var(--c-hero2); text-decoration: none; }
 .szh-hero a[href]:hover { color: var(--c-hero2); }
-/* Appel de citation lié à son entrée de bibliographie (szh-citations.lua). Il reste du
-   texte à l'œil — même couleur, sans soulignement : l'appel « (Bovey, 2022) » ne doit pas
-   se lire comme un lien sortant. Il n'en est pas moins cliquable, en HTML comme dans le
-   PDF, où WeasyPrint pose un lien interne. */
+/* Appel de citation lié à son entrée de bibliographie (szh-citations.lua) : même couleur
+   que le texte, sans soulignement, pour ne pas ressembler à un lien sortant. Il reste
+   cliquable en HTML et dans le PDF. */
 a[href^="#"], a.szh-appel {
   color: inherit; text-decoration: none;
 }
 a[href^="#"]:hover { color: #002A56; text-decoration: underline; }
-/* Flèche du hero en blanc franc. Le blanc, dans les deux médias, vient de l'attribut
-   stroke='#ffffff' du SVG que `.szh-arrow` porte en fond (§5, plus bas) : la cascade CSS
-   ne descend pas dans une image de fond. Un `stroke: #ffffff` a longtemps traîné ici :
-   WeasyPrint le rejetait à chaque article (« Ignored `stroke: #ffffff`, unknown
-   property ») et il ne changeait rien nulle part.
-   ⚠ `opacity: 1`, en revanche, porte : il neutralise le 0.9 de `.szh-arrow` (§5). Une
-   opacité < 1 ferait dessiner la flèche dans un calque de transparence ; c'était fatal
-   tant qu'elle était un <svg> balisé (PDF/UA-1 7.1-3), et rien ne garantit qu'un fond
-   d'artefact y échappe toujours. Ne pas le retirer. */
+/* Flèche du hero. Son blanc vient de l'attribut stroke='#ffffff' du SVG porté en fond par
+   `.szh-arrow` (§5) : la cascade CSS ne descend pas dans une image de fond.
+   `opacity: 1` neutralise le 0.9 de `.szh-arrow` : une opacité inférieure à 1 ferait
+   dessiner la flèche dans un calque de transparence, à éviter pour PDF/UA-1 (7.1-3). */
 .szh-hero .szh-arrow { color: #ffffff; opacity: 1; }
-/* Notes de bas de page : l'appel de note et le renvoi ↩ ne se soulignent pas — ce sont
-   des repères de navigation, pas des liens sortants à signaler comme tels. (Avant le
-   09.09.2026, cette règle annulait aussi ici la flèche automatique du corps ; elle a
-   disparu avec elle, il ne reste que le soulignement à retirer.) */
+/* Appel de note et renvoi ↩ : des repères de navigation, non soulignés. */
 a.footnote-ref, a.footnote-back { text-decoration: none; }
 
-/* Notes de bas de page imprimées sous leur page, et non rejetées en fin d'article.
-   szh-notes.lua remplace chaque Note pandoc par un <span class="szh-note"> posé à
-   l'endroit de l'appel ; `float: footnote` l'envoie dans la zone @footnote de la page
-   courante, et le compteur `footnote` numérote appel et marque tout seul — il ne faut
-   donc surtout pas ajouter de numérotation ici, elle ferait double emploi.
-   `a.footnote-ref, a.footnote-back` ci-dessus restent utiles pour l'aperçu du cockpit,
-   qui garde, lui, des notes de fin (le filtre ne s'y applique pas) : ce sont là de vrais
-   `<a>` posés par pandoc, qu'il ne faut pas souligner comme des liens ordinaires. */
-/* Corps à 9 px (09.09.2026 ; 8,5 px avant) : 8,5 px faisait de la note le SEUL texte de
-   lecture de toute la maquette sous ce seuil — l'en-tête et le pied courants (§3,
-   .szh-entete-courante/.szh-pied-courant) sont déjà à 9 px, et rien ailleurs ne descend
-   plus bas. Comparé au rendu agrandi sur `test/articles/contenu-long` (la note tient sur
-   une ligne aux deux corps, donc aucun risque de déséquilibrer la zone en la faisant
-   déborder) : 9 px se lit sans effort, quand 8,5 px demandait un plissement d'yeux. La
-   zone de note n'a pas grandi pour autant — même `line-height`, un `padding-top`/
-   `margin-top` (@footnote, §3) qui ne dépendent pas du corps de `.szh-note`.
-   ⚠ Retrait pendant (`text-indent` négatif + `padding-left` égaux) : la deuxième ligne
-   d'une note de plusieurs lignes doit s'aligner sous le TEXTE, pas sous la marque « 1. ».
-   Sans lui, mesuré sur une sonde autonome (WeasyPrint 69, note de trois lignes, police
-   réelle Open Sans Semi-Condensée à 9 px) : la 1re ligne commence à x = 65,15 pt après la
-   marque, les lignes suivantes retombent à x = 54,3 pt — l'aplomb de la marque elle-même,
-   pas du texte. `float: footnote` fait déjà de `.szh-note` un bloc (une boîte flottante
-   est de niveau bloc, CSS 2.1 §9.7) : `display: block` n'est donc pas nécessaire pour que
-   `text-indent` s'applique — vérifié sans lui, même résultat.
-   1,6em a été mesuré, pas deviné : à 1,1em les lignes suivantes retombaient encore à
-   61,7-61,8 pt (court de 3,4 pt) ; à 1,75em — la valeur qui donnait un aplomb parfait dans
-   un premier essai avec une police générique de secours — elles dépassaient à 66,1 pt
-   (1 pt de trop) : Open Sans Semi-Condensée est plus étroite, la marque « N. » y pèse
-   moins. À 1,6em, les trois lignes suivantes retombent à 65,06-65,14 pt contre 65,15 pt
-   pour la première : moins de 0,1 pt d'écart, imperceptible, confirmé sur le rendu agrandi.
-   ⚠ Valeur calée sur un numéro à UN chiffre (« 1. » à « 9. »), comme tous les articles du
-   corpus à ce jour (3 notes au plus) ; un article qui passerait à dix notes verrait sa
-   marque « 10. » plus large que ce que 1,6em réserve, et les lignes suivantes retomberaient
-   un peu court de la largeur d'un chiffre. À surveiller si un article dépasse neuf notes. */
+/* Notes imprimées en bas de leur page. szh-notes.lua remplace chaque Note pandoc par un
+   <span class="szh-note"> à l'endroit de l'appel ; `float: footnote` l'envoie dans la zone
+   @footnote de la page, et le compteur `footnote` numérote appel et marque : aucune
+   numérotation à ajouter ici. L'aperçu du cockpit garde des notes de fin, avec les `<a>`
+   de pandoc (`a.footnote-ref, a.footnote-back` ci-dessus).
+   Corps de 9 px, comme l'en-tête et le pied courants : aucun texte de lecture n'est plus
+   petit.
+   Retrait pendant (`text-indent` négatif et `padding-left` égaux) : les lignes suivantes
+   s'alignent sous le texte et non sous la marque « 1. ». `float: footnote` fait déjà de la
+   note un bloc, `text-indent` s'y applique donc. 1,6em est mesuré avec Open Sans
+   Semi-Condensée : moins de 0,1 pt d'écart avec la première ligne. La valeur vaut pour un
+   numéro à un chiffre ; à partir de la note 10, les lignes suivantes retombent un peu
+   court. */
 .szh-note {
   float: footnote;
   font-size: 9px; line-height: 1.35; text-align: left; hyphens: auto;
@@ -301,52 +188,28 @@ a.footnote-ref, a.footnote-back { text-decoration: none; }
   padding-left: 1.6em; text-indent: -1.6em;
 }
 .szh-note p { margin: 0; }
-/* ⚠ VRAI DÉFAUT, redécouvert le 09.09.2026 après un premier diagnostic faux (« vertical-
-   align: super serait inerte sous WeasyPrint » — ce n'est pas ce qui se passait). Mesuré
-   aux boîtes de caractères du PDF (pypdfium2, get_charbox, page 1 de contenu-long.pdf) :
-   avec `font-size: 0.62em`, l'appel « 1 » mesurait 2,87 pt de haut, soit un em de
-   2,87 / 0,726 = 3,95 pt — et non les ≈ 8,7 px (6,5 pt) attendus d'un corps de 14 px.
-   La cause : en CSS GCPM, ::footnote-call appartient à l'ÉLÉMENT DE NOTE, pas au
-   paragraphe où l'appel s'imprime — il hérite donc de `.szh-note` (8,5 px), pas du corps
-   du texte. `0.62em` valait ainsi 0,62 × 8,5 px, exactement l'em mesuré ; et
-   `vertical-align: 0.46em` calculait sa remontée sur ce même em trop petit
-   (0,46 × 3,95 pt = 1,82 pt, la mesure au centième) — le chiffre restait enfermé dans la
-   hauteur d'x du corps au lieu d'atteindre sa ligne de capitale (7,62 pt au-dessus de la
-   ligne de base, mesuré sur le « M » de « Messungen » de la même page).
-   Remède : `rem` plutôt que `em`, qui ne dépend pas de `.szh-note` (`html { font-size:
-   100% }`, §4, donc 1 rem = 16 px quel que soit le corps de la note). Balayage mesuré sur
-   `vertical-align` (taille fixée à 0.54rem ≈ 8,7 px, ≈ 62 % du corps, la proportion
-   usuelle) :
-     0.22rem → haut du chiffre à 129,59 pt, écart à la capitale (129,87) : 0,28 pt
-     0.24rem → haut du chiffre à 129,83 pt, écart : 0,04 pt  ← retenu
-     0.26rem → haut du chiffre à 130,07 pt, écart : -0,20 pt (dépasse la capitale)
-   Les trois donnent un em de 4,70 / 0,726 = 6,47 pt (contre 3,95 avant) ; 0.24rem est la
-   plus proche de la ligne de capitale, et le rendu agrandi ne montre aucune différence à
-   l'œil entre les trois qui la disqualifierait.
-   ⚠ Avantage collatéral du `rem` : si le corps de `.szh-note` change un jour, l'appel ne
-   bougera pas avec lui — ce qui serait arrivé avec des `em`, puisqu'il en hérite. */
-/* Encre de l'appel : celle du corps (30.09.2026). Il héritait du gris des notes (--c-ink2,
-   #3d3d49), qui ne tient pas sur les fonds teintés à sa taille : Lc 87 sur le fond d'un
-   encadré, pour un seuil de 90 sous 14 px (mesuré dans le PDF, article 09 du 4/2017).
-   test/apca-check.py le mesure sur le papier, le zébrage et chaque fond d'encadré. */
+/* Appel de note. En CSS GCPM, ::footnote-call appartient à l'élément de note et hérite du
+   corps de `.szh-note`, pas de celui du paragraphe : en `em`, l'appel serait trop petit et
+   trop bas. Les valeurs sont donc en `rem` (1 rem = 16 px, `html { font-size: 100% }`).
+   0.54rem fait environ 62 % du corps ; 0.24rem place le haut du chiffre à 0,04 pt de la
+   ligne de capitale (0.22rem : 0,28 pt en dessous ; 0.26rem : 0,20 pt au-dessus).
+   Encre du corps et non le gris des notes (--c-ink2), qui donne Lc 87 sur le fond d'un
+   encadré pour un seuil de 90 sous 14 px. test/apca-check.py le mesure sur le papier, le
+   zébrage et chaque fond d'encadré. */
 ::footnote-call   { font-size: 0.54rem; vertical-align: 0.24rem; line-height: 0; font-weight: 700;
   color: var(--c-ink); }
 ::footnote-marker { font-weight: 700; padding-right: 5px; color: var(--c-ink2); }
 
-/* Repli écran : `float: footnote` n'existe dans aucun navigateur, la note s'imprimerait
-   donc au fil du texte. Elle est ici détachée sous son paragraphe, en plus petit et
-   retirée du bord — lisible comme une note, sans prétendre être en bas d'une page qui
-   n'existe pas. WeasyPrint n'applique pas @media screen : le PDF n'en voit rien. */
+/* Repli écran : aucun navigateur ne connaît `float: footnote`. La note s'affiche détachée
+   sous son paragraphe, en plus petit et en retrait. WeasyPrint n'applique pas
+   @media screen. */
 @media screen {
   .szh-note {
     float: none; display: block;
     margin: 0.4em 0 0.8em 1.5em;
     padding-left: 0.8em;
-    /* Annule le retrait pendant du PDF (`text-indent: -1.6em` ci-dessus, calé sur la
-       largeur de la marque « N. » de ::footnote-marker) : cette pseudo-classe n'existe pas
-       dans un navigateur, il n'y a donc ici aucune marque à faire tenir avec un texte, et
-       sans ce `0`, la première ligne partirait 0,8em plus à gauche que le filet — un
-       défaut qu'un simple survol du repli écran aurait laissé passer. */
+    /* Annule le retrait pendant du PDF : le navigateur n'affiche pas ::footnote-marker,
+       et la première ligne partirait sinon à gauche du filet. */
     text-indent: 0;
     border-left: 2px solid var(--c-rule);
   }
@@ -356,21 +219,18 @@ a.footnote-ref, a.footnote-back { text-decoration: none; }
    Pas de ligne seule en bas ni en haut d'une page ; les titres restent avec le texte
    qui suit ; les encadrés ne se coupent pas. */
 p, li, blockquote p { orphans: 3; widows: 3; }
-/* Limites de coupure de mot, FRANÇAIS SEULEMENT (08.09.2026, règle L4).
-   Le code romand veut au moins deux lettres avant la coupure et TROIS reportées à la
-   ligne suivante — « on ne renvoie pas moins de trois lettres » —, là où le défaut de
-   WeasyPrint 69 est (5, 2, 2). `6 3 3` est la variante de texte soigné : mot de six
-   lettres au minimum, trois de part et d'autre du tiret.
-   ⚠ Pas en allemand, et ce n'est pas un oubli : la langue vit de ses composés, et lui
-   retirer des points de coupure élargirait les blancs d'une ligne justifiée au lieu de
-   les resserrer. Le défaut (5, 2, 2) y reste donc en vigueur.
-   La propriété s'hérite : posée sur <html>, elle descend dans tout le document. */
+/* Limites de coupure de mot, en français seulement (règle L4). Le code romand ne renvoie
+   pas moins de trois lettres à la ligne ; le défaut de WeasyPrint est (5, 2, 2). `6 3 3`
+   est la variante soignée : mot de six lettres au moins, trois de chaque côté du tiret.
+   L'allemand garde le défaut : retirer des points de coupure à ses mots composés
+   élargirait les blancs des lignes justifiées.
+   Posée sur <html>, la propriété s'hérite dans tout le document. */
 html:lang(fr) { hyphenate-limit-chars: 6 3 3; }
-/* Zone de césure, TOUTES LANGUES (23.09.2026). La règle ci-dessus dit OÙ un mot peut se
-   couper ; celle-ci dit QUAND : une ligne ne coupe que si le blanc laissé en bout de ligne
-   dépasse 10 % de sa largeur, sinon les espaces s'étirent un peu. Posée pour WeasyPrint 70,
-   qui coupe beaucoup plus que 69 : le Guide tolère trois lignes coupées de suite et aucune
-   en bas de page, et WeasyPrint n'a ni `hyphenate-limit-lines` ni rien pour le bas de page.
+/* Zone de césure, toutes langues. La règle ci-dessus dit où un mot peut se couper ;
+   celle-ci dit quand : une ligne ne coupe que si le blanc en bout de ligne dépasse 10 % de
+   sa largeur, sinon les espaces s'étirent un peu. WeasyPrint 70 coupe beaucoup plus que 69,
+   et n'a pas de `hyphenate-limit-lines` ; le Guide tolère trois lignes coupées de suite et
+   aucune en bas de page.
    Mesuré sur test/composition/ (huit articles publiés, 81 pages, fr et de) :
      zone    césures  suites de 4+  bas de page  blanc par espace (médiane / 95 %)
      69           117             0            0    1,40 / 4,89 px
@@ -379,18 +239,17 @@ html:lang(fr) { hyphenate-limit-chars: 6 3 3; }
      8 %          279             0            6    1,17 / 3,51
      10 %         176             0            0    1,32 / 4,30
    10 % est la plus petite valeur qui tient les deux règles du Guide, et le texte reste un
-   peu plus serré que sous 69. ⚠ Ne pas régler ce chiffre sur le banc test/articles/ : ses
-   articles courts y donnaient 5 % pour suffisant, le texte réel en a démenti. */
+   peu plus serré que sous 69. Ce réglage se mesure sur test/composition/ : les articles
+   courts de test/articles/ donnent 5 % pour suffisant, à tort. */
 p, li { hyphenate-limit-zone: 10%; }
 h2, h3, h4, h5, h6 { break-after: avoid-page; break-inside: avoid; }
 blockquote, .hervorhebung, .important, .question, figure, .szh-abstract { break-inside: avoid; }
 li { break-inside: avoid; }
 
 /* Saut de page volontaire, écrit dans l'article en bloc vide : ::: {.szh-saut} … :::
-   `break-after: page` est inerte dans un document qui défile, donc pas de condition de
-   média à écrire. Hauteur et marges nulles pour ne pas laisser de blanc en HTML ;
-   `break-before: avoid` évite qu'une page se coupe juste avant le marqueur, ce qui
-   donnerait une page blanche. */
+   `break-after: page` est sans effet à l'écran, d'où l'absence de condition de média.
+   Hauteur et marges nulles pour ne laisser aucun blanc en HTML ; `break-before: avoid`
+   évite une coupure juste avant le marqueur, qui donnerait une page blanche. */
 .szh-saut {
   break-after: page;
   break-before: avoid;
@@ -400,9 +259,8 @@ li { break-inside: avoid; }
 strong, b { font-weight: 700; }
 em, i { font-style: italic; }
 code, pre, kbd, samp { font-family: var(--font-mono); }
-/* Écrit ici plutôt qu'hérité de `$styles.html()$`, qui le porte jusqu'à pandoc 3.8 et plus
-   à partir de 3.9. Sans lui, un `code` en ligne ne se coupe plus comme avant et le
-   paragraphe qui le porte se recompose (mesuré sur test/articles/figures, 23.09.2026). */
+/* Écrit ici : `$styles.html()$` le fournit jusqu'à pandoc 3.8 mais plus à partir de 3.9.
+   Sans lui, un `code` en ligne se coupe autrement et son paragraphe se recompose. */
 code { white-space: pre-wrap; }
 
 /* Le bloc-titre par défaut de pandoc est masqué : la couverture vient du template de
@@ -421,10 +279,9 @@ code { white-space: pre-wrap; }
   /* Hauteur fixe : le titre commence toujours à la même position, DOI et licence
      restent au même endroit. */
   height: var(--hero-hauteur);
-  /* Déborde jusqu'aux bords en annulant les marges @page de la 1re page : le haut
-     doit égaler la marge @page en cours, sinon une bande blanche apparaît. Jetons du §3 :
-     `calc(… * -1)`, parce qu'un `var()` ne s'inverse pas avec un simple signe « - » dans un
-     raccourci `margin`. */
+  /* Déborde jusqu'aux bords en annulant les marges de @page de la 1re page (jetons du §3) ;
+     sinon une bande blanche apparaît. `calc(… * -1)` : un `var()` ne s'inverse pas avec un
+     simple « - » dans le raccourci `margin`. */
   margin: calc(var(--page-marge-haut) * -1) calc(var(--page-marge-droite) * -1) 0
           calc(var(--page-marge-gauche) * -1);
   box-sizing: border-box;   /* height = hauteur totale (padding inclus) */
@@ -432,7 +289,7 @@ code { white-space: pre-wrap; }
 .szh-hero-top { position: relative; display: flex; justify-content: space-between;
   align-items: flex-start; gap: 16px; }
 /* eyebrow, dossier et vol sont des <p> : on annule la marge et la justification du `p`
-   global du §4, la géométrie du hero n'en dépendait pas. */
+   du §4. */
 .szh-hero-eyebrow, .szh-hero-dossier, .szh-hero-vol {
   margin: 0; text-align: left;
   font-size: var(--corps-etiquette-hero); font-weight: 700; text-transform: uppercase;
@@ -449,19 +306,11 @@ code { white-space: pre-wrap; }
    `max-height` pour que la boîte totale ne change pas. */
 .szh-hero-main { max-width: var(--hero-ratio-colonne); max-height: 164px; padding-bottom: 4px;
   overflow: hidden; }
-/* Taille du titre et du sous-titre : 25 / 15 px (décision du 09.09.2026 ; 25 / 16 px dans
-   la variante A2 retenue le 08.09.2026 ; 28 / 14,5 px avant elle). Le couple doit se lire
-   comme UN SEUL BLOC : rapport de 1,67 entre les deux (25/15), la sixte majeure de
-   l'échelle typographique classique, contre 1,56 avant (25/16) — en plus du demi-gras
-   contre le romain et du blanc franc contre --c-hero2, qui restent inchangés et gardent au
-   titre son rôle de premier plan sans ambiguïté.
-   Les deux tailles sont désormais des jetons du socle (--corps-titre-hero,
-   --corps-soustitre-hero, 09.09.2026) : le socle documente déjà qu'ils sont recopiés hors
-   du CSS (test/apca-check.py, et --corps-titre-hero aussi dans
-   filters/szh-titre-lignes.lua) — voir socle.css §2, en tête du groupe. ⚠ Les changer ICI
-   SEULEMENT, en écrivant un px en dur à la place du jeton, romprait ce lien sans qu'aucune
-   erreur ne le signale : le contraste et l'escalier du titre continueraient de se mesurer
-   à l'ancienne taille. */
+/* Titre et sous-titre : 25 et 15 px, un rapport de 1,67 (sixte majeure), avec demi-gras
+   blanc contre romain --c-hero2 : le couple se lit comme un bloc et le titre domine.
+   Les tailles sont des jetons de socle.css (--corps-titre-hero, --corps-soustitre-hero),
+   recopiés par test/apca-check.py et filters/szh-titre-lignes.lua (voir socle.css §2).
+   Écrire une valeur en px ici à la place du jeton romprait ce lien sans erreur. */
 .szh-title {
   font-family: var(--title-family); font-weight: 600; font-size: var(--corps-titre-hero);
   line-height: 1.12; letter-spacing: var(--interlettrage-titre-hero); color: #fff;
@@ -470,96 +319,66 @@ code { white-space: pre-wrap; }
 /* Le signet lit le titre à plat posé par le gabarit : content(text) colle les mots que le
    <br> de l'escalier sépare. */
 .szh-title[data-signet] { bookmark-label: attr(data-signet); }
-/* `hyphens: manual` comme le titre au-dessus (08.09.2026) : sans lui, le sous-titre
-   héritait du `hyphens: auto` du corps (§4) et se coupait dès qu'il passait à la ligne —
-   « ... comme partenaires de forma-tion » en tête de couverture. Un titre de couverture ne
-   se coupe pas. Constaté en essayant d'agrandir le sous-titre, où le repli à la ligne
-   devient le cas ordinaire et non l'exception.
-   Corps à 15 px et non 16 (décision du 09.09.2026, voir la note de .szh-title juste
-   au-dessus pour le rapport 25/15 visé) : un sous-titre plus petit a des hampes plus
-   courtes, ce qui EXIGE une séparation plus faible avec le titre — voir
-   --hero-espace-soustitre au §5, dont la formule dépend directement de ce corps. */
+/* `hyphens: manual` comme le titre : un titre de couverture ne se coupe pas, alors que le
+   corps (§4) est en `hyphens: auto`. La formule de --hero-espace-soustitre (§3) dépend de
+   ce corps. */
 .szh-subtitle { font-family: var(--title-family); font-weight: 400;
   font-size: var(--corps-soustitre-hero); line-height: 1.35; color: var(--c-hero2);
   margin: 12px 0 0; text-align: left; hyphens: manual; }
 /* Fin de ligne de l'escalier du titre (règle L3), posée par filters/szh-titre-lignes.lua
-   sous forme de <br class="szh-titre-ligne">. Elle est calculée pour une colonne de
-   435 px — 67 % de la justification à 25 px — et n'a donc aucun sens à une autre largeur :
-   sur un écran, où la boîte suit la fenêtre, elle est neutralisée. WeasyPrint n'applique
-   pas @media screen (voir §4, la note des notes de bas de page) : le PDF la garde, le
-   navigateur replie comme il veut. */
+   sous forme de <br class="szh-titre-ligne">. Elle est calculée pour une colonne de 435 px
+   (67 % de la justification, à 25 px) ; à l'écran, où la largeur suit la fenêtre, elle est
+   neutralisée. WeasyPrint n'applique pas @media screen : le PDF la garde. */
 @media screen {
   .szh-titre-ligne { display: none; }
 }
-/* Ancré en bas du hero par position absolue, le flexbox de WeasyPrint ne gérant pas
+/* Ancré en bas du hero par position absolue, car le flexbox de WeasyPrint ne gère pas
    margin-top: auto : DOI et licence restent à la même place quel que soit le titre.
-   `line-height: 1.1` (08.09.2026) : c'est lui, et non les marges des deux lignes, qui
-   décide du blanc entre le DOI et la licence. Mesuré au pixel sur le PDF rendu — le modèle
-   de boîte en ligne de WeasyPrint ne se devine pas depuis la feuille : avec l'interligne du
-   corps (1,55) et une marge nulle, il restait 10 px entre les deux, soit la densité du
-   couple « nom de la revue / dossier ». À 1,1 il en reste 5, exactement le blanc qui sépare
-   deux lignes de la liste d'auteur·e·s : DOI et licence se lisent alors comme un bloc de
-   deux lignes, ce qu'ils sont. Une marge négative aurait donné le même résultat en
-   dépendant du strut de cette boîte, donc de l'interligne du corps ; celle-ci ne dépend de
-   rien d'autre qu'elle-même.
-   ⚠ Elle descend dans la liste d'auteur·e·s, qui vit ici : ul.szh-authors reprend donc
-   --leading explicitement plus bas, sinon ses lignes se refermaient avec. */
+   `line-height: 1.1` décide du blanc entre le DOI et la licence : 5 px, comme entre deux
+   lignes d'auteur·e·s (10 px avec l'interligne du corps), pour qu'ils se lisent en bloc.
+   Il s'hérite dans la liste d'auteur·e·s, qui reprend donc --leading (ul.szh-authors). */
 .szh-hero-meta { position: absolute; left: var(--page-marge-gauche); bottom: 38px;
   max-width: 76%; line-height: 1.1; }
-/* Les auteur·e·s sont une <ul> (RGAA 9.3) rendue en ligne. Chaque règle annule
-   explicitement le style de liste global du §6 (puce ▸ absolue, retrait 1.5em) ; le
-   point médian séparateur est décoratif, généré ici par li + li::before. */
-/* `line-height: var(--leading)` : reprise explicite de l'interligne du corps, que le
-   `line-height: 1.1` de .szh-hero-meta ci-dessus lui retirerait — voir sa note. C'est cet
-   interligne qui donne les 5 px de blanc entre deux lignes de noms, la mesure de référence
-   de tout le bloc. */
+/* Les auteur·e·s sont une <ul> (RGAA 9.3) rendue en ligne. Les règles annulent le style
+   de liste du §6 (puce ▸, retrait) ; le point médian séparateur est décoratif
+   (li + li::before).
+   `line-height: var(--leading)` rétablit l'interligne du corps, que .szh-hero-meta
+   remplace par 1.1 : il donne les 5 px entre deux lignes de noms. */
 ul.szh-authors { margin: 0; padding: 0; list-style: none;
   font-size: var(--corps-meta-hero); font-weight: 700; color: #fff;
   line-height: var(--leading); }
-/* `hyphens: manual` (08.09.2026) : un nom de personne ne se coupe pas. Constaté sur une
-   couverture à dix auteur·e·s, la seule où la ligne passe à trois lignes : elle sortait
-   « Vannot- / ti-Bourquin » et « Schwarzenbach, Tho- / mas ». C'est la même règle que
-   filters/szh-cesure.lua tient dans le corps, mais elle doit être écrite ici : cette liste
-   est composée par le gabarit, hors du document pandoc, et aucun filtre ne la voit.
-   ⚠ Et elle doit être écrite SUR LE <li>, pas sur le <ul> : le `li` du §6 pose
-   `hyphens: auto` directement sur ces mêmes éléments, et une déclaration directe passe
-   toujours devant une valeur héritée, quelle que soit la spécificité de son sélecteur.
-   Posée sur le <ul>, elle n'avait aucun effet et la césure restait (mesuré). */
+/* `hyphens: manual` : un nom de personne ne se coupe pas. Dans le corps, c'est
+   filters/szh-cesure.lua qui s'en charge ; cette liste est composée par le gabarit, hors
+   du document pandoc. La règle est sur le <li> et non sur le <ul> : le `li` du §6 pose
+   `hyphens: auto` sur ces éléments, et une déclaration directe l'emporte sur une valeur
+   héritée. */
 .szh-authors li { display: inline; padding: 0; margin: 0; text-align: left;
   hyphens: manual; }
 .szh-authors li::before { content: none; }
-/* ⚠ L'espace qui suit le point médian n'est pas un ornement : c'est la SEULE occasion de
-   retour à la ligne de toute la liste. Le gabarit écrit les <li> sans blanc entre eux
-   (`</li><li>`), et ni une marge ni un point médian n'ouvrent une coupure (UAX #14, le
-   point médian est un séparateur infixe). Sans elle, WeasyPrint n'a plus qu'un endroit où
-   couper une ligne trop longue : l'intérieur d'un nom, par césure. C'est ce qui donnait
-   « Vannot- / ti-Bourquin ». Elle suit le point médian, qui reste donc collé au nom qui
-   précède.
-   Le point médian est un FOND, et plus un caractère (30.09.2026) : écrit en `content`, il
-   entrait dans l'arbre de structure et un lecteur d'écran le lisait entre deux noms. Un fond
-   est un artefact. Le SVG trace le glyphe · d'Open Sans SemiCondensed (glyf, 2048 unités
-   par em), dans une boîte de 496 unités (sa chasse, le `padding-left`) sur 1 em de haut :
-   la hauteur que WeasyPrint donne au fond d'une boîte en ligne, de 1818,5 unités au-dessus
-   de la ligne de base (l'ascendante 2189 moins la moitié de l'excédent 2189 + 600 − 2048).
-   Taille du fond en em et non en 100 % : la boîte de fond couvre aussi l'espace qui suit, et
-   le point s'y retrouvait décentré d'une demi-espace (mesuré).
-   Mesuré : le point se dessine aux mêmes coordonnées que le glyphe, à 0,001 pt près ; au
-   rendu, seul l'anticrénelage de ses bords diffère.
-   L'espace est une vraie espace (U+0020), et plus une espace de largeur nulle : le texte
-   extrait et copié garde « Guilley, E. Cecchini, A. » au lieu de coller les noms. Sa
-   chasse (456 unités) est reprise sur la marge droite, pour que l'écart reste de 6 px. */
+/* L'espace qui suit le point médian est le seul point de retour à la ligne de la liste :
+   le gabarit écrit les <li> sans blanc entre eux, et ni une marge ni un point médian
+   n'ouvrent une coupure (UAX #14). Sans elle, WeasyPrint couperait à l'intérieur d'un nom.
+   Le point médian reste collé au nom qui précède.
+   Le point médian est un fond et non un caractère : écrit en `content`, il entrerait dans
+   l'arbre de structure et un lecteur d'écran le lirait. Le SVG trace le glyphe · d'Open
+   Sans SemiCondensed (2048 unités par em) dans une boîte de 496 unités (sa chasse, le
+   `padding-left`) sur 1 em de haut, la hauteur que WeasyPrint donne au fond d'une boîte en
+   ligne, à 1818,5 unités au-dessus de la ligne de base (ascendante 2189 moins la moitié de
+   l'excédent 2189 + 600 − 2048). La taille du fond est en em et non en 100 %, car la boîte
+   couvre aussi l'espace qui suit. Le point se dessine aux coordonnées du glyphe.
+   L'espace est une vraie espace (U+0020) : le texte copié garde « Guilley, E. Cecchini,
+   A. ». Sa chasse (456 unités) est reprise sur la marge droite, pour un écart de 6 px. */
 .szh-authors li + li::before {
   content: " ";
   position: static; display: inline; left: auto; top: auto;
   padding-left: 0.2421875em;               /* chasse du · : 496 / 2048 */
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -1818.5 496 2048'%3E%3Cpath fill='%239295A2' transform='scale(1 -1)' d='M136 716Q136 781 166.5 812Q197 843 247 843Q297 843 328.5 813.5Q360 784 360 716Q360 649 328 618.5Q296 588 247 588Q198 588 167 619.5Q136 651 136 716Z'/%3E%3C/svg%3E") 0 0 / 0.2421875em 1em no-repeat;
-  /* ⚠ Couleur pré-mélangée (le fill du SVG, et `color`, que lit test/apca-check.py), et
-     `opacity` laissée à 1 : ne pas revenir à `#fff` + `opacity: 0.5`. Toute déclaration
-     `opacity` < 1 fait dessiner l'élément par WeasyPrint dans un Form XObject à groupe de
-     transparence, où il ré-émet un /MCID sans référence /Stm : le contenu devient orphelin
-     de l'arbre de structure et le PDF n'est plus conforme PDF/UA-1 (règle 7.1-3). #9295A2
-     est exactement le blanc à 50 % composé sur le bleu nuit du hero (#252B46), fond que
-     `overflow: hidden` garantit. */
+  /* Couleur pré-mélangée (le fill du SVG, et `color`, lu par test/apca-check.py) avec
+     `opacity: 1`, plutôt que `#fff` et `opacity: 0.5`. Avec une opacité inférieure à 1,
+     WeasyPrint dessine l'élément dans un Form XObject à groupe de transparence et y émet un
+     /MCID sans référence /Stm : le contenu sort de l'arbre de structure, ce que PDF/UA-1
+     interdit (règle 7.1-3). #9295A2 est le blanc à 50 % sur le bleu nuit du hero
+     (#252B46), seul fond possible grâce à `overflow: hidden`. */
   color: #9295A2; opacity: 1; font-weight: 400; font-size: inherit; line-height: inherit;
   margin: 0 calc(6px - 0.22265625em) 0 6px;  /* chasse de l'espace : 456 / 2048 */
 }
@@ -567,107 +386,80 @@ ul.szh-authors { margin: 0; padding: 0; list-style: none;
   display: inline-flex; align-items: center; gap: 6px; color: var(--c-hero2);
   font-weight: 400; text-decoration: none;
 }
-/* 15 px au-dessus du DOI, rien au-dessus de la licence (08.09.2026 ; c'était 6 et 15) :
-   DOI et licence sont deux mentions de même nature et se lisent en paire, détachée de la
-   ligne d'auteur·e·s. Avant, le DOI était collé aux auteur·e·s et la licence flottait
-   seule. Le blanc qui reste entre les deux ne vient pas d'ici mais du `line-height` de
-   .szh-hero-meta — voir sa note. */
+/* 15 px au-dessus du DOI, rien au-dessus de la licence : les deux mentions se lisent en
+   paire, détachée des auteur·e·s. Le blanc entre elles vient du `line-height` de
+   .szh-hero-meta. */
 .szh-doi { margin-top: 15px; font-size: var(--corps-meta-hero); }
 .szh-licence { margin-top: 0; font-size: var(--corps-licence-hero); }
-/* La flèche « lien sortant », posée en <svg> inline par templates/szh-article.html à côté
-   du DOI et de la licence.
-   `margin-bottom` n'est pas un réglage de blanc : c'est le seul moyen de la REMONTER ici.
-   .szh-doi et .szh-licence sont des `inline-flex` en `align-items: center`, qui centrent la
-   boîte de MARGE de leur enfant — une marge basse de N décale donc l'encre de N/2 vers le
-   haut, sans rien changer au reste de la ligne.
-   Pourquoi la remonter (12.09.2026) : géométriquement elle était déjà centrée sur la bande
-   des chiffres (mesuré au rendu : 0,25 px AU-DESSUS de leur centre). Elle paraissait basse
-   quand même — un marqueur de lien sortant se lit en haut du mot, pas à mi-hauteur. Ces 2 px
-   valent 1 px de remontée, ce qui amène le haut de la flèche à fleur du haut des chiffres.
-   ⚠ Ne pas monter plus haut. Mesuré sur le même rendu : à 3 px la flèche dépasse le haut des
-     chiffres, et surtout sa boîte de marge devient plus haute que la ligne de texte, qui se
-     met alors à descendre (+1 px à 3 px, +7 px à 4 px). Le hero a une hauteur FIXE
-     (--hero-hauteur) et ce glissement finirait par y toucher. */
+/* Flèche « lien sortant » à côté du DOI et de la licence, posée par
+   templates/szh-article.html.
+   `margin-bottom` sert à la remonter : .szh-doi et .szh-licence sont des `inline-flex` en
+   `align-items: center`, qui centrent la boîte de marge de leur enfant ; une marge basse
+   de N remonte donc l'encre de N/2. 2 px amènent le haut de la flèche au haut des
+   chiffres, où se lit un marqueur de lien. Au-delà, la boîte de marge dépasse la ligne de
+   texte, qui descend alors, et le hero a une hauteur fixe (--hero-hauteur). */
 .szh-arrow {
   width: 11px; height: 11px; opacity: 0.9; flex-shrink: 0; display: block;
   margin-bottom: 2px;
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 17 L17 7'/%3E%3Cpath d='M8 7 H17 V16'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
 }
-/* Filigrane de couverture. ⚠ Même règle que le point médian ci-dessus : pas d'`opacity`
-   < 1, sinon WeasyPrint dessine le filigrane dans un calque de transparence et son
-   contenu sort de l'arbre de structure (PDF/UA-1 7.1-3). Les 7 % sont pré-mélangés dans
-   l'attribut fill='#343A53' du SVG de fond ci-dessous : c'est exactement du blanc à 7 %
-   sur le bleu nuit #252B46, et `overflow: hidden` du hero garantit que le filigrane ne
-   déborde jamais sur un autre fond.
-   Filigrane et flèche sont des FONDS, posés sur un <span> vide, et non des <svg> inline
-   (23.09.2026) : WeasyPrint 70 balise tout <svg> inline en /Figure et lui exige un texte
-   de remplacement, qu'il ne lit que dans un <title> — `aria-hidden` n'y fait rien. Les
-   deux décors faisaient tomber PDF/UA-1 sur chaque article. Un fond est un artefact :
-   hors de l'arbre de structure, sous 69 comme sous 70, et le rendu est inchangé au pixel
-   près (écart maximal de 2/255 sur l'anticrénelage du filigrane). */
+/* Filigrane de couverture. Comme pour le point médian, pas d'`opacity` inférieure à 1
+   (PDF/UA-1 7.1-3) : les 7 % sont pré-mélangés dans fill='#343A53', du blanc à 7 % sur le
+   bleu nuit #252B46 ; `overflow: hidden` du hero garantit ce fond.
+   Filigrane et flèche sont des fonds posés sur un <span> vide, et non des <svg> inline :
+   WeasyPrint 70 balise tout <svg> inline en /Figure et exige un texte de remplacement,
+   qu'il ne lit que dans un <title> (`aria-hidden` n'y change rien). Un fond est un
+   artefact, hors de l'arbre de structure. */
 .szh-book { position: absolute; right: -30px; bottom: -56px; width: 300px; height: 300px;
   opacity: 1;
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 141.73 141.73'%3E%3Cpath fill='%23343A53' d='M125.77,59.41v27.71l8.59-5.74V25.78s-26.5,15-29.13,16.21c-1.71.79-8.1,2.68-14.59.59-3.37-1.07-5.75-3.7-6.16-5.42-.6-2.46.97-4.7,3.33-6.37,1.71-1.23,37.86-21.85,37.86-21.85v5.17s-32.86,18.71-34.04,19.41c-2.75,1.68-3.65,3.4.2,4.9,4.37,1.72,10.76-.23,12.25-.78,1.49-.55,34.92-19.84,34.92-19.84.01,21.86,0,44.85,0,67.05l-13.33,9.03v32.95l-4.72-1.91v-62.73l-40.52-17.38c-3.6-1.47-8.66-1.01-11.01,1.94-1.72,2.14-.57,3.61,1.15,4.84l37.68,16.79v70.26s-41.09-21.85-42.98-22.84c-1.9-1-2.05-3.64-2.05-3.64v-5.31l-42.85,25.14V61.78c17.55-9.83,36.2-20.82,37.83-21.67,3.29-1.69,1.78-3.73-.46-4.88-3.18-1.59-7.08-1.8-9.99-.67-3.07.94-40.64,22.05-40.64,22.05v65.05l-4.73,2.6V53.73s28.89-15.87,28.89-15.87V12.76s39.1,16.63,41.61,17.28c2.51.64,4.99.23,6.86-1.49,1.14-1.3,1.9-2.77.5-4.38-1.57-1.83-34.18-15.51-34.18-15.51v-4.43s28,12.15,34.04,15.08c1.72.92,4.82,2.86,5.26,5.95.35,2.48-1.31,5.47-3.52,7.05-2.51,1.78-6.26,2.28-8.38,2-3.02-.39-10.05-3.36-37.45-14.8v16.19c4.7-2.4,9.24-6.36,17.52-5.88,4.87.44,11.07,3.32,11.75,7.58.34,2.15-.27,3.96-2.88,5.78l-37.29,21.37v58.88l38.12-22.4v-49.46s-.08-3.09.26-4.16c2.14-6.75,11.58-9.09,16.95-7.15,3.85,1.26,45.34,19.13,45.34,19.13ZM67.94,56.04v55.6l35.58,18.9v-59.01c-11.89-5.17-23.55-10.61-35.58-15.49Z'/%3E%3C/svg%3E") center / 100% 100% no-repeat; }
 
 /* ── Option « condenser l'en-tête » ────────────────────────────────────────────
    Réglage du numéro (`entete-condensee` dans ausgabe.yaml), posé en classe sur <body> par
-   le template : sans l'option, la maquette par défaut n'est pas touchée. Condensé, le
-   hero prend la hauteur de son contenu et les éléments sont séparés par les espaces
-   minimum --hero-espace-titre/-soustitre/-meta, qui ne servent que dans ce mode — déclarés
-   au :root du §3 depuis le 09.09.2026 (avec leurs mesures et leurs décisions), puisque ce
-   mode est désormais la maquette par défaut. Les règles ci-dessous n'en restent pas moins
-   les seules à les CONSOMMER : c'est ici, et seulement ici, qu'il faut lire leur effet. */
-/* Hauteur libre. `min-height` garde une bannière crédible dans le cas le plus
-   dépouillé : titre d'une ligne, un auteur, pas de sous-titre. */
+   le template. Condensé, le hero prend la hauteur de son contenu, et ses éléments sont
+   séparés par --hero-espace-titre/-soustitre/-meta (déclarés au :root du §3, avec leurs
+   mesures). Ces jetons ne sont utilisés qu'ici. */
+/* Hauteur libre. `min-height` garde une bannière suffisante pour un titre d'une ligne, un
+   auteur et pas de sous-titre. */
 .szh-entete-condensee .szh-hero { height: auto; min-height: var(--hero-hauteur-plancher); }
-/* Plus de hauteur bornée : un titre long allonge le hero au lieu d'être rogné, donc
-   plus de découpe des jambages non plus. */
+/* Pas de hauteur bornée : un titre long allonge le hero au lieu d'être rogné. */
 .szh-entete-condensee .szh-hero-main {
   max-height: none; padding-bottom: 0; overflow: visible;
 }
 .szh-entete-condensee .szh-title { margin-top: var(--hero-espace-titre); }
 .szh-entete-condensee .szh-subtitle { margin-top: var(--hero-espace-soustitre); }
-/* Le bloc auteurs/DOI/licence revient dans le flux, ce qui supprime le vide. Effet de
-   bord favorable : un enfant en flux normal est peint dans l'ordre du DOM, donc l'ordre
-   de lecture du PDF n'a plus besoin, pour ce bloc, du rattrapage documenté plus bas. */
+/* Le bloc auteurs/DOI/licence revient dans le flux, ce qui supprime le vide. En flux
+   normal, il est peint dans l'ordre du DOM, ce qui garde l'ordre de lecture du PDF. */
 .szh-entete-condensee .szh-hero-meta {
   position: static; left: auto; bottom: auto;
   margin-top: var(--hero-espace-meta);
-  /* `max-width: 76%` doit tomber : en absolu le pourcentage se rapporte à la boîte de
-     padding du hero, en flux à sa boîte de contenu — le bloc rétrécirait, et une longue
-     liste d'auteur·e·s gagnerait une ligne au moment même où l'on condense. */
+  /* Sans `max-width: 76%` : en flux, le pourcentage se rapporte à la boîte de contenu du
+     hero et non plus à sa boîte de padding, et le bloc rétrécirait. */
   max-width: none;
 }
 
-/* Filet 6 px couleur annuelle sous le hero, pleine largeur : même procédé que .szh-hero
-   (annuler la marge @page par une marge négative égale), donc les mêmes jetons — c'est un
-   QUATRIÈME endroit où la marge de page revenait en dur, en plus des trois cités au §3. */
+/* Filet de 6 px à la couleur annuelle sous le hero, pleine largeur : comme .szh-hero, il
+   annule la marge de @page par une marge négative égale (jetons du §3). */
 .szh-filet { height: 6px; background: var(--c-annual);
   margin: 0 calc(var(--page-marge-droite) * -1) 0 calc(var(--page-marge-gauche) * -1); }
 
 /* Résumés (Zusammenfassung / Résumé) + mots-clés. */
 /* 30 px entre le filet annuel et le premier résumé, comme entre les deux résumés
-   (.szh-abstract) : une seule respiration pour toute la zone de couverture. */
+   (.szh-abstract). */
 .szh-cover-body { padding: 30px 0 40px; }   /* marges gérées par @page */
 
-/* Article sans résumé — l'éditorial, la tribune libre, la Documentation : leur rubrique
-   n'en exige pas (lib/export-ojs.js, `sansResume`) — le gabarit n'écrit alors pas
-   .szh-cover-body du tout ($if(resumes)$ de templates/szh-article.html). Le filet annuel
-   devient le dernier enfant de .szh-cover, et le premier paragraphe du corps venait se
-   coller dessous : un éditorial ouvre d'ordinaire sans titre, il n'y avait donc même pas
-   la marge d'un h2 pour l'en détacher. Ces 30 px rendent la respiration que le
-   `padding-top` de .szh-cover-body donne aux articles qui ont un résumé, et ne s'y
-   cumulent jamais — `:last-child` ne matche que quand le bloc des résumés est absent.
-   ⚠ Deux classes plus une pseudo-classe : il faut cette spécificité pour passer devant le
-   `margin` à quatre valeurs de .szh-filet ci-dessus, dont la marge basse vaut 0. */
+/* Article sans résumé (éditorial, tribune libre, Documentation ; voir `sansResume` dans
+   lib/export-ojs.js) : le gabarit n'écrit pas .szh-cover-body, et le filet annuel devient
+   le dernier enfant de .szh-cover. Ces 30 px remplacent le `padding-top` de
+   .szh-cover-body et détachent le corps du filet ; `:last-child` ne s'applique qu'en
+   l'absence de résumés. La spécificité doit l'emporter sur le `margin` de .szh-filet. */
 .szh-cover > .szh-filet:last-child { margin-bottom: 30px; }
 
-/* Ordre de peinture du PDF — ne pas retirer : aucun effet visuel, mais essentiel. Le hero
-   est positionné, or CSS peint les éléments positionnés après le contenu en flux normal
-   (CSS 2.1, annexe E) : sans cette règle, WeasyPrint écrit la couverture dans le flux PDF
-   après les résumés et le corps, et l'extraction de texte lit la page 1 dans le désordre.
-   Positionner les frères du hero et la suite les met dans la même couche de peinture, où
-   l'ordre redevient celui du DOM ; `position: relative` sans décalage ne déplace rien. */
+/* Ordre de peinture du PDF, sans effet visuel. Le hero est positionné, et CSS peint les
+   éléments positionnés après le flux normal (CSS 2.1, annexe E) : sans cette règle,
+   WeasyPrint écrit la couverture après les résumés et le corps, et l'extraction de texte
+   lit la page 1 dans le désordre. Positionner ce qui suit le hero met tout dans la même
+   couche, dans l'ordre du DOM ; `position: relative` sans décalage ne déplace rien. */
 .szh-filet,
 .szh-cover-body,
 .szh-cover ~ * { position: relative; }
@@ -676,12 +468,10 @@ ul.szh-authors { margin: 0; padding: 0; list-style: none;
   border-left: 3px solid var(--c-abstract-border);
 }
 .szh-abstract:last-child { margin-bottom: 0; }
-/* « Résumé / Zusammenfassung » est un h2, vrai titre navigable au lecteur d'écran, qui
-   garde son rendu d'étiquette : on annule le style des h2 de section du §6, comme
-   .szh-auteurs-titre au §8. Rien à dé-numéroter : ce titre est écrit par le template, hors
-   document pandoc, donc szh-sections.lua ne le voit pas.
-   Casse : jamais en capitales (A4, 31.08.2026) — « Résumé » et « Zusammenfassung »
-   s'impriment tels quels, la seule mise en avant venant du poids et du crénage. */
+/* « Résumé / Zusammenfassung » est un h2, navigable au lecteur d'écran, rendu comme une
+   étiquette : le style des h2 du §6 est annulé, comme pour .szh-auteurs-titre (§8). Écrit
+   par le template, il n'est pas numéroté par szh-sections.lua.
+   Pas de capitales (règle A4) : la mise en avant vient du poids et de l'interlettrage. */
 .szh-abstract-label {
   margin: 0 0 8px; line-height: var(--leading);
   font-weight: 700; letter-spacing: 0.14em;
@@ -703,52 +493,47 @@ ul.szh-kws { margin: 10px 0 0; padding: 0; list-style: none;
    défaut, sans couverture) rende les mêmes éléments que le PDF. */
 
 /* Titres de corps h2–h6 (RGAA 9.1) : le seul h1 est le titre de l'article, sur la
-   couverture, et szh-niveaux.lua compacte le corps à partir de h2 — ces sélecteurs sont
-   le miroir du filtre, à modifier ensemble. La numérotation hiérarchique (1, 1.1, 1.1.1)
-   n'est plus ici : szh-sections.lua l'écrit dans le texte du titre, seul moyen qu'elle
-   suive l'article jusqu'au galley DOCX de l'export OJS. Il ne reste que la mise en forme
-   du numéro (.szh-num-section). Ne pas réintroduire de compteurs CSS : on numéroterait
-   deux fois. */
+   couverture, et szh-niveaux.lua fait commencer le corps à h2 ; ces sélecteurs suivent le
+   filtre. La numérotation (1, 1.1, 1.1.1) est écrite dans le texte du titre par
+   szh-sections.lua, pour qu'elle suive l'article jusqu'au DOCX de l'export OJS : un
+   compteur CSS numéroterait deux fois. Ici, seule la mise en forme du numéro
+   (.szh-num-section). */
 h2, h3, h4, h5, h6 {
   font-family: var(--title-family); font-weight: 700; line-height: 1.22;
   color: var(--c-ink); text-align: left; letter-spacing: -0.005em;
   margin: 1.4em 0 0.4em; break-after: avoid; hyphens: manual;
 }
 h2:first-child, h3:first-child, h4:first-child, h5:first-child, h6:first-child { margin-top: 0; }
-/* Tailles en rem, décroissantes, jamais inférieures au corps (0.875rem). h2–h4 portent
-   un numéro (1 / 1.1 / 1.1.1) écrit par szh-sections.lua, h4 est à la taille du corps ;
-   h5 et h6 gardent la taille et la graisse de h4 mais n'ont pas de numéro — les trois
-   rangs numérotés sont fixés dans le filtre, ces tailles-ci en sont le miroir. */
+/* Tailles en rem, décroissantes, au moins celle du corps (0.875rem). h2–h4 portent un
+   numéro (szh-sections.lua) ; h4 est à la taille du corps ; h5 et h6 ont la taille et la
+   graisse de h4, sans numéro. */
 h2 { font-size: 1.2rem; }
 h3 { font-size: 1.05rem; }
 h4, h5, h6 { font-size: var(--body-size); }
 /* Numéro de section, posé dans le texte du titre par szh-sections.lua. L'espace
-   insécable qui le sépare du titre est dans le texte, à l'intérieur du span ; il ne reste
-   ici que la respiration visuelle et les chiffres à largeur fixe. */
+   insécable qui le sépare du titre est dans le texte, à l'intérieur du span ; ici, un
+   peu d'air et des chiffres à chasse fixe. */
 .szh-num-section {
   color: #000000; font-variant-numeric: tabular-nums; margin-right: 0.35em;
 }
 
 /* Listes : puce = triangle ▸ noir (~1.2 em) ; numérotée « 1. » noire.
    Texte justifié et césure hérités de `p` et `li`.
-   Les marqueurs sont de vrais ::marker (30.09.2026), et non plus des ::before : WeasyPrint
-   balise le ::marker en /Lbl et le reste de l'élément en /LBody (LI > Lbl + LBody). Un
-   ::before, lui, laissait des /LI sans /Lbl, le ▸ et le « 1. » lus comme des mots du texte
-   (mesuré sur l'arbre de structure).
-   ⚠ WeasyPrint place le marqueur extérieur CONTRE le bord gauche de la boîte du <li>, à sa
-   largeur naturelle : ni `left`, ni `width`, ni `margin`, ni `text-align` n'ont d'effet sur
-   un ::marker (mesuré). Pour garder le signe sur la marge du texte, c'est donc le <ul>/<ol>
-   qui porte, en retrait, EXACTEMENT la largeur du marqueur, et le <li> le reste du retrait
-   du texte (1,5 em et 1,7 em, comme avant). Les largeurs sont celles des glyphes d'Open Sans
-   SemiCondensed (hmtx, 2048 unités par em) :
+   Les marqueurs sont des ::marker et non des ::before : WeasyPrint balise le ::marker en
+   /Lbl et le reste en /LBody (LI > Lbl + LBody), alors qu'un ::before laisserait le ▸ et
+   le « 1. » lus comme des mots du texte.
+   WeasyPrint place le marqueur extérieur contre le bord gauche de la boîte du <li>, à sa
+   largeur naturelle : `left`, `width`, `margin` et `text-align` n'ont pas d'effet sur un
+   ::marker. Pour garder le signe sur la marge, le <ul>/<ol> porte en retrait exactement la
+   largeur du marqueur, et le <li> le reste du retrait du texte (1,5 em et 1,7 em). Largeurs
+   des glyphes d'Open Sans SemiCondensed (hmtx, 2048 unités par em) :
      ▸      1081 dans les six faces, dessiné à 1,05 em        -> 0,554224 em
      « 1. » 1021 + 496 (romain 400 ; chiffres à chasse fixe)  -> 0,740723 em
      « 1. » 959 + 459 (italique, citation)                    -> 0,692383 em
      un chiffre de plus : 1021 (romain), 959 (italique)       -> 0,498535 / 0,468262 em
-   Le PDF est identique au pixel à celui des ::before (300 dpi, listes de 12, imbriquées,
-   lettrées, citées). Dans l'aperçu (Chromium), chaque élément à puce gagne 1 px : le
-   marqueur à 1,05 em y compte dans la hauteur de la première ligne. Changer de police ou de corps du
-   marqueur, c'est recalculer ces nombres — sinon le signe glisse de la marge, sans erreur. */
+   Dans l'aperçu (Chromium), chaque élément à puce gagne 1 px : le marqueur à 1,05 em y
+   compte dans la hauteur de la première ligne. Changer la police ou le corps du marqueur
+   oblige à recalculer ces nombres, sinon le signe quitte la marge sans erreur. */
 @counter-style szh-puce { system: cyclic; symbols: "\25B8"; suffix: ""; }   /* ▸ (U+25B8) */
 @counter-style szh-numero { system: extends decimal; suffix: "."; }         /* « 1. » sans espace */
 ul, ol { margin: 0.7em 0; padding: 0; }
@@ -758,15 +543,15 @@ li { position: relative; padding-left: 0.945776em; margin: 0.3em 0;
   text-align: justify; hyphens: auto; overflow-wrap: break-word; }
 /* Le marqueur hérite l'interligne du <li> : sa ligne de base se cale sur celle du texte. */
 ul > li::marker { color: var(--c-bullet-marker); font-weight: 700; font-size: 1.05em; }
-/* ⚠ WeasyPrint n'honore pas l'attribut `start` d'un <ol> : un `<ol start="13">` numérote
-   « 1. ». szh-listes-serrees.lua enveloppe donc une telle liste dans .szh-liste-rang, dont
-   partage-filtres.css lit le rang de départ en counter-reset. Côté saisie, lib/ressources.js
-   (cockpit) échappe le point d'un descriptif de fiche qui commence par « 13. », pour que ce
-   texte reste un paragraphe. L'attribut `type` (« a. », « i. ») est ignoré de même : szh-numero l'emporte. */
+/* WeasyPrint ignore l'attribut `start` d'un <ol> : `<ol start="13">` numérote « 1. ».
+   szh-listes-serrees.lua enveloppe donc une telle liste dans .szh-liste-rang, dont
+   partage-filtres.css lit le rang de départ en counter-reset. lib/ressources.js (cockpit)
+   échappe le point d'un descriptif de fiche qui commence par « 13. », pour qu'il reste un
+   paragraphe. L'attribut `type` (« a. », « i. ») est ignoré aussi : szh-numero l'emporte. */
 ol > li { padding-left: 0.959277em; }
-/* À partir de 10, le numéro gagne un chiffre : le <li> s'écarte d'autant (marge), pour que le
-   numéro commence toujours sur la marge et le texte toujours à 1,7 em. Trois chiffres ne
-   tiennent plus dans 1,7 em (1,74 em) : sans objet pour une liste d'article. */
+/* À partir de 10, le numéro gagne un chiffre : le <li> s'écarte d'autant (marge), pour que
+   le numéro commence sur la marge et le texte à 1,7 em. Trois chiffres ne tiendraient pas
+   dans 1,7 em. */
 ol > li:nth-child(n+10) { margin-left: 0.498535em; padding-left: 0.460742em; }
 /* Liste qui reprend plus loin (szh-listes-serrees.lua) : data-deux-chiffres donne le rang du
    premier item à deux chiffres, décalé comme le 10e item d'une liste qui part de 1. */
@@ -779,10 +564,9 @@ ol > li:nth-child(n+10) { margin-left: 0.498535em; padding-left: 0.460742em; }
 .szh-liste-rang[data-deux-chiffres="7"] > ol > li:nth-child(n+7),
 .szh-liste-rang[data-deux-chiffres="8"] > ol > li:nth-child(n+8),
 .szh-liste-rang[data-deux-chiffres="9"] > ol > li:nth-child(n+9) { margin-left: 0.498535em; padding-left: 0.460742em; }
-/* Numéro non gras (08.09.2026) : le rang d'une liste numérotée est un repère, pas une
-   mise en avant. La puce ▸ des listes à puces reste en gras, elle : c'est un signe et
-   non un mot, et son poids fait sa lisibilité au corps où elle est dessinée. Chiffres à
-   chasse fixe : déjà la valeur de ::marker dans la feuille par défaut de WeasyPrint. */
+/* Numéro non gras : le rang d'une liste est un repère, pas une mise en avant. La puce ▸
+   reste en gras, son poids la rend lisible. Chiffres à chasse fixe, comme dans la feuille
+   par défaut de WeasyPrint. */
 ol > li::marker { color: var(--c-num-marker); font-weight: 400; font-variant-numeric: tabular-nums; }
 /* Citation (italique) : chiffres et point plus étroits. */
 blockquote ol { padding-left: 0.692383em; }
@@ -811,13 +595,9 @@ blockquote p:last-child { margin-bottom: 0; }
   margin: 1em 0; padding: 0 0 0 20px; border: 0;
   border-left: 4px solid var(--c-annual); break-inside: avoid;
 }
-/* Taille du corps, et non plus 1,15 em (08.09.2026) : la mise en avant se lit au filet
-   annuel et au fer à gauche dans une page justifiée, pas à un corps plus gros. Le
-   `font-size: 1em` reste écrit plutôt que supprimé — c'est ici qu'on lira la décision le
-   jour où l'on voudra y revenir. Le fer à gauche, lui, était déjà là : il est confirmé.
-   ⚠ `font-weight: 500` ne pèse rien : Open Sans est instanciée en 400/600/700 (socle.css),
-   et l'appariement CSS ramène 500 sur le 400. À corps égal, il ne reste donc que le filet
-   et l'alignement pour distinguer le bloc — c'est le parti pris, pas un oubli. */
+/* Au corps du texte : la mise en avant vient du filet annuel et du fer à gauche dans une
+   page justifiée. `font-weight: 500` revient au 400, car Open Sans n'est chargée qu'en
+   400, 600 et 700 (socle.css). */
 .hervorhebung > *, .highlight > * {
   margin: 0; font-size: 1em; line-height: 1.4; font-weight: 500;
   color: var(--c-ink); text-align: left; hyphens: none;
@@ -838,76 +618,55 @@ blockquote p:last-child { margin-bottom: 0; }
 .important > *:not(:first-child) { text-align: justify; }
 .important > *:last-child { margin-bottom: 0; }
 
-/* Question (::: {.question}) : plus de cadre depuis le 09.09.2026 (demande du responsable
-   de la revue) — elle se compose comme un intertitre courant, en gras au corps du texte,
-   et non plus comme un encadré teinté à filet gauche. Espacement mesuré sur la capture de
-   référence fournie par le responsable (interligne du corps 26 px, corps ≈ 16,8 px à
-   l'échelle de la capture) : ≈25 px de blanc au-dessus en plus de l'interligne (≈1,5 em,
-   le double d'un interparagraphe), ≈10 px en dessous (≈0,6 em, un interparagraphe) — la
-   question reste plus proche de la réponse qui suit que du texte qui précède, comme un
-   titre. `break-inside: avoid` reste dans la liste du §4 (l. ~182), à ne pas dupliquer ici.
-   `break-after: avoid-page` : la preuve ne vient pas de test/articles/contenu-long, qui ne
-   place aucune question en bas de page et ne pouvait donc rien montrer. Elle vient d'une
-   sonde à hauteur de page balayée (09.09.2026, une question suivie de sa réponse, hauteur
-   de page balayée de 90 à 120 px) : à 90, 96 et 102 px, sans la déclaration la question
-   finit une page et sa réponse part sur la suivante ; avec elle, les deux passent
-   ensemble. Aux trois autres hauteurs testées, tout tenait déjà d'un bloc, il n'y avait
-   rien à montrer. WeasyPrint 69 honore donc bien cette déclaration ici, à la différence de
-   `figcaption` plus bas où elle est inerte (voir la note à `img`). */
+/* Question (::: {.question}) : composée comme un intertitre, en gras au corps du texte,
+   sans cadre. 1,5 em au-dessus et 0,6 em en dessous : la question reste plus proche de la
+   réponse qui suit, comme un titre.
+   `break-after: avoid-page` garde la question avec sa réponse : vérifié sur une page de
+   hauteur variable, WeasyPrint l'honore ici (alors qu'il l'ignore sur `figcaption`, voir
+   `img`). */
 .question {
   margin: 1.5em 0 0.6em;
   break-inside: avoid;
   break-after: avoid-page;
 }
-/* `text-align: left` et `hyphens: none` : même parti pris qu'à `.hervorhebung, .highlight`
-   (§6) — le corps est justifié (`p` du §4), mais une question est une ligne d'appel, pas
-   un paragraphe justifié. */
+/* `text-align: left` et `hyphens: none`, comme `.hervorhebung, .highlight` : une question
+   n'est pas un paragraphe justifié. */
 .question > * {
   margin: 0; font-weight: 700; font-size: 1em; text-align: left; hyphens: none;
   color: var(--c-ink);
 }
 
 /* ═══ Numérotation des figures et des tableaux ════════════════════════════════
-   Elle est faite par filters/szh-numerotation.lua, qui écrit « Figure N — » dans le texte
-   de la légende : un numéro posé par `content:` n'existe que visuellement. Ne pas
-   réintroduire de compteurs CSS ici, on numéroterait deux fois. Il ne reste que la mise
-   en forme du numéro (.szh-numero). Les titres de section suivent la même règle depuis
-   szh-sections.lua : plus aucun compteur CSS dans cette feuille, hors la pagination. */
+   filters/szh-numerotation.lua écrit « Figure N — » dans le texte de la légende, et
+   szh-sections.lua fait de même pour les titres : un numéro posé par `content:` n'existe
+   que visuellement. Cette feuille n'a pas d'autre compteur CSS que la pagination.
+   Le préfixe, les crédits, les appels non liés et la description longue d'un tableau sont
+   mis en forme dans styles/partage-filtres.css. */
 
-/* Le préfixe « Figure N — » / « Tableau N — », les crédits, les appels de citation non liés
-   (aperçu) et la description longue d'un tableau sont désormais dans
-   styles/partage-filtres.css, avec les autres classes que posent les filtres communs à la
-   revue et au livre — feuille empilée juste avant celle-ci. */
-
-/* Toute image reste dans la colonne : une image hors numérotation sans crédits n'est
-   pas dans une <figure>, et sans cette règle un fichier de 2000 px de large — la
-   résolution que le cockpit conseille — déborderait de la page.
-   `max-height` plafonne aussi la hauteur (--plafond-figure, socle.css) : une image en
-   portrait ramenée à la largeur de la colonne peut dépasser une page, et une <figure>
-   plus haute qu'une page ne tient plus d'un bloc — WeasyPrint abandonne alors son
-   `break-inside: avoid` et coupe au premier point permis, juste sous la légende.
-   ⚠ `break-after: avoid` sur la <figcaption>, pour retenir la légende, est inerte dans
-   WeasyPrint 69 (mesuré) : ne pas le rajouter en croyant mieux faire, seule la hauteur
-   de l'image referme la page. */
+/* Toute image reste dans la colonne : une image hors numérotation sans crédits n'est pas
+   dans une <figure>, et un fichier de 2000 px de large (la résolution conseillée par le
+   cockpit) déborderait de la page.
+   `max-height` (--plafond-figure, socle.css) plafonne la hauteur : une <figure> plus haute
+   qu'une page perd son `break-inside: avoid`, et WeasyPrint la coupe juste sous la
+   légende. Un `break-after: avoid` sur la <figcaption> ne sert à rien, WeasyPrint
+   l'ignore. */
 img { max-width: 100%; height: auto; max-height: var(--plafond-figure); }
 figure { break-inside: avoid; margin: 1.4em 0; text-align: left; }
 /* La légende est au-dessus de l'image (szh-legende-avant.lua la place avant dans le
    document) : l'espace se met donc dessous, comme pour `table > caption`. */
 figure > figcaption { font-size: 0.85rem; color: #444; margin-bottom: 0.5em; text-align: left; }
-/* Crédit seul (image hors numérotation) : la <figcaption> suit l'image au lieu de la
-   précéder — voir szh-legende-avant.lua — donc la marge change de côté. Collée à l'image,
-   et la note collée au crédit : les trois se lisent comme un seul bloc. */
+/* Crédit seul (image hors numérotation) : la <figcaption> suit l'image (voir
+   szh-legende-avant.lua), la marge change donc de côté. Image, crédit et note restent
+   collés et se lisent comme un bloc. */
 figure > figcaption.szh-credit-seul { margin: 0.1em 0 0; line-height: 1.3; }
 figure > figcaption.szh-credit-seul + .szh-bloc-note { margin-top: 0.1em; }
 
-/* Les images s'alignent à gauche, sur la marge, et la légende comme la note avec elles :
-   aucun attribut ni classe ne centre une figure précise (il n'en existait pas avant ce
-   changement, `text-align: center` s'appliquait à toutes). */
+/* Images, légendes et notes s'alignent à gauche, sur la marge (`figure`, ci-dessus). */
 
-/* Note sous une figure ou un tableau (filters/szh-numerotation.lua) : au corps et à
-   l'interlignage de la légende, collée à ce qu'elle commente. Un <p> dans la <figure> après
-   l'image, ou juste après le <table> dans sa boîte. ⚠ Pas `.szh-note`, déjà prise par les
-   notes de bas de page. L'étiquette en italique est dans partage-filtres.css. */
+/* Note sous une figure ou un tableau (filters/szh-numerotation.lua), au corps et à
+   l'interlignage de la légende. Un <p> dans la <figure> après l'image, ou juste après le
+   <table> dans sa boîte. `.szh-note` désigne les notes de bas de page. L'étiquette en
+   italique est dans partage-filtres.css. */
 .szh-bloc-note {
   font-size: 0.85rem; color: #444; margin: 0.5em 0 0; text-align: left; text-indent: 0;
   hyphens: manual; break-before: avoid;
@@ -916,21 +675,16 @@ figure > figcaption.szh-credit-seul + .szh-bloc-note { margin-top: 0.1em; }
    par une marge haute négative, et la note rend ensuite l'espace que le tableau rendait. */
 .szh-tableau-boite > table + .szh-bloc-note { margin: -0.9em 0 1.4em; }
 
-/* La grille d'images (filters/szh-grille.lua, .szh-grille-rangee/.szh-grille-case et leur
-   repli à l'écran) est désormais dans styles/partage-filtres.css : une grille vaut pour un
-   livre comme pour un article. */
+/* La grille d'images (filters/szh-grille.lua) est mise en forme dans
+   styles/partage-filtres.css. */
 
 /* ── Fiche de ressource (livre, film, intervention parlementaire, recherche en cours) ──────
-   filters/szh-ressource.lua compose le bloc : titre au-dessus, puis une rangée avec le
-   texte (bibliographie courte, descriptif, lien) et l'image au quart de la largeur, en
-   haut à droite (cahier des charges). L'image est un flottant, et la colonne de texte
-   passe dessous quand elle est plus longue que lui — voir le ⚠ de .szh-ressource-corps
-   pour ce que la rangée flex d'origine coûtait à la césure des pages.
-   Intervention et recherche n'ont pas d'image : rendu compact dédié plus bas,
-   « Fiche sans image ».
-   Boîte discrète, sur le modèle de .szh-abstract (§5) : fond neutre, filet gauche, mais
-   sans la couleur annuelle — une fiche n'est pas une mise en avant éditoriale. Chacune
-   reste d'un bloc à la césure des pages, comme une figure. */
+   filters/szh-ressource.lua compose le bloc : le titre, puis le texte (bibliographie
+   courte, descriptif, lien) avec l'image au quart de la largeur, en haut à droite. L'image
+   est un flottant, et le texte passe dessous quand il est plus long qu'elle.
+   Intervention et recherche n'ont pas d'image : voir « Fiche sans image » plus bas.
+   Boîte discrète sur le modèle de .szh-abstract (§5) : fond neutre et filet gauche, sans
+   la couleur annuelle. */
 .szh-ressource {
   background: #f7f7f8; border-left: 3px solid #ccc;
   padding: 14px 18px; margin: 1.2em 0; break-inside: avoid;
@@ -939,105 +693,77 @@ figure > figcaption.szh-credit-seul + .szh-bloc-note { margin-top: 0.1em; }
   margin: 0 0 0.5em; font-family: var(--title-family); font-weight: 700;
   font-size: 1.05rem; line-height: 1.22; color: var(--c-ink);
 }
-/* Le corps établit un contexte de formatage pour contenir le flottant ci-dessous — c'est
-   tout ce que `flow-root` fait ici, sans le hack du clearfix.
-   ⚠ Ce n'est plus une rangée flex, et c'est une correction, pas un goût. Mesuré sur
-     WeasyPrint 69 : un conteneur flex n'y est pas sécable entre deux pages. Une fiche plus
-     haute que la place restante ne se coupait donc pas — elle laissait une page entière de
-     fond de carte, titre seul en tête, et reprenait à la page suivante, malgré
-     `break-inside: avoid`. Vu sur la Documentation allemande du 2027-02 (une notule de
-     lecture de trois paragraphes), reproduit à l'isolé sur un cas minimal. Avec un
-     flottant, la fiche se coupe proprement : l'image reste sur le premier fragment, le
-     texte continue page suivante. */
+/* `flow-root` contient le flottant ci-dessous. Pas de rangée flex : sous WeasyPrint, un
+   conteneur flex ne se coupe pas entre deux pages, et une fiche trop haute laissait une
+   page presque vide. Avec un flottant, l'image reste sur le premier fragment et le texte
+   continue à la page suivante. */
 .szh-ressource-corps { display: flow-root; }
 .szh-ressource-texte > *:last-child { margin-bottom: 0; }
-/* Le quart de la largeur du bloc, alignée à droite. Le flottant s'ancre là où il paraît
-   dans le flux : szh-ressource.lua écrit donc la colonne d'image AVANT celle de texte —
-   sans quoi elle s'ancrerait sous le texte, et partirait à la page suivante. La marge
-   gauche remplace le `gap` de l'ancienne rangée flex ; la marge basse dégage le texte qui
-   repasse sous l'image quand elle est plus courte que lui. */
+/* Le quart de la largeur, à droite. Un flottant s'ancre là où il paraît dans le flux :
+   szh-ressource.lua écrit donc l'image avant le texte. La marge basse dégage le texte qui
+   passe sous l'image. */
 .szh-ressource-image { float: right; width: 25%; margin: 0 0 10px 16px; }
-/* L'image de la fiche est toujours décorative (cahier des charges) : szh-numerotation.lua
-   l'a donc basculée en fond CSS (.szh-decor, voir plus haut), avec sa largeur naturelle en
-   pixels. Ici c'est la colonne qui donne la largeur, comme dans une case de grille
-   (.szh-grille-case > .szh-decor) — la spécificité de ce sélecteur (deux classes) passe
-   devant le <style> auto-généré en fin de corps (une seule classe), qui l'emporterait
-   sinon par son rang dans la cascade. */
+/* L'image d'une fiche est décorative : szh-numerotation.lua la rend en fond CSS
+   (.szh-decor) avec sa largeur naturelle. Ici, la colonne donne la largeur, comme dans une
+   case de grille ; deux classes l'emportent sur le <style> de fin de corps (une classe),
+   qui gagnerait sinon par son rang. */
 .szh-ressource-image > .szh-decor { width: 100%; max-width: 100%; }
 .szh-ressource-biblio p {
   margin: 0 0 0.5em; font-size: 0.85em; color: #444; text-align: left;
 }
 .szh-ressource-lien p { margin: 0.6em 0 0; }
-/* Colonne étroite : le flottant est levé et l'image reprend une largeur lisible plutôt que
-   de rétrécir jusqu'à l'illisible — même repli que la grille (§ ci-dessus). Elle passe
-   alors au-dessus du texte, qui est son rang dans le flux depuis le passage au flottant :
-   une couverture en tête de notule, comme sur n'importe quelle fiche de librairie.
-   N'affecte que l'écran ; WeasyPrint n'applique pas @media screen. */
+/* Colonne étroite : le flottant est levé et l'image garde une largeur lisible, au-dessus
+   du texte (son rang dans le flux). Écran seulement ; WeasyPrint n'applique pas
+   @media screen. */
 @media screen {
   @media (max-width: 30rem) {
     .szh-ressource-image { float: none; width: 40%; margin: 0.6em 0 0; }
   }
 }
 
-/* Fiche sans image (intervention parlementaire, recherche en cours) : szh-ressource.lua pose
-   .szh-ressource-sans-image dès que le bloc n'a pas d'image, sans jamais nommer un type — le
-   texte reprend déjà seul toute la largeur (.szh-ressource-texte est le seul enfant de
-   .szh-ressource-corps, donc flex: 1 1 auto suffit, aucune case vide au quart de la largeur
-   à annuler). Reste la densité : une intervention est une entrée courte, ~10 par numéro,
-   quand un livre ou un film en compte 4 à 8 — la boîte pleine (fond, filet, 14/18px) qui
-   convient à une notule de lecture pèserait sur une simple liste. Rendu plus sobre : mêmes
-   couleurs (famille visuelle inchangée), padding et marge resserrés, titre plus proche du
-   texte qui suit. */
+/* Fiche sans image (intervention parlementaire, recherche en cours) : szh-ressource.lua
+   pose .szh-ressource-sans-image quand le bloc n'a pas d'image, quel que soit son type ; le
+   texte prend alors toute la largeur. Ces fiches sont courtes et nombreuses (une dizaine
+   par numéro) : mêmes couleurs, padding et marges resserrés, titre plus proche du texte. */
 .szh-ressource-sans-image { padding: 8px 16px; margin: 0.5em 0; }
 .szh-ressource-sans-image .szh-ressource-titre p { margin-bottom: 0.25em; }
 
-/* Pastille de catégorie (livre, film) : posée par szh-ressource.lua juste sous la
-   bibliographie courte (champ `pastille` du contrat — champs-documentation.json). Un
-   jeton court, pas une phrase : un badge discret plutôt qu'une ligne de texte de plus. */
+/* Pastille de catégorie (livre, film), posée par szh-ressource.lua sous la bibliographie
+   courte (champ `pastille` de champs-documentation.json) : un badge discret. */
 .szh-ressource-pastille p {
   display: inline-block; margin: 0 0 0.5em; padding: 0.1em 0.55em;
   font-size: 0.72em; font-weight: 700; letter-spacing: 0.02em;
   color: var(--c-ink); background: #e7e7ea; border-radius: 3px;
 }
 
-/* État + date d'état d'une intervention parlementaire : une ligne courte, dans le
-   prolongement visuel de la biblio mais distinguée par la couleur, pour rester lisible
-   d'un coup d'œil dans une liste dense d'une dizaine d'entrées. */
+/* État et date d'état d'une intervention parlementaire : une ligne courte, comme la
+   bibliographie mais d'une autre couleur. */
 .szh-ressource-etat p { margin: 0 0 0.5em; font-size: 0.85em; color: #555; }
 
 /* Suivi d'une intervention (prise de position, décision, document…) : une ligne par
-   entrée, aussi resserrée que la biblio — c'est une liste de faits, pas de la prose. La
-   ligne entière est un lien quand le suivi en porte un (szh-ressource.lua). */
+   entrée, resserrée comme la bibliographie. La ligne entière est un lien quand le suivi en
+   porte un (szh-ressource.lua). */
 .szh-ressource-suivi { margin: 0.3em 0 0.6em; }
 .szh-ressource-suivi p { margin: 0 0 0.2em; font-size: 0.85em; color: #444; }
 .szh-ressource-suivi a { color: inherit; }
 
 /* Rubrique de texte riche de la Documentation (liste bibliographique, liste de liens,
    brève d'actualité) : filters/szh-rubrique.lua pose une <section>, un titre déduit du
-   type et de la langue, puis le contenu inchangé. Un chapitre de la Documentation, pas
-   un encadré comme .szh-ressource ci-dessus : ni fond, ni filet gauche. Le titre reste un
-   h2 de corps ordinaire (§6) — aucune surcharge de couleur : la maquette ne met déjà
-   aucun h2 de corps en couleur annuelle (« À propos des auteur·e·s », §8, même parti
-   pris), une rubrique ne fait pas exception. Seul un filet fin, lui, porte la couleur
-   annuelle : c'est lui qui marque la coupure, --c-annual-ui plutôt que --c-annual brut
-   pour la même raison qu'aux bordures de tableau (§7) — un aplat annuel trop clair
-   resterait sous le plancher APCA du non textuel (30).
-   Espacement au-dessus au même ordre de grandeur que .szh-auteurs (§8) : une rubrique est
-   une coupure de rang comparable. break-inside reste libre partout ici, à dessein : une
-   liste de trente références doit pouvoir se couper entre deux pages, à la différence
-   d'une fiche de ressource. */
+   type et de la langue, puis le contenu inchangé. C'est un chapitre et non un encadré :
+   ni fond ni filet gauche. Le titre est un h2 de corps ordinaire (§6), sans couleur. Un
+   filet fin à la couleur annuelle marque la coupure, en --c-annual-ui comme les bordures
+   de tableau (§7), pour rester au-dessus du plancher APCA du non textuel (30).
+   Espacement comparable à .szh-auteurs (§8). Pas de break-inside : une longue liste de
+   références doit pouvoir se couper entre deux pages. */
 .szh-rubrique { margin: 2.6em 0 0; }
 /* `h2.` et non la classe seule : à partir de pandoc 3.10, la <section> qui englobe le
-   titre reçoit aussi sa classe (voir szh-rubrique.lua), et le filet se dessinait deux
-   fois, au-dessus de la section et au-dessus du titre. */
+   titre reçoit aussi sa classe (voir szh-rubrique.lua), et le filet serait dessiné deux
+   fois. */
 h2.szh-rubrique-titre { padding-top: 10px; border-top: 2px solid var(--c-annual-ui); }
 
-/* Section qui regroupe les fiches d'un même type (horizon, recherche, intervention…) :
-   même filet, même habillage que le titre d'une rubrique ci-dessus — une section de
-   fiches est une coupure de la Documentation au même titre qu'une rubrique de texte riche,
-   posée par le même filtre (szh-rubrique.lua, voir son commentaire de tête pour pourquoi
-   ce n'est pas szh-ressource.lua qui la compose). Règle commune plutôt que dupliquée :
-   un futur ajustement du filet ou de l'espacement doit valoir pour les deux à la fois. */
+/* Section qui regroupe les fiches d'un même type (horizon, recherche, intervention…),
+   posée par szh-rubrique.lua (voir son en-tête) : même filet et même espacement que le
+   titre d'une rubrique ci-dessus. */
 .szh-ressources-section { margin: 2.6em 0 0; }
 h2.szh-ressources-section-titre { padding-top: 10px; border-top: 2px solid var(--c-annual-ui); }
 
@@ -1046,10 +772,9 @@ table { border-collapse: collapse; font-size: var(--corps-tableau); margin: 1.4e
 th, td { border: 1px solid #999; padding: 0.3em 0.5em; text-align: left; vertical-align: top; }
 /* Césure des cellules : 6 lettres au moins, 3 de chaque côté (défaut WeasyPrint : 5 2 2).
    Le tableau répartit sa largeur selon le mot le plus long de chaque colonne ; une coupure
-   « Punk-te » ou « Hil-fe » abaisse ce minimum et la colonne d'étiquettes s'écrase.
-   Mesuré le 29.09.2026 sur 8 tableaux réels : les autres colonnes bougent de 2 px au
-   plus. Les mots composés allemands restent coupables, sans quoi un tableau de 9 colonnes
-   courtes déborde de la page (841 px pour 649 de large en `hyphens: manual`). */
+   « Punk-te » ou « Hil-fe » abaisse ce minimum et écrase la colonne d'étiquettes. Les mots
+   composés allemands restent coupables : sans césure (`hyphens: manual`), un tableau de 9
+   colonnes courtes déborde de la page. */
 th, td { hyphenate-limit-chars: 6 3 3; }
 th { background: #eee; }
 /* À l'écran (aperçu, HTML exporté), un tableau trop large défile dans sa boîte au lieu
@@ -1061,14 +786,13 @@ table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: 
 .szh-tableau th { background: transparent; }
 
 /* La liste de références (.szh-reference) et la flèche de retour d'une citation
-   (a.szh-retour-appel) sont désormais dans styles/partage-filtres.css : szh-citations.lua
-   les pose aussi bien dans un livre que dans un article. */
+   (a.szh-retour-appel) sont mises en forme dans styles/partage-filtres.css. */
 
 /* ═══ 7. Tableaux stylés de l'éditeur maison (.szh-tableau) ════════════════════
    Style porté par les attributs data-* de l'éditeur du cockpit et par <th scope>. L'accent
-   est « gris » (repli neutre ci-dessous) ou la couleur annuelle : accent-css.py surcharge
-   alors ces variables à la compilation, WeasyPrint 69 n'implémentant pas color-mix().
-   Les quatre jetons eux-mêmes sont déclarés au socle, avec tous les autres.
+   est « gris » (repli neutre) ou la couleur annuelle : accent-css.py remplace alors ces
+   variables à la compilation, WeasyPrint n'implémentant pas color-mix(). Les quatre jetons
+   sont déclarés dans socle.css.
    Contrastes garantis en APCA. Le texte d'un tableau est à 13,6 px, donc le seuil appliqué
    est 90 : le fond clair porte du texte noir à Lc ≥ 91, le fond foncé du texte blanc à
    |Lc| ≥ 90 ; `python3 test/apca-check.py` vérifie toutes les paires.
@@ -1076,7 +800,7 @@ table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: 
 
 
 /* L'encadré « fichier référencé introuvable » (.szh-tabelle-manquante,
-   .szh-biblio-manquante) est désormais dans styles/partage-filtres.css. */
+   .szh-biblio-manquante) est dans styles/partage-filtres.css. */
 
 /* Table éditoriale : pas de grille pleine, seuls les filets choisis apparaissent.
    Largeurs automatiques (table-layout auto + width 100%), l'éditeur n'émettant aucune
@@ -1086,7 +810,7 @@ table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: 
 .szh-tableau { border-collapse: collapse; width: 100%; table-layout: auto; }
 /* `break-word` et non `anywhere` : les deux coupent un mot qui déborde, mais `anywhere`
    compte chaque lettre comme point de coupure dans le calcul des largeurs, et la colonne
-   d'étiquettes tombait à une lettre près (« Pun|kte », sans trait). */
+   d'étiquettes s'écraserait (« Pun|kte », sans trait). */
 .szh-tableau th, .szh-tableau td { border: 0; padding: 0.35em 0.6em; text-align: left; vertical-align: top; overflow-wrap: break-word; }
 .szh-tableau th { background: transparent; font-weight: 400; }
 
@@ -1127,12 +851,11 @@ table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: 
 .szh-tableau[data-total-gras="1"] tbody tr:last-child > * { font-weight: 700; }
 
 /* ── Bordures ─────────────────────────────────────────────────────────────────────── */
-/* ⚠ Ces trois filets utilisent --c-annual-ui et non --szh-accent : ne pas « corriger ».
-   Ils tombent souvent sur une rangée zébrée, où la couleur de marque brute peut devenir
-   quasi invisible — la moutarde n'y atteint que Lc +22, sous le plancher APCA du non
-   textuel (30). --c-annual-ui est le jeton « filet / barre » d'accent-css.py : il porte la
-   garantie de contraste et n'assombrit que les teintes trop pâles. Les aplats épais, eux,
-   gardent --szh-accent-clair et --szh-accent-fonce. */
+/* Ces trois filets utilisent --c-annual-ui et non --szh-accent. Ils tombent souvent sur une
+   rangée zébrée, où la couleur annuelle brute peut devenir presque invisible (la moutarde
+   n'y atteint que Lc +22, sous le plancher APCA du non textuel, 30). --c-annual-ui, jeton
+   « filet / barre » d'accent-css.py, garantit le contraste en assombrissant les teintes
+   trop pâles. Les aplats gardent --szh-accent-clair et --szh-accent-fonce. */
 /* Haute : filet épais sous la zone d'en-tête (dernière rangée du <thead>) ; sans en-tête
    de colonne, filet en tête de la 1re rangée de données. */
 .szh-tableau[data-bordure-haute="1"] thead tr:last-child > * { border-bottom: 2px solid var(--c-annual-ui); }
@@ -1143,18 +866,15 @@ table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: 
 /* ═══ 8. Bloc « À propos des auteur·e·s » ══════════════════════════════════════
    Après le corps de l'article (template szh-article.html) : portrait 400 x 400 en niveaux
    de gris produit par pipeline/portraits.py et rendu en fond CSS, nom, icône-lien ORCID,
-   fonction, affiliation, e-mail. Aucune couleur nouvelle, seulement des encres déjà
-   validées en APCA. */
-/* Aucun filet au-dessus : le titre du bloc est un h2 comme les autres, et un h2 de
-   corps n'est jamais souligné ni surligné. La séparation se fait par l'espace seul. */
+   fonction, affiliation, e-mail. Seulement des encres déjà vérifiées en APCA. */
+/* Pas de filet au-dessus : le titre du bloc est un h2 comme les autres. L'espace seul
+   sépare. */
 .szh-auteurs {
   margin-top: 2.6em;
 }
-/* Titre du bloc : un h2 de corps ordinaire, au même rang que « Références ». Il ne
-   porte donc aucune surcharge de taille, de graisse ou de casse — c'est le §6 qui le
-   style, et le seul écart est la marge basse, le bloc qui suit n'étant pas du texte
-   courant. Rien à dé-numéroter : ce titre est écrit par le template, hors document
-   pandoc, donc szh-sections.lua ne le voit pas. */
+/* Titre du bloc : un h2 de corps ordinaire (§6), au rang de « Références » ; seule sa
+   marge basse change. Écrit par le template, il n'est pas numéroté par
+   szh-sections.lua. */
 .szh-auteurs-titre {
   margin: 0 0 1.1em;
 }
@@ -1168,43 +888,30 @@ table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: 
   margin: 0 0 1.2em;
 }
 .szh-auteur:last-child { margin-bottom: 0; }
-/* Portrait : un <span> vide à fond CSS, et pas un <img>. ⚠ Ne pas le rétablir en <img>,
-   c'est déjà arrivé deux fois. Le portrait est une image décorative : il n'a aucun texte
-   alternatif, délibérément. Le nom de la personne est écrit juste à côté, donc un alt le
-   répéterait pour rien ; et un alt fabriqué depuis ce nom affirmerait une identité que le
-   contenu du fichier ne garantit pas — un logo, une photo de groupe, une photo appariée
-   à la mauvaise personne. Or WeasyPrint 69 balise tout <img> en /Figure, même avec
-   role="presentation", même avec aria-hidden="true" (mesuré par cas minimal) : ce serait
-   une /Figure sans /Alt, soit PDF/UA-1 7.3 violée, et `make verifier-ua` la refuserait.
-   Un fond CSS, lui, n'est pas balisé du tout — même mécanisme que l'image décorative
-   d'article, plus bas. L'URL de chaque photo est écrite par un <style> du gabarit
-   (szh-article.html), seul endroit où --embed-resources réécrit url() en data: URI.
-   `cover` + `center` reproduisent exactement l'`object-fit: cover` de l'ancien <img> ;
-   `display: block` parce qu'un <span> hors contexte flex serait de taille nulle. */
+/* Portrait : un <span> vide à fond CSS, et non un <img>. Le portrait est décoratif, sans
+   texte alternatif : le nom est écrit à côté, et un alt tiré du nom affirmerait une
+   identité que le fichier ne garantit pas. Or WeasyPrint balise tout <img> en /Figure,
+   même avec role="presentation" ou aria-hidden="true" : une /Figure sans /Alt viole
+   PDF/UA-1 7.3 et `make verifier-ua` la refuse. Un fond CSS n'est pas balisé.
+   L'URL de chaque photo est écrite dans un <style> du gabarit (szh-article.html), seul
+   endroit où --embed-resources réécrit url() en data: URI. `display: block` : un <span>
+   hors contexte flex aurait une taille nulle. */
 .szh-auteur-photo {
   display: block;
   width: 28mm; height: 28mm;    /* ~28 mm imprimés ; la source est déjà carrée */
   flex-shrink: 0;
   background-size: cover; background-position: center; background-repeat: no-repeat;
 }
-/* Personne qui ne veut pas de photo. La silhouette vient du gabarit de mise en page
-   (Layout_R02-2026.dotx), qui la montre trois fois sous « Autrices et auteurs », à 28,8 mm
-   — la case du portrait. Elle tient cette place pour que la colonne de texte reste alignée
-   d'un auteur à l'autre ; elle ne cache rien au passage, la fiche du cockpit continuant
-   d'annoncer « Aucune photo » tant qu'il n'y en a pas.
-   Fond CSS et non <img>, pour la raison écrite juste au-dessus : rien n'est balisé, donc
-   rien n'est à décrire, et la porte PDF/UA reste ouverte.
-   Le dessin est écrit à même la feuille plutôt que rangé en fichier : un chemin relatif
-   ne survivrait ni au HTML autonome ni au PDF, et --embed-resources ne réécrit url() que
-   dans un <style>, pas dans une feuille liée. Son viewBox est carré comme la case, donc
-   le « cover » ci-dessus le pose exactement comme le gabarit Word le montre, sans recadrage.
-   L'encre est le bleu nuit du hero — #252B46, soit --c-nuit de socle.css — et non l'encre
-   du texte : à 28 mm, la silhouette est une masse pleine, et le noir du corps en faisait
-   l'objet le plus sombre de la page, plus sombre qu'aucun portrait (ils sortent en niveaux
-   de gris). Le bleu nuit la rattache au hero du même article, où il couvre déjà une pleine
-   largeur. Écrite en clair parce qu'une url() en data: ne lit pas les variables CSS — même
-   contrainte que la pastille ORCID, même remède ; c'est test/js/portrait.test.js qui
-   empêche les deux de diverger en silence. */
+/* Personne sans photo : une silhouette, reprise du gabarit de mise en page
+   (Layout_R02-2026.dotx), tient la case du portrait pour que le texte reste aligné d'un
+   auteur à l'autre. La fiche du cockpit continue d'annoncer « Aucune photo ».
+   Fond CSS et non <img>, pour la raison donnée ci-dessus.
+   Le dessin est écrit dans la feuille : un chemin relatif ne survivrait ni au HTML
+   autonome ni au PDF, et --embed-resources ne réécrit url() que dans un <style>. Son
+   viewBox est carré comme la case, sans recadrage.
+   Encre : le bleu nuit du hero (#252B46, --c-nuit de socle.css), moins lourd que le noir
+   du texte pour une masse pleine de 28 mm. Écrit en clair, car une url() en data: ne lit
+   pas les variables CSS ; test/js/portrait.test.js vérifie l'accord avec --c-nuit. */
 .szh-auteur-photo-silhouette {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Ccircle cx='48' cy='30' r='16' fill='%23252B46'/%3E%3Cpath fill='%23252B46' d='M80 82 80 66C80 63.6 78.8 61.2 76.8 59.6 72.4 56 66.8 53.6 61.2 52 57.2 50.8 52.8 50 48 50 43.6 50 39.2 50.8 34.8 52 29.2 53.6 23.6 56.4 19.2 59.6 17.2 61.2 16 63.6 16 66L16 82 80 82Z'/%3E%3C/svg%3E");
 }
@@ -1220,5 +927,5 @@ table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: 
 .szh-auteur-email { margin: 0.25em 0 0; text-align: left; font-size: 0.85rem; }
 .szh-auteur-email a[href] { overflow-wrap: anywhere; }
 
-/* L'icône-lien ORCID (a.szh-orcid) et l'image décorative en fond CSS (.szh-decor) sont
-   désormais dans styles/partage-filtres.css, avec les autres icônes de filtre partagé. */
+/* L'icône-lien ORCID (a.szh-orcid) et l'image décorative (.szh-decor) sont mises en forme
+   dans styles/partage-filtres.css. */

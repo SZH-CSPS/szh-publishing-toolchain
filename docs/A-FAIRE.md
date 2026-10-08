@@ -80,6 +80,12 @@ est faite. Les questions à trancher sont marquées « À décider ».
 - `lib/cantons.js` n'a plus d'appelant : le supprimer ou le rebrancher.
 - Piste : ranger `lib/` en sous-dossiers par domaine, si les tests suivent sans réécriture.
 
+## Maquette
+
+- Notes de bas de page : à partir de la 10e, le texte est mal aligné sous le numéro (retrait
+  de 1,6 em prévu pour un chiffre, `print.css`).
+- `SZH_OJS_CLE` est passée à la WSL, mais rien ne la lit.
+
 ## Sortie web de la revue
 
 - Créer une sortie HTML de la revue pensée pour l'écran (gabarit et `web.css`, sans page A4

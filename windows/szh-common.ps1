@@ -1,22 +1,16 @@
-﻿# Socle commun des scripts SZH — à dot-sourcer :  . "$PSScriptRoot\szh-common.ps1"
-# Compatibilité : Windows PowerShell 5.1 (proscrire ?. ?? ?: && ||).
+﻿# Fonctions communes des scripts SZH, à charger par :  . "$PSScriptRoot\szh-common.ps1"
+# Compatible Windows PowerShell 5.1 : pas de ?. ?? ?: && ||.
 
 $ErrorActionPreference = 'Stop'
 
-# Les huit fils, dans l'ordre de leurs dépendances : les textes avant que T (plus bas) ne
-# s'en serve, l'ancrage SharePoint avant szh-produits.ps1 qui s'en sert
-# (Get-SzhBaseRevuesPour -> Resolve-SzhAncrage) et avant szh-rapport.ps1 qui réutilise cette
-# même résolution passive pour le dossier des rapports d'erreur, les produits après les
-# fonctions de config qu'ils appellent (résolues à l'appel, jamais à la lecture), le check-in
-# après les produits dont il tire la racine active (Get-SzhBaseRevuesPour), le shell après le
-# check-in car il se sert des précédents, la migration EN DERNIER car
-# Invoke-SzhMigrationArborescence réutilise Set-SzhRaccourciRevue (szh-shell.ps1), et
-# l'épinglage hors ligne tout à la fin : Get-SzhDossiersAEpingler ne se sert que des produits
-# (Get-SzhBaseRevuesPour, $SzhSousDossiers, $SzhNomDossierReserve), mais n'a de sens qu'une
-# fois l'arborescence de test migrée dans sa forme neuve.
-# $SzhBaseUtilisateur (plus bas) est calculé après ce dot-source et n'en dépend pas, mais
-# szh-taches.ps1 et szh-rapport.ps1 (file d'attente hors ligne), dot-sourcés ensuite ou juste
-# ici, le lisent dès leur premier appel, jamais à leur chargement.
+# Les fichiers chargés, dans l'ordre de leurs dépendances : les textes avant T (plus bas) ;
+# l'ancrage SharePoint avant szh-rapport.ps1 et szh-produits.ps1, qui s'en servent
+# (Resolve-SzhAncrage) ; le check-in après les produits (Get-SzhBaseRevuesPour) ; le shell
+# après le check-in ; la migration ensuite, car elle utilise Set-SzhRaccourciRevue
+# (szh-shell.ps1) ; l'épinglage hors ligne en dernier.
+# Les fonctions de config appelées par ces fichiers sont résolues à l'appel, pas au
+# chargement. De même, $SzhBaseUtilisateur (plus bas) n'est lu par szh-rapport.ps1 et
+# szh-taches.ps1 qu'à leur premier appel.
 . "$PSScriptRoot\szh-textes.ps1"
 . "$PSScriptRoot\szh-ancrage.ps1"
 . "$PSScriptRoot\szh-rapport.ps1"
@@ -25,18 +19,15 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\szh-shell.ps1"
 . "$PSScriptRoot\szh-migration.ps1"
 . "$PSScriptRoot\szh-epinglage.ps1"
-# Affectation, pas -bor : un -bor sur la valeur en place garde SSL3/TLS 1.0 si le poste les
-# avait déjà, aux côtés de TLS 1.2. Tls13 en plus quand l'énumération de ce .NET la connaît
-# -- absente sur des postes plus anciens, d'où le try/catch plutôt qu'une casse à l'ouverture
-# même du script.
+# Affectation et non -bor sur la valeur en place, qui garderait SSL3/TLS 1.0. Tls13 en plus
+# quand ce .NET le connaît (pas sur les postes anciens, d'où le try/catch).
 $szhTls = [Net.SecurityProtocolType]::Tls12
 try { $szhTls = $szhTls -bor [Net.SecurityProtocolType]::Tls13 } catch { }
 [Net.ServicePointManager]::SecurityProtocol = $szhTls
 
-# Proxy d'entreprise : sans ces deux lignes, un proxy qui demande une authentification rend
-# 407 à chaque téléchargement, et l'installation d'un poste devient impossible sans qu'un
-# message le dise. Les identifiants de la session suffisent (Kerberos ou NTLM), aucune
-# saisie n'est demandée ; sans proxy, la valeur est inoffensive.
+# Proxy d'entreprise : sans ces lignes, un proxy qui demande une authentification rend 407 à
+# chaque téléchargement, sans message clair. Les identifiants de la session suffisent
+# (Kerberos ou NTLM) ; sans proxy, le réglage est sans effet.
 try {
   $proxySysteme = [Net.WebRequest]::GetSystemWebProxy()
   $proxySysteme.Credentials = [Net.CredentialCache]::DefaultNetworkCredentials
@@ -44,10 +35,9 @@ try {
 } catch { }
 
 # ---- Environnement hérité : ELECTRON_RUN_AS_NODE ----
-# ⚠ Tout processus lancé par l'hôte d'extensions de VSCodium hérite de
-# ELECTRON_RUN_AS_NODE=1 : Electron se prend alors pour Node et `VSCodium.exe "<dossier>"`
-# cherche un script au lieu d'ouvrir le dossier, puis meurt sans fenêtre. D'où ce
-# nettoyage à l'entrée de chaque script, le dot-source étant le seul passage obligé.
+# Tout processus lancé par l'hôte d'extensions de VSCodium hérite de ELECTRON_RUN_AS_NODE=1 :
+# `VSCodium.exe "<dossier>"` se comporte alors comme Node, cherche un script et se ferme sans
+# fenêtre. Chaque script charge ce fichier, d'où le nettoyage ici.
 foreach ($nuisible in 'ELECTRON_RUN_AS_NODE', 'ELECTRON_NO_ATTACH_CONSOLE') {
   if (Test-Path ('Env:' + $nuisible)) {
     Remove-Item ('Env:' + $nuisible) -ErrorAction SilentlyContinue
@@ -65,22 +55,17 @@ $script:SzhDistro     = 'SZH-Publishing'
 $script:SzhSupport    = 'robin.morand@szh.ch'          # contact affiché en cas de problème
 
 # ---- Langue de l'interface ----
-# Une seule langue pour toute la fenêtre du lanceur, et pour tout ce que la chaîne affiche.
-# Cinq sources, de la plus devinée à la plus explicite, la dernière posée l'emportant :
+# Une seule langue pour le lanceur et tout ce que la chaîne affiche. Cinq sources, la
+# dernière trouvée l'emportant :
 #
-#   1. l'allemand, en dernier recours — et non l'anglais. Les Windows d'ici sont en anglais,
-#      et la cascade retombait donc sur la seule langue qu'aucune des deux équipes n'emploie.
-#      L'allemand est celle de la majorité des postes.
-#   2. la langue d'affichage de Windows, quand elle dit fr ou de.
-#   3. state.json — l'héritage. Avant l'onglet « Paramètres », c'est là que le lanceur
-#      écrivait la langue de son produit. La valeur qui s'y trouve déjà sur un poste en
-#      service reste donc la bonne, et personne ne voit sa langue changer à la mise à jour.
-#      C'est aussi la clé que lit le cockpit dans l'éditeur (lib/i18n.js).
-#   4. etat-utilisateur.json — le choix fait à la main dans l'ancien onglet « Paramètres ». Rangé
-#      par compte et non par poste : deux personnes qui se partagent un poste ne se changent
-#      plus la langue l'une à l'autre.
-#   5. $env:SZH_LANGUE — un essai, pour lire un même message dans les deux langues sans rien
-#      toucher au poste. Garde le dernier mot.
+#   1. l'allemand par défaut, langue de la majorité des postes (Windows est souvent en
+#      anglais, langue qu'aucune équipe n'emploie) ;
+#   2. la langue d'affichage de Windows, si c'est fr ou de ;
+#   3. state.json (clé `langue`), écrite par le lanceur et lue aussi par le cockpit
+#      (lib/i18n.js) ;
+#   4. etat-utilisateur.json (`langueInterface`), un choix par compte : deux personnes sur un
+#      même poste ont chacune leur langue ;
+#   5. $env:SZH_LANGUE, pour un essai sans toucher au poste.
 #
 # Textes allemands en orthographe suisse (ss, pas de ß).
 $script:SzhLangue = 'de'
@@ -88,10 +73,10 @@ try {
   $langueUi = (Get-UICulture).TwoLetterISOLanguageName.ToLower()
   if ($langueUi -eq 'fr' -or $langueUi -eq 'de') { $script:SzhLangue = $langueUi }
 } catch { }
-# Lectures directes, sans Get-SzhState ni Get-SzhEtatUtilisateur : la table des textes est
-# utilisée dès le début du script, avant que les fonctions de plus bas soient définies pour
-# tout le monde. Même raison pour le chemin de l'état par compte, recalculé ici à la main —
-# %LOCALAPPDATA% seulement, un contexte sans profil n'ayant de toute façon aucune préférence.
+# Lectures directes, sans Get-SzhState ni Get-SzhEtatUtilisateur, définies plus bas : la
+# table des textes sert dès le début du script. Le chemin de l'état par compte est donc
+# recalculé ici, dans %LOCALAPPDATA% seulement (un contexte sans profil n'a pas de
+# préférence).
 try {
   if (Test-Path $SzhStateFile) {
     $etatLangue = (Get-Content $SzhStateFile -Raw -Encoding UTF8 | ConvertFrom-Json)
@@ -113,12 +98,10 @@ if ($env:SZH_LANGUE -and (@('fr', 'de', 'en') -contains $env:SZH_LANGUE.ToLower(
   $script:SzhLangue = $env:SZH_LANGUE.ToLower()
 }
 
-# Réglage « mise à jour silencieuse », rangé par COMPTE (etat-utilisateur.json). Pas par poste : la tâche planifiée qui
-# déclenche la vérification (update-launcher.ps1) tourne dans la session de chacun, et
-# update.ps1 met aussi à jour des choses propres au compte (la distribution WSL, les
-# extensions de l'éditeur) -- un réglage commun aurait rendu muette la mise à jour d'un compte
-# qui n'en voulait pas, ou bavarde chez celui qui l'avait demandée. Défaut $false : sans ce
-# choix exprès, la fenêtre reste visible comme avant ce réglage.
+# Réglage « mise à jour silencieuse », rangé par compte (etat-utilisateur.json) : la tâche
+# planifiée (update-launcher.ps1) tourne dans la session de chacun, et update.ps1 met à jour
+# des éléments propres au compte (distribution WSL, extensions). Par défaut $false : la
+# fenêtre reste visible.
 function Get-SzhMajSilencieuse {
   try {
     $pref = Get-SzhEtatUtilisateur
@@ -132,7 +115,7 @@ function Get-SzhMajSilencieuse {
   return $false
 }
 
-# T 'clé' @(args…) -> texte dans la langue courante, fallback anglais, sinon la clé.
+# T 'clé' @(args…) -> texte dans la langue courante, à défaut en anglais, sinon la clé.
 function T {
   param([Parameter(Mandatory = $true)][string]$Cle, [object[]]$Valeurs)
   $texte = $null
@@ -154,8 +137,8 @@ function Set-SzhJson([string]$Chemin, $Objet) {
   [System.IO.File]::WriteAllText($Chemin, $json, (New-Object System.Text.UTF8Encoding($false)))
 }
 
-# Lectures tolérantes : un fichier tronqué ou en cours d'écriture ne doit pas faire
-# échouer un script qui n'a rien à voir, le lanceur d'abord, qui n'a pas de console.
+# Lectures tolérantes : un fichier tronqué ou en cours d'écriture ne doit pas faire échouer
+# un script, à commencer par le lanceur, qui n'a pas de console.
 function Get-SzhConfig {
   try {
     if (Test-Path $SzhConfigFile) { return (Get-Content $SzhConfigFile -Raw -Encoding UTF8 | ConvertFrom-Json) }
@@ -165,9 +148,8 @@ function Get-SzhConfig {
 
 $script:SzhRepoDefaut = 'SZH-CSPS/szh-publishing-toolchain'
 
-# La clé n'est surchargeable que vers un autre dépôt de l'organisation : config.json est
-# inscriptible par les Utilisateurs, et sans ce filtre, un poste pourrait être pointé vers
-# n'importe quel dépôt GitHub pour tout son approvisionnement (toolkit, rootfs, extensions).
+# La clé `repo` ne peut viser qu'un dépôt de l'organisation : config.json est inscriptible
+# par les Utilisateurs, et le dépôt fournit le toolkit, le rootfs et les extensions.
 function Get-SzhRepo {
   $cfg = Get-SzhConfig
   if ($cfg -and $cfg.repo) {
@@ -185,19 +167,14 @@ function Get-SzhState {
 }
 
 function Save-SzhState($Etat) {
-  # Sans BOM, par Set-SzhJson : Set-Content -Encoding UTF8 en pose un sous PowerShell 5.1,
-  # que lib/archivage.js retire par contournement (BOM connu, pas corrigé à sa source).
+  # Sans BOM, par Set-SzhJson (Set-Content -Encoding UTF8 en pose un sous PowerShell 5.1).
   Set-SzhJson $SzhStateFile $Etat
 }
 
-# Écrit les clés données sans effacer le reste du fichier. state.json porte aussi la langue
-# de l'interface, et une réécriture complète l'effaçait à
-# chaque mise à jour : sur ces postes, dont Windows est en anglais, le lanceur reparlait
-# anglais à une équipe francophone jusqu'au prochain passage dans l'onglet « Paramètres ».
-# $Retirer : les clés d'une version antérieure qui ne veulent plus rien dire là où elles
-# sont. `rootfs` et `vsix` ont déménagé dans l'état par utilisateur, et les laisser ici
-# donnerait deux vérités pour une même question — celle qui a fait croire à un compte neuf
-# que tout était déjà installé.
+# Écrit les clés données sans effacer le reste du fichier, qui porte aussi la langue de
+# l'interface. $Retirer : des clés à supprimer parce qu'elles vivent désormais ailleurs
+# (`rootfs` et `vsix` sont dans l'état par utilisateur) ; les garder ici donnerait deux
+# réponses à la même question.
 function Set-SzhStateCles($Cles, [string[]]$Retirer = @()) {
   $etat = Get-SzhState
   if (-not $etat) { $etat = New-Object psobject }
@@ -215,13 +192,10 @@ function Set-SzhStateCles($Cles, [string[]]$Retirer = @()) {
 # ---- Qui exécute, et pour qui ----
 #
 # Une installation lancée depuis la session du rédacteur mais élevée avec le compte du
-# support tourne sous le compte du support : HKCU, %APPDATA%, %LOCALAPPDATA% et
-# l'enregistrement des distributions WSL sont ceux du support. Tout ce qui est « par
-# utilisateur » atterrit alors dans le mauvais profil, et le rédacteur ouvre sa session
-# sans raccourcis, sans extensions, sans réglages ni environnement de fabrication, sans
-# qu'aucun journal ne le dise (les lignes « raccourcis posés » ne nommaient pas le compte).
-# D'où ces deux mesures, et le nom du compte dans chaque ligne qui pose quelque chose par
-# utilisateur.
+# support tourne sous le compte du support : HKCU, %APPDATA%, %LOCALAPPDATA% et les
+# distributions WSL sont alors ceux du support, et tout ce qui est par utilisateur atterrit
+# dans le mauvais profil. Ces deux fonctions permettent de le détecter, et chaque ligne de
+# journal qui pose quelque chose par utilisateur nomme le compte.
 function Get-SzhIdentite {
   $id = [Security.Principal.WindowsIdentity]::GetCurrent()
   $admin = $false
@@ -233,10 +207,10 @@ function Get-SzhIdentite {
 }
 
 # Le compte dont la session graphique est ouverte : le propriétaire d'explorer.exe. C'est
-# lui le rédacteur, même quand le script tourne sous un autre compte. Vide si personne
-# n'est connecté ou si la mesure échoue — un doute ne doit pas arrêter une installation,
-# il doit se lire dans le journal. Plusieurs sessions ouvertes : le premier propriétaire
-# lisible, ce qui suffit au seul usage qu'on en fait, dire « ce n'est pas moi ».
+# lui le rédacteur, même quand le script tourne sous un autre compte. Vide si personne n'est
+# connecté ou si la mesure échoue : l'installation continue, le journal le dit. Avec
+# plusieurs sessions, le premier propriétaire lisible, ce qui suffit pour dire « ce n'est
+# pas ce compte ».
 function Get-SzhSessionUtilisateur {
   try {
     foreach ($p in @(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'" -ErrorAction Stop)) {
@@ -253,12 +227,10 @@ function Get-SzhSessionUtilisateur {
 
 # ---- État par utilisateur ----
 #
-# state.json vit dans C:\ProgramData\SZH : il est donc commun à tous les comptes du poste.
-# Or l'enregistrement de la distribution WSL et les extensions de l'éditeur sont, eux, par
-# utilisateur. Un état commun affirmait « environnement 2026.08.42 installé, dix extensions
-# posées » à un compte qui n'avait ni l'un ni les autres, et la mise à jour les sautait
-# comme « déjà à jour » : le rédacteur se retrouvait sans cockpit, sans que rien n'échoue.
-# Ce qui est par utilisateur se retient donc chez lui.
+# state.json, dans C:\ProgramData\SZH, est commun à tous les comptes du poste. Or la
+# distribution WSL et les extensions de l'éditeur sont installées par utilisateur : leur
+# état est donc retenu par compte, sinon la mise à jour les croirait installées pour un
+# compte qui ne les a pas.
 $script:SzhBaseUtilisateur = ''
 if ([string]$env:LOCALAPPDATA) {
   $script:SzhBaseUtilisateur = Join-Path $env:LOCALAPPDATA 'SZH'
@@ -277,8 +249,8 @@ function Get-SzhEtatUtilisateur {
   return $null
 }
 
-# Jamais bloquant : un état non écrit fait refaire un travail idempotent au prochain
-# passage, alors qu'une exception ici arrêterait une mise à jour par ailleurs réussie.
+# Sans exception : un état non écrit fait seulement refaire un travail idempotent au
+# prochain passage, alors qu'une exception arrêterait une mise à jour réussie.
 function Save-SzhEtatUtilisateur($Etat) {
   try {
     New-Item -ItemType Directory -Force -Path $SzhBaseUtilisateur | Out-Null
@@ -295,14 +267,12 @@ function Get-SzhEtatUtilisateurChamp($Etat, [string]$Nom) {
 
 # ---- Secrets par compte : Shlink (raccourcisseur de liens) et OJS ----
 #
-# Lus dans etat-utilisateur.json (par compte), où l'ancien lanceur les écrivait : l'adresse de
-# l'instance Shlink en clair, et les deux clés d'API chiffrées par DPAPI (portée CurrentUser),
-# que seul ce compte, sur ce poste, peut relire. Le cockpit range désormais les siennes dans
-# son propre coffre.
+# Lus dans etat-utilisateur.json (par compte) : l'adresse de l'instance Shlink en clair, et
+# les deux clés d'API chiffrées par DPAPI (portée CurrentUser), que seul ce compte, sur ce
+# poste, peut relire. Le cockpit range les siennes dans son propre coffre.
 
-# Rend '' pour un champ vide, absent, ou que ce compte/poste ne peut pas déchiffrer (DPAPI
-# d'un autre compte, fichier copié d'un autre poste) -- jamais une exception : une clé
-# illisible doit se comporter comme une clé absente, pas arrêter le lanceur.
+# Rend '' pour un champ vide, absent ou indéchiffrable (DPAPI d'un autre compte, fichier
+# copié d'un autre poste), sans exception : une clé illisible vaut une clé absente.
 function ConvertFrom-SzhSecretChiffre([string]$Chiffre) {
   if (-not $Chiffre) { return '' }
   $bstr = [IntPtr]::Zero
@@ -314,53 +284,43 @@ function ConvertFrom-SzhSecretChiffre([string]$Chiffre) {
   finally { if ($bstr -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) } }
 }
 
-# Adresse de l'instance Shlink : en clair, ce n'est pas un secret (c'est une URL publique).
+# Adresse de l'instance Shlink, en clair : c'est une URL publique.
 function Get-SzhShlinkUrl {
   return (Get-SzhEtatUtilisateurChamp (Get-SzhEtatUtilisateur) 'shlinkUrl')
 }
 
-# Clé d'API Shlink : chiffrée, voir l'en-tête de section. Get- rend la clé en CLAIR -- à
-# n'employer que pour la poser dans l'environnement du processus enfant (Start-SzhCodium,
-# szh-shell.ps1) ou pour la présenter dans le champ de l'interface, jamais pour un journal.
+# Clé d'API Shlink, rendue en clair : seulement pour l'environnement du processus enfant
+# (Start-SzhCodium, szh-shell.ps1) ou le champ de l'interface, jamais pour un journal.
 function Get-SzhShlinkCle {
   return (ConvertFrom-SzhSecretChiffre (Get-SzhEtatUtilisateurChamp (Get-SzhEtatUtilisateur) 'shlinkCle'))
 }
 
-# Clé d'API OJS : posée de la même façon que la clé Shlink, pour le jour où quelque chose la
-# lira -- $env:SZH_OJS_CLE est déjà posé par Set-SzhEnvironnementSecrets ci-dessous, rien ne
-# la lit encore côté WSL.
+# Clé d'API OJS, rangée comme la clé Shlink. Set-SzhEnvironnementSecrets la pose dans
+# $env:SZH_OJS_CLE ; rien ne la lit encore côté WSL.
 function Get-SzhOjsCle {
   return (ConvertFrom-SzhSecretChiffre (Get-SzhEtatUtilisateurChamp (Get-SzhEtatUtilisateur) 'ojsCle'))
 }
 
-# ---- Secrets Shlink/OJS dans l'environnement : posés dans le PROCESSUS ENFANT seulement ----
+# ---- Secrets Shlink/OJS dans l'environnement du processus enfant ----
 #
 # Trois variables, lues côté WSL par la chaîne de fabrication (pipeline/liens-courts.py pour
-# SZH_SHLINK_URL et SZH_SHLINK_CLE ; SZH_OJS_CLE n'a encore aucun lecteur, posée pour le jour
-# où elle en aura un). Jamais setx, jamais une variable machine ou utilisateur : $env:… ici ne
-# touche que ce processus PowerShell, et Start-Process (Start-SzhCodium dans szh-shell.ps1,
-# Start-SzhCodiumFichier dans open-md.ps1) le transmet à VSCodium comme n'importe quel autre
-# enfant -- exactement le même principe que $env:SZH_CODIUM_PROFIL. wsl.exe, lui, ne recopie
-# rien de l'environnement Windows sans WSLENV (voir docs/DEVELOPPEMENT.md, « L'instance de
-# développement ») : les tâches du cockpit (vscodium-user/tasks.json,
-# `wsl.exe -d SZH-Publishing -- bash -c '… make …'`) sont des petits-enfants de VSCodium et
-# n'en voient donc les trois variables que par ce pont.
+# SZH_SHLINK_URL et SZH_SHLINK_CLE ; SZH_OJS_CLE n'a pas encore de lecteur). Ni setx ni
+# variable machine ou utilisateur : $env:… ne touche que ce processus PowerShell, et
+# Start-Process (Start-SzhCodium dans szh-shell.ps1, Start-SzhCodiumFichier dans open-md.ps1)
+# le transmet à VSCodium, comme $env:SZH_CODIUM_PROFIL. wsl.exe ne recopie l'environnement
+# Windows que par WSLENV (voir docs/DEVELOPPEMENT.md, « L'instance de développement ») : les
+# tâches du cockpit (`wsl.exe -d SZH-Publishing -- bash -c '… make …'`) ne voient ces
+# variables que par ce moyen.
 #
-# Rangées ici (szh-common.ps1) et non dans szh-shell.ps1 : open-md.ps1 -- l'ouverture d'un
-# .md par double-clic, avec son propre lanceur Start-SzhCodiumFichier -- ne dot-source QUE
-# szh-common.ps1, jamais szh-shell.ps1 (voir l'en-tête de szh-shell.ps1, « Ouverture d'un
-# dossier dans VSCodium »). Un article ouvert par double-clic doit compiler avec les mêmes
-# variables qu'une revue ouverte depuis le lanceur.
+# Ces fonctions sont ici et non dans szh-shell.ps1 : open-md.ps1 (ouverture d'un .md par
+# double-clic) ne charge que szh-common.ps1, et un article ouvert ainsi doit compiler avec
+# les mêmes variables qu'une revue ouverte depuis le lanceur.
 $script:SzhNomsSecretsWsl = @('SZH_SHLINK_URL', 'SZH_SHLINK_CLE', 'SZH_OJS_CLE')
 
-# Ajoute nos trois noms à WSLENV, chacun avec /u (« partagé seulement de Win32 vers WSL » --
-# doc Microsoft de WSLENV : aucun de ces trois secrets n'a de raison de refaire le chemin
-# inverse). Préserve une valeur WSLENV déjà posée par ailleurs (aucune n'existe dans ce dépôt
-# aujourd'hui, mais rien n'empêche un compte d'en porter une) : nos trois noms en sont
-# d'abord retirés, avec ou sans suffixe, puis reposés pour ceux effectivement demandés --
-# idempotent, donc sans jamais doubler une entrée si Start-SzhCodium/Start-SzhCodiumFichier
-# est appelée deux fois dans la même session. $NomsAPoser vide retire nos trois noms sans en
-# reposer aucun.
+# Ajoute nos noms à WSLENV avec /u (partagés de Win32 vers WSL seulement). Le reste de
+# WSLENV est conservé : nos trois noms en sont d'abord retirés, avec ou sans suffixe, puis
+# reposés pour ceux demandés. La fonction est donc idempotente. $NomsAPoser vide retire nos
+# trois noms.
 function Set-SzhWslEnvSecrets([string[]]$NomsAPoser = @()) {
   $existant = [string]$env:WSLENV
   $parties = @()
@@ -374,14 +334,10 @@ function Set-SzhWslEnvSecrets([string[]]$NomsAPoser = @()) {
   else { Remove-Item Env:WSLENV -ErrorAction SilentlyContinue }
 }
 
-# Pose SZH_SHLINK_URL / SZH_SHLINK_CLE / SZH_OJS_CLE dans l'environnement de ce processus --
-# seulement pour ceux dont le compte a réglé une valeur (Get-SzhShlinkUrl/Cle, Get-SzhOjsCle
-# ci-dessus) -- et met WSLENV à jour en conséquence. Une valeur vide : la variable n'est ni
-# posée ni ajoutée à WSLENV, plutôt qu'une variable posée à vide -- une variable Windows vide
-# se transmettrait quand même à WSL comme une chaîne vide, et un filtre qui teste sa seule
-# présence (au lieu de son contenu) s'y tromperait. Trace UNIQUEMENT les NOMS : ni la clé
-# Shlink ni la clé OJS ne doivent pouvoir atterrir dans un journal, même partiellement -- voir
-# l'en-tête de section pour le pourquoi de ce pont.
+# Pose SZH_SHLINK_URL, SZH_SHLINK_CLE et SZH_OJS_CLE dans l'environnement de ce processus,
+# pour celles que le compte a réglées, et met WSLENV à jour. Une valeur vide n'est pas
+# posée du tout : une variable vide arriverait dans WSL, et un filtre qui ne teste que sa
+# présence s'y tromperait. Le journal ne reçoit que les noms, jamais les clés.
 function Set-SzhEnvironnementSecrets {
   $poses = New-Object System.Collections.ArrayList
   $url = Get-SzhShlinkUrl
@@ -403,10 +359,9 @@ function Set-SzhEnvironnementSecrets {
 }
 
 # ---- Version du logiciel installée ----
-# Le fichier VERSION du toolkit d'abord, state.json en repli, chaîne vide sinon. Ne doit
-# jamais lever : le lanceur l'appelle sans console, et une exception l'empêcherait de
-# s'ouvrir sans laisser de trace. Pendant une mise à jour, VERSION peut être vide et
-# state.json tronqué, d'où un try/catch par lecture.
+# Le fichier VERSION du toolkit d'abord, state.json en repli, chaîne vide sinon. Sans
+# exception : le lanceur l'appelle sans console et ne s'ouvrirait pas. Pendant une mise à
+# jour, VERSION peut être vide et state.json tronqué, d'où un try/catch par lecture.
 function Get-SzhVersionInstallee {
   try {
     $fichier = Join-Path $SzhToolkit 'VERSION'
@@ -432,17 +387,13 @@ function Sort-SzhVersions($Versions) {
   $paires = @()
   foreach ($v in $Versions) {
     $texte = [string]$v
-    # « v1.2.3 » aussi bien que « 1.2.3 ». Get-SzhVersionsPubliees retire déjà le « v » des
-    # tags avant d’appeler ici, mais Get-SzhMediumVersion le tolère, et les deux fonctions
-    # doivent s’accorder : sans cette ligne, « v1.0.1 » tombait dans le seau des
-    # non-numériques, donc en queue de liste, et « 1.0.0 » passait pour plus récente.
+    # « v1.2.3 » comme « 1.2.3 », comme dans Get-SzhMediumVersion : sinon « v1.0.1 » serait
+    # classée parmi les non-numériques, après « 1.0.0 ».
     $nu = $texte -replace '^v', ''
     $num = $null
     $base = ''
     # La partie numérique s'arrête au premier caractère qui n'est ni un chiffre ni un point :
-    # « 2026.08.10-rc1 » donne « 2026.08.10 », pas « 2026.08.101 » (l'ancien
-    # -replace '[^0-9.]', '' recollait les chiffres du suffixe à la version nue, faisant
-    # passer une pré-version pour une version plus récente).
+    # « 2026.08.10-rc1 » donne « 2026.08.10 », et non « 2026.08.101 ».
     if ($nu -match '^([0-9]+(\.[0-9]+)*)') { $base = $Matches[1] }
     if ($base) { try { $num = [version]$base } catch { $num = $null } }
     # Un suffixe (« -rc1 », « -local »…) se classe sous la version nue de même numéro : ce
@@ -456,14 +407,11 @@ function Sort-SzhVersions($Versions) {
   return @(($avec + $sans) | ForEach-Object { $_.texte })
 }
 
-# Le medium d'un numéro de version — « 1.2 » pour 1.2.13 —, ou une chaîne vide quand ce
-# numéro n'est pas de la nouvelle ère. Depuis le 18.09.2026 le dépôt est en
-# majeure.medium.mineure (1.0.0 et au-delà) ; avant, il était en année.mois.compteur
-# (2026.09.42). Les deux se ressemblent assez pour qu’aucun tri ne les sépare — [version]
-# classe même l’ancienne ère AU-DESSUS de la nouvelle, 2026 étant plus grand que 1. C’est la
-# majeure qui tranche : au-delà de 2000, c’est une année, donc l’ancienne ère. Le
-# « 0.0.0-dev+<sha> » de l’instance de développement est écarté par la même règle, sa
-# majeure étant nulle.
+# Le medium d'un numéro de version (« 1.2 » pour 1.2.13), ou une chaîne vide pour un numéro
+# qui n'est pas en majeure.medium.mineure. Les anciens numéros année.mois.compteur
+# (2026.09.42) se reconnaissent à leur majeure supérieure à 2000 ; [version] les classerait
+# sinon au-dessus des nouveaux. Le « 0.0.0-dev+<sha> » de l'instance de développement est
+# écarté aussi, sa majeure étant nulle.
 function Get-SzhMediumVersion([string]$Version) {
   $texte = ([string]$Version).Trim() -replace '^v', ''
   if ($texte -notmatch '^([0-9]+)[.]([0-9]+)[.][0-9]+') { return '' }
@@ -472,32 +420,29 @@ function Get-SzhMediumVersion([string]$Version) {
   return ('{0}.{1}' -f $majeure, [int]$Matches[2])
 }
 
-# Ce que le sélecteur de version propose : une ligne par medium, et seulement la plus
-# récente de ses mineures — 1.2.13 sans 1.2.12 ni les onze d’avant. Revenir à une mineure
-# intermédiaire n’a pas de sens : elle ne se distingue de la suivante que par des
-# correctifs, et personne ne saurait dire laquelle choisir. À plus de deux releases par
-# jour, la liste complète était de toute façon illisible — 41 lignes pour le seul mois de
-# septembre 2026. L’ancienne ère disparaît de la liste par la même occasion : elle n’est
-# plus proposée, et update.ps1 -Version <numéro> reste le seul chemin vers elle.
+# Ce que propose le sélecteur de version : une ligne par medium, avec sa mineure la plus
+# récente (1.2.13, sans 1.2.12 ni les précédentes). Une mineure intermédiaire ne diffère de
+# la suivante que par des correctifs. Les anciens numéros année.mois.compteur ne sont pas
+# proposés ; update.ps1 -Version <numéro> permet encore d'y revenir.
 function Select-SzhVersionsProposables($Versions) {
   $vues = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
   $retenues = @()
-  # Sort-SzhVersions d’abord : la plus récente de chaque medium est donc la première vue, et
-  # une pré-version (« 1.2.3-rc1 ») s’y classe déjà sous la version nue de même numéro.
+  # Après Sort-SzhVersions, la plus récente de chaque medium est la première vue, et une
+  # pré-version (« 1.2.3-rc1 ») est classée sous la version nue de même numéro.
   foreach ($v in (Sort-SzhVersions $Versions)) {
     $medium = Get-SzhMediumVersion $v
     if (-not $medium) { continue }
     if (-not $vues.Add($medium)) { continue }
-    # Le numéro nu, jamais le tag : la valeur retenue ici part en « update.ps1 -Version X »,
-    # et Get-SzhManifestUrl y recolle le « v » du tag — « vv1.0.1 » ne désignerait rien.
+    # Le numéro sans « v » : il part en « update.ps1 -Version X », et Get-SzhManifestUrl
+    # ajoute le « v » du tag.
     $retenues += (([string]$v).Trim() -replace '^v', '')
   }
   return @($retenues)
 }
 
 # Releases GitHub, les plus récentes d'abord ; tableau vide si le réseau manque ou refuse
-# (403 de limite de débit). `per_page=100` : une page manquée ferait disparaître en
-# silence les anciennes versions, celles-là mêmes qu'on cherche.
+# (403 de limite de débit). `per_page=100` : avec une seule page lue, les anciennes
+# versions disparaîtraient de la liste.
 function Get-SzhVersionsPubliees {
   try {
     $url = ('https://api.github.com/repos/{0}/releases?per_page=100' -f (Get-SzhRepo))
@@ -530,16 +475,16 @@ function Get-SzhVersionsLocales {
   return (Sort-SzhVersions $versions)
 }
 
-# Garde-fou de quoting : la valeur peut venir d'un nom de fichier de staging et part en
-# argument de update.ps1, où « 2026.08.0 -Verbose » injecterait un paramètre.
+# Contrôle de la valeur : elle peut venir d'un nom de fichier de staging et part en argument
+# de update.ps1, où « 2026.08.0 -Verbose » ajouterait un paramètre.
 function Test-SzhVersionTag([string]$Version) {
   if (-not $Version) { return $false }
   return ($Version -match '^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$')
 }
 
-# Garde-fou de chemin : les champs *.file du manifest (manifest.json, servi par la Release
-# mais rejoint tel quel à $SzhStaging via Join-Path) ne doivent désigner qu'un nom de fichier
-# — jamais un séparateur ni un « .. » qui écrirait ou lirait hors du dossier de staging.
+# Contrôle de chemin : les champs *.file du manifest sont joints à $SzhStaging par
+# Join-Path. Ils ne doivent être qu'un nom de fichier, sans séparateur ni « .. » qui
+# sortirait du dossier de staging.
 function Test-SzhNomFichierManifest([string]$Nom) {
   if (-not $Nom) { return $false }
   return ($Nom -match '^[A-Za-z0-9][A-Za-z0-9._-]{0,200}$')
@@ -590,9 +535,9 @@ function Write-SzhLog([string]$Message) {
 
 # ---- Journaux de mise à jour (transcripts d'update.ps1) ----
 
-# Ne garde que les $Garder dernières mises à jour du poste, par l'ordre de leur nom. Toujours
-# $SzhLogs, jamais SZH_JOURNAUX_MAJ : l'instance de dev lit les journaux du poste, elle ne les
-# efface pas. Ne lève jamais.
+# Ne garde que les $Garder dernières mises à jour du poste, par l'ordre de leur nom. Dans
+# $SzhLogs et non SZH_JOURNAUX_MAJ : l'instance de dev lit les journaux du poste sans les
+# effacer. Sans exception.
 function Limit-SzhJournauxMaj {
   param([int]$Garder = 9)
   try {
@@ -626,11 +571,9 @@ function Get-SzhFichier {
     [switch]$Silencieux,
     [int]$Essais = 3
   )
-  # Trois tentatives, et un fichier temporaire tant que le téléchargement n'est pas
-  # complet. Deux pannes réelles derrière ces deux mesures : 574 Mo sur un wifi d'hôtel
-  # coupent une fois sur trois, et une coupure ne lève pas — le flux rend simplement 0,
-  # donc le fichier tronqué portait le bon nom et n'était rejeté qu'à l'empreinte, une
-  # minute plus tard, en faisant échouer toute la mise à jour au lieu de réessayer.
+  # Trois tentatives, et un fichier .part tant que le téléchargement n'est pas complet : une
+  # connexion faible coupe souvent un gros fichier, et un fichier tronqué ne doit pas porter
+  # le nom final.
   $partiel = $Destination + '.part'
   $derniere = $null
   for ($essai = 1; $essai -le [Math]::Max(1, $Essais); $essai++) {
@@ -664,7 +607,7 @@ function Get-SzhFichierUneFois {
   try {
     $total = $resp.ContentLength
     # -1 : le serveur n'a pas annoncé de taille (réponse « chunked », par exemple). La
-    # complétude ne se contrôle alors pas ici — c'est Test-SzhSha256, plus loin, qui tranche.
+    # complétude est alors contrôlée par Test-SzhSha256.
     if ($total -lt 0) { Write-SzhLog ('téléchargement : taille inconnue (Content-Length absent) -> ' + $Url) }
     $flux  = $resp.GetResponseStream()
     $sortie = [System.IO.File]::Create($Destination)
@@ -706,9 +649,9 @@ function Get-SzhFichierUneFois {
 
 # ---- Place libre ----
 # L'environnement de fabrication demande l'archive (0,6 Go) puis le disque virtuel qu'elle
-# déplie (≈ 2,4 Go). Un disque plein laissait un import à moitié fait : dossier pris,
-# distribution absente — exactement l'état qui bloque toutes les mises à jour suivantes.
-# Mesure impossible : on rend -1, et l'appelant n'empêche rien sur un doute.
+# déplie (≈ 2,4 Go). Un disque plein laisserait un import à moitié fait (dossier créé,
+# distribution absente), qui bloque les mises à jour suivantes. Mesure impossible : -1, et
+# l'appelant laisse faire.
 function Get-SzhEspaceLibreGo {
   param([string]$Chemin = '')
   if (-not $Chemin) { $Chemin = $SzhBase }
@@ -719,11 +662,10 @@ function Get-SzhEspaceLibreGo {
 }
 
 # ---- Une seule mise à jour à la fois sur le poste ----
-# « Local\ » borne le mutex à la session : deux comptes connectés en même temps détendaient
-# donc deux Expand-Archive sur le même C:\ProgramData\SZH\toolkit, qui finit à moitié
-# écrit. « Global\ » le rend visible à tout le poste, et son ACL doit nommer les
-# Utilisateurs : sans elle, le deuxième compte se voit refuser l'ouverture et croit qu'une
-# mise à jour est en cours alors qu'il n'y en a aucune.
+# « Global\ » rend le mutex visible à tout le poste : avec « Local\ », limité à la session,
+# deux comptes connectés pourraient décompresser en même temps dans le même
+# C:\ProgramData\SZH\toolkit. L'ACL doit nommer les Utilisateurs, sinon le deuxième compte
+# se voit refuser l'ouverture et croit qu'une mise à jour est en cours.
 function New-SzhMutexPoste {
   param([string]$Nom = 'SZH-Publishing-Update')
   try {
@@ -750,36 +692,27 @@ function Test-SzhSha256 {
 }
 
 # ---- Remplacement du toolkit ----
-# `Expand-Archive -Force` écrase ce que l'archive contient, mais ne supprime jamais ce
-# qu'elle ne contient plus : un fichier retiré du dépôt survivrait donc indéfiniment dans le
-# toolkit de chaque poste, mise à jour après mise à jour.
+# `Expand-Archive -Force` écrase ce que l'archive contient, mais ne supprime pas ce qu'elle
+# ne contient plus : sans ce nettoyage, un fichier retiré du dépôt resterait dans le toolkit
+# de chaque poste.
 #
-# Une seule définition, appelée par update.ps1, update-launcher.ps1 et bootstrap.ps1 : trois
-# copies la feraient diverger sans que rien ne le signale.
+# Une seule définition, appelée par update.ps1, update-launcher.ps1 et bootstrap.ps1.
 #
-# $Extrait est une extraction à part de la même archive : elle dit exactement ce que cette
-# version contient. Uniquement dans les dossiers que l'archive gère (release.yml : pipeline,
-# vscodium-user, revue-template, livre-template, windows) — un dossier qui n'appartient pas
-# à l'archive n'a pas à être jugé par elle, et c'est cette limite qui rend l'opération sûre.
-# Rien hors $Toolkit n'est même regardé : state.json, config.json, staging, logs et l'état
-# par compte vivent ailleurs.
+# $Extrait est une extraction à part de la même archive, qui dit ce que cette version
+# contient. Seuls les dossiers que l'archive gère sont nettoyés (voir $dossiersGeres et
+# release.yml) ; rien hors de $Toolkit n'est regardé (state.json, config.json, staging,
+# logs et l'état par compte sont ailleurs).
 function Remove-SzhToolkitOrphelins {
   param(
     [Parameter(Mandatory = $true)][string]$Toolkit,
     [Parameter(Mandatory = $true)][string]$Extrait
   )
-  # Forme longue dès l'entrée : $Toolkit et $Extrait peuvent arriver en forme courte 8.3 (le
-  # dossier temporaire d'un runner de CI, par exemple C:\Users\RUNNER~1\...) alors que
-  # Get-ChildItem -Recurse rend TOUJOURS la forme longue dans FullName -- vérifié : passer un
-  # chemin court à Get-ChildItem -LiteralPath ne fait pas ressortir ce même chemin court dans
-  # FullName, mais le nom réel, plus long, du dossier. Le calcul de relatif plus bas
-  # ($f.FullName.Substring($dansToolkit.Length)) suppose que les deux mesurent la même
-  # longueur ; sans cette résolution il coupe au milieu d'un composant et rend un chemin
-  # relatif absurde (« pipeline\ine\garde.md » constaté). Get-Item résout une forme courte
-  # déjà sur le disque vers sa forme longue ; [System.IO.Path]::GetFullPath sert de repli
-  # quand le chemin n'existe pas encore -- un chemin absent ne porte alors aucune forme
-  # courte à résoudre. Inline plutôt qu'une fonction à part : cette fonction est éprouvée
-  # extraite seule (test/js/orphelins-toolkit.test.js), sans le reste de ce fichier.
+  # Forme longue dès l'entrée : $Toolkit et $Extrait peuvent arriver en forme courte 8.3
+  # (dossier temporaire d'un runner de CI, C:\Users\RUNNER~1\...), alors que Get-ChildItem
+  # rend toujours la forme longue dans FullName. Le calcul du chemin relatif plus bas
+  # ($f.FullName.Substring($dansToolkit.Length)) suppose les deux de même longueur. Get-Item
+  # résout un chemin existant ; GetFullPath sert pour un chemin absent. Écrit ici et non dans
+  # une fonction à part : test/js/orphelins-toolkit.test.js extrait cette fonction seule.
   if ($Toolkit -and (Test-Path -LiteralPath $Toolkit)) { $Toolkit = (Get-Item -LiteralPath $Toolkit).FullName }
   elseif ($Toolkit) { $Toolkit = [System.IO.Path]::GetFullPath($Toolkit) }
   if ($Extrait -and (Test-Path -LiteralPath $Extrait)) { $Extrait = (Get-Item -LiteralPath $Extrait).FullName }
@@ -788,11 +721,9 @@ function Remove-SzhToolkitOrphelins {
   $retires = New-Object System.Collections.ArrayList
   $avertissements = New-Object System.Collections.ArrayList
 
-  # ---- Garde globale : l'extraction doit ressembler à un vrai toolkit avant qu'on y touche ----
-  # Une extraction vide (zip qui réussit sans rien contenir) viderait sinon tous les dossiers
-  # gérés du toolkit, faute de quoi que ce soit à quoi les comparer. Si l'extraction ne porte
-  # ni le VERSION ni un seul des dossiers gérés, elle ne dit rien de fiable sur cette version :
-  # le nettoyage entier s'abstient plutôt que de juger sur du vide.
+  # ---- Contrôle global : l'extraction doit ressembler à un vrai toolkit ----
+  # Une extraction vide viderait tous les dossiers gérés. Sans VERSION ou sans aucun des
+  # dossiers gérés, le nettoyage est abandonné.
   $versionExtraite = Test-Path -LiteralPath (Join-Path $Extrait 'VERSION') -PathType Leaf
   $auMoinsUnDossier = $false
   foreach ($d in $dossiersGeres) {
@@ -803,11 +734,11 @@ function Remove-SzhToolkitOrphelins {
     return [ordered]@{ retires = $retires; avertissements = $avertissements }
   }
 
-  # Sous ce nombre de fichiers, une proportion élevée d'orphelins reste plausible (un petit
-  # dossier retaillé de moitié) et la garde de vraisemblance ci-dessous ne s'applique pas.
+  # Sous ce nombre de fichiers, une forte proportion d'orphelins reste plausible, et le
+  # contrôle de vraisemblance ci-dessous ne s'applique pas.
   $seuilPlancherFichiers = 4
-  # Au-delà de cette part, un nettoyage n'est plus « quelques fichiers retirés du dépôt » mais
-  # la majorité d'un dossier géré : invraisemblable pour une mise à jour normale.
+  # Au-delà de cette part d'un dossier géré, le nettoyage est invraisemblable pour une mise
+  # à jour normale.
   $seuilProportionOrpheline = 0.5
 
   foreach ($d in $dossiersGeres) {
@@ -815,11 +746,9 @@ function Remove-SzhToolkitOrphelins {
     if (-not (Test-Path $dansToolkit)) { continue }
     $dansArchive = Join-Path $Extrait $d
 
-    # ---- Garde par dossier : le dossier doit exister dans l'archive extraite ----
-    # $Extrait\pipeline absent alors que $Extrait\windows est présent effacerait sinon tout
-    # $Toolkit\pipeline, faute de savoir ce que cette version y garde. En cas de doute, ce
-    # dossier-ci n'est pas touché ; les autres, eux, restent jugés chacun sur sa propre
-    # comparaison.
+    # ---- Contrôle par dossier : il doit exister dans l'archive extraite ----
+    # Sinon tout le dossier du toolkit serait effacé. Il n'est pas touché ; les autres
+    # dossiers sont jugés chacun pour soi.
     if (-not (Test-Path -LiteralPath $dansArchive -PathType Container)) {
       [void]$avertissements.Add('dossier absent de l''archive extraite, rien retiré -> ' + $d)
       continue
@@ -828,9 +757,8 @@ function Remove-SzhToolkitOrphelins {
     $fichiers = @(Get-ChildItem -LiteralPath $dansToolkit -Recurse -File -Force -ErrorAction SilentlyContinue)
     if ($fichiers.Count -eq 0) { continue }
 
-    # Candidats orphelins : présents dans le toolkit, absents de l'archive. Calculés d'abord,
-    # sans rien supprimer -- la garde de vraisemblance ci-dessous doit juger sur l'ensemble
-    # avant qu'un seul fichier ne parte.
+    # Candidats orphelins : présents dans le toolkit, absents de l'archive. Tous calculés
+    # avant toute suppression, pour le contrôle de vraisemblance.
     $candidats = New-Object System.Collections.ArrayList
     foreach ($f in $fichiers) {
       $relatif = $f.FullName.Substring($dansToolkit.Length).TrimStart('\')
@@ -841,10 +769,9 @@ function Remove-SzhToolkitOrphelins {
     }
     if ($candidats.Count -eq 0) { continue }
 
-    # ---- Garde de vraisemblance : proportion invraisemblable ----
-    # Une archive authentique mais incomplète (dossier source vidé par erreur avant le `cp -r`
-    # de release.yml, zip valide, empreinte correcte) passe les deux gardes ci-dessus : le
-    # dossier existe dans l'archive, il est juste creux. Elle ne passe pas celle-ci.
+    # ---- Contrôle de vraisemblance ----
+    # Une archive authentique mais incomplète (dossier source vidé avant le `cp -r` de
+    # release.yml) passe les deux contrôles précédents : le dossier existe, mais presque vide.
     if (($fichiers.Count -ge $seuilPlancherFichiers) -and
         (($candidats.Count / [double]$fichiers.Count) -gt $seuilProportionOrpheline)) {
       [void]$avertissements.Add(('proportion invraisemblable, rien retiré -> {0} : {1}/{2} fichier(s) auraient été retirés' -f $d, $candidats.Count, $fichiers.Count))
@@ -856,8 +783,8 @@ function Remove-SzhToolkitOrphelins {
       [void]$retires.Add((Join-Path $d $c.relatif))
     }
 
-    # Dossiers restés vides derrière les fichiers retirés, du plus profond au moins profond ;
-    # le dossier géré lui-même ($dansToolkit) n'est jamais retiré, même vide.
+    # Dossiers restés vides, du plus profond au moins profond ; le dossier géré lui-même
+    # ($dansToolkit) reste, même vide.
     Get-ChildItem -LiteralPath $dansToolkit -Recurse -Directory -Force -ErrorAction SilentlyContinue |
       Sort-Object { $_.FullName.Length } -Descending |
       Where-Object { -not (Get-ChildItem -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue) } |
@@ -866,39 +793,31 @@ function Remove-SzhToolkitOrphelins {
   return [ordered]@{ retires = $retires; avertissements = $avertissements }
 }
 
-# Bascule le toolkit d'un coup, jamais fichier par fichier sur l'arbre vivant : construit la
-# nouvelle version dans <toolkit>.neuf (copie de l'actuel, complétée par l'archive, nettoyée
-# de ses orphelins -- Remove-SzhToolkitOrphelins ci-dessus, appliquée à cette copie et non
-# plus au toolkit en service), puis bascule par un renommage NTFS, tout ou rien.
+# Remplace le toolkit d'un coup : la nouvelle version est construite dans <toolkit>.neuf
+# (copie de l'actuel, complétée par l'archive, nettoyée par Remove-SzhToolkitOrphelins),
+# puis mise en place par un renommage NTFS, tout ou rien.
 #
-# [System.IO.Directory]::Move, et non Move-Item : Move-Item recopie récursivement dossier par
-# dossier et peut laisser le toolkit coupé en deux si un fichier est verrouillé en cours de
-# route -- Move-Item peut alors créer <toolkit>\neuf au lieu de remplacer <toolkit>, sans lever
-# la moindre erreur. Directory.Move est un renommage NTFS -- une seule opération sur le nom du
-# dossier, jamais sur son contenu -- qui réussit ou échoue entièrement, sans état intermédiaire.
+# [System.IO.Directory]::Move et non Move-Item : Move-Item copie dossier par dossier, peut
+# laisser le toolkit à moitié déplacé si un fichier est verrouillé, et peut créer
+# <toolkit>\neuf au lieu de remplacer <toolkit> sans erreur. Directory.Move renomme le
+# dossier en une seule opération, qui réussit ou échoue entièrement.
 #
-# $Zip : l'archive déjà téléchargée et vérifiée par sha256 (l'appelant l'a fait avant d'appeler
-# cette fonction). $Toolkit : le dossier cible, en service. $DossierTravail : où poser
-# l'extraction de référence qui sert à détecter les orphelins -- $SzhStaging en service, un
-# dossier jetable dans les tests.
+# $Zip : l'archive téléchargée, déjà vérifiée par sha256. $Toolkit : le dossier en service.
+# $DossierTravail : où poser l'extraction de référence ($SzhStaging en service, un dossier
+# jetable dans les tests).
 #
-# Rend le bilan de Remove-SzhToolkitOrphelins ({ retires; avertissements }) ; lève (T
-# 'err.toolkit') si la construction de la copie ou la bascule elle-même échoue -- presque
-# toujours un fichier encore ouvert dans l'éditeur -- après avoir remis le toolkit d'origine
-# en place si la bascule avait déjà commencé.
+# Rend le bilan de Remove-SzhToolkitOrphelins ({ retires; avertissements }). Lève
+# (T 'err.toolkit') si la copie ou le renommage échoue, presque toujours à cause d'un
+# fichier ouvert dans l'éditeur, après avoir remis le toolkit d'origine en place.
 function Install-SzhToolkitDepuisArchive {
   param(
     [Parameter(Mandatory = $true)][string]$Zip,
     [Parameter(Mandatory = $true)][string]$Toolkit,
     [string]$DossierTravail = ''
   )
-  # Forme longue dès l'entrée, même défaut et même remède qu'en tête de
-  # Remove-SzhToolkitOrphelins ci-dessus : sur un runner de CI dont le dossier temporaire est
-  # exposé en forme courte 8.3 (C:\Users\RUNNER~1\...), $Zip, $Toolkit et $DossierTravail
-  # arrivent courts alors que Get-ChildItem, Expand-Archive et Directory.Move les rendent en
-  # forme longue. Résolu ici, une seule fois : $neuf, $vieux et $extrait, qui s'en déduisent
-  # plus bas par simple concaténation ou Join-Path, restent en forme longue à leur tour --
-  # $Toolkit est donc normalisé AVANT que $DossierTravail ne s'en déduise par défaut.
+  # Forme longue dès l'entrée, comme dans Remove-SzhToolkitOrphelins (formes courtes 8.3 sur
+  # un runner de CI). $neuf, $vieux et $extrait s'en déduisent ; $Toolkit est normalisé
+  # avant que $DossierTravail n'en soit tiré par défaut.
   if ($Zip -and (Test-Path -LiteralPath $Zip)) { $Zip = (Get-Item -LiteralPath $Zip).FullName }
   elseif ($Zip) { $Zip = [System.IO.Path]::GetFullPath($Zip) }
   if ($Toolkit -and (Test-Path -LiteralPath $Toolkit)) { $Toolkit = (Get-Item -LiteralPath $Toolkit).FullName }
@@ -911,18 +830,15 @@ function Install-SzhToolkitDepuisArchive {
   $extrait = Join-Path $DossierTravail ((Split-Path $Toolkit -Leaf) + '-verif-' + [guid]::NewGuid().Guid)
   $bilanOrphelins = [ordered]@{ retires = @(); avertissements = @() }
 
-  # Reste d'une passe précédente interrompue entre la construction et la bascule : jamais
-  # rejoué tel quel, la copie repart de zéro.
+  # Restes d'une passe interrompue : la copie repart de zéro.
   foreach ($d in $neuf, $vieux) {
     if (Test-Path -LiteralPath $d) { Remove-Item -LiteralPath $d -Recurse -Force }
   }
 
   try {
-    # ---- La copie : jamais l'arbre vivant ----
-    # Une lecture qui échoue ici (fichier du toolkit courant encore ouvert dans l'éditeur)
-    # est le même dérangement qu'un renommage refusé plus bas : même cause, même remède,
-    # donc le même message clair plutôt que l'exception .NET brute (« used by another
-    # process »), que personne ne comprend sans lire le code.
+    # ---- La copie, à côté du toolkit en service ----
+    # Une lecture qui échoue ici (fichier ouvert dans l'éditeur) a la même cause qu'un
+    # renommage refusé plus bas : même message, plutôt que l'exception .NET brute.
     try {
       New-Item -ItemType Directory -Force -Path $neuf | Out-Null
       if (Test-Path -LiteralPath $Toolkit) {
@@ -934,8 +850,8 @@ function Install-SzhToolkitDepuisArchive {
     }
 
     # ---- Nettoyage des orphelins, sur la copie ----
-    # Jamais bloquant : un souci ici ne doit pas empêcher la bascule qui suit -- la copie
-    # reste un toolkit valide même si un reste de l'ancienne version y traîne encore.
+    # Sans blocage : la copie reste un toolkit valide même avec des restes de l'ancienne
+    # version.
     try {
       Expand-Archive -Path $Zip -DestinationPath $extrait -Force
       $bilanOrphelins = Remove-SzhToolkitOrphelins -Toolkit $neuf -Extrait $extrait
@@ -945,7 +861,7 @@ function Install-SzhToolkitDepuisArchive {
       if (Test-Path -LiteralPath $extrait) { Remove-Item -LiteralPath $extrait -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    # ---- La bascule : deux renommages, jamais un fichier copié un par un ----
+    # ---- Mise en place : deux renommages ----
     if (Test-Path -LiteralPath $Toolkit) {
       try {
         [System.IO.Directory]::Move($Toolkit, $vieux)
@@ -956,8 +872,8 @@ function Install-SzhToolkitDepuisArchive {
     try {
       [System.IO.Directory]::Move($neuf, $Toolkit)
     } catch {
-      # Le toolkit d'origine n'a pas bougé de $vieux : on l'y remet avant de lever, pour
-      # qu'un échec de bascule ne laisse jamais le poste sans toolkit du tout.
+      # Le toolkit d'origine est dans $vieux : il est remis en place avant de lever, pour
+      # que le poste garde un toolkit.
       if (Test-Path -LiteralPath $vieux) {
         try { [System.IO.Directory]::Move($vieux, $Toolkit) } catch { }
       }
@@ -997,16 +913,13 @@ function Get-VSCodiumCli {
   return $null
 }
 
-# Le dossier de l'extension du cockpit posée pour ce compte (szh-csps.szh-cockpit-*, la plus
-# récente sous %USERPROFILE%\.vscode-oss\extensions par date d'écriture) -- chaîne vide si
-# aucune n'y est posée. Un seul point de résolution pour Get-SzhOutilCockpit (szh-shell.ps1),
-# qui y cherche ensuite l'outil demandé : cette fonction ne connaît aucun nom d'outil.
+# Le dossier de l'extension du cockpit installée pour ce compte (szh-csps.szh-cockpit-*, la
+# plus récente sous %USERPROFILE%\.vscode-oss\extensions par date d'écriture), ou une chaîne
+# vide. Get-SzhOutilCockpit (szh-shell.ps1) y cherche ensuite l'outil demandé.
 #
-# $env:SZH_COCKPIT_DOSSIER, quand posé, nomme DIRECTEMENT ce dossier et court-circuite le
-# balayage -- sur le patron de $env:SZH_RAPPORTS (szh-rapport.ps1) et $env:SZH_ANCRAGE
-# (szh-ancrage.ps1). Un test s'en sert pour viser le dépôt lui-même (rendu de courriel
-# identique à lib/gabarits.js, sans installation réelle de l'extension) ou un dossier vide
-# (repli de Get-SzhCourriel quand rien n'est posé).
+# $env:SZH_COCKPIT_DOSSIER, s'il est posé, donne directement ce dossier, comme
+# $env:SZH_RAPPORTS (szh-rapport.ps1) et $env:SZH_ANCRAGE (szh-ancrage.ps1). Les tests s'en
+# servent pour viser le dépôt lui-même ou un dossier vide.
 function Get-SzhDossierCockpit {
   if ($env:SZH_COCKPIT_DOSSIER) { return $env:SZH_COCKPIT_DOSSIER }
   $dossierExtensions = Join-Path $env:USERPROFILE '.vscode-oss\extensions'
@@ -1017,13 +930,11 @@ function Get-SzhDossierCockpit {
   return $candidats[0].FullName
 }
 
-# Les extensions posées, telles que l'éditeur les liste pour ce compte. La source de vérité
-# est l'éditeur, pas state.json : celui-ci est commun au poste alors qu'une extension
-# s'installe par utilisateur, et il affirmait « posée » à un compte qui n'avait rien.
-# Table id -> version, et $null — pas une table vide — quand le CLI ne répond pas : un
-# profil neuf n'a aucune extension, et confondre les deux ferait sauter l'installation
-# exactement là où elle est nécessaire. Les tables PowerShell ignorent la casse, ce qu'il
-# faut ici : l'éditeur écrit « MS-CEINTL.vscode-language-pack-de ».
+# Les extensions installées, telles que l'éditeur les liste pour ce compte (state.json est
+# commun au poste, alors qu'une extension s'installe par utilisateur). Table id -> version,
+# ou $null quand le CLI ne répond pas, à distinguer d'une table vide (profil neuf). Les
+# tables PowerShell ignorent la casse, ce qu'il faut ici : l'éditeur écrit
+# « MS-CEINTL.vscode-language-pack-de ».
 function Get-SzhExtensionsInstallees {
   param([string]$Cli = '')
   if (-not $Cli) { $Cli = Get-VSCodiumCli }
@@ -1041,9 +952,9 @@ function Get-SzhExtensionsInstallees {
   return $table
 }
 
-# Toutes les extensions du manifest sont-elles posées, dans leur version, pour ce compte ?
-# $true quand le CLI ne répond pas ou que l'éditeur manque : on ne déclenche pas une mise à
-# jour sur une mesure qu'on n'a pas pu faire.
+# Toutes les extensions du manifest sont-elles installées, dans leur version, pour ce
+# compte ? $true quand le CLI ne répond pas ou que l'éditeur manque : pas de mise à jour sur
+# une mesure impossible.
 function Test-SzhExtensionsAJour($Manifest) {
   if (-not $Manifest) { return $true }
   $reelles = Get-SzhExtensionsInstallees
@@ -1058,13 +969,11 @@ function Test-SzhExtensionsAJour($Manifest) {
 
 # ---- Le disque de la distribution, par utilisateur ----
 #
-# L'enregistrement d'une distribution WSL est par utilisateur (HKCU\...\Lxss) alors que ce
-# dossier était commun au poste. Le deuxième compte n'avait donc aucune distribution
-# enregistrée mais trouvait le dossier déjà pris, et `wsl --import` refusait :
-# Wsl/Service/RegisterDistro/ERROR_FILE_EXISTS, sans aucune issue puisque rien ne nettoyait
-# jamais ce dossier. Pire : `wsl --unregister` du premier compte efface le disque, donc
-# celui du second. Un dossier par SID supprime les deux. Le SID plutôt que le nom de
-# compte : deux domaines peuvent porter le même nom, et un compte renommé garde son SID.
+# L'enregistrement d'une distribution WSL est par utilisateur (HKCU\...\Lxss) : chaque
+# compte a donc son propre dossier, sinon `wsl --import` d'un deuxième compte échouerait
+# (ERROR_FILE_EXISTS) et `wsl --unregister` d'un compte effacerait le disque de l'autre.
+# Le SID plutôt que le nom : deux domaines peuvent avoir le même nom de compte, et un
+# compte renommé garde son SID.
 function Get-SzhDossierDistro {
   param([string]$Sid = '')
   if (-not $Sid) { $Sid = (Get-SzhIdentite).sid }
@@ -1088,11 +997,10 @@ function Get-SzhDistrosEnregistrees {
 }
 
 # Un dossier de distribution présent alors que la distribution n'est pas enregistrée pour
-# ce compte est un reste : installation interrompue, disque plein, ou un autre compte qui
-# l'avait posé là du temps du dossier commun. On l'écarte — l'environnement est jetable, il
-# ne contient aucune donnée — et seulement si le dossier porte bien notre nom, jamais un
-# chemin venu d'ailleurs. Échoue si une machine WSL en marche tient encore le .vhdx :
-# l'appelant en fait alors le message « redémarrez le poste ».
+# ce compte est un reste (installation interrompue, disque plein). Il est supprimé :
+# l'environnement ne contient aucune donnée. Seulement si le dossier porte le nom de la
+# distribution. Échoue si une machine WSL en marche tient encore le .vhdx ; l'appelant
+# affiche alors « redémarrez le poste ».
 function Clear-SzhDossierDistro {
   param([Parameter(Mandatory = $true)][string]$Dossier)
   if (-not (Test-Path $Dossier)) { return $false }
@@ -1103,10 +1011,10 @@ function Clear-SzhDossierDistro {
   return $true
 }
 
-# L'environnement répond-il ? Un import réussi ne prouve pas qu'une distribution démarre :
+# L'environnement répond-il ? Un import réussi ne prouve pas que la distribution démarre :
 # sans virtualisation (désactivée dans le firmware ou par une stratégie), l'import passe et
-# le premier `--exec` échoue. Sans ce contrôle, la panne n'apparaît qu'à la première
-# tentative de PDF du rédacteur, loin de l'installation qui l'a causée.
+# le premier `--exec` échoue. Ce contrôle signale la panne à l'installation plutôt qu'au
+# premier PDF.
 function Test-SzhDistroRepond {
   try {
     $wsl = Get-WslExe
@@ -1153,20 +1061,16 @@ function Write-SzhInfo([string]$Texte)  { Write-Host ('    ' + $Texte) -Foregrou
 # Ce qui n'a pas abouti sans faire echouer le reste : visible, mais pas rouge.
 function Write-SzhAttention([string]$Texte) { Write-Host ('    ! ' + $Texte) -ForegroundColor Yellow }
 
-# Un seul moteur de rendu dans tout le produit (choix de Robin, 14.09.2026) : plus de
-# mini-Twig écrit à la main ici. Le gabarit (windows/mail-templates/*.twig) est rendu par
-# lib/gabarits.js -- le même moteur que le cockpit -- via outils/rendre-gabarit.js
-# (vscodium-extension/szh-cockpit), exécuté par le Node qu'embarque VSCodium
-# (ELECTRON_RUN_AS_NODE=1, Invoke-SzhNodeCockpit) : un aller-retour JSON sur stdin/stdout.
+# Rend un gabarit de courriel (windows/mail-templates/*.twig) avec lib/gabarits.js, le
+# moteur du cockpit, par outils/rendre-gabarit.js (vscodium-extension/szh-cockpit), exécuté
+# par le Node de VSCodium (ELECTRON_RUN_AS_NODE=1, Invoke-SzhNodeCockpit) : un aller-retour
+# JSON sur stdin/stdout.
 #
-# Repli OBLIGATOIRE, et ce n'est pas un second moteur : Show-SzhErreur, seul appelant, est
-# l'écran d'une mise à jour qui a échoué -- y compris à la toute première installation, où
-# VSCodium peut ne pas encore exister sur le poste. Si l'exécutable, le dossier d'extension
-# ou le script manquent, ou si le rendu échoue pour n'importe quelle raison, cette fonction
-# NE LÈVE JAMAIS : elle rend un message minimal assemblé depuis szh-textes.ps1
-# (courriel.repli.*) et journalise pourquoi le repli a servi. Ce repli ne lit jamais le
-# .twig et ne substitue jamais un {{ }} : un texte d'incident, volontairement différent du
-# gabarit habituel, pas une deuxième implémentation.
+# Show-SzhErreur, seul appelant, est l'écran d'une mise à jour qui a échoué, y compris à la
+# première installation, quand VSCodium peut manquer. Si l'exécutable, l'extension ou le
+# script manquent, ou si le rendu échoue, la fonction ne lève pas : elle rend un message
+# minimal tiré de szh-textes.ps1 (courriel.repli.*) et journalise la raison. Ce repli ne
+# lit pas le .twig : c'est un texte d'incident, pas un second moteur.
 function Get-SzhCourriel {
   param(
     [Parameter(Mandatory = $true)][string]$Nom,
@@ -1201,11 +1105,9 @@ function Get-SzhCourriel {
     }
 
     $blocsRendus = $objetRendu.blocs
-    # Convention du cockpit (lib/courriel.js#rendreCourriel), reprise ici à l'identique :
-    # le sujet est débarrassé de ses blancs de bord, le corps perd exactement un retour à
-    # la ligne après l'ouverture du bloc et un avant sa fermeture -- le gabarit les porte
-    # pour rester lisible en édition, ce ne sont pas des blancs du message. C'est une
-    # convention de RENDU, elle reste ici, ce n'est pas l'affaire du moteur.
+    # Même convention que lib/courriel.js#rendreCourriel : le sujet perd ses blancs de bord,
+    # le corps un retour à la ligne après l'ouverture du bloc et un avant sa fermeture,
+    # présents dans le gabarit pour la lisibilité.
     if ($blocsRendus -and ($blocsRendus.PSObject.Properties.Name -contains 'sujet')) {
       $sujetFinal = ([string]$blocsRendus.sujet).Trim()
     }
@@ -1222,7 +1124,7 @@ function Get-SzhCourriel {
     return [pscustomobject]@{ sujet = $sujetFinal; corps = $corpsFinal }
   }
 
-  # ---- Repli : texte simple assemblé depuis szh-textes.ps1, jamais un second moteur ----
+  # ---- Repli : texte simple tiré de szh-textes.ps1 ----
   try { Write-SzhLog ('Get-SzhCourriel : repli en texte simple (' + $Nom + ', ' + $Langue + ') -- ' + $raisonRepli) } catch { }
   $posteRepli = ''
   if ($Variables.Contains('poste')) { $posteRepli = [string]$Variables['poste'] }
@@ -1238,18 +1140,15 @@ function Get-SzhCourriel {
 }
 
 # Mode sans interaction (update.ps1 -Silencieux, posé par update-launcher.ps1 quand
-# Get-SzhMajSilencieuse est actif) : cette fenêtre n'existe pour personne, aucune touche ne
-# viendra jamais. $Host.UI.RawUI.ReadKey, plus bas dans Show-SzhErreur, bloquerait alors le
-# processus POUR TOUJOURS -- mutex de mise à jour compris, qu'aucune passe suivante ne
-# reprendrait plus jamais. Faux par défaut : une fenêtre ouverte à la main garde son écran
-# d'erreur interactif exactement comme avant ce réglage.
+# Get-SzhMajSilencieuse est actif) : personne ne voit la fenêtre, et le ReadKey de
+# Show-SzhErreur bloquerait le processus indéfiniment, mutex de mise à jour compris. Faux
+# par défaut : une fenêtre ouverte à la main garde son écran d'erreur interactif.
 $script:SzhSansInteraction = $false
 
 # Écran d'erreur final : message calme, contact, e-mail pré-rempli, accès au journal.
-# -Code distingue les deux appelants d'update.ps1 (échec partiel d'une étape, ou échec total)
-# pour le rapport d'erreur automatique silencieux (docs/RAPPORTS-ERREUR.md, szh-rapport.ps1) --
-# Write-SzhRapport ne bloque jamais et n'affiche jamais rien (D2, D5) : l'écran ci-dessous,
-# lui, continue de s'afficher exactement comme avant.
+# -Code distingue les deux appels d'update.ps1 (échec d'une étape ou échec total) dans le
+# rapport d'erreur automatique (docs/RAPPORTS-ERREUR.md, szh-rapport.ps1). Write-SzhRapport
+# ne bloque pas et n'affiche rien.
 function Show-SzhErreur {
   param([string]$Etape, [string]$Message, [string]$Journal, [string]$Code = 'MAJ-ECHEC')
   try { Write-SzhRapport -Code $Code -Source 'maj' -Etape $Etape -Message $Message -Journal $Journal } catch { }
@@ -1262,11 +1161,9 @@ function Show-SzhErreur {
   Write-Host ('  ' + (T 'err.rassure')) -ForegroundColor Green
   Write-Host ('  ' + (T 'err.retry' @($SzhSupport)))
   Write-Host ''
-  # Mode silencieux : tout ce qui précède (rapport automatique Write-SzhRapport compris) est
-  # déjà parti et reste lisible dans le journal — c'est ce que montre l'onglet « Journal » du
-  # lanceur. Ce qui suit, en revanche, n'a plus de sens : la ligne de menu proposerait trois
-  # touches à personne, et la touche attendue, sans fenêtre pour la frapper, bloquerait le
-  # processus pour toujours — mutex de mise à jour compris. La main revient tout de suite.
+  # Mode silencieux : le rapport est parti et l'erreur reste dans le journal (onglet
+  # « Journal » du lanceur). Le menu et l'attente d'une touche bloqueraient le processus,
+  # mutex compris : la fonction rend la main.
   if ($script:SzhSansInteraction) {
     try { Write-SzhLog ('update : erreur survenue en mode silencieux (' + $Etape + ') -> ' + $Message) } catch { }
     return

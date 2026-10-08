@@ -1,81 +1,58 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# manuscrit-nettoyer.py — la CLI du nettoyeur de manuscrit (article) : le CHAÎNON qui
-# branche les six modules déjà écrits et éprouvés (manuscrit_docx, manuscrit_modele,
-# manuscrit_typo, manuscrit_regles, manuscrit_gabarit), et rien d'autre. Contrat :
-# docs/ARCHITECTURE-nettoyeur-manuscrit.md, §8 (cette CLI), §1 (les deux cas), §10
-# (les pièges), §11 (les contrôles).
+# CLI du nettoyeur de manuscrit (article) : enchaîne les modules manuscrit_* sur un .docx ou
+# un .odt et écrit le manuscrit au gabarit Pronto, annoté, avec son rapport. Voir
+# docs/ARCHITECTURE-nettoyeur-manuscrit.md.
 #
 #   manuscrit-nettoyer.py <entree.docx|.odt> --produit revue|zeitschrift --sortie <dossier>
 #                         [--rapport <fichier.json>] [--format docx|odt] [--analyse-seule]
 #                         [--sans-typo] [--sans-annotation] [--sans-reseau]
 #
-# Entrée .odt (point 2 du chantier « gabarits Pronto FR/DE + ODT », 29.09.2026) : convertie en
-# .docx par conversion_odt.convertir() dans un dossier temporaire, AVANT md.lire() -- le reste
-# de la chaîne ne parle que .docx (décision de Robin : un seul moteur). `entree` continue de
-# désigner le chemin D'ORIGINE partout (rapport, messages, refus), jamais le .docx temporaire.
-# Sortie .odt (point 3) : tout se fait en .docx comme aujourd'hui, puis le .docx final est
-# converti en .odt et l'intermédiaire supprimé ; un échec de conversion garde le .docx, avec
-# une alerte, jamais une perte.
+# Étapes : lire, reconnaître le cas (A : déjà au gabarit, B : manuscrit libre), lire l'en-tête
+# et le bloc final des auteurs, classer les titres, nettoyer la mise en forme, appliquer la
+# typographie, passer les règles (structurelles, Vale, bibliographie), écrire le gabarit,
+# annoter le .docx écrit, écrire le rapport.
 #
-# Convention du tiret (§3 du contrat) : ce fichier PORTE un tiret dans son nom, c'est une
-# CLI, jamais un module importé par un autre fichier Python.
+# Une entrée .odt est d'abord convertie en .docx dans un dossier temporaire : toute la chaîne
+# travaille en .docx. `entree` désigne toujours le fichier d'origine (rapport, messages). En
+# sortie .odt, le .docx final est converti puis supprimé ; si la conversion échoue, le .docx
+# est gardé et une alerte le dit.
 #
-# stdlib seule : aucune dépendance nouvelle (§2 du contrat).
+# Le nom porte un tiret : c'est une CLI, aucun module ne l'importe. Bibliothèque standard
+# seulement.
 #
-# Enchaînement (§8) : lire -> reconnaître le cas -> reconnaître l'en-tête (et le bloc final
-# d'autrices/auteurs, §5.5) -> classer les titres -> nettoyer la mise en forme -> normaliser
-# la typographie -> passer les règles (structurel + Vale + bibliographie) -> écrire le
-# gabarit -> annoter le .docx écrit -> écrire le rapport.
+# Points à connaître :
 #
-# Pièges et décisions qui ne sont pas dans le contrat, à ne pas repayer :
-#
-# - Le rôle ('role') passé à manuscrit_regles.py n'est jamais deviné : 'titre' seulement pour
-#   le tout premier bloc du document s'il porte un niveau de titre ; 'bibliographie' pour le
-#   DERNIER paragraphe de titre reconnu par le lexique TITRES_BIB (szh-citations.lua) et tout
-#   ce qui suit jusqu'à la fin ou un tableau (même critère que pronto_modele.etendue_biblio(),
-#   reconstruit ici sur le modèle riche — le lexique et la comparaison viennent de
-#   `pronto_modele.titre_est_biblio()`). 'sous_titre' et
-#   'resume' ne sont jamais déduits en dehors de l'en-tête : rien ne les distingue de façon
-#   fiable d'un intertitre ou d'un paragraphe de corps.
-# - `bibliographie[i].nb_auteurs` reste TOUJOURS 0 pour le moteur STRUCTUREL
-#   (`contexte['bibliographie']`) : dénombrer les auteurs d'une référence APA a son propre
-#   harnais ailleurs dans ce dépôt, pas réinventé ici en trois lignes de regex.
-#   `manuscrit_biblio.py`, lui, compte les auteurs pour de vrai et n'a jamais eu ce défaut.
-# - Cas A : `manuscrit_gabarit.ecrire()` insérait toujours ses deux tableaux fixes, vides,
-#   AVANT le corps — et recopiait dans le corps ceux, remplis, du document. Corrigé le
-#   29.09.2026 (mesuré sur un document déjà au gabarit) : les tableaux fixes du document
-#   prennent la place de ceux du gabarit (_tableaux_fixes_du_document), et ses clés « SZH Cle
-#   Abb/Tab » restent des clés (_regrouper_blocs), au lieu de devenir du corps de texte.
-# - Garde-fou « rien ne se perd » (29.09.2026) : les mots et les images du manuscrit sont
-#   comptés avant tout traitement et recomptés dans le .docx écrit (_controler_perte). Une
-#   perte au-delà de PERTE_ALERTE lève `Nettoyage.ContenuPerdu` (error) ; au-delà de
-#   PERTE_REFUS, la sortie n'est pas livrée (code 2, code_refus « perte-de-contenu »).
-# - La langue de traitement ('fr'/'de', pour le filtre, les règles et le rapport) vient
-#   TOUJOURS du produit (`--produit revue` -> fr), jamais de `document.langue` : un article
-#   français déclaré `de-CH` recevait sinon la typographie allemande. La langue déclarée ne
-#   sert qu'à une alerte `Langue.DesaccordProduit` en cas de désaccord.
-# - Un repli typographique (pandoc/WSL indisponible) lève `Typo.ApplicationImpossible` ;
-#   `--sans-typo` compte comme "repli" sur la ligne stdout mais ne lève PAS cette alerte —
-#   c'est un choix explicite, pas une panne.
-# - Un fichier `~$*.docx` (verrou temporaire de Word) est refusé (code 2,
-#   `code_refus='fichier-verrou'`) avant toute lecture, plutôt que de laisser `md.lire()`
-#   échouer sans message pour la rédaction.
-# - Vale et la bibliographie reçoivent chacun DEUX corpus (corps / bibliographie) — les
-#   paragraphes de premier niveau, moins l'en-tête déjà retiré. Vale reçoit EN PLUS les
-#   cellules de tableau et le contenu des notes, à toute profondeur, jamais ancrables dans le
-#   .docx produit (`source=None`, voir `_paragraphes_cellules_pour_vale()`) : Vale doit les
-#   voir quand même, même sans pouvoir y poser une révision.
-# - `manuscrit_regles.grouper()` ne connaît que le catalogue structurel : les alertes Vale et
-#   bibliographie ont leur propre regroupement ici (`_grouper_toutes_alertes()`).
-# - `dans_docx` sur chaque alerte (`_marquer_dans_docx()`) est déduit PAR IDENTITÉ D'OBJET
-#   (`id()`) des listes que `manuscrit_annoter.annoter()` rend, dans le MÊME processus —
-#   jamais recalculé, jamais un aller-retour JSON.
-# - Une révision dont le span touche la frontière d'un `<w:hyperlink>` peut rendre un
-#   `word/document.xml` mal formé SANS lever d'exception (mesuré, 3 fichiers sur 12 du
-#   corpus). La CLI valide donc elle-même chaque partie .xml/.rels après annotation
-#   (`_valider_docx_bien_forme()`) et restaure la version pré-annotation si besoin, plutôt que
-#   de livrer un .docx corrompu.
+# - Le rôle ('role') passé à manuscrit_regles.py n'est pas deviné : 'titre' pour le premier
+#   bloc s'il a un niveau de titre ; 'bibliographie' pour le dernier titre reconnu par
+#   `pronto_modele.titre_est_biblio()` et ce qui le suit jusqu'à la fin ou un tableau.
+#   'sous_titre' et 'resume' ne se déduisent que dans l'en-tête : ailleurs, rien ne les
+#   distingue d'un intertitre ou d'un paragraphe.
+# - `bibliographie[i].nb_auteurs` vaut 0 pour le moteur structurel ; c'est
+#   `manuscrit_biblio.py` qui compte les auteurs.
+# - Cas A : les tableaux fixes du document prennent la place de ceux du gabarit
+#   (_tableaux_fixes_du_document), et ses clés « SZH Cle Abb/Tab » restent des clés
+#   (_regrouper_blocs).
+# - Contrôle de perte : mots et images sont comptés avant traitement puis dans le .docx écrit
+#   (_controler_perte). Au-delà de PERTE_ALERTE, alerte `Nettoyage.ContenuPerdu` (error) ;
+#   au-delà de PERTE_REFUS, la sortie n'est pas livrée (code 2, « perte-de-contenu »).
+# - La langue de traitement vient du produit (`--produit revue` -> fr), pas de
+#   `document.langue`. Un désaccord donne l'alerte `Langue.DesaccordProduit`.
+# - Un repli typographique (pandoc ou WSL indisponible) donne `Typo.ApplicationImpossible` ;
+#   `--sans-typo` est un choix et ne donne pas d'alerte.
+# - Un fichier `~$*.docx` (verrou temporaire de Word) est refusé avant lecture (code 2,
+#   `fichier-verrou`).
+# - Vale et la bibliographie reçoivent deux corpus (corps et bibliographie), sans l'en-tête.
+#   Vale reçoit aussi les cellules de tableau et les notes, qui ne peuvent pas recevoir de
+#   révision (`source=None`, voir `_paragraphes_cellules_pour_vale()`).
+# - `manuscrit_regles.grouper()` ne connaît que le catalogue structurel : toutes les alertes
+#   sont regroupées par `_grouper_toutes_alertes()`.
+# - `dans_docx` (`_marquer_dans_docx()`) recopie le verdict que `manuscrit_annoter.annoter()`
+#   rend pour chaque alerte, dans le même processus.
+# - Une révision qui touche la frontière d'un `<w:hyperlink>` peut produire un
+#   `word/document.xml` mal formé sans exception. Chaque partie .xml/.rels est donc validée
+#   après annotation (`_valider_docx_bien_forme()`), et la version non annotée est restaurée
+#   si besoin.
 
 import collections
 import hashlib
@@ -108,8 +85,7 @@ import manuscrit_gabarit as mg
 import manuscrit_annoter as ma
 import szh_commun
 import manuscrit_controle as mc
-# Le métier déplacé hors de la CLI (corpus des moteurs, garde-fou de perte) : noms ré-exportés
-# ici, les tests et le reste de ce fichier les appellent sous leur nom d'origine.
+# Noms ré-exportés : les tests et ce fichier les appellent par ce module.
 from manuscrit_corpus import (
     ROLES_ENTETE_POUR_REGLES, _collecter_images, _collecter_tableaux,
     _construire_bibliographie, _construire_paragraphes_contexte, _entree_biblio,
@@ -120,9 +96,7 @@ from manuscrit_controle import (
     _controler_perte, _ecartes_par_entete, _mots_et_images, _valider_docx_bien_forme)
 
 RACINE_DEPOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# Un gabarit par produit (revue = FR, zeitschrift = DE, décision de Robin 29.09.2026) --
-# jamais un chemin unique codé en dur : voir le point 1 du chantier « gabarits Pronto FR/DE
-# + ODT ». `langue` (calculée plus bas depuis `--produit`) sélectionne la MÊME clé.
+# Un gabarit par produit : revue = FR, zeitschrift = DE.
 CHEMINS_GABARIT = {
     'revue': os.path.join(RACINE_DEPOT, 'revue-template', "Pronto - modele d'article_FR.docx"),
     'zeitschrift': os.path.join(RACINE_DEPOT, 'revue-template', "Pronto - modele d'article_DE.docx"),
@@ -130,21 +104,18 @@ CHEMINS_GABARIT = {
 
 PREFIXE = '[manuscrit-nettoyer]'
 
-# Codes de sortie — mêmes valeurs que manuscrit_regles.principal() pour 0/1 (§7 : « code de
-# sortie non nul dès la première alerte error »), deux valeurs propres à cette CLI en plus.
+# Codes de sortie. 0 et 1 comme manuscrit_regles.principal() (1 : au moins une alerte error).
 CODE_OK = 0
 CODE_ALERTE_ERROR = 1
 CODE_REFUS = 2
 CODE_ECHEC_INTERNE = 3
-# Une exception Python non rattrapée (défaut du logiciel) : rattrapée par principal(), jamais un
-# code 1 (alertes error) ni 3 (lecture impossible) — le lanceur les distingue sans JSON à deviner.
+# Exception non rattrapée, donc défaut du logiciel ; le lanceur la distingue par ce code.
 CODE_PLANTAGE = 4
 
 
 def _forcer_utf8():
-    """§8 du contrat, clause non négociable : sans elle, pronto-lire.py (déjà dans ce dépôt)
-    plante sur un nom de fichier accentué dès que la console Windows est en cp1252. Ce
-    module force ses DEUX flux, jamais un seul."""
+    """Force UTF-8 sur stdout et stderr : sous une console Windows en cp1252, un nom de
+    fichier accentué ferait planter l'écriture."""
     for flux in (sys.stdout, sys.stderr):
         try:
             flux.reconfigure(encoding='utf-8')
@@ -156,22 +127,20 @@ AUTEUR_ANNOTATION = 'Relecture automatique'
 # Les auteurs de révision que le nettoyeur pose lui-même : annotation, puis recherche ROR/ORCID.
 AUTEURS_NETTOYEUR = {AUTEUR_ANNOTATION} | set(mg._AUTEUR_REVISION_IDENTIFIANTS.values())
 
-# Les lignes de progression, gardées pour le rapport JSON : le lanceur ne les montre plus,
-# elles n'existent plus que là (et sur stderr pour qui lance la CLI à la main).
+# Les lignes de progression, gardées pour le rapport JSON.
 _JOURNAL_PROGRES = []
 
 
 def progres(message):
-    """Une ligne de progression, sur stderr, jamais sur stdout (§8 : stdout ne porte QUE la
-    ligne JSON finale). Gardée aussi dans `_JOURNAL_PROGRES`, pour le rapport."""
+    """Écrit une ligne de progression sur stderr (stdout ne porte que la ligne JSON finale)
+    et la garde dans `_JOURNAL_PROGRES` pour le rapport."""
     _JOURNAL_PROGRES.append(str(message))
     print('%s %s' % (PREFIXE, message), file=sys.stderr, flush=True)
 
 
-# Les constats `[import-avertissement]` émis par les modules de lecture (manuscrit_docx,
-# manuscrit_modele...) passent par szh_commun.avertir, qui écrit sur stderr. Pendant un
-# nettoyage, on les recueille au lieu de les laisser fuir : ils vont dans le rapport (JSON et
-# HTML). SZH_IMPORT_LOG, s'il est posé, les reçoit toujours.
+# Les constats `[import-avertissement]` des modules de lecture passent par
+# szh_commun.avertir, qui écrit sur stderr. Pendant un nettoyage, ils sont recueillis pour le
+# rapport (JSON et HTML). SZH_IMPORT_LOG, s'il est posé, les reçoit aussi.
 _AVERTISSEMENTS_IMPORT = []
 _avertir_original = szh_commun.avertir
 
@@ -186,16 +155,16 @@ def _avertir_capture(prefixe, code, champs, fr, de, journal=None, flush=False):
 
 
 def _ligne_stdout(objet):
-    """LA seule ligne que ce script écrit sur stdout, quel que soit le chemin de sortie
-    (succès, refus, échec) — §8 : « rien d'autre sur ce flux »."""
+    """La seule ligne que ce script écrit sur stdout, en cas de succès, de refus ou
+    d'échec."""
     print(json.dumps(objet, ensure_ascii=True))
 
 
 # ---------------------------------------------------------------------------------
-# Compteurs d'usage et plantages (§8). Aucun texte du manuscrit n'y passe : ni nom de
-# fichier, ni titre, ni auteur, ni message d'exception -- des noms de mesure d'une liste
-# blanche, des entiers, un condensat du fichier d'entrée (`passage`). Le lanceur recopie
-# l'objet tel quel dans un CSV partagé sans rien analyser.
+# Compteurs d'usage et plantages. Aucun texte du manuscrit n'y passe (ni nom de fichier, ni
+# titre, ni auteur, ni message d'exception) : des noms de mesure d'une liste blanche, des
+# entiers et un condensat du fichier d'entrée (`passage`). Le lanceur recopie l'objet tel
+# quel dans un CSV partagé.
 
 ETAPES = (
     'demarrage', 'controle-entree', 'conversion-odt', 'lecture', 'gabarit', 'noms', 'entete',
@@ -211,9 +180,9 @@ _RE_MESURE_REGLE = re.compile(r'^regle:(Autre|[A-Z][A-Za-z0-9-]*(\.[A-Z][A-Za-z0
                               r'(revision|commentaire|rapport)$')
 _RE_CODE_REFUS = re.compile(r'^[a-z][a-z0-9-]{1,40}$')
 MAX_ID_REGLE = 64
-# La liste blanche du contrat : MESURES_NETTOYEUR de lib/compteurs.js (un test de parité la
-# compare), plus deux familles à suffixe libre au motif étroit. Une mesure qui n'y est pas est
-# écartée en silence, ici comme chez l'écrivain PowerShell et l'écrivain JS.
+# Liste blanche, identique à MESURES_NETTOYEUR de lib/compteurs.js (un test les compare),
+# plus deux familles à suffixe libre au motif étroit. Une mesure absente est écartée sans
+# message, ici comme côté PowerShell et JS.
 MESURES_NETTOYEUR = (
     'issue.ok', 'issue.alertes', 'issue.plantage', 'issue.interrompu', 'produit.revue',
     'produit.zeitschrift', 'cas.a', 'cas.b', 'format.entree.odt', 'format.sortie.odt',
@@ -230,18 +199,18 @@ DEVENIRS = ('revision', 'commentaire', 'rapport')
 
 
 def _etape(nom):
-    """Pose l'étape en cours (un nom de la liste ETAPES) : c'est tout ce qu'un plantage dira
-    de l'endroit où il est survenu, avec le fichier et la ligne du dépôt."""
+    """Pose l'étape en cours (un nom de ETAPES). Un plantage la rapporte, avec le fichier et
+    la ligne du dépôt."""
     _ETAT['etape'] = nom if nom in ETAPES else 'inconnue'
-    # Avec --etapes, le lanceur du cockpit lit ce nom sur stderr pour suivre le passage ; il
-    # n'entre pas dans le journal du rapport.
+    # Avec --etapes, le cockpit lit ce nom sur stderr pour suivre l'avancement ; il n'entre
+    # pas dans le journal du rapport.
     if _ETAT.get('etapes'):
         print('%s etape %s' % (PREFIXE, _ETAT['etape']), file=sys.stderr, flush=True)
 
 
 def _passage(chemin):
-    """Les 12 premiers hexadécimaux du SHA-256 du fichier d'entrée : le même fichier redonne le
-    même passage, sans que rien du fichier ne se lise dans le condensat."""
+    """Les 12 premiers chiffres hexadécimaux du SHA-256 du fichier d'entrée : le même fichier
+    donne le même passage."""
     try:
         h = hashlib.sha256()
         with open(chemin, 'rb') as f:
@@ -262,8 +231,8 @@ def _mesure_regle(identifiant, devenir):
 
 def _compteurs(passage, mesures):
     """L'objet `compteurs` de la ligne stdout : `{'passage': 12 hex, 'mesures': {nom: entier}}`.
-    Liste blanche par le NOM (motif du contrat) et par le TYPE : tout ce qui n'est pas un
-    entier positif ou nul, ou dont le nom sort du motif, est écarté ; les zéros sont omis."""
+    Seuls restent les noms de la liste blanche dont la valeur est un entier positif ; les
+    zéros sont omis."""
     propres = {}
     for nom, valeur in mesures.items():
         if not isinstance(valeur, int) or isinstance(valeur, bool) or valeur <= 0:
@@ -300,8 +269,8 @@ def _mesures_passage(issue, duree_ms, args, gabarit, format_entree, format_sorti
                      n_notes, images, images_sans_alt, stats_annotation, annotation_restauree,
                      mesure_perte, ecartes_entete, vale_indisponible, statut_typo,
                      stats_biblio, stats_identifiants, entete, stats_titres):
-    """Les mesures d'un passage qui a couru jusqu'au bout. Chaque valeur est un entier tiré d'un
-    compte ou d'un statut, jamais d'un texte du manuscrit."""
+    """Les mesures d'un passage allé jusqu'au bout. Chaque valeur est un entier tiré d'un
+    compte ou d'un statut."""
     m = _mesures_minimales(issue, duree_ms, args['produit'], format_entree)
     m['cas.' + gabarit.lower()] = 1
     if format_sortie == 'odt':
@@ -327,9 +296,8 @@ def _mesures_passage(issue, duree_ms, args, gabarit, format_entree, format_sorti
     if annotation_restauree:
         m['annotation.restauree'] = 1
     if stats_biblio:
-        # `_hors_service` : une vraie panne du réseau. stats['crossref']['indisponible'] devient
-        # vrai dès qu'un DOI ne répond pas (un 404 suffit) : mesuré le 01.10.2026 sur un manuscrit
-        # réel, 4 DOI consultés dont 2 confirmés, `indisponible` vrai, `_hors_service` faux.
+        # `_hors_service` signale une vraie panne du réseau ; stats['crossref']['indisponible']
+        # devient vrai dès qu'un DOI ne répond pas, un 404 suffit.
         if not args['sans_reseau'] and mb._hors_service:
             m['reseau.crossref.panne'] = 1
         m['doi.proposes'] = int(stats_biblio.get('doi_retrouves') or 0)
@@ -356,9 +324,9 @@ def _mesures_passage(issue, duree_ms, args, gabarit, format_entree, format_sorti
 
 
 def _description_plantage(exc):
-    """`(type, lieu)` d'une exception : le nom de sa classe et le DERNIER cadre d'un fichier du
-    dépôt (`fichier.py:ligne`). Jamais son message, jamais un chemin : ils citent le
-    document. Une valeur qui sort du motif attendu est remplacée par une valeur neutre."""
+    """`(type, lieu)` d'une exception : le nom de sa classe et le dernier cadre d'un fichier du
+    dépôt (`fichier.py:ligne`). Ni message ni chemin, qui peuvent citer le document. Une
+    valeur hors du motif attendu est remplacée par une valeur neutre."""
     dossier = os.path.dirname(os.path.abspath(__file__))
     lieu = ''
     try:
@@ -373,8 +341,7 @@ def _description_plantage(exc):
 
 
 # ---------------------------------------------------------------------------------
-# Arguments — analyse manuelle, comme tous les CLI de pipeline/ (aucun n'utilise argparse :
-# pronto-lire.py, docx-titres.py... ce fichier ne rompt pas cette convention).
+# Arguments, analysés à la main comme dans les autres CLI de pipeline/.
 
 def _analyser_args(argv):
     args = {'entree': None, 'produit': None, 'sortie': None, 'rapport': None,
@@ -395,18 +362,14 @@ def _analyser_args(argv):
             i += 1
             args['rapport'] = reste[i]
         elif a == '--base-auteurs' and i + 1 < len(reste):
-            # §6.1 du contrat de lot D (CONTRAT-noms.md) : chemin explicite de la base OJS
-            # (format v2, mn.BaseNoms.charger()). Absent -> recherche automatique de
-            # mn.BaseNoms.charger() (SZH_AUTEURS_CACHE, puis /mnt/c/ProgramData/SZH/
-            # auteurs.json ou C:\ProgramData\SZH\auteurs.json) — le lanceur PowerShell n'est
-            # PAS modifié, cette détection automatique le couvre déjà.
+            # Chemin de la base des auteurs OJS (format v2, mn.BaseNoms.charger()). Sans lui,
+            # mn.BaseNoms.charger() cherche SZH_AUTEURS_CACHE, puis
+            # /mnt/c/ProgramData/SZH/auteurs.json ou C:\ProgramData\SZH\auteurs.json.
             i += 1
             args['base_auteurs'] = reste[i]
         elif a == '--format' and i + 1 < len(reste):
-            # docx (défaut, rétrocompatible) ou odt -- voir le point 3 du chantier « gabarits
-            # Pronto FR/DE + ODT » (29.09.2026) : le format de SORTIE, indépendant de celui de
-            # l'entrée. Une valeur inconnue tombe dans le contrôle d'usage plus bas, comme
-            # --produit.
+            # Format de sortie, docx (défaut) ou odt, indépendant de celui de l'entrée. Une
+            # valeur inconnue est refusée par le contrôle d'usage plus bas.
             i += 1
             args['format'] = reste[i]
         elif a == '--analyse-seule':
@@ -434,18 +397,16 @@ USAGE = ('usage : manuscrit-nettoyer.py <entree.docx|.odt> --produit revue|zeits
 
 
 # ---------------------------------------------------------------------------------
-# Langue de traitement et ses deux alertes manuelles (point 5 de l'en-tête) — pas dans le
-# catalogue de manuscrit_regles.py (hors des fichiers de ce chantier) : construites ici et
-# simplement concaténées aux alertes du moteur avant mr.grouper().
+# Alertes propres à cette CLI. Elles ne sont pas dans le catalogue de manuscrit_regles.py et
+# s'ajoutent aux alertes des moteurs.
 
 NOMS_LANGUE_FR = {'fr': 'français', 'de': 'allemand', 'en': 'anglais', 'it': 'italien'}
 NOMS_LANGUE_DE = {'fr': 'Französisch', 'de': 'Deutsch', 'en': 'Englisch', 'it': 'Italienisch'}
 
 
 def _alerte_langue_produit(document_langue, langue):
-    """Avertit quand la sous-étiquette primaire de la langue DÉCLARÉE du document (« fr » de
-    « fr-CH ») diffère de `langue` (celle du produit, qui seule pilote le traitement — voir
-    le point 5 de l'en-tête). Rend None si rien à signaler."""
+    """Avertit quand la langue déclarée du document (« fr » de « fr-CH ») diffère de
+    `langue`, celle du produit, qui pilote le traitement. Rend None sinon."""
     if not document_langue:
         return None
     primaire = document_langue.split('-')[0].lower()
@@ -486,9 +447,8 @@ def _alerte_recherche_impossible(crossref_en_panne, identifiants_en_panne, langu
 
 
 def _alerte_repli_typo(langue):
-    """La typographie n'a pas pu être appliquée (pandoc/WSL indisponible) : une alerte visible
-    dans le rapport, pas seulement une trace enfouie (point 5 de l'en-tête). Jamais levée pour
-    --sans-typo, qui est un choix explicite et déjà visible via `sans_typo`, pas une panne."""
+    """La typographie n'a pas pu être appliquée (pandoc ou WSL indisponible). Pas utilisée
+    pour --sans-typo, qui est un choix."""
     if langue == 'fr':
         message = ("La typographie n’a pas pu être appliquée à ce document\u00a0; le texte "
                    "est rendu tel quel.")
@@ -500,8 +460,8 @@ def _alerte_repli_typo(langue):
 
 
 def _alerte_vale_indisponible(langue):
-    """vale n'a pas pu tourner (binaire absent, wsl.exe injoignable, config cassée — voir
-    manuscrit_vale.analyser()) : une alerte unique, jamais un plantage de la CLI."""
+    """Vale n'a pas pu tourner (binaire absent, wsl.exe injoignable, configuration cassée ;
+    voir manuscrit_vale.analyser())."""
     if langue == 'fr':
         message = ("Le contrôle du vocabulaire et du langage n’a pas pu être effectué sur "
                    "ce document.")
@@ -513,9 +473,8 @@ def _alerte_vale_indisponible(langue):
 
 
 def _alerte_annotation_impossible(langue):
-    """manuscrit_annoter.annoter() a levé une exception (défaut connu, voir le commentaire à
-    son point d'appel) : le .docx déjà écrit reste utilisable, sans révisions ni commentaires
-    posés — une alerte le dit, jamais un plantage silencieux de la CLI."""
+    """manuscrit_annoter.annoter() a levé une exception : le .docx déjà écrit reste
+    utilisable, sans révisions ni commentaires."""
     if langue == 'fr':
         message = ("Les corrections n’ont pas pu être posées dans le document\u00a0: "
                    "consultez le rapport pour la liste complète des remarques.")
@@ -527,8 +486,8 @@ def _alerte_annotation_impossible(langue):
 
 
 def _alerte_conversion_odt_impossible(detail, langue):
-    """La sortie .odt demandée (point 3, --format odt) n'a pas pu être produite : le .docx
-    déjà écrit et annoté est gardé tel quel (jamais de perte), cette alerte dit pourquoi."""
+    """La sortie .odt (--format odt) n'a pas pu être produite : le .docx écrit et annoté est
+    livré à la place."""
     if langue == 'fr':
         message = ("Le document .odt demandé n’a pas pu être produit\u00a0; le fichier .docx est "
                    "livré à la place (%s)." % detail)
@@ -541,13 +500,10 @@ def _alerte_conversion_odt_impossible(detail, langue):
 
 
 # ---------------------------------------------------------------------------------
-# Fusion des quatre moteurs (point 4 du brief de branchement) — CATALOGUE_PAR_ID ne connaît
-# que les règles structurelles Python : les règles Vale (« CSPS.Epicene.… »,
-# « SZH.Vokabular.… », « CSPS-Biblio.APA.… ») et celles de manuscrit_biblio.py (« APA.… », à
-# deux segments) n'y figurent jamais. `manuscrit_regles.grouper()` reste donc CORRECT pour son
-# propre périmètre (règles structurelles + reprise Typo.*) mais ne doit pas être appelé sur le
-# lot fusionné : cette fonction-ci le remplace ICI, dans la CLI, sans toucher à
-# manuscrit_regles.py au-delà du retrait des doublons (discipline du brief de ce lot).
+# Regroupement des alertes des quatre moteurs. mr.CATALOGUE_PAR_ID ne connaît que les règles
+# structurelles : les règles Vale (« CSPS.Epicene.… », « SZH.Vokabular.… »,
+# « CSPS-Biblio.APA.… ») et celles de manuscrit_biblio.py (« APA.… ») n'y sont pas. Le lot
+# fusionné passe donc par _grouper_toutes_alertes(), pas par manuscrit_regles.grouper().
 
 def _famille_regle(identifiant_regle):
     if identifiant_regle.startswith('Typo.'):
@@ -555,11 +511,9 @@ def _famille_regle(identifiant_regle):
     regle = mr.CATALOGUE_PAR_ID.get(identifiant_regle)
     if regle is not None:
         return regle.famille
-    # Une règle Vale (« CSPS.Epicene.FormesContractees », « CSPS-Biblio.APA.DoiForme »,
-    # « SZH.Vokabular.Behinderung ») porte sa famille au segment du MILIEU ; une règle de
-    # manuscrit_biblio.py ou une alerte manuelle de cette CLI (« APA.CitationAbsente »,
-    # « Langue.DesaccordProduit », « Vale.Indisponible ») n'a que deux segments, la famille
-    # est alors le premier.
+    # Règle Vale à trois segments (« CSPS.Epicene.FormesContractees ») : la famille est au
+    # milieu. Règle à deux segments (« APA.CitationAbsente », « Vale.Indisponible ») : la
+    # famille est le premier.
     parties = identifiant_regle.split('.')
     return parties[1] if len(parties) >= 3 else parties[0]
 
@@ -580,18 +534,17 @@ ORIGINES_ALERTE = ('regles', 'vale', 'bibliographie', 'identifiants', 'typograph
 
 
 def _etiqueter(lot, origine):
-    """Pose `origine` sur chaque alerte du lot au moment où il rejoint la liste, et rend le lot
-    (même liste, même ordre). `nettoyage` : les alertes que cette CLI émet elle-même."""
+    """Pose `origine` sur chaque alerte du lot et rend le lot. `nettoyage` : les alertes que
+    cette CLI émet elle-même."""
     for a in lot:
         a['origine'] = origine
     return lot
 
 
 def _compter_origines(alertes):
-    """Compte des alertes par origine ; la somme vaut toujours le total. Une alerte sans origine
-    valide (étiquette oubliée à un site rare) devient `inconnue` : comptée, tracée dans le
-    journal, et la clé n'apparaît qu'alors. Un plantage ici perdrait tout le passage pour un
-    défaut d'étiquette ; ce sont les tests qui échouent sur `inconnue`, pas la production."""
+    """Compte des alertes par origine ; la somme vaut le total. Une alerte sans origine valide
+    devient `inconnue`, comptée et tracée dans le journal, plutôt que de faire planter le
+    passage ; les tests, eux, échouent sur `inconnue`."""
     inconnues = [a for a in alertes if a.get('origine') not in ORIGINES_ALERTE]
     for a in inconnues:
         progres('alerte sans origine valide (%r) : %s' % (a.get('origine'), a.get('rule')))
@@ -607,23 +560,18 @@ RANG_SEVERITE = {'error': 0, 'warning': 1, 'suggestion': 2}
 
 
 def _trier_alertes(alertes):
-    """Triées par sévérité puis par `para` (point 4 du brief) — une alerte sans `para` (None)
-    va en dernier de son groupe de sévérité, jamais avant une alerte ancrée."""
+    """Trie par sévérité puis par `para` ; une alerte sans `para` va en fin de son groupe."""
     alertes.sort(key=lambda a: (RANG_SEVERITE.get(a.get('severity'), 3),
                                  a.get('para') if a.get('para') is not None else float('inf')))
     return alertes
 
 
 def _marquer_dans_docx(alertes, stats_annotation):
-    """Ajoute `dans_docx` ('revision' | 'commentaire' | 'rapport') à chaque alerte (point 5 du
-    brief) — SANS retoucher aux autres clés.
+    """Ajoute `dans_docx` ('revision' | 'commentaire' | 'rapport') à chaque alerte.
 
-    Révision du 21.09.2026 ter : ne déduit plus rien de `action`. Une alerte `fix`/`track` avec
-    `suggested` n'est PAS forcément devenue une révision — le chevauchement (§7 ter, point
-    « 2 bis ») peut l'avoir démotée en commentaire, et le plafond (point 3) peut avoir renvoyé
-    ce commentaire au rapport. Seul `manuscrit_annoter.annoter()` sait ce qu'il a vraiment
-    écrit : `stats['devenir']`, une liste indexée EXACTEMENT comme `alertes` (même appel, même
-    ordre), porte ce verdict alerte par alerte — recopié ici tel quel, jamais recalculé."""
+    Le verdict vient de `stats['devenir']`, indexé comme `alertes`, rendu par
+    `manuscrit_annoter.annoter()`. Il ne se déduit pas de `action` : une alerte `fix` peut
+    être devenue un commentaire (chevauchement) ou rester au rapport (plafond)."""
     devenir = stats_annotation.get('devenir') or []
     for i, a in enumerate(alertes):
         verdict = devenir[i] if i < len(devenir) else None
@@ -631,9 +579,8 @@ def _marquer_dans_docx(alertes, stats_annotation):
 
 
 def _recueillir_refs_paragraphes(blocs):
-    """[(liste_conteneur, indice), ...] pour chaque Paragraphe à toute profondeur — permet à
-    la typographie de remplacer un paragraphe par sa version normalisée sans perdre sa place
-    dans la structure (une liste Python se mute par indice, jamais par la valeur elle-même)."""
+    """[(liste_conteneur, indice), ...] pour chaque Paragraphe à toute profondeur : la
+    typographie remplace ainsi un paragraphe à sa place dans la structure."""
     refs = []
 
     def parcours(liste):
@@ -650,12 +597,11 @@ def _recueillir_refs_paragraphes(blocs):
 
 
 def _normaliser_entete(entete, langue):
-    """Les champs de l'en-tête passent par le MÊME pont que le corps (manuscrit_typo) avant
-    d'être écrits dans les tableaux du gabarit : ils étaient extraits avant la typographie et
-    écrits tels quels (« L'école … et après ? », mesuré le 30.09.2026). Titre et sous-titre
-    reçoivent les règles de titre ; un résumé en autre langue se normalise dans SA langue.
-    Mute `entete` ; rend (traces, avertissements). Une langue que le filtre ne connaît pas
-    (« abstract », en) laisse son texte intact."""
+    """Applique la typographie (manuscrit_typo) aux champs de l'en-tête avant leur écriture
+    dans les tableaux du gabarit, car ils sont extraits avant la typographie du corps. Titre
+    et sous-titre reçoivent les règles de titre ; un résumé en autre langue est traité dans
+    sa langue, et une langue que le filtre ne connaît pas (en) reste intacte.
+    Modifie `entete` ; rend (traces, avertissements)."""
     par_langue = {}
 
     def ajouter(texte, niveau, poser, lang=langue):
@@ -705,8 +651,8 @@ def _alerte_ecartes(ecartes, langue):
 
 
 # ---------------------------------------------------------------------------------
-# Classement des titres — cas B : l'heuristique de manuscrit_modele.classer_titres(). Cas A
-# (§1, point 4 de l'en-tête) : niveau_retenu := niveau_declare, sans heuristique.
+# Classement des titres. Cas B : l'heuristique de manuscrit_modele.classer_titres(). Cas A :
+# niveau_retenu = niveau_declare.
 
 def _classer_titres_selon_le_cas(document, gabarit):
     if gabarit == 'B':
@@ -733,8 +679,8 @@ def _classer_titres_selon_le_cas(document, gabarit):
 
 
 # ---------------------------------------------------------------------------------
-# Refus : des phrases courtes, dans la langue du produit, qui disent quoi faire. Le lanceur
-# les montre telles quelles (précédées de « Refusé : »).
+# Messages de refus, dans la langue du produit. Le lanceur les montre tels quels, précédés de
+# « Refusé : ».
 
 def _auteurs_revisions(chemin):
     """Les w:author des w:ins/w:del du document (corps et notes) ; vide si illisible."""
@@ -778,9 +724,9 @@ def _message_lecture_impossible(produit):
 # Le programme.
 
 def principal(argv):
-    """`_principal` dans un cadre qui recueille les constats d'import (voir
-    `_avertir_capture`) et les lignes de progression pour le rapport ; l'état est remis à
-    zéro à chaque appel, et le branchement de szh_commun.avertir toujours défait."""
+    """Lance `_principal` en recueillant les constats d'import (voir `_avertir_capture`) et
+    les lignes de progression pour le rapport. L'état est remis à zéro à chaque appel et
+    szh_commun.avertir est rétabli à la fin."""
     del _AVERTISSEMENTS_IMPORT[:]
     del _JOURNAL_PROGRES[:]
     szh_commun.avertir = _avertir_capture
@@ -795,10 +741,10 @@ def principal(argv):
 
 
 def _plantage(exc):
-    """Une exception Python que rien n'a rattrapée : un défaut du logiciel, pas du manuscrit.
-    Une ligne JSON sur stdout qui dit seulement le type, le lieu dans le dépôt et l'étape --
-    JAMAIS le message de l'exception, qui cite le document -- et un code de sortie à part. La
-    trace complète n'est montrée que sur demande (SZH_NETTOYEUR_TRACE), sur stderr."""
+    """Traite une exception non rattrapée, donc un défaut du logiciel. Écrit sur stdout une
+    ligne JSON avec le type, le lieu dans le dépôt et l'étape, sans le message de
+    l'exception, qui peut citer le document. La trace complète va sur stderr si
+    SZH_NETTOYEUR_TRACE est posée."""
     type_exc, lieu = _description_plantage(exc)
     etape = _ETAT['etape'] if _ETAT['etape'] in ETAPES else 'inconnue'
     try:
@@ -834,9 +780,8 @@ def _principal(argv):
     _etape('controle-entree')
 
     def refuser(code, message_fr, **supplement):
-        # `message_fr` : le nom reste, mais le texte est dans la langue du produit quand
-        # l'appelant la connaît (suivi de modifications) ; `supplement` : champs en plus
-        # sur la ligne stdout.
+        # `message_fr` peut être dans la langue du produit quand l'appelant la connaît.
+        # `supplement` : champs ajoutés à la ligne stdout.
         progres('refusé : %s' % message_fr)
         ligne = {'entree': entree, 'refus': True, 'code_refus': code,
                  'message': message_fr, 'code_sortie': CODE_REFUS}
@@ -848,26 +793,20 @@ def _principal(argv):
 
     progres('entrée : %s (produit=%s)' % (entree, args['produit']))
 
-    # Refus, avant tout travail, sans rien écrire sur le disque (§8) : un verrou temporaire de
-    # Word (le document est ouvert ailleurs), avant même de tenter une lecture qui échouerait
-    # de façon opaque (§10, point 5 de l'en-tête).
+    # Les refus arrivent avant tout travail et n'écrivent rien sur le disque. Ici : un verrou
+    # temporaire de Word, dont la lecture échouerait sans message clair.
     if os.path.basename(entree).startswith('~$'):
         return refuser('fichier-verrou',
                         "Ce fichier est un verrou temporaire de Word, pas un manuscrit. "
                         "Ouvrez le document original.")
 
-    # Refus, avant tout travail, sans rien écrire sur le disque (§8) : extension inconnue.
     if extension not in ('.docx', '.odt'):
         return refuser('extension-inconnue',
                         "extension « %s » non reconnue : ce nettoyeur ne lit que .docx et "
                         ".odt aujourd'hui." % extension)
 
-    # Entrée .odt (point 2, décision de Robin 29.09.2026) : convertie en .docx dans un dossier
-    # temporaire par conversion_odt.convertir(), AVANT toute lecture -- le reste de la chaîne
-    # (md.lire(), l'écriture du gabarit, l'annotation) ne parle QUE .docx, un seul moteur.
-    # `nom` (calculé plus haut sur `entree`) et `entree` lui-même restent ceux de l'ORIGINE
-    # partout ailleurs (rapport, messages, refus) : la conversion ne change jamais ce que la
-    # rédaction reconnaît comme "son" fichier. `chemin_lecture` seul pointe le .docx temporaire.
+    # Une entrée .odt est convertie en .docx dans un dossier temporaire avant la lecture.
+    # `chemin_lecture` pointe ce .docx ; `entree` et `nom` restent ceux du fichier d'origine.
     format_entree = 'odt' if extension == '.odt' else 'docx'
     chemin_lecture = entree
     dossier_temp_odt = None
@@ -895,18 +834,15 @@ def _principal(argv):
                            format_entree))})
         return CODE_ECHEC_INTERNE
     finally:
-        # Le .docx temporaire (conversion .odt -> .docx, ci-dessus) n'est plus utile une fois
-        # le document en mémoire -- nettoyé dans tous les cas, succès ou échec de lecture.
+        # Le .docx temporaire n'est plus utile une fois le document en mémoire.
         if dossier_temp_odt is not None:
             shutil.rmtree(dossier_temp_odt, ignore_errors=True)
 
-    # Ce que le manuscrit porte AVANT tout traitement — l'étalon du garde-fou « rien ne se
-    # perd » (voir _controler_perte), pris ici parce que l'en-tête et le bloc d'autrices vont
-    # retirer des blocs de document.blocs.
+    # Référence du contrôle de perte (voir _controler_perte), prise avant que l'en-tête et le
+    # bloc des auteurs ne retirent des blocs de document.blocs.
     empreinte_entree = _mots_et_images(document)
 
-    # Refus, avant tout travail, sans rien écrire sur le disque (§8) : suivi de
-    # modifications — un texte avec des w:ins/w:del n'a pas de contenu univoque.
+    # Refus : modifications suivies. Un texte avec des w:ins/w:del n'a pas de contenu univoque.
     if document.revisions > 0:
         sortie_nettoyeur = (nom.endswith('-nettoye')
                             or bool(_auteurs_revisions(chemin_lecture) & AUTEURS_NETTOYEUR))
@@ -915,8 +851,7 @@ def _principal(argv):
                                                      args['produit']),
                         revisions=document.revisions, sortie_nettoyeur=sortie_nettoyeur)
 
-    # Un document porteur de commentaires n'est PAS refusé (§8) : compté, signalé, et le
-    # rapport dit qu'ils ne survivent pas au nettoyage.
+    # Un document avec des commentaires est accepté ; le rapport dit qu'ils sont perdus.
     note_commentaires = None
     if document.commentaires > 0:
         note_commentaires = ('%d commentaire(s) trouvé(s) dans ce document : ils ne '
@@ -928,15 +863,12 @@ def _principal(argv):
     gabarit = mm.reconnaitre_gabarit(document)
     progres('gabarit reconnu : cas %s' % gabarit)
 
-    # La langue de traitement vient du PRODUIT, jamais du document (point 5 de l'en-tête) :
-    # c'est elle qui part au filtre (-M lang=), à l'en-tête (§5.5), aux règles et au rapport.
-    # Calculée ICI (avant classer_titres) : extraire_entete() en a besoin.
+    # La langue de traitement vient du produit. Elle sert au filtre (-M lang=), à l'en-tête,
+    # aux règles et au rapport.
     langue = 'fr' if args['produit'] == 'revue' else 'de'
 
-    # Base de noms (§6.1 du contrat de lot D) — chargée UNE FOIS ici, passée telle quelle à
-    # me.extraire_entete() et me.extraire_bloc_auteurs_final() ci-dessous. --base-auteurs
-    # absent -> mn.BaseNoms.charger() fait sa recherche automatique ; silencieuse de bout en
-    # bout (aucune source trouvée = base indisponible, jamais une exception).
+    # Base de noms, chargée une fois pour l'en-tête et le bloc final des auteurs. Sans source
+    # trouvée, la base est indisponible, sans exception.
     _etape('noms')
     progres('chargement de la base de noms...')
     base_noms = mn.BaseNoms.charger(chemin_base_auteurs=args['base_auteurs'])
@@ -945,9 +877,9 @@ def _principal(argv):
     else:
         progres('base de noms indisponible (aucune source trouvée)')
 
-    # En-tête (§5.5) — cas B seulement (§1 : « en cas A, rien de tout ceci, le gabarit est
-    # déjà rempli »). Retire le titre/sous-titre/auteurs/résumé/mots-clés/DOI/ligne de revue
-    # du corps AVANT le classement des titres de section, qui ne doit juger que ce qui reste.
+    # En-tête, en cas B seulement (en cas A, le gabarit est déjà rempli). Titre, sous-titre,
+    # auteurs, résumé, mots-clés, DOI et ligne de revue sont retirés du corps avant le
+    # classement des titres de section.
     entete = None
     ecartes_entete = None
     trace_entete = []
@@ -957,8 +889,8 @@ def _principal(argv):
     alertes_identifiants = []
     stats_identifiants = None
     if gabarit == 'B':
-        # Noms de bibliographie (§6.1) — AVANT extraire_entete(), sur le document ENCORE
-        # complet (voir _noms_de_bibliographie() plus haut pour le pourquoi).
+        # Noms de bibliographie, lus avant extraire_entete() sur le document encore complet
+        # (voir _noms_de_bibliographie()).
         _etape('entete')
         progres('repérage des noms de bibliographie...')
         noms_biblio = _noms_de_bibliographie(document)
@@ -974,19 +906,16 @@ def _principal(argv):
         indices_entete.update(indices_final)
         trace_entete = trace_entete + trace_final
         paragraphes_entete_ctx = _paragraphes_entete_contexte(document, indices_entete)
-        # §6.2 du contrat de lot D (étendu par le superviseur le 22.09.2026 : `ordre_conflit`
-        # est un TROISIÈME champ de la fiche EnTete.auteurs, pas une inspection de
-        # `ordre_motif`) : contexte['auteurs'] pour manuscrit_regles.py
-        # (Entete.OrdreNomIncertain / Entete.OrdreNomParDefaut) — vide en cas A par
-        # construction (cette liste n'est remplie que dans la branche gabarit == 'B').
+        # contexte['auteurs'] pour les règles Entete.OrdreNomIncertain et
+        # Entete.OrdreNomParDefaut de manuscrit_regles.py ; vide en cas A.
         auteurs_ctx = [{'prenom': a.get('prenom') or '', 'nom': a.get('nom') or '',
                          'ordre_confiance': a.get('ordre_confiance') or '',
                          'ordre_motif': a.get('ordre_motif') or '',
                          'ordre_conflit': bool(a.get('ordre_conflit')),
                          'texte_source': a.get('texte_source') or ''}
                         for a in entete.auteurs]
-        # Ce que l'en-tête met de côté sans que le gabarit ait où l'écrire — mesuré AVANT le
-        # retrait des blocs, sur les indices du document complet (garde-fou « rien ne se perd »).
+        # Ce que l'en-tête retire sans que le gabarit ait où l'écrire, mesuré avant le retrait
+        # des blocs, sur les indices du document complet.
         ecartes_entete = _ecartes_par_entete(document, entete, indices_entete)
         document.blocs = [b for idx, b in enumerate(document.blocs)
                            if idx not in indices_entete]
@@ -994,8 +923,8 @@ def _principal(argv):
                 % (entete.titre, len(entete.auteurs), len(entete.resume),
                    len(entete.mots_cles)))
 
-        # ROR et ORCID des autrices et auteurs : cherchés en réseau, écrits en révision
-        # « à vérifier » par le gabarit, jamais sur la foi du seul nom (manuscrit_identifiants).
+        # ROR et ORCID des auteurs, cherchés en ligne et écrits en révision à vérifier par le
+        # gabarit ; un nom seul ne suffit pas (voir manuscrit_identifiants).
         _etape('identifiants')
         progres('recherche des ROR et ORCID des autrices et auteurs...')
         alertes_identifiants, stats_identifiants = mi.enrichir_auteurs(
@@ -1032,14 +961,12 @@ def _principal(argv):
         progres('typographie désactivée (--sans-typo)')
         traces_typo = ['typographie désactivée (--sans-typo)']
         abandons_typo, avertissements_typo = [], []
-        # "repli" sur la ligne stdout (rien n'a été tenté), mais SANS l'alerte de repli : un
-        # choix explicite, déjà visible via sans_typo au rapport, pas une panne d'outillage.
+        # "repli" sur la ligne stdout, sans l'alerte de repli : c'est un choix, visible par
+        # sans_typo dans le rapport.
         statut_typo = 'repli'
     else:
         progres('normalisation typographique (langue=%s)...' % langue)
-        # Le corps ET les notes (bas de page et fin), dans le même appel : les notes vivent à
-        # part (Document.notes) et restaient sans typographie (mesuré le 30.09.2026 : 23
-        # apostrophes droites sur 23 dans les notes de 2-fin-de-document, 1 sur 75 au corps).
+        # Le corps et les notes (Document.notes, rangées à part) passent dans le même appel.
         refs = _recueillir_refs_paragraphes(document.blocs)
         for cle in sorted(document.notes):
             refs.extend(_recueillir_refs_paragraphes(document.notes[cle]))
@@ -1073,20 +1000,17 @@ def _principal(argv):
         'auteurs': auteurs_ctx,
     }
     alertes_python = mr.evaluer(contexte)
-    # mr.evaluer() rend les règles STRUCTURELLES du catalogue ET la reprise des avertissements
-    # C1/C2 du filtre typographique (préfixe 'Typo.') mélangés dans une seule liste — on les
-    # sépare ICI pour que `alertes.origine` (point 4 de la consigne de branchement) compte
-    # chaque moteur pour de vrai, sans toucher à manuscrit_regles.evaluer() lui-même.
+    # mr.evaluer() rend dans une même liste les règles structurelles et la reprise des
+    # avertissements C1/C2 du filtre typographique (préfixe 'Typo.') ; on les sépare pour que
+    # `alertes.origine` compte chaque moteur.
     alertes_regles = _etiqueter([a for a in alertes_python if not a['rule'].startswith('Typo.')],
                                  'regles')
     alertes_typo_reprises = _etiqueter([a for a in alertes_python if a['rule'].startswith('Typo.')],
                                         'typographie')
 
-    # Vale (point 1) — le titre de la bibliographie n'y passe pas : `entrees_biblio` l'exclut
-    # déjà (voir _construire_bibliographie()), et le corps de Vale ci-dessous exclut tout
-    # paragraphe de rôle 'bibliographie' (donc aussi ce titre). Les cellules de tableau et le
-    # contenu des notes s'y ajoutent, à toute profondeur, jamais ancrables (voir
-    # _paragraphes_cellules_pour_vale()/_paragraphe_source_appelant_note() plus haut).
+    # Vale. Le titre de la bibliographie n'y passe pas : `entrees_biblio` l'exclut, et le
+    # corps exclut le rôle 'bibliographie'. Les cellules de tableau et les notes s'y ajoutent,
+    # sans ancrage possible (voir _paragraphes_cellules_pour_vale()).
     _etape('vale')
     progres('contrôle du vocabulaire et du langage...')
     numeros_notes = _numeros_notes(document)
@@ -1105,23 +1029,20 @@ def _principal(argv):
         alertes_vale = _etiqueter([_alerte_vale_indisponible(langue)], 'vale')
         progres("contrôle du vocabulaire indisponible")
     else:
-        # §7 ter du contrat (traçabilité note -> appel) : une alerte dont `para` est le
-        # `source` SYNTHÉTIQUE d'un paragraphe de note (voir _paragraphes_notes_pour_vale)
-        # reçoit ICI `note_id`/`note_numero` et son `para` RÉEL (le paragraphe de corps qui
-        # porte l'appel) — manuscrit_annoter.py ancre alors sur le mot qui précède l'appel,
-        # jamais sur ce paragraphe entier.
+        # Une alerte dont `para` est la `source` fictive d'un paragraphe de note (voir
+        # _paragraphes_notes_pour_vale) reçoit `note_id`, `note_numero` et le `para` du
+        # paragraphe qui porte l'appel. manuscrit_annoter.py l'ancre alors sur le mot qui
+        # précède l'appel.
         _marquer_notes_dans_alertes(alertes_vale, correspondance_notes_vale)
 
-    # Bibliographie (point 2) — mêmes deux corpus, sans le rôle (manuscrit_biblio.py ne le lit
-    # pas, il reçoit déjà deux listes séparées). --sans-reseau : choix explicite du lanceur
-    # d'essai ou d'un test, jamais posé par le lanceur en production (point 2 de la consigne).
+    # Bibliographie : les mêmes deux corpus, sans le rôle. --sans-reseau sert aux essais et aux
+    # tests ; le lanceur ne le pose pas.
     _etape('bibliographie')
     progres('contrôle de la bibliographie...')
     paragraphes_biblio_module = [{'texte': e['texte'], 'source': e['source']}
                                   for e in entrees_biblio]
-    # Les citations des notes et des cellules comptent aussi (mêmes paragraphes que Vale) :
-    # sans elles, une référence citée seulement en note était déclarée « jamais citée »
-    # (mesuré sur gzdf_Huttner : Hedderich, Kaiser-Mantel et Nonn, cités dans la note 1).
+    # Les citations des notes et des cellules comptent aussi (mêmes paragraphes que Vale),
+    # sinon une référence citée seulement en note serait déclarée non citée.
     paragraphes_corps_module = [{'texte': p['texte'], 'source': p['source']}
                                  for p in paragraphes_vale_corps]
     alertes_biblio, stats_biblio = mb.analyser_bibliographie(
@@ -1138,7 +1059,7 @@ def _principal(argv):
                               + alertes_typo_reprises + alertes_manuelles)
     progres('%d alerte(s) avant écriture' % len(alertes))
 
-    # Sorties — toujours à côté du manuscrit d'entrée, jamais une boîte de dialogue (§8).
+    # Sorties, dans le dossier --sortie.
     _etape('ecriture')
     dossier = args['sortie']
     os.makedirs(dossier, exist_ok=True)
@@ -1157,8 +1078,8 @@ def _principal(argv):
         resultat_ecriture = mg.ecrire(document, CHEMINS_GABARIT[args['produit']], sortie_docx,
                                        decisions=decisions, entete=entete, langue=langue)
 
-        # Garde-fou « rien ne se perd », sur le .docx tel qu'écrit, AVANT l'annotation (qui
-        # ajoute des révisions dont le texte barré fausserait le compte).
+        # Contrôle de perte sur le .docx écrit, avant l'annotation, dont le texte barré
+        # fausserait le compte.
         _etape('controle-perte')
         alerte_perte, mesure_perte = _controler_perte(empreinte_entree, sortie_docx, langue,
                                                       ecartes_entete)
@@ -1169,8 +1090,8 @@ def _principal(argv):
                 progres(alerte['message'])
         _trier_alertes(alertes)
         if mesure_perte.get('refus'):
-            # La moitié du manuscrit ou plus manque : le fichier n'est pas livré, pour qu'il ne
-            # puisse pas être importé par mégarde. Le rapport, lui, est écrit et le dit.
+            # La moitié du manuscrit ou plus manque : le fichier est supprimé pour ne pas être
+            # importé par mégarde. Le rapport est écrit et le dit.
             try:
                 os.remove(sortie_docx)
             except OSError:
@@ -1185,34 +1106,23 @@ def _principal(argv):
         else:
             _etape('annotation')
             progres('annotation du document...')
-            # Sauvegarde du .docx PRÉ-annotation (déjà écrit, déjà valide) en mémoire : si
-            # l'annotation échoue — par exception OU en laissant un XML mal formé, voir plus
-            # bas — c'est cette version qui est restituée, jamais un fichier à moitié annoté.
+            # Copie en mémoire du .docx non annoté : si l'annotation échoue, par exception ou
+            # en laissant un XML mal formé, cette version est restaurée.
             with open(sortie_docx, 'rb') as _f:
                 octets_avant_annotation = _f.read()
             try:
                 stats_annotation = ma.annoter(
                     sortie_docx, sortie_docx, alertes, resultat_ecriture['correspondance'],
                     langue=langue, auteur=AUTEUR_ANNOTATION, plafond_commentaires=25)
-                # ⚠ Deuxième défaut RÉEL, PLUS SOURNOIS que le premier (voir ci-dessous) : une
-                # révision dont le span touche la frontière d'un <w:hyperlink> peut rendre un
-                # document.xml mal formé SANS lever d'exception (mesuré sur 3 fichiers du
-                # corpus réel sur 12 — voir le rapport de chantier). annoter() « réussit »,
-                # code de sortie 0, et livre pourtant un .docx que Word ne rouvrirait pas
-                # proprement. Validée ici, explicitement, plutôt que supposée.
+                # Une révision qui touche la frontière d'un <w:hyperlink> peut rendre
+                # document.xml mal formé sans exception : la validité se vérifie ici.
                 _valider_docx_bien_forme(sortie_docx)
             except Exception as e:
-                # ⚠ Premier défaut RÉEL, trouvé sur le corpus réel en branchant ce module
-                # (mesuré, signalé, PAS corrigé ici — manuscrit_annoter.py est hors des deux
-                # fichiers autorisés pour ce lot, voir le rapport de chantier) :
-                # `2-grappes_En Route pour Apprendre.docx` fait lever un `KeyError: 'texto'`
-                # dans `_xml_del()` — un atome déjà FUSIONNÉ par une révision précédente (donc
-                # sans clé 'texto', voir `_anotar_parrafo()`) est repris par une seconde
-                # révision du même paragraphe dont le span touche ou chevauche le premier. Une
-                # panne d'un moteur optionnel ne doit jamais faire perdre le .docx déjà écrit
-                # ni le rapport : capturée ici comme une indisponibilité, au même principe que
-                # Vale (§7) et le repli typographique (§8) — jamais un plantage de la CLI, et
-                # jamais un .docx corrompu au repos (restauration ci-dessous).
+                # Une panne de l'annotation ne doit pas faire perdre le .docx écrit ni le
+                # rapport : elle est traitée comme une indisponibilité, comme pour Vale, et le
+                # .docx non annoté est restauré. Cas connu : `KeyError: 'texto'` dans
+                # `_xml_del()` quand deux révisions d'un même paragraphe se touchent ou se
+                # chevauchent (voir `_anotar_parrafo()`).
                 with open(sortie_docx, 'wb') as _f:
                     _f.write(octets_avant_annotation)
                 stats_annotation = None
@@ -1227,12 +1137,9 @@ def _principal(argv):
                                      stats_annotation['commentaires'],
                                      len(stats_annotation['renvoyees_au_rapport'])))
 
-    # Sortie .odt (point 3, --format odt) : le .docx ci-dessus reste le seul moteur d'écriture
-    # -- écriture, contrôle de perte, annotation, validation XML s'y font TOUJOURS d'abord.
-    # Ce n'est qu'ICI, une fois le .docx définitif posé, qu'il est converti en .odt ; l'échec
-    # garde le .docx (jamais de perte), avec une alerte qui dit pourquoi. `sortie` porte le
-    # chemin réellement livré, quel que soit le format ; `sortie_docx` reste, pour compat, le
-    # .docx s'il est livré, sinon None.
+    # Sortie .odt (--format odt) : le .docx définitif, écrit, contrôlé et annoté, est converti
+    # ici. En cas d'échec, le .docx est livré avec une alerte. `sortie` est le chemin livré,
+    # quel que soit le format ; `sortie_docx` vaut le .docx s'il est livré, sinon None.
     sortie = sortie_docx
     format_sortie = 'docx' if sortie_docx is not None else None
     if sortie_docx is not None and args['format'] == 'odt':
@@ -1263,10 +1170,8 @@ def _principal(argv):
     progres('%d alerte(s) (%d error, %d warning, %d suggestion)'
             % (len(alertes), n_error, n_warning, n_suggestion))
 
-    # §5.5 : l'en-tête (titre, sous-titre, résumé, mots-clés, auteurs) n'est plus dans le
-    # corps de l'article — signes_total ne doit pas le recompter. La bibliographie, elle,
-    # reste comptée dans ce total, comme avant ce chantier (signes_bibliographie n'en est
-    # qu'une VENTILATION, jamais une exclusion).
+    # signes_total compte le corps sans l'en-tête (titre, sous-titre, résumé, mots-clés,
+    # auteurs), bibliographie comprise ; signes_biblio en est une partie.
     signes_total = sum(len(p['texte']) for p in paragraphes_ctx
                         if p['role'] not in ROLES_ENTETE_POUR_REGLES)
     signes_biblio = sum(len(p['texte']) for p in paragraphes_ctx if p['role'] == 'bibliographie')
@@ -1279,8 +1184,8 @@ def _principal(argv):
         'sans_annotation': args['sans_annotation'], 'sans_reseau': args['sans_reseau'],
         'sortie': sortie, 'format_sortie': format_sortie, 'sortie_docx': sortie_docx,
         'controles': {'vale': 'indisponible' if vale_indisponible else 'effectue',
-                      # Garde-fou « rien ne se perd » : mots et images du manuscrit
-                      # retrouvés dans le .docx écrit (None en --analyse-seule).
+                      # Mots et images du manuscrit retrouvés dans le .docx écrit
+                      # (None en --analyse-seule).
                       'perte_de_contenu': mesure_perte},
         'compteurs': {
             'signes_total': signes_total, 'signes_bibliographie': signes_biblio,
@@ -1290,8 +1195,8 @@ def _principal(argv):
             'revisions': stats_annotation['revisions'] if stats_annotation else 0,
             'commentaires_poses': stats_annotation['commentaires'] if stats_annotation else 0,
             'images': {'total': len(images), 'sans_alt': images_sans_alt,
-                       # dimensions en pixels, JAMAIS un verdict (§7 du contrat) : le verdict
-                       # de qualité vient de lib/qualite-image.js, au moment du rapport HTML.
+                       # Dimensions en pixels seulement : le verdict de qualité est rendu par
+                       # lib/qualite-image.js, au moment du rapport HTML.
                        'details': [{'nom': i['nom'], 'source': i['source'],
                                     'largeur_px': i['largeur_px'], 'hauteur_px': i['hauteur_px'],
                                     'alt_absent': not bool((i['alt'] or '').strip())}
@@ -1310,8 +1215,8 @@ def _principal(argv):
         'bibliographie': stats_biblio,
         'identifiants': stats_identifiants,
         'annotation': stats_annotation,
-        # Ce que le lanceur ne montre plus : les constats de lecture (en-têtes et pieds non
-        # lus, zones de texte...) avec leurs deux langues, et les lignes de progression.
+        # Les constats de lecture (en-têtes et pieds non lus, zones de texte...) dans leurs
+        # deux langues, et les lignes de progression.
         'avertissements_import': list(_AVERTISSEMENTS_IMPORT),
         'journal': list(_JOURNAL_PROGRES),
         'alertes': {'total': len(alertes), 'error': n_error, 'warning': n_warning,

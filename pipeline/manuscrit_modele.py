@@ -1,24 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# manuscrit_modele.py — le modèle riche du nettoyeur de manuscrit (article) et TOUTES les
-# décisions qui le lisent : classement des titres (promotion ET rétrogradation), nettoyage
-# de la mise en forme manuelle, reconnaissance du gabarit (cas A / cas B), taille dominante
-# du corps. Contrat : docs/ARCHITECTURE-nettoyeur-manuscrit.md, §3, §4, §5, §11.
+# Modèle de document du nettoyeur de manuscrit (article) et décisions qui le lisent :
+# classement des titres (promotion et rétrogradation), nettoyage de la mise en forme
+# manuelle, reconnaissance du gabarit (cas A / cas B), taille dominante du corps. Voir
+# docs/ARCHITECTURE-nettoyeur-manuscrit.md.
 #
-# AUCUNE trace de Word ni d'OpenDocument ici : pas de namespace `w:`, pas de `office:». Ce
-# fichier ne lit ni .docx ni .odt — il ne raisonne que sur les six classes du §4 du contrat
-# (Image, Fragment, Paragraphe, Cellule, Tableau, Document), construites par les lecteurs
-# (manuscrit_docx.py, manuscrit_odt.py, pas encore écrits) ou, pour ce module et ses tests,
-# depuis le JSON du mode --diagnostic documenté plus bas.
-#
-# stdlib uniquement : pas de PyYAML, pas de python-docx, pas de jinja2 — ils ne sont pas dans
-# la WSL de la flotte (§2 du contrat).
-#
-# `normaliser()` (§4 du contrat) ne vit pas dans szh_commun.py — elle y est absente et
-# dupliquée à l'identique dans pronto_modele.py, docx-titres.py, docx-meta.py et
-# docx-tables.py. Ce module importe donc `normaliser()` (et `normaliser_nom_style()`,
-# `NOM_STYLE_CLE`, `NOM_STYLE_AIDE`) depuis pronto_modele, qui ne sait rien de Word ni
-# d'OpenDocument non plus (§3, frontière respectée) ; `avertir()` vient bien de szh_commun.
+# Ce module ne lit ni .docx ni .odt. Il travaille sur six classes (Image, Fragment,
+# Paragraphe, Cellule, Tableau, Document), construites par manuscrit_docx.py ou, pour les
+# tests, depuis le JSON du mode --diagnostic décrit plus bas. Bibliothèque standard
+# seulement. `normaliser_nom_style()` et les noms de styles maison viennent de pronto_modele,
+# `avertir()` de szh_commun.
 #
 # ── Schéma JSON du mode --diagnostic (lu sur stdin) ─────────────────────────────────────────
 #
@@ -26,69 +17,62 @@
 #     "styles": ["heading 1", "heading 2", "SZH Cle", ...],   // noms de word/styles.xml
 #     "langue": "fr",                                          // ou "" si non déclarée
 #     "revisions": 0, "commentaires": 0,
-#     "notes": {"3": [ <bloc>, ... ], "12": [ <bloc>, ... ]},   // dict identifiant -> contenu,
-#                                              // jamais une liste plate (fondrait toutes les
-#                                              // notes ensemble). Notes de bas de page ET de fin
-#                                              // cohabitent (une note de fin porte un
-#                                              // identifiant décalé, voir manuscrit_docx.py).
+#     "notes": {"3": [ <bloc>, ... ], "12": [ <bloc>, ... ]},   // identifiant -> contenu.
+#                                              // Notes de bas de page et de fin ensemble ; une
+#                                              // note de fin porte un identifiant décalé (voir
+#                                              // manuscrit_docx.py).
 #     "blocs": [ <bloc>, ... ]                                  // blocs de premier niveau, en ordre
 #   }
 #
-#   <bloc> est soit un paragraphe, soit un tableau — distingués par "type" :
+#   <bloc> est un paragraphe ou un tableau, selon "type" :
 #
 #   <paragraphe> = {
-#     "type": "paragraphe",              // optionnel : c'est le défaut si absent
+#     "type": "paragraphe",              // optionnel : c'est le défaut
 #     "style": "heading 2",              // nom humain déjà résolu, "" si aucun
-#     "niveau_declare": 2,               // 1..3 si le STYLE dit titre, 0 sinon — jamais déduit
+#     "niveau_declare": 2,               // 1..3 si le style dit titre, 0 sinon
 #     "fragments": [ <fragment>, ... ],
-#     "liste": [numId, ilvl, format] | null,  // format : 'puce'|'numero'|'' — '' = non
-#                                              // déterminé par le lecteur (numbering.xml
-#                                              // absent, ou format inconnu), JAMAIS deviné ici
+#     "liste": [numId, ilvl, format] | null,  // format : 'puce'|'numero'|'' ; '' quand le
+#                                              // lecteur n'a pas pu le déterminer
 #     "alignement": "",                  // "" = non déclaré
-#     "alignement_effectif": "",         // direct sinon cascade des styles (§4) ; "" si non
-#                                          // déclaré nulle part
+#     "alignement_effectif": "",         // direct, sinon cascade des styles ; "" si non
+#                                          // déclaré
 #     "retrait": 0,
-#     "source": 3                        // index dans le corps ; laissé au décompte si absent
+#     "source": 3                        // index dans le corps ; compté si absent
 #   }
 #
 #   <fragment> = {
-#     "texte": "…",                      // "" si le fragment ne porte qu'une image OU une note
+#     "texte": "…",                      // "" si le fragment ne porte qu'une image ou une note
 #     "image": <image> | null,
-#     "forme": {                         // dict figé : les 12 clés de FORME_CLES ; une clé
-#       "gras": true, "italique": false, ...  // absente vaut None (« non déclaré »),
-#     },                                  // à distinguer de false (« déclaré éteint »)
-#     "effectif": { ... },                // même forme que "forme" (§4), mais la mise en forme
-#                                          // EFFECTIVEMENT appliquée (directe, sinon cascade
-#                                          // des styles)
+#     "forme": {                         // les 12 clés de FORME_CLES ; une clé absente vaut
+#       "gras": true, "italique": false, ...  // None (« non déclaré »), à distinguer de
+#     },                                  // false (« déclaré éteint »)
+#     "effectif": { ... },                // mêmes clés, mise en forme effectivement appliquée
+#                                          // (directe, sinon cascade des styles)
 #     "lien": "https://…" | null,
 #     "source": 0,
-#     "note": 3 | null                    // identifiant de la note appelée par ce fragment,
-#                                          // ou null (§4)
+#     "note": 3 | null                    // identifiant de la note appelée, ou null
 #   }
 #
 #   <image> = {"nom": "image1.png", "surface": 0, "cx": 0, "cy": 0, "largeur_px": 0,
 #              "hauteur_px": 0, "alt": "", "flottante": false, "octets_base64": "…"}
-#              // cx/cy : la boîte d'affichage EMU, séparément (leur produit vaut `surface`).
-#              // largeur_px/hauteur_px : dimensions du FICHIER en pixels, lues par le lecteur
-#              // dans ses octets — 0 si non fourni ici (mode diagnostic ne relit aucun octet).
-#              // octets_base64 optionnel ; "" par défaut en mode diagnostic, ce module
-#              // n'écrivant jamais de .docx
+#              // cx/cy : boîte d'affichage en EMU (leur produit vaut `surface`).
+#              // largeur_px/hauteur_px : dimensions du fichier en pixels ; 0 en mode
+#              // diagnostic, qui ne lit pas les octets. octets_base64 est facultatif.
 #
 #   <tableau> = {"type": "tableau", "page": null, "source": 5,
 #                "rangees": [ [ <cellule>, ... ], ... ]}
 #
 #   <cellule> = {"colspan": 1, "rowspan": 1, "entete": false, "blocs": [ <bloc>, ... ]}
 #
-# Sortie sur stdout (JSON ASCII pur, ensure_ascii=True — le poste Windows dont la console
-# n'est pas garantie en UTF-8 ne doit jamais faire échouer l'écriture) :
+# Sortie sur stdout, en JSON ASCII (ensure_ascii=True) car la console Windows n'est pas
+# forcément en UTF-8 :
 #
 #   {"gabarit": "A"|"B", "taille_dominante": 24|null,
 #    "titres": {"stats": {...}, "trace": [...]},
 #    "formatage": {"stats": {...}, "trace": [...]},
-#    "document": <document>}     // l'ÉTAT RÉEL après les deux passes (mêmes clés qu'en
-#                                 // entrée, plus "niveau_retenu" rempli et "forme" nettoyée) —
-#                                 // c'est lui qu'un test doit lire pour vérifier qu'un champ
-#                                 // protégé a survécu, jamais seulement le texte d'un motif.
+#    "document": <document>}     // l'état après les deux passes (mêmes clés qu'en entrée,
+#                                 // avec "niveau_retenu" rempli et "forme" nettoyée). Les
+#                                 // tests vérifient les champs protégés sur cet objet.
 
 import base64
 import json
@@ -99,103 +83,61 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import szh_commun
 import pronto_modele
-# Le lexique de légende du pré-pass d'import : la passe 1 (§5.1) ne promeut jamais
-# « Tableau 1 » ou « Figure 2 » en titre.
+# Lexique des légendes (« Tableau 1 », « Figure 2 »), que la passe 1 exclut des titres.
 from heritage_meta import RE_LEGENDE
 
 
 # ---------------------------------------------------------------------------------
-# Seuils — TOUT nombre magique vit ici, avec sa provenance. La phase 2 de validation
-# (§11 du contrat) va les faire bouger ; ils doivent bouger en un seul endroit.
-#
-# Refonte du 18.09.2026 (§5.1 du contrat, réécrit ce jour) : l'ancienne conception jugeait
-# chaque paragraphe SEUL contre des valeurs ABSOLUES (MAX_MOTS=12, SEUIL_TAILLE=1.2x, une
-# ponctuation finale interdite). Mesurée sur le corpus réel, elle détruisait 4 vrais titres
-# sur 4 fichiers pour n'en rattraper que 6/17 sur un article sans style. Tous ces seuils
-# absolus disparaissent : la nouvelle conception ne compare plus un paragraphe qu'à SON
-# PROPRE document — un groupement de paragraphes par SIGNATURE de mise en forme identique
-# (taille, gras, italique, souligné, police, alignement, casse), jamais un score.
+# Seuils du classement des titres, tous réunis ici. Le classement compare chaque paragraphe
+# à son propre document : il groupe les paragraphes de même signature de mise en forme
+# (taille, gras, italique, souligné, police, alignement, casse), sans score.
 
-# §5.1 passe 2 : bornes de plausibilité d'un ÉTAT DÉCLARÉ de titres, mesurées sur les 58
-# articles de tmp/corpus-relecture/manuscrits-par-article.csv — les 36 qui portent de vrais
-# styles de titre en ont au minimum 2, en médiane 9, au maximum 21. Sert à décider si l'on
-# fait confiance aux styles déjà posés (promotion désactivée aux niveaux déjà couverts) ou si
-# on les ignore pour la recherche de nouveaux candidats (§5.1 : « la cohérence de l'état
-# déclaré désactive la promotion, JAMAIS la rétrogradation » — la passe 4, elle, tourne dans
-# tous les cas, cohérent ou non).
+# Passe 2 : bornes d'un état déclaré plausible. Sur 58 articles de la Revue, ceux qui ont de
+# vrais styles de titre en portent de 2 à 21 (médiane 9). Un état cohérent désactive la
+# promotion aux niveaux déjà couverts ; la rétrogradation (passe 4) tourne dans tous les cas.
 MIN_TITRES = 2
 MAX_TITRES = 21
 
-# Même mesure, même corpus : la médiane, gardée pour le SIGNAL du §5.1 (correction de Robin
-# du 18.09.2026, pendant ce chantier — voir le commentaire dans classer_titres() : MAX_TITRES
-# a cessé d'être un motif de rejet, il sert désormais à formuler ce message).
+# Médiane du même corpus, citée dans le signal de classer_titres() quand MAX_TITRES est
+# dépassé.
 MEDIANE_TITRES_CORPUS = 9
 
-# Lignes directrices de la maison (citées au §5.1 passe 2) : jamais plus de trois niveaux de
-# titre. Techniquement déjà garanti par construction (niveau_declare ∈ {0,1,2,3}), gardé
-# comme constante nommée et revérifié explicitement : c'est elle que la contrainte globale
-# de fin de passe 3 cite dans son message, et c'est elle qu'un sabotage doit pouvoir viser.
+# Trois niveaux de titre au plus (lignes directrices de la Revue). Déjà garanti par
+# niveau_declare ∈ {0,1,2,3}, mais vérifié et cité par la contrainte de fin de passe 3.
 MAX_NIVEAUX = 3
 
-# §5.1 passe 3, critère « court relativement au corps de CE document » : mesuré, les
-# paragraphes de corps de la Revue font 768 à 1525 signes, ses intertitres réels 17 à 19
-# mots (~100-150 signes) — un rapport proche de 10. Le contrat n'impose pas de chiffre exact
-# pour la coupure ; RATIO_LONGUEUR_TITRE=3 (le corps doit être au moins 3x plus long que le
-# candidat) ne retient qu'une fraction prudente de la marge mesurée, pour ne pas coller au
-# seul échantillon dont on dispose. À AJUSTER en phase 2 (§11) sur les dix documents validés
-# par la rédaction — c'est très exactement ce que ce seuil nommé permet de faire en un point.
+# Passe 3, « court par rapport au corps du document » : le corps doit être au moins 3 fois
+# plus long que le candidat. Dans la Revue, un paragraphe de corps fait 768 à 1525 signes et
+# un intertitre 100 à 150 ; la marge est donc large.
 RATIO_LONGUEUR_TITRE = 3
 
-# §5.1 passe 3, critère « longueurs homogènes entre elles » : à l'intérieur d'un groupe de
-# même signature, le plus long candidat ne dépasse pas ce multiple du plus court. Aucune
-# mesure directe dans le contrat — posé par prudence : les deux seuls intertitres réels
-# mesurés de même signature (l'italique de Chanier-Delorme) font 17 et 19 mots, un rapport de
-# 1,1 seulement ; un plafond à 3x laisse une marge large sans laisser passer un groupe
-# hétérogène (un titre de 3 mots mélangé à une phrase de corps de 30 aurait échappé faute de
-# ce garde-fou).
+# Passe 3, « longueurs homogènes » : dans un groupe, le plus long candidat ne dépasse pas ce
+# multiple du plus court. Écarte un groupe qui mêle un titre de 3 mots et une phrase de 30.
 SEUIL_HOMOGENEITE_MOTS = 3
 
-# ⚠ Révision du 21.09.2026 — PLANCHER du dénominateur de ce ratio, mesuré sur
-# 3bis_CSPS_Revue3_2026_FLOW_Piloting_OFP (LISEZMOI du corpus : « tout en style Normal 11 pt,
-# 20 pseudo-titres, aucun changement de corps » — la hiérarchie n'est portée QUE par le gras).
-# Ses vrais titres vont d'UN mot (« Résumé », « Perspectives », « Références ») à dix
-# (« Résultats – Signaux préliminaires sur les questions de recherche ») : le ratio SEUL,
-# plancher à 1 mot, exigeait alors max <= 3 mots — rejetant en bloc le seul groupe qualifiant
-# du document (14 membres, 1 à 10 mots) et le réduisant à zéro titre promu (1/17 mesuré). Le
-# danger que le ratio protège (« un titre de 3 mots mélangé à une phrase de corps de 30 »,
-# voir plus haut) reste couvert : à ce plancher, un membre de 30 mots échoue toujours
-# (30 > 3×4=12). Seul le cas d'un dénominateur PATHOLOGIQUEMENT petit (un titre à un seul mot,
-# aussi réel que légitime) cesse d'imposer un ratio que même deux vrais titres ordinaires ne
-# tiendraient pas.
+# Plancher du dénominateur de ce rapport. Des titres d'un mot (« Résumé », « Références »)
+# côtoient des titres de dix : sans plancher, le rapport rejetterait le groupe entier. Avec
+# 4, un membre de 30 mots échoue toujours (30 > 3×4).
 PLANCHER_HOMOGENEITE_MOTS = 4
 
-# §5.1 passe 3, critère « occurrences réparties, pas toutes collées » : ce garde-fou ne joue
-# qu'à partir de ce nombre d'occurrences dans un groupe (en dessous, juger une « répartition »
-# n'a pas de sens statistique). Aucune mesure directe non plus — posé pour écarter un bloc de
-# paragraphes consécutifs de même mise en forme (un extrait cité réparti sur plusieurs
-# paragraphes, une légende multi-lignes) que leur seule position rend suspect.
+# Passe 3, « occurrences réparties » : vérifié à partir de ce nombre d'occurrences dans un
+# groupe. Écarte un bloc de paragraphes consécutifs de même mise en forme (citation longue,
+# légende sur plusieurs lignes).
 SEUIL_DISPERSION_MIN = 3
 
 
 # ---------------------------------------------------------------------------------
-# Le modèle riche — six classes du §4 du contrat, __slots__ partout, aucune dépendance.
-# Signatures et ORDRE des champs figés : d'autres modules écrits en parallèle en dépendent.
+# Le modèle : six classes à __slots__. L'ordre des champs est fixe, d'autres modules
+# construisent ces objets par position.
 
 class Image:
-    """Une image. `octets` est le contenu du fichier (l'écrivain en a besoin) ; `surface`
-    en EMU², 0 si non déclarée (même convention que docx-meta.py) ; `alt` le texte
-    alternatif déclaré, '' si absent ; `flottante` vraie si l'image est ancrée (w:anchor) et
-    non en ligne (w:inline).
+    """Une image. `octets` est le contenu du fichier ; `surface` en EMU², 0 si non déclarée ;
+    `alt` le texte alternatif, '' si absent ; `flottante` vraie si l'image est ancrée
+    (w:anchor) et non en ligne (w:inline).
 
-    `cx`, `cy` : la boîte d'affichage en EMU, séparément — leur produit vaut `surface`, mais
-    le produit seul ne permet ni rapport largeur/hauteur ni résolution (§4 du contrat).
-    `largeur_px`, `hauteur_px` : les dimensions du FICHIER, en pixels, lues par le lecteur
-    dans ses octets (jamais dans le XML de Word, qui ne connaît que cx/cy) ; 0 si le format
-    est inconnu ou vectoriel (SVG, EMF, WMF) ou si le fichier est illisible.
-
-    ⚠ Ces quatre champs ont été AJOUTÉS le 18.09.2026, À LA FIN de __slots__ et de la
-    signature, avec une valeur par défaut de 0 : l'ordre positionnel des six champs
-    d'origine ne bouge pas, pour ne rien casser chez qui construit déjà une Image."""
+    `cx`, `cy` : la boîte d'affichage en EMU ; leur produit vaut `surface`.
+    `largeur_px`, `hauteur_px` : dimensions du fichier en pixels, lues dans ses octets ; 0 si
+    le format est inconnu ou vectoriel (SVG, EMF, WMF) ou si le fichier est illisible."""
 
     __slots__ = ('nom', 'octets', 'surface', 'alt', 'flottante', 'source',
                  'cx', 'cy', 'largeur_px', 'hauteur_px')
@@ -220,17 +162,15 @@ class Image:
             self.largeur_px, self.hauteur_px, self.alt, self.flottante, self.source)
 
 
-# Les 12 clés du dict « figé » de Fragment.forme, dans l'ordre du §4 du contrat. Une clé
-# absente d'un forme construit ailleurs vaut None (« non déclaré ») — jamais False, qui veut
-# dire « déclaré éteint ». nouvelle_forme() ci-dessous est le seul constructeur à utiliser.
+# Les 12 clés de Fragment.forme. Une clé non déclarée vaut None ; False veut dire « déclaré
+# éteint ». Construire une forme avec nouvelle_forme().
 FORME_CLES = ('gras', 'italique', 'souligne', 'exposant', 'indice', 'barre',
               'petites_capitales', 'majuscules', 'police', 'taille', 'couleur', 'surlignage')
 
 
 def nouvelle_forme(**valeurs):
-    """Un dict `forme` figé : exactement les clés de FORME_CLES, None pour toute clé non
-    fournie. Toute clé inconnue passée en trop est ignorée plutôt que de lever — un lecteur
-    plus tard, plus complet, ne doit pas faire planter ce module-ci."""
+    """Un dict `forme` avec exactement les clés de FORME_CLES, None pour toute clé non
+    fournie. Une clé inconnue est ignorée."""
     forme = dict.fromkeys(FORME_CLES)
     for cle, val in valeurs.items():
         if cle in forme:
@@ -239,22 +179,17 @@ def nouvelle_forme(**valeurs):
 
 
 class Fragment:
-    """Un fragment de texte (ou une image, ou un appel de note) au sein d'un paragraphe.
-    `texte` n'est jamais None ('' si le fragment porte une image OU une note) ; `forme` est
+    """Un fragment de texte, une image ou un appel de note dans un paragraphe.
+    `texte` n'est jamais None ('' si le fragment porte une image ou une note) ; `forme` est
     un dict FORME_CLES (voir nouvelle_forme()) ; `lien` une URL ou None.
 
-    `note` : identifiant de la note appelée par ce fragment (w:footnoteReference/
-    w:endnoteReference), ou None. Ajouté le 19.09.2026 (§4 du contrat) — même convention que
-    `image` : `texte == ''` quand ce champ est rempli. Une note de fin est lue avec un
-    identifiant DÉCALÉ au-delà du plus grand identifiant de note de bas de page (voir
-    manuscrit_docx.py, qui seul sait distinguer les deux familles) : ce champ ne dit jamais
-    lui-même de quelle famille vient la note, `Document.notes` fait foi.
+    `note` : identifiant de la note appelée (w:footnoteReference/w:endnoteReference), ou
+    None ; `texte` vaut alors ''. Une note de fin a un identifiant décalé au-delà des notes
+    de bas de page (voir manuscrit_docx.py).
 
-    `effectif` : AJOUTÉ le 19.09.2026 (§4 du contrat), même forme que `forme` (les clés de
-    FORME_CLES) mais la mise en forme EFFECTIVEMENT appliquée — directe (`forme`) sinon
-    style de caractère, sinon chaîne des styles de paragraphe, sinon les valeurs par défaut
-    du document. `forme`, elle, reste strictement la mise en forme DIRECTE (§5.2 : jamais la
-    cascade des styles) — les deux champs coexistent, aucun ne remplace l'autre."""
+    `forme` est la mise en forme directe seule. `effectif` a les mêmes clés et donne la mise
+    en forme effectivement appliquée : directe, sinon style de caractère, sinon styles de
+    paragraphe, sinon valeurs par défaut du document."""
 
     __slots__ = ('texte', 'image', 'forme', 'lien', 'source', 'note', 'effectif')
 
@@ -274,14 +209,11 @@ class Fragment:
 
 
 class Paragraphe:
-    """Un paragraphe (ou un titre). `niveau_declare` : 1..3 si le STYLE dit titre, 0 sinon —
-    jamais une déduction, c'est classer_titres() qui déduit. `niveau_retenu` : rempli par
-    classer_titres(), 0 = corps ; c'est le SEUL champ que les décisions de ce module écrivent
-    sur cette classe. `liste` : (numId, ilvl, format) ou None — `format` ('puce'|'numero'|'')
-    ajouté le 18.09.2026 (§5.4 du contrat) : résolu par le lecteur depuis numbering.xml,
-    JAMAIS deviné ('' si numbering.xml est absent ou si le format n'est pas reconnu). Le
-    `numId` d'origine ne doit JAMAIS être recopié par un écrivain (§5.4) : il désigne une
-    définition d'un numbering.xml qui n'est pas celui de la sortie."""
+    """Un paragraphe ou un titre. `niveau_declare` : 1..3 si le style dit titre, 0 sinon.
+    `niveau_retenu` : rempli par classer_titres(), 0 = corps. `liste` : (numId, ilvl, format)
+    ou None ; `format` ('puce'|'numero'|'') vient de numbering.xml, '' s'il est absent ou
+    inconnu. Un écrivain ne recopie pas le `numId` d'origine : il désigne une définition du
+    numbering.xml d'entrée, pas de celui de la sortie."""
 
     __slots__ = ('style', 'niveau_declare', 'niveau_retenu', 'fragments', 'liste',
                  'alignement', 'retrait', 'source', 'alignement_effectif')
@@ -296,15 +228,11 @@ class Paragraphe:
         self.alignement = alignement or ''
         self.retrait = retrait or 0
         self.source = source
-        # AJOUTÉ le 19.09.2026 (§4 du contrat) : direct (`alignement`) sinon la chaîne des
-        # styles de paragraphe — même principe que Fragment.effectif, pour la même raison
-        # (« corps sans taille déclarée » et « faux titre 12 pt déclaré » doivent pouvoir se
-        # comparer sur ce qui s'affiche VRAIMENT, pas seulement sur ce qui est écrit en dur).
+        # Alignement direct, sinon celui des styles de paragraphe (comme Fragment.effectif).
         self.alignement_effectif = alignement_effectif or ''
 
     def texte(self):
-        """Concaténation des fragments — jamais stockée : c'est une dérivée, pas un champ du
-        contrat, calculée à chaque besoin pour ne jamais désynchroniser deux copies."""
+        """Concaténation des fragments, recalculée à chaque appel."""
         return ''.join(f.texte for f in self.fragments)
 
     def __repr__(self):
@@ -315,7 +243,7 @@ class Paragraphe:
 
 class Cellule:
     """Une cellule de tableau. `blocs` : liste de Paragraphe | Tableau, dans l'ordre,
-    imbrication comprise. Pas de champ `source` — le contrat ne lui en donne pas."""
+    imbrication comprise. Pas de champ `source`."""
 
     __slots__ = ('colspan', 'rowspan', 'entete', 'blocs')
 
@@ -331,8 +259,8 @@ class Cellule:
 
 
 class Tableau:
-    """Un tableau. `rangees` : liste de listes de Cellule — une cellule masquée par une
-    fusion n'y figure jamais. `page` : numéro de page ou None, JAMAIS deviné (§10)."""
+    """Un tableau. `rangees` : liste de listes de Cellule ; une cellule masquée par une
+    fusion n'y figure pas. `page` : numéro de page déclaré, ou None."""
 
     __slots__ = ('rangees', 'page', 'source')
 
@@ -349,14 +277,12 @@ class Tableau:
 class Document:
     """Le document entier. `blocs` : liste de Paragraphe | Tableau, premier niveau, dans
     l'ordre. `styles` : noms des styles présents dans styles.xml, et `cle_gabarit` : valeur
-    de la propriété cachée SZH-Gabarit ou None — servent au cas A (reconnaitre_gabarit).
+    de la propriété cachée SZH-Gabarit ou None ; servent au cas A (reconnaitre_gabarit).
 
-    `notes` : dict[int, list[Paragraphe | Tableau]], le contenu de CHAQUE note par
-    identifiant — CHANGÉ le 19.09.2026 (§4 du contrat), c'était une liste plate qui fondait
-    toutes les notes ensemble sans dire laquelle appelle quoi. Les notes de bas de page ET
-    les notes de fin y cohabitent : une note de fin porte un identifiant décalé au-delà du
-    plus grand identifiant de note de bas de page (manuscrit_docx.py), pour qu'aucune clé ne
-    se percute jamais entre les deux familles."""
+    `notes` : dict[int, list[Paragraphe | Tableau]], le contenu de chaque note par
+    identifiant. Notes de bas de page et de fin y sont ensemble ; une note de fin a un
+    identifiant décalé au-delà des notes de bas de page (manuscrit_docx.py), pour que les
+    clés ne se recouvrent pas."""
 
     __slots__ = ('blocs', 'styles', 'langue', 'revisions', 'commentaires', 'notes', 'source',
                  'cle_gabarit')
@@ -378,10 +304,9 @@ class Document:
 
 
 # ---------------------------------------------------------------------------------
-# Avertissement au rédacteur — même mécanisme que pronto_modele.py (szh_commun.avertir),
-# même préfixe : journal.js n'a qu'un seul format à reconnaître, quel que soit le module qui
-# a parlé. Sert aux DEUX signaux que le §5 du contrat demande explicitement : le style de
-# titre généralisé (garde-fou 2) et le paragraphe entièrement gras/majuscule non retenu.
+# Avertissements à la rédaction, au même format que pronto_modele.py (szh_commun.avertir),
+# que lib/journal.js sait lire. Deux signaux : un style de titre posé sur presque tout le
+# document, et un paragraphe entièrement gras ou en majuscules non retenu comme titre.
 
 PREFIXE_AVERT = '[import-avertissement]'
 
@@ -391,9 +316,9 @@ def avertir(code, champs, fr, de):
 
 
 # ---------------------------------------------------------------------------------
-# Reconnaissance du gabarit — §1 du contrat : cas A si le document porte la clé cachée
-# SZH-Gabarit, ou à défaut SZH Cle ET SZH Aide dans styles.xml, cas B sinon. La décision est
-# pronto_modele.est_gabarit(), la même que celle de l'import.
+# Reconnaissance du gabarit : cas A si le document porte la clé cachée SZH-Gabarit, ou à
+# défaut SZH Cle et SZH Aide dans styles.xml ; cas B sinon. Même décision qu'à l'import
+# (pronto_modele.est_gabarit()).
 
 def reconnaitre_gabarit(document):
     """'A' (gabarit déjà en place, aucune restructuration) ou 'B' (manuscrit quelconque)."""
@@ -401,9 +326,8 @@ def reconnaitre_gabarit(document):
 
 
 # ---------------------------------------------------------------------------------
-# Taille dominante — base de toutes les comparaisons de §5.1. Ne regarde QUE les paragraphes
-# de premier niveau (jamais les tableaux), comme docx-titres.py : c'est le même corpus que
-# celui sur lequel les seuils MAX_MOTS/SEUIL_TAILLE ont été calibrés.
+# Taille dominante du corps, lue sur les paragraphes de premier niveau seulement (pas les
+# tableaux), comme docx-titres.py.
 
 def _paragraphes_premier_niveau(document):
     return [b for b in document.blocs if isinstance(b, Paragraphe)]
@@ -411,8 +335,8 @@ def _paragraphes_premier_niveau(document):
 
 def taille_dominante(document):
     """La taille de police (demi-points) la plus fréquente parmi les fragments porteurs de
-    texte des paragraphes de premier niveau ; None si aucune taille n'est déclarée nulle
-    part — comparer à None ne doit jamais lever, tout appelant le vérifie."""
+    texte des paragraphes de premier niveau ; None si aucune taille n'est déclarée, cas que
+    tout appelant vérifie."""
     freq = {}
     for p in _paragraphes_premier_niveau(document):
         for f in p.fragments:
@@ -425,12 +349,12 @@ def taille_dominante(document):
 
 
 # ---------------------------------------------------------------------------------
-# Classement des titres — §5.1, refonte du 18.09.2026. Quatre passes, JAMAIS un score :
+# Classement des titres, en quatre passes et sans score :
 #   1. exclusions (styles maison, citation, légende, liste, vide, étendue de bibliographie) ;
-#   2. l'état déclaré décide QUELS niveaux la passe 3 a le droit de chercher ;
-#   3. regroupement par SIGNATURE de mise en forme (jamais un paragraphe seul) ;
+#   2. l'état déclaré décide quels niveaux la passe 3 peut chercher ;
+#   3. regroupement par signature de mise en forme (jamais un paragraphe seul) ;
 #   4. rétrogradation d'un titre déclaré dont la signature est celle du corps.
-# Voir le §5.1 du contrat pour la justification complète de chaque règle.
+# Voir docs/ARCHITECTURE-nettoyeur-manuscrit.md.
 
 def _mots(texte):
     return texte.split()
@@ -440,17 +364,10 @@ def _fragments_non_vides(paragraphe):
     return [f for f in paragraphe.fragments if f.texte]
 
 
-# ⚠ Révision du 19.09.2026 (§5.1) : les signatures se lisaient sur
-# `Fragment.forme` (mise en forme DIRECTE seule), avec ce défaut mesuré sur le corpus réel —
-# « corps sans taille déclarée » (elle hérite du style) et « faux titre déclaré 12 pt » sont
-# jugés DIFFÉRENTS alors qu'ils font tous deux 12 pt à l'écran, ce qui a empêché la passe 3 bis
-# de jamais adopter le moindre paragraphe sur les onze fichiers du corpus. `Fragment.effectif`
-# (ajouté le 19.09.2026, §4) porte la mise en forme EFFECTIVEMENT appliquée — directe, sinon
-# style de caractère, sinon la chaîne des styles de paragraphe, sinon docDefaults. `_valeur_
-# effective` lit `effectif` en priorité, avec repli sur `forme` clé par clé : un Fragment
-# construit sans `effectif` du tout (une fixture de test, un ancien appelant) — `effectif`
-# vaut alors nouvelle_forme(), toutes clés à None — retombe intégralement sur `forme`, sans
-# rien changer pour lui.
+# Les signatures se lisent sur la mise en forme effective : un corps sans taille déclarée
+# (héritée du style) et un faux titre déclaré en 12 pt font tous deux 12 pt à l'écran.
+# `effectif` d'abord, puis `forme` clé par clé ; un Fragment construit sans `effectif` (dans
+# un test) retombe donc sur `forme`.
 def _valeur_effective(fragment, cle):
     val = fragment.effectif.get(cle) if fragment.effectif else None
     return val if val is not None else fragment.forme.get(cle)
@@ -463,27 +380,25 @@ def _taille_max(fragments_non_vides):
 
 
 def _tout_forme(fragments_non_vides, cle):
-    """True si TOUS les fragments non vides déclarent `cle` (gras/italique/souligne) à
-    True, mise en forme EFFECTIVE (voir _valeur_effective) — un paragraphe à la mise en forme
-    mixte (un mot en gras au milieu d'une phrase de corps) n'est jamais « tout gras », donc
-    jamais un candidat sur ce seul critère."""
+    """True si tous les fragments non vides ont `cle` (gras/italique/souligne) à True en
+    mise en forme effective. Un mot en gras dans une phrase ne rend pas le paragraphe
+    « tout gras »."""
     return bool(fragments_non_vides) and all(_valeur_effective(f, cle) is True
                                               for f in fragments_non_vides)
 
 
 def _police_dominante(fragments_non_vides):
-    """La police si TOUS les fragments non vides s'accordent sur une seule (mise en forme
-    EFFECTIVE) ; None sinon (police non déclarée ou mélangée) — un champ de signature de plus
-    qui ne doit jamais être deviné à partir d'un fragment isolé."""
+    """La police si tous les fragments non vides ont la même (mise en forme effective) ; None
+    si elle n'est pas déclarée ou varie."""
     polices = {_valeur_effective(f, 'police') for f in fragments_non_vides
                if _valeur_effective(f, 'police')}
     return next(iter(polices)) if len(polices) == 1 else None
 
 
 def _casse(texte):
-    """'MAJ' si le texte ne porte aucune lettre minuscule (et au moins une lettre) — un
-    signal visuel de titre indépendant de `forme.majuscules` (qui, lui, ne dit que si Word a
-    DÉCLARÉ un style de casse forcée, pas si l'autrice a tapé directement en capitales)."""
+    """'MAJ' si le texte a au moins une lettre et aucune minuscule. Complète
+    `forme.majuscules`, qui ne voit que la casse forcée par Word, pas un texte tapé en
+    capitales."""
     lettres = [c for c in texte if c.isalpha()]
     if not lettres:
         return ''
@@ -491,11 +406,9 @@ def _casse(texte):
 
 
 def _signature(paragraphe, fragments_non_vides, texte):
-    """La signature de mise en forme d'un paragraphe, telle que le §5.1 passe 3 la définit :
-    taille arrondie (déjà un entier en demi-points, rien à arrondir en pratique), gras,
-    italique, souligné, police, alignement, casse — tous sur la mise en forme EFFECTIVE
-    (révision du 19.09.2026, voir _valeur_effective). Deux paragraphes de MÊME signature
-    tombent dans le MÊME groupe — c'est un tuple, comparable par égalité, jamais un score."""
+    """La signature de mise en forme d'un paragraphe : taille (en demi-points), gras,
+    italique, souligné, police, alignement, casse, sur la mise en forme effective. Un tuple :
+    deux paragraphes de même signature tombent dans le même groupe."""
     alignement = paragraphe.alignement_effectif or paragraphe.alignement
     return (_taille_max(fragments_non_vides), _tout_forme(fragments_non_vides, 'gras'),
             _tout_forme(fragments_non_vides, 'italique'),
@@ -504,8 +417,7 @@ def _signature(paragraphe, fragments_non_vides, texte):
 
 
 def _texte_signature(sig):
-    """Un résumé lisible d'une signature, pour la trace — « c'est elle que Robin lira »
-    (§5.1) : jamais un tuple brut dans un motif destiné à une relectrice."""
+    """Une signature en clair, pour la trace lue par la rédaction."""
     taille, gras, italique, souligne, police, alignement, casse = sig
     morceaux = [('%s pt' % (taille / 2)) if taille else 'taille non déclarée']
     if gras:
@@ -524,76 +436,52 @@ def _texte_signature(sig):
 
 
 # ---------------------------------------------------------------------------------
-# Passe 1 — exclusions, AVANT toute heuristique (§5.1). Un style maison, de citation ou de
-# légende, un paragraphe en liste ou vide ne peuvent JAMAIS devenir un titre par déduction.
+# Passe 1 : exclusions, avant toute heuristique. Un style maison, de citation ou de légende,
+# un paragraphe en liste ou vide ne deviennent pas un titre par déduction.
 
 def _est_style_citation(style):
-    """Word pose 'Quote'/'IntenseQuote' (styleId), affichés 'Citation'/'Citation intense' en
-    français, 'Zitat' en allemand — aucune table de correspondance officielle dans ce dépôt
-    pour cette famille précise (contrairement à `famille()` de pronto_modele, qui couvre
-    title/subtitle/author/abstract/biblio/caption/heading mais pas les citations) : ce test
-    reste donc local à ce module, sur le nom déjà normalisé (normaliser_nom_style)."""
+    """Style de citation : Word pose 'Quote'/'IntenseQuote' (styleId), affichés 'Citation'
+    en français et 'Zitat' en allemand. `famille()` de pronto_modele ne couvre pas cette
+    famille, d'où ce test sur le nom normalisé."""
     n = pronto_modele.normaliser_nom_style(style)
     return bool(n) and ('quote' in n or n == 'citation' or 'zitat' in n)
 
 
-# §5.1 passe 1, révision du 19.09.2026 — trois exclusions nouvelles, mesurées sur le corpus
-# réel : un séparateur visuel (« ──────── », sans aucune lettre) promu Titre2/Titre3 sur
-# `4_La méthode Flip Flap.docx` (cinq lignes) faute d'un tel garde-fou ; une ligne de
-# coordonnées (courriel, téléphone, URL) qui n'a jamais sa place dans un titre de section ; et
-# une légende déjà écrite dans le manuscrit (« Tableau 1 », « Figure 2 ») que le lexique
-# RE_LEGENDE reconnaît déjà pour le pré-pass d'import — importé de heritage_meta, jamais
-# recopié.
+# Autres exclusions de la passe 1 : un séparateur visuel (« ──────── », sans lettre), une
+# ligne de coordonnées (courriel, téléphone, URL) et une légende déjà écrite (« Tableau 1 »,
+# reconnue par RE_LEGENDE).
 RE_EMAIL = re.compile(r'[^\s@]+@[^\s@]+\.[^\s@]+')
 RE_TELEPHONE = re.compile(r'\+?\d[\d\s]{8,}')
 RE_URL = re.compile(r'(?:https?://|www\.)\S+', re.I)
 
 
 def _sans_aucune_lettre(texte):
-    """Un paragraphe non vide qui ne porte AUCUNE lettre — une ligne de tirets, d'astérisques
-    ou de soulignés posée comme séparateur visuel, jamais un titre. Le vide pur reste sa
-    propre catégorie ('vide', déjà existante) : ici le texte est non vide mais dépourvu de
-    tout caractère alphabétique."""
+    """Un paragraphe non vide sans aucune lettre : une ligne de tirets, d'astérisques ou de
+    soulignés servant de séparateur. Le paragraphe vide a sa propre catégorie ('vide')."""
     return bool(texte.strip()) and not any(c.isalpha() for c in texte)
 
 
 def _porte_des_coordonnees(texte):
-    """Un courriel, un numéro de téléphone (au moins 9 chiffres, espaces tolérés) ou une URL
-    — jamais un titre de section, mais fréquent dans un encadré de coordonnées d'autrice que
-    la mise en forme seule ne distingue pas toujours d'un intertitre."""
+    """Un courriel, un numéro de téléphone (au moins 9 chiffres, espaces tolérés) ou une URL.
+    Fréquent dans un encadré de coordonnées, que la mise en forme seule ne distingue pas
+    toujours d'un intertitre."""
     return bool(RE_EMAIL.search(texte) or RE_TELEPHONE.search(texte) or RE_URL.search(texte))
 
 
 def _indices_etendue_bibliographie(document, paras):
-    """Les indices (dans `paras`) STRICTEMENT APRÈS le DERNIER paragraphe de premier niveau
-    dont le texte tombe dans TITRES_BIB — jamais le paragraphe de titre lui-même, qui reste un
-    paragraphe ordinaire pour les passes 2/3/4 (il peut très bien être un vrai titre déclaré,
-    ou se faire promouvoir comme n'importe quel autre intertitre : c'est SEULEMENT ce qui SUIT
-    qui doit être protégé d'une fausse promotion, §5.1). L'étendue s'arrête à la fin du
-    document ou au premier tableau rencontré — même borne que pronto_modele.etendue_biblio().
+    """Les indices (dans `paras`) situés après le dernier paragraphe de premier niveau dont
+    le texte est dans TITRES_BIB, jusqu'à la fin du document ou au premier tableau (même
+    borne que pronto_modele.etendue_biblio()). Le titre lui-même n'en fait pas partie : il
+    reste jugé comme les autres paragraphes.
 
-    ⚠ Diverge délibérément de pronto_modele.etendue_biblio(), qui ne considère QUE les
-    paragraphes déjà reconnus comme titres (niveau 1-3) : cette passe-ci tourne AVANT que
-    niveau_retenu existe, et doit donc pouvoir repérer une bibliographie même dans un
-    manuscrit SANS AUCUN style de titre (22/58 du corpus, §5.1 passe 2) — un « Références »
-    qui ne serait pas encore stylé Titre reste un texte assez spécifique (le lexique
-    TITRES_BIB n'a que des entrées dédiées) pour qu'une comparaison de texte, sans exiger de
-    style, reste sûre. Documenté ici plutôt que tu : c'est un endroit où le contrat ne
-    tranchait pas explicitement entre « avant » et « après » la classification.
+    Contrairement à pronto_modele.etendue_biblio(), le titre n'a pas besoin d'un style de
+    titre : cette passe tourne avant le classement et doit trouver une bibliographie même
+    dans un manuscrit sans style de titre. Le lexique TITRES_BIB est assez spécifique pour
+    que la comparaison de texte suffise.
 
-    ⚠ Deuxième mesure, sur 2-clairseme : cette étendue « jusqu'à la fin du document » (même
-    borne que pronto_modele.etendue_biblio()) engloutissait, dans une PREMIÈRE version de
-    cette fonction, « Informations sur les autrices et auteurs : », une VRAIE rubrique de la
-    Revue placée APRÈS la bibliographie (mesuré : 27 entrées puis un paragraphe vide puis ce
-    Heading1) — très exactement le titre réel que ce chantier a pour mission de ne plus
-    détruire (§5.1, motivé par ce même texte). Corrigé, mais PAS ici : voir
-    _exclusions_passe1(), qui n'applique cette exclusion qu'aux paragraphes SANS style de
-    titre déclaré. Un paragraphe déjà déclaré titre (la rubrique « Informations… » comme, à
-    front renversé, une entrée de bibliographie fabriquée à qui l'on a collé un style de
-    titre) passe TOUJOURS par la passe 4 normale, qui le juge sur sa signature et sa longueur
-    — jamais sur sa position dans cette étendue. Cette fonction-ci reste donc fidèle à
-    l'étendue « jusqu'à la fin du document ou jusqu'à un tableau » de pronto_modele : c'est
-    son PÉRIMÈTRE D'USAGE, pas sa définition, qui a changé."""
+    L'étendue peut contenir une vraie rubrique placée après la bibliographie (« Informations
+    sur les autrices et auteurs »). _exclusions_passe1() n'exclut donc que les paragraphes
+    sans style de titre ; un titre déclaré est jugé par la passe 4."""
     lexique = pronto_modele.lire_titres_bib()
     if not lexique:
         return set()
@@ -623,21 +511,14 @@ def _indices_etendue_bibliographie(document, paras):
 
 
 def _exclusions_passe1(document, paras):
-    """{idx: (categorie, raison)} — un paragraphe présent dans ce dict ne peut JAMAIS être
-    promu titre par déduction (passe 3). Catégories : style_maison, style_citation, legende,
-    liste, vide, bibliographie.
+    """{idx: (categorie, raison)} : un paragraphe de ce dict ne peut pas être promu titre par
+    la passe 3. Catégories : style_maison, style_citation, legende, liste, vide, sans_lettre,
+    coordonnees, legende_lexique, bibliographie.
 
-    ⚠ Mesuré sur le corpus réel : l'exclusion « bibliographie » ne s'applique qu'aux
-    paragraphes SANS style de titre déclaré (niveau_declare == 0), jamais à un paragraphe déjà
-    déclaré titre. Un paragraphe DÉJÀ déclaré reste toujours jugé par la passe 4 (signature et
-    longueur relative au corps), qu'il tombe ou non dans l'étendue détectée par
-    _indices_etendue_bibliographie() — cette étendue s'arrête à la fin du document (même borne
-    que pronto_modele.etendue_biblio()) et engloutirait sinon une VRAIE rubrique de la Revue
-    placée après la bibliographie (« Informations sur les autrices et auteurs : »,
-    2-clairseme), aussi sûrement qu'elle protégerait une entrée de bibliographie fabriquée à
-    qui l'on a collé un style de titre. La passe 4, elle, sait distinguer les deux (elle a été
-    conçue et mesurée pour ça, voir sa note) : mieux vaut la laisser juger un déclaré que de le
-    faire taire ici par position."""
+    L'exclusion « bibliographie » ne vaut que pour les paragraphes sans style de titre
+    (niveau_declare == 0). Un titre déclaré est jugé par la passe 4 sur sa signature et sa
+    longueur : l'étendue de bibliographie, qui va jusqu'à la fin du document, peut contenir
+    une vraie rubrique (« Informations sur les autrices et auteurs »)."""
     exclus = {}
     for idx, p in enumerate(paras):
         style_n = pronto_modele.normaliser_nom_style(p.style)
@@ -648,11 +529,9 @@ def _exclusions_passe1(document, paras):
         elif pronto_modele.famille(p.style) == 'caption':
             exclus[idx] = ('legende', 'style de légende « %s »' % p.style)
         elif p.liste is not None:
-            # ⚠ Un item de liste NUMÉROTÉE isolé peut devenir un titre de section (décision de
-            # Robin, §5.1, révision du 19.09.2026 — voir _detecter_titres_liste) : il reste
-            # exclu ICI comme n'importe quel autre paragraphe en liste, _detecter_titres_liste
-            # le repêche ensuite lui-même en relisant cette même catégorie 'liste'. Les puces
-            # ne sont, elles, jamais candidates.
+            # Un élément de liste numérotée peut devenir un titre de section : il est exclu
+            # ici, puis _detecter_titres_liste le reprend dans la catégorie 'liste'. Les puces
+            # ne sont jamais candidates.
             exclus[idx] = ('liste', 'paragraphe en liste')
         elif not p.texte().strip():
             exclus[idx] = ('vide', 'paragraphe vide')
@@ -677,7 +556,7 @@ def _exclusions_passe1(document, paras):
 
 
 # ---------------------------------------------------------------------------------
-# Passe 2 — l'état déclaré décide de ce que la passe 3 a le droit de chercher (§5.1).
+# Passe 2 : l'état déclaré décide de ce que la passe 3 peut chercher.
 
 def _etat_declare(paras, exclus):
     comptes = {1: 0, 2: 0, 3: 0}
@@ -716,11 +595,9 @@ def _etat_declare(paras, exclus):
 
 
 # ---------------------------------------------------------------------------------
-# Statistiques de corps — la signature et la longueur dominantes du corps de CE document,
-# base de comparaison des passes 3 (« diffère du corps ») et 4 (« identique au corps »).
-# Calculées UNIQUEMENT sur les paragraphes candidats (non déclarés titre, non exclus par la
-# passe 1) : c'est la définition même du corps, et exclure titres/bibliographie/légendes de
-# ce calcul évite qu'ils ne faussent la mesure qui sert justement à les juger.
+# Signature dominante et longueur médiane du corps du document, référence des passes 3 et 4.
+# Calculées sur les seuls paragraphes non déclarés titre et non exclus par la passe 1, pour
+# que titres, bibliographie et légendes ne faussent pas la mesure qui sert à les juger.
 
 def _corps_stats(paras, exclus):
     pool = []
@@ -748,25 +625,20 @@ def _corps_stats(paras, exclus):
 
 
 # ---------------------------------------------------------------------------------
-# Titres en liste numérotée — décision de Robin, §5.1 (révision du 19.09.2026). Mesuré sur
-# « Le coenseignement développemental… » : ses quatre VRAIS titres de section (Introduction,
-# etc.) sont des paragraphes de liste NUMÉROTÉE (numId décimal, style Listenabsatz, gras) —
-# la passe 1 les excluait tous à 100 %, faute de quoi que ce soit qui distingue « un item de
-# liste qui EST un titre » d'« un item de liste qui n'en est pas un ». Les puces, elles, ne
-# sont JAMAIS candidates : seule la numérotation porte, en pratique, cette ambiguïté.
+# Titres en liste numérotée. Certains manuscrits posent leurs titres de section comme
+# éléments d'une liste numérotée (style Listenabsatz, gras). Un élément isolé qui a une
+# signature de titre est donc promu. Les puces ne sont jamais candidates.
 #
-# Un numéro manuel en tête de texte (« 2.1 Titre », « I. Titre ») est retiré du premier
-# fragment d'un titre ainsi promu — le gabarit numérote lui-même les Titre1 — et la liste
-# elle-même disparaît du paragraphe (`liste = None`) : ces deux mutations sortent de la seule
-# règle du §4 (« niveau_retenu, seul champ que les décisions écrivent »), en connaissance de
-# cause — voir le §5.1 du contrat, révision du 19.09.2026, et le rapport de chantier.
+# Pour un titre ainsi promu, le numéro manuel de tête (« 2.1 Titre », « I. Titre ») est
+# retiré du premier fragment, car le gabarit numérote lui-même les Titre1, et la liste est
+# retirée du paragraphe (`liste = None`). Ce sont les seules décisions de ce module qui
+# modifient autre chose que `niveau_retenu`.
 RE_NUM_MANUEL = re.compile(r'^\s*(\d+(?:\.\d+)*|[IVX]+)[.)]?\s+')
 
 
 def _voisin_non_vide(paras, idx, pas):
-    """Le paragraphe NON VIDE le plus proche dans la direction `pas` (+1 ou -1), ou None en
-    bout de séquence — sert à juger l'ISOLEMENT d'un item de liste numérotée : ni le
-    paragraphe non vide précédent ni le suivant ne doit être un item de la MÊME liste (§5.1)."""
+    """Le paragraphe non vide le plus proche dans la direction `pas` (+1 ou -1), ou None en
+    bout de séquence."""
     i = idx + pas
     while 0 <= i < len(paras):
         if paras[i].texte().strip():
@@ -776,12 +648,9 @@ def _voisin_non_vide(paras, idx, pas):
 
 
 def _item_numerote_isole(paras, idx):
-    """Un item de liste NUMÉROTÉE (jamais une puce) dont ni le paragraphe non vide précédent
-    ni le suivant n'est un item de la MÊME liste (numId). Une suite de deux items adjacents ou
-    plus de la même liste échoue déjà ce test sur CHACUN de ses membres (le premier a son
-    SUIVANT dans la même liste, le dernier son PRÉCÉDENT, tout intermédiaire les deux) : c'est
-    ce qui couvre, sans règle séparée, le cas du §5.1 « une suite de 3 items numérotés
-    consécutifs ou plus est une vraie liste, jamais des titres »."""
+    """Un élément de liste numérotée (pas une puce) dont ni le paragraphe non vide précédent
+    ni le suivant n'appartient à la même liste (numId). Deux éléments adjacents de la même
+    liste échouent donc tous deux : une vraie liste n'est jamais prise pour des titres."""
     p = paras[idx]
     if p.liste is None or p.liste[2] != 'numero':
         return False
@@ -793,28 +662,21 @@ def _item_numerote_isole(paras, idx):
 
 
 def _profondeur_numero_manuel(numero):
-    """La profondeur d'un numéro manuel : 1 pour un chiffre romain (jamais de hiérarchie à
-    plusieurs points dans ce format), sinon le nombre de segments séparés par un point
-    (« 2 » → 1, « 2.1 » → 2, « 2.1.3 » → 3)."""
+    """La profondeur d'un numéro manuel : 1 pour un chiffre romain, sinon le nombre de
+    segments séparés par un point (« 2 » → 1, « 2.1 » → 2, « 2.1.3 » → 3)."""
     if re.fullmatch(r'[IVX]+', numero):
         return 1
     return numero.count('.') + 1
 
 
 def _detecter_titres_liste(paras, exclus, corps_sig):
-    """{idx: (niveau, motif, prefixe_numero_a_retirer)} — les items de liste NUMÉROTÉE isolés
-    (§5.1) qui portent en plus une signature de titre : gras, OU taille supérieure à celle du
-    corps, OU italique quand TOUS les autres candidats isolés le sont aussi (un seul mot
-    isolé mis en italique par hasard ne suffit pas, une famille cohérente d'items en italique
-    si). Ne regarde QUE les paragraphes que la passe 1 a exclus pour la seule raison d'être en
-    liste ('liste') : un item par ailleurs en style maison/citation/légende reste exclu tel
-    quel, cette fonction ne le repêche jamais."""
+    """{idx: (niveau, motif, prefixe_numero_a_retirer)} : les éléments isolés de liste
+    numérotée qui ont une signature de titre : gras, ou taille supérieure à celle du corps,
+    ou italique quand tous les autres candidats le sont aussi. Ne regarde que les
+    paragraphes exclus par la passe 1 dans la catégorie 'liste'."""
     def _admissible(idx):
         texte = paras[idx].texte()
-        # Un item de liste numérotée qui serait AUSSI une légende, un séparateur ou une ligne
-        # de coordonnées reste soumis aux mêmes garde-fous que n'importe quel autre paragraphe
-        # de la passe 1 (§5.1) : « Tableau 1 » ne devient jamais un titre, qu'il soit ou non en
-        # liste.
+        # Légende, séparateur ou coordonnées restent exclus, en liste ou non.
         return not (RE_LEGENDE.match(texte.strip()) or _sans_aucune_lettre(texte)
                     or _porte_des_coordonnees(texte))
 
@@ -843,10 +705,9 @@ def _detecter_titres_liste(paras, exclus, corps_sig):
     if not retenus:
         return {}
 
-    # Niveau : la profondeur du numéro manuel de tête si le manuscrit en porte un, sinon la
-    # profondeur de la liste (ilvl + 1), sinon — faute des deux — l'ordre des signatures
-    # PARMI CES SEULS candidats retenus (même ordre que la passe 3 : taille décroissante,
-    # gras, italique), jamais une hiérarchie inventée à partir de rien.
+    # Niveau : profondeur du numéro manuel s'il y en a un, sinon profondeur de la liste
+    # (ilvl + 1), sinon ordre des signatures parmi ces candidats (comme en passe 3 : taille
+    # décroissante, gras, italique).
     resultats = {}
     sans_signal = []
     for idx in retenus:
@@ -863,12 +724,8 @@ def _detecter_titres_liste(paras, exclus, corps_sig):
             sans_signal.append(idx)
 
     if sans_signal:
-        # Groupé sur la signature TYPOGRAPHIQUE (sans alignement, voir _signature_typographique)
-        # — mesuré sur « Le coenseignement développemental » : ses quatre titres partagent
-        # exactement gras/taille/police, mais deux sur quatre héritent un alignement justifié
-        # (« both ») que les deux autres n'ont pas ; grouper sur la signature COMPLÈTE les
-        # aurait à tort scindés en deux niveaux pour un attribut hérité incidemment, jamais un
-        # signal délibéré (même principe que la passe 4 et la passe 3 bis).
+        # Groupé sur la signature typographique, sans l'alignement : un alignement justifié
+        # hérité par une partie des titres ne doit pas les répartir sur deux niveaux.
         groupes = {}
         representant = {}
         for idx in sans_signal:
@@ -893,62 +750,29 @@ def _detecter_titres_liste(paras, exclus, corps_sig):
 
 
 # ---------------------------------------------------------------------------------
-# Passe 4 — rétrogradation (§5.1) : un paragraphe DÉCLARÉ titre dont la signature est celle
-# du corps est rétrogradé, quel que soit son nombre de mots. Le seuil absolu de 12 mots et la
-# ponctuation finale de l'ancienne conception ont disparu d'ici : ils détruisaient des
-# intertitres réels un peu longs (13, 17, 19 mots) sans jamais regarder la mise en forme.
+# Passe 4 : rétrogradation d'un paragraphe déclaré titre qui ressemble au corps.
 #
-# ⚠ CORRECTION du 18.09.2026, mesurée sur le corpus réel APRÈS une première version qui ne
-# comparait QUE la signature (fidèle à la lettre du §5.1) : elle détruisait 39 vrais titres
-# sur seulement 4 fichiers — bien pire que les 4 de l'ancienne conception. Cause constatée en
-# lisant le XML brut : un titre RÉEL, correctement stylé « Heading 1 »/« Heading 2 », NE PORTE
-# QUASIMENT JAMAIS de mise en forme DIRECTE sur ses runs (pas de <w:b/>, pas de <w:sz/>) — son
-# gras et sa taille visibles viennent de la CASCADE DE STYLE, que Fragment.forme ne capture
-# JAMAIS (§4 du contrat : « Mise en forme DIRECTE... jamais la cascade des styles »). Un titre
-# réel et un faux titre (paragraphe de corps auquel on a collé un pStyle de titre, comme le
-# fait le corpus fabriqué 2-*) ont donc, l'un et l'autre, une signature directe QUASI VIDE —
-# la comparer à celle du corps (également vide) ne distingue RIEN : mesuré, sig_egale=True
-# pour la quasi-totalité des paragraphes déclarés titres du corpus, vrais et faux confondus.
-# La signature seule ne suffit pas ; ce n'est écrit nulle part dans le §5.1 tel qu'il existait
-# au moment d'écrire ce module, et c'est à signaler comme un point où le contrat s'est révélé
-# incomplet en le mettant en œuvre (voir le rapport de chantier).
-#
-# Le signal qui, lui, sépare fiablement les deux sur ce corpus réel est la LONGUEUR relative
-# au corps — le même principe que la passe 3 (« jamais l'absolu, toujours relatif à CE
-# document »), mais avec un rapport bien plus indulgent que RATIO_LONGUEUR_TITRE (3, pensé
-# pour une PROMOTION prudente) : ici, on ne rétrograde un titre DÉJÀ déclaré que s'il n'est
-# même pas plus court que le corps lui-même. RATIO_RETROGRADATION_MIN=1 a été vérifié sur les
-# quatre fichiers 2-* : les titres réels les plus longs mesurés (17 et 19 mots, 129 et 109
-# signes, dans un document dont le corps médian ne fait que 179 signes) passent tous les deux
-# ce test ; le plus court des faux titres restants (216 signes, dans ce même document) ne le
-# passe pas. La signature reste un signal VALABLE quand elle diffère du corps (un titre en
-# italique ou en gras DIRECT, sans ambiguïté) : dans ce cas on conserve sans même regarder la
-# longueur. Mais quand elle ne diffère pas — le cas de la grande majorité des documents réels,
-# faute de mise en forme directe — c'est la longueur qui décide, pas un silence qui rétrograde
-# tout ce qui est déclaré.
+# La signature seule ne suffit pas : un vrai titre stylé « Heading 1 » n'a presque jamais de
+# mise en forme directe (son gras et sa taille viennent du style), et un faux titre (corps
+# auquel on a collé un style de titre) non plus. Si la signature diffère de celle du corps,
+# le titre est conservé. Sinon, la longueur décide : un titre déclaré n'est rétrogradé que
+# s'il n'est pas plus court que la médiane du corps (RATIO_RETROGRADATION_MIN = 1, bien plus
+# indulgent que RATIO_LONGUEUR_TITRE, qui sert à promouvoir).
 RATIO_RETROGRADATION_MIN = 1
 
 
 def _signature_typographique(sig):
-    """La signature, MOINS l'alignement — mesuré sur le corpus réel : l'alignement seul
-    (« both », justifié) est un attribut de PARAGRAPHE souvent hérité incidemment (un
-    document entier justifié par défaut, par exemple), jamais un signal typographique
-    délibéré comme le gras, l'italique ou une taille propre. Le laisser suffire, seul, à
-    déclarer une signature « distincte du corps » a laissé passer plusieurs entrées de
-    bibliographie fabriquées (57, 88 mots) dont le SEUL écart avec le corps était cet
-    alignement — mesuré sur 2-dense. La comparaison qui décide de faire confiance
-    INCONDITIONNELLEMENT à la signature (sans même regarder la longueur) ignore donc ce
-    champ ; il reste dans la signature COMPLÈTE utilisée pour le regroupement de la passe 3
-    et dans la trace, où il continue à compter."""
+    """La signature sans l'alignement. Un alignement justifié est souvent hérité de tout le
+    document et ne distingue pas un titre ; s'il suffisait, des paragraphes longs ne
+    différant du corps que par lui seraient pris pour des titres. L'alignement reste dans la
+    signature complète, utilisée par le regroupement de la passe 3 et la trace."""
     taille, gras, italique, souligne, police, alignement, casse = sig
     return (taille, gras, italique, souligne, police, casse)
 
 
 def _signature_directe(paragraphe, fragments_non_vides, texte):
-    """La signature sur la mise en forme DIRECTE SEULE (Fragment.forme, jamais la cascade des
-    styles) — la définition d'avant la révision « effectif » du 19.09.2026 (§4 du contrat),
-    conservée pour la SEULE passe 4 (voir son commentaire ci-dessous : mesuré sur le corpus
-    2-fabrique, l'effectif seul y protège à tort 34 faux titres sur 34)."""
+    """La signature sur la mise en forme directe seule (Fragment.forme), sans la cascade des
+    styles. Utilisée par la passe 4 seulement (voir _passe4_retrogradation)."""
     tailles = [f.forme.get('taille') for f in fragments_non_vides
                if f.forme.get('taille') is not None]
     taille = max(tailles) if tailles else None
@@ -962,9 +786,8 @@ def _signature_directe(paragraphe, fragments_non_vides, texte):
 
 
 def _corps_signature_directe(paras, exclus):
-    """La signature DOMINANTE du corps sur la mise en forme DIRECTE seule — même pool que
-    _corps_stats (non exclus, non déclarés, texte non vide), mais sans la cascade des styles.
-    Sert de référence à la passe 4 SEULE (voir _signature_directe)."""
+    """La signature dominante du corps sur la mise en forme directe seule, sur les mêmes
+    paragraphes que _corps_stats. Référence de la passe 4."""
     comptes = {}
     for idx, p in enumerate(paras):
         if idx in exclus or p.niveau_declare != 0:
@@ -978,20 +801,11 @@ def _corps_signature_directe(paras, exclus):
 
 
 def _passe4_retrogradation(paras, exclus, corps_sig, corps_mediane):
-    # ⚠ Mesuré ce jour (révision « signatures effectives », §5.1) : substituer partout la
-    # signature EFFECTIVE à la signature DIRECTE fait chuter le corpus 2-fabrique de 21/34 à
-    # 5/34 faux titres rattrapés — une RÉGRESSION, pas une amélioration. Cause : ces 34 faux
-    # titres sont fabriqués par un simple remplacement de w:pStyle, SANS aucun réglage direct
-    # — leur signature EFFECTIVE, une fois la cascade résolue, devient donc
-    # EXACTEMENT celle de leur style de titre, indiscernable en tous points d'un vrai titre du
-    # même niveau. La comparer telle quelle à celle du corps la déclare « distincte » et
-    # court-circuite la longueur qui, seule, aurait pu les démasquer. La correction du
-    # 19.09.2026 (« corps qui hérite 12 pt vs faux titre qui les déclare, jugés différents »)
-    # avait le défaut inverse : une distinction qui n'existe QU'en direct. Exiger les DEUX
-    # (effectif ET direct distincts de leurs pendants du corps) pour conserver SANS regarder
-    # la longueur restaure le bon comportement sur les deux corpus à la fois — l'un ne
-    # protège que d'une fausse ressemblance directe, l'autre que d'une fausse ressemblance
-    # de cascade ; aucun des deux seuls ne suffit.
+    # Un titre est conservé sans regarder sa longueur seulement si sa signature diffère de
+    # celle du corps à la fois en effectif et en direct. L'effectif seul ne suffit pas : un
+    # faux titre obtenu en changeant seulement w:pStyle a la signature effective d'un vrai
+    # titre. Le direct seul ne suffit pas non plus : un corps qui hérite ses 12 pt du style
+    # et un faux titre qui les déclare seraient jugés différents.
     corps_sig_directe = _corps_signature_directe(paras, exclus)
     resultats = {}
     for idx, p in enumerate(paras):
@@ -1013,12 +827,8 @@ def _passe4_retrogradation(paras, exclus, corps_sig, corps_mediane):
                 'conservé titre : signature (%s) typographiquement distincte de celle du '
                 'corps (%s)' % (_texte_signature(sig), _texte_signature(corps_sig)))
             continue
-        # Pas distinctement ET délibérément différente de celle du corps : soit réellement
-        # identique (y compris en effectif, le cas de loin le plus fréquent faute de réglage
-        # direct), soit distincte SEULEMENT par la cascade de style (aucun réglage direct qui
-        # la démarque — voir le commentaire de cette fonction) : dans les deux cas, c'est la
-        # longueur qui décide, relativement au corps de CE document, jamais un compte de mots
-        # absolu.
+        # Signature identique à celle du corps, ou distincte seulement par la cascade de
+        # style : la longueur décide, par rapport au corps de ce document.
         if distinct_effectif:
             qualif = ('distincte SEULEMENT par la cascade de style — aucun réglage direct ne '
                       'la démarque du corps (%s)' % _texte_signature(sig))
@@ -1042,42 +852,27 @@ def _passe4_retrogradation(paras, exclus, corps_sig, corps_mediane):
 
 
 # ---------------------------------------------------------------------------------
-# Passe 3 bis — adoption. Correction de Robin du 18.09.2026, pendant ce chantier : un titre
-# déclaré fournit la SIGNATURE DE RÉFÉRENCE de son niveau ; un paragraphe NON stylé qui porte
-# cette même signature est adopté À CE NIVEAU. Motivée par un mot de Robin : « typiquement
-# quelqu'un balise 5 titres, le 6ème il le met juste italique + augmente la taille » — un
-# oubli d'application de style, pas une absence de structure. La question que la passe 3
-# « aveugle » laisse ouverte (quel niveau donner à un groupe retrouvé par mise en forme ?) ne
-# se pose plus ici : le niveau est DONNÉ par le style survivant, jamais déduit.
+# Passe 3 bis : adoption. Les titres déclarés d'un niveau donnent la signature de référence
+# de ce niveau ; un paragraphe non stylé qui a cette signature est adopté à ce niveau. Cas
+# typique : cinq titres stylés, le sixième seulement mis en italique et agrandi.
 #
-# ⚠ L'ORDRE ci-dessous n'est pas une préférence, c'est une nécessité mesurée sur le cas
-# d'ouverture du chantier (1_Résumé-article-revue-CSPS.docx, Titre 2 posé sur quatre
-# paragraphes : un vrai titre, trois paragraphes de corps ramenés à la taille du corps et
-# dégraissés). Calculée AVANT rétrogradation, la signature majoritaire de ces quatre survivants
-# serait celle du CORPS (trois sur quatre) — on adopterait alors tout paragraphe du document
-# portant la signature du corps, soit L'ARTICLE ENTIER promu en titre, silencieusement, sur le
-# document même qui a motivé l'outil. D'où l'ordre imposé : 1. rétrograder (passe 4, déjà
-# faite avant l'appel ci-dessous) ; 2. calculer la référence sur les seuls SURVIVANTS ; 3.
-# adopter. Un appelant qui inverserait cet ordre (référence calculée sur les déclarés BRUTS,
-# avant rétrogradation) doit voir le nombre de titres retenus EXPLOSER — c'est le sabotage
-# naturel de ce mécanisme, et le contrôle qui le vérifie sur ce fichier réel.
+# L'ordre compte : rétrograder d'abord (passe 4), puis calculer la référence sur les seuls
+# titres conservés, puis adopter. Si un style de titre est posé sur des paragraphes de corps,
+# la référence calculée avant rétrogradation serait celle du corps, et tout l'article serait
+# adopté comme titre.
 #
-# Deux garde-fous, indissociables :
-#   - la référence doit être MAJORITAIRE parmi les survivants de son niveau (strictement plus
-#     de la moitié) — cinq H2 en cinq mises en forme différentes ne donnent AUCUNE référence,
-#     et on n'adopte rien plutôt que de deviner laquelle ferait foi ;
-#   - la référence ne doit JAMAIS être celle du corps — le filet qui rattrape le cas
-#     d'ouverture si la rétrogradation l'avait laissé passer.
+# Deux conditions pour qu'une référence existe :
+#   - elle est majoritaire parmi les titres conservés de son niveau (plus de la moitié) ;
+#   - elle diffère de la signature du corps.
 #
-# Comparaison sur la signature TYPOGRAPHIQUE (sans alignement, voir _signature_typographique
-# et sa note dans la passe 4) : même lesson que la passe 4, mesurée sur le même corpus — un
-# alignement hérité incidemment ne doit ni fonder une référence ni décider une adoption.
+# La comparaison se fait sur la signature typographique, sans l'alignement (voir
+# _signature_typographique).
 
 def _passe3bis_adoption(paras, exclus, resultats_p4, corps_sig):
     """(adoptions, references) — `adoptions` : idx (candidat non déclaré) -> (niveau, sig,
     effectif, total) ; `references` : niveau -> (sig, effectif, total) pour la trace, même
-    quand aucun candidat ne correspond. Ne regarde QUE les paragraphes déclarés qui ont
-    SURVÉCU à la passe 4 (resultats_p4[idx][0] > 0) — jamais les rétrogradés."""
+    quand aucun candidat ne correspond. Les références viennent des seuls titres conservés
+    par la passe 4 (resultats_p4[idx][0] > 0)."""
     survivants_par_niveau = {1: [], 2: [], 3: []}
     for idx, p in enumerate(paras):
         info = resultats_p4.get(idx)
@@ -1121,23 +916,19 @@ def _passe3bis_adoption(paras, exclus, resultats_p4, corps_sig):
 
 
 # ---------------------------------------------------------------------------------
-# Passe 3 — regroupement par signature (§5.1) : jamais un paragraphe seul. Un groupe devient
-# un niveau de titre quand TOUS ces faits tiennent : signature différente de celle du corps,
-# longueur courte relativement au corps, occurrences réparties (pas toutes collées),
-# longueurs homogènes entre elles. L'ORDRE des groupes qualifiés donne les niveaux : taille
-# décroissante d'abord, puis le gras, puis l'italique (§5.1 : « l'italique compte autant que
-# le gras » — motivé par 3_VF_Chanier-Delorme, dont les titres de niveau 2 sont en italique,
-# presque sans changement de taille).
+# Passe 3 : regroupement par signature, jamais un paragraphe seul. Un groupe devient un
+# niveau de titre si sa signature diffère de celle du corps, si ses paragraphes sont courts
+# par rapport au corps, répartis dans le document et de longueurs homogènes. L'ordre des
+# groupes donne les niveaux : taille décroissante, puis gras, puis italique (des titres de
+# niveau 2 peuvent n'être distingués que par l'italique).
 
 def _grouper_candidats(paras, exclus, niveaux_a_chercher, corps_sig, corps_mediane,
                         deja_adoptes=frozenset()):
     """{signature: [idx, ...]} des paragraphes candidats à la promotion (non déclarés titre,
-    non exclus, non déjà ADOPTÉS par la passe 3 bis — voir _passe3bis_adoption) dont la
-    signature diffère du corps ET la longueur est courte relativement au corps — les deux
-    seuls critères qui NE dépendent PAS des autres membres du groupe. Les critères de
-    dispersion et d'homogénéité, eux, ont besoin du groupe complet : voir _filtrer_groupes().
-    Rend {} sans rien examiner si la passe 2 n'a désigné aucun niveau à chercher, ou si le
-    corps n'a pas pu être caractérisé (document trop pauvre)."""
+    non exclus, non déjà adoptés) dont la signature diffère du corps et qui sont courts par
+    rapport au corps. Dispersion et homogénéité demandent le groupe complet : voir
+    _filtrer_groupes(). Rend {} si la passe 2 n'autorise aucun niveau ou si le corps n'a pas
+    pu être caractérisé."""
     groupes = {}
     if not niveaux_a_chercher or corps_sig is None or not corps_mediane:
         return groupes
@@ -1157,11 +948,10 @@ def _grouper_candidats(paras, exclus, niveaux_a_chercher, corps_sig, corps_media
 
 
 def _filtrer_groupes(groupes, paras):
-    """Ne garde que les groupes dont les occurrences sont réparties (pas toutes consécutives,
-    à partir de SEUIL_DISPERSION_MIN occurrences) et dont les longueurs sont homogènes entre
-    elles (le plus long ne dépasse pas SEUIL_HOMOGENEITE_MOTS fois le plus court — le plus
-    court étant plafonné à PLANCHER_HOMOGENEITE_MOTS, voir sa note : un titre à un seul mot ne
-    doit pas, à lui seul, imposer un ratio pathologiquement serré au reste du groupe)."""
+    """Garde les groupes dont les occurrences sont réparties (pas toutes consécutives, à
+    partir de SEUIL_DISPERSION_MIN occurrences) et de longueurs homogènes (le plus long ne
+    dépasse pas SEUIL_HOMOGENEITE_MOTS fois le plus court, ce dernier compté au moins
+    PLANCHER_HOMOGENEITE_MOTS)."""
     qualifies = {}
     for sig, indices in groupes.items():
         mots = [len(_mots(paras[i].texte().rstrip())) for i in indices]
@@ -1171,15 +961,14 @@ def _filtrer_groupes(groupes, paras):
         if len(indices) >= SEUIL_DISPERSION_MIN:
             tries = sorted(indices)
             if tries[-1] - tries[0] + 1 == len(tries):
-                continue  # tous consécutifs : pas « réparti », §5.1
+                continue  # tous consécutifs : pas répartis
         qualifies[sig] = sorted(indices)
     return qualifies
 
 
 def _ordonner_groupes(groupes_qualifies):
-    """Trie les groupes qualifiés : taille décroissante d'abord (None traité comme 0, un
-    titre gras seul sans taille propre passe après tout titre dont la taille est connue),
-    puis le gras, puis l'italique — exactement l'ordre que le §5.1 impose."""
+    """Trie les groupes qualifiés : taille décroissante (None compte comme 0), puis le gras,
+    puis l'italique."""
     def cle(sig):
         taille, gras, italique, souligne, police, alignement, casse = sig
         return (-(taille or 0), 0 if gras else 1, 0 if italique else 1)
@@ -1187,42 +976,34 @@ def _ordonner_groupes(groupes_qualifies):
 
 
 def classer_titres(document):
-    """Remplit `niveau_retenu` sur chaque Paragraphe de premier niveau de `document`
-    (mutation en place — c'est le contrat, §4 : « niveau_retenu... rempli par
-    classer_titres() »). Rend (stats, trace) : `stats` un résumé chiffré, `trace` une ligne
-    par paragraphe, lisible par un humain, signature et chiffres à l'appui — c'est elle que
-    Robin lira pour valider chaque document (§11, phase 2)."""
+    """Remplit `niveau_retenu` sur chaque Paragraphe de premier niveau de `document`, en
+    place. Rend (stats, trace) : `stats` un résumé chiffré, `trace` une ligne par paragraphe,
+    lisible par la rédaction, avec signature et chiffres."""
     trace = []
     paras = _paragraphes_premier_niveau(document)
     total = len(paras)
 
-    # Passe 1 — exclusions.
+    # Passe 1 : exclusions.
     exclus = _exclusions_passe1(document, paras)
 
-    # Passe 2 — l'état déclaré décide des niveaux que la passe 3 a le droit de chercher.
+    # Passe 2 : l'état déclaré décide des niveaux que la passe 3 peut chercher.
     niveaux_a_chercher, total_declares, niveaux_utilises, motif_etat = _etat_declare(paras, exclus)
     trace.append({'portee': 'document', 'source': None, 'style': '',
                   'decision': 'etat_declare', 'motif': motif_etat})
 
-    # Base de comparaison des passes 3 et 4 : la signature et la longueur dominantes du
-    # corps de CE document, jamais une valeur absolue importée d'un autre article.
+    # Référence des passes 3 et 4 : signature et longueur dominantes du corps de ce document.
     corps_sig, corps_mediane = _corps_stats(paras, exclus)
 
-    # Titres en liste numérotée (§5.1, décision de Robin, révision du 19.09.2026) : indépendant
-    # des passes 2/3/4 (ces paragraphes ne sont jamais déclarés titre, `niveau_declare == 0`,
-    # donc hors de portée de la passe 4 quel que soit l'ordre) — la trace par paragraphe est
-    # ajoutée avec toutes les autres, plus bas, dans l'ordre du document.
+    # Titres en liste numérotée. Ces paragraphes ont niveau_declare == 0 et ne sont donc pas
+    # touchés par la passe 4. Leur trace est ajoutée plus bas, dans l'ordre du document.
     assignation_liste = _detecter_titres_liste(paras, exclus, corps_sig)
 
-    # Passe 4 — rétrogradation. INDÉPENDANTE de la passe 3 (voir sa docstring) : on la calcule
-    # maintenant pour pouvoir, plus bas, évaluer la contrainte globale sur le total RÉEL de
-    # titres retenus (déclarés conservés + nouvellement promus), pas sur une borne supérieure.
+    # Passe 4 : rétrogradation. Calculée avant la passe 3 pour que la contrainte globale
+    # porte sur le total réel des titres retenus.
     resultats_p4 = _passe4_retrogradation(paras, exclus, corps_sig, corps_mediane)
 
-    # Passe 3 bis — adoption (§5.1, correction de Robin du 18.09.2026). ORDRE IMPÉRATIF : sur
-    # les SURVIVANTS de la passe 4 ci-dessus, jamais sur les déclarés bruts (voir la note de
-    # _passe3bis_adoption — l'inverser fait exploser le nombre de titres retenus sur le cas
-    # d'ouverture du chantier).
+    # Passe 3 bis : adoption, sur les titres conservés par la passe 4 (voir
+    # _passe3bis_adoption pour l'ordre).
     adoptions, references_adoption = _passe3bis_adoption(paras, exclus, resultats_p4, corps_sig)
     for niveau in sorted(references_adoption):
         cle_ref, effectif, total_niveau = references_adoption[niveau]
@@ -1236,9 +1017,8 @@ def classer_titres(document):
                                                              police, '', casse)),
                                            sum(1 for (n, *_r) in adoptions.values() if n == niveau)))})
 
-    # Passe 3 — regroupement par signature, restreint aux niveaux que la passe 2 autorise, et
-    # qui ne revient jamais sur un paragraphe déjà ADOPTÉ ci-dessus NI déjà promu depuis une
-    # liste numérotée.
+    # Passe 3 : regroupement par signature, aux niveaux autorisés par la passe 2, sans les
+    # paragraphes déjà adoptés ou promus depuis une liste numérotée.
     groupes_bruts = _grouper_candidats(paras, exclus, niveaux_a_chercher, corps_sig,
                                         corps_mediane,
                                         deja_adoptes=set(adoptions) | set(assignation_liste))
@@ -1246,15 +1026,10 @@ def classer_titres(document):
     groupes_ordonnes = _ordonner_groupes(groupes_qualifies)
     niveaux_disponibles = sorted(niveaux_a_chercher)
 
-    # Plafond de trois groupes (§5.1, révision du 19.09.2026) : au-delà de MAX_NIVEAUX groupes
-    # qualifiants, l'ancien comportement écartait purement et simplement les excédentaires
-    # (« groupe_non_retenu », jamais promus). Rabattre les excédentaires sur le niveau 3 —
-    # plutôt que les rejeter — quand ce niveau reste disponible : un article qui distingue
-    # plus de trois mises en forme de titre existe réellement (glossaire, dossier à rubriques),
-    # et le laisser sans AUCUN de ces titres serait pire qu'un sur-classement au niveau le plus
-    # bas. Seuls les trois groupes les plus « hauts » dans l'ordre du §5.1 (taille décroissante,
-    # gras, italique — _ordonner_groupes) gardent leur niveau propre ; le reste rejoint le
-    # niveau 3, jamais un niveau que la passe 2 n'a pas autorisé à chercher.
+    # Au-delà de MAX_NIVEAUX groupes qualifiés, les groupes en trop sont rabattus sur le
+    # niveau 3 s'il est autorisé, plutôt que rejetés : un glossaire ou un dossier à rubriques
+    # peut avoir plus de trois mises en forme de titre. Les trois premiers groupes dans
+    # l'ordre de _ordonner_groupes gardent leur niveau.
     groupes_rabattus = set()
     if len(groupes_ordonnes) > MAX_NIVEAUX and 3 in niveaux_a_chercher:
         groupes_a_niveau, groupes_a_rabattre = (groupes_ordonnes[:MAX_NIVEAUX],
@@ -1286,24 +1061,11 @@ def classer_titres(document):
                                'vérifiez qu\'il ne s\'agit pas d\'un glossaire ou d\'un dossier '
                                'à rubriques' % (len(groupes_rabattus), MAX_NIVEAUX))})
 
-    # Contrainte globale, CORRIGÉE le 18.09.2026 par Robin pendant ce chantier (à relire dans
-    # le message de correction, pas encore répercutée dans le texte figé du §5.1 au moment où
-    # ceci est écrit — ce commentaire fait foi entre-temps) : sur l'entretien hors gabarit
-    # (questions courtes, en gras, nombreuses, régulièrement réparties — la passe 1 ne le voit
-    # pas, faute de style SZH), l'arbitrage est « c'est OK si les questions sont détectées
-    # comme H2 par exemple, on fera avec ». Rejeter la promotion au-delà de MAX_TITRES aurait
-    # donc produit LE PIRE des deux mondes sur ce cas précis : un entretien de 30 questions
-    # aurait dépassé le plafond, tout le groupement aurait été écarté, et l'article serait
-    # ressorti avec ZÉRO titre — pire que les questions promues en H2, ce que Robin vient
-    # d'accepter. MAX_TITRES cesse donc d'être un motif de rejet : c'est désormais un SIGNAL
-    # dans le rapport (voir plus bas), jamais une décision silencieuse. Seul le plafond de
-    # trois niveaux (MAX_NIVEAUX, lignes directrices des deux revues) reste une contrainte
-    # dure — et il ne peut de toute façon jamais être dépassé par construction ici : un niveau
-    # de titre vaut 1, 2 ou 3 dans tout le modèle (Paragraphe.niveau_declare), et la passe 3 ne
-    # promeut jamais en dehors de `niveaux_a_chercher`, lui-même un sous-ensemble de {1,2,3}.
-    # Gardé explicite malgré cela : c'est la même prudence que le reste de ce module (un
-    # invariant qui ne peut structurellement pas être violé aujourd'hui peut le devenir demain
-    # si le modèle riche gagne un quatrième niveau).
+    # Contrainte globale. Dépasser MAX_TITRES ne rejette rien : c'est un signal dans le
+    # rapport (plus bas). Un entretien aux questions en gras peut ainsi avoir ses questions
+    # promues en titres, ce qui vaut mieux qu'aucun titre. Seul le plafond de MAX_NIVEAUX
+    # niveaux est une contrainte dure. Il ne peut pas être dépassé aujourd'hui (les niveaux
+    # valent 1, 2 ou 3), mais la vérification reste au cas où le modèle changerait.
     n_conserves_p4 = sum(1 for (niveau, _d, _m) in resultats_p4.values() if niveau > 0)
     n_promus_tentes = sum(len(indices) for (_s, indices, _n) in groupes_retenus)
     niveaux_finaux = {niveau for (niveau, _d, _m) in resultats_p4.values() if niveau > 0}
@@ -1323,15 +1085,10 @@ def classer_titres(document):
         groupes_retenus = []
         assignation_p3 = {}
 
-    # Recalculé APRÈS l'éventuel rejet ci-dessus : le signal qui suit doit compter ce qui sera
-    # RÉELLEMENT retenu, jamais une tentative qu'on vient d'annuler. Les adoptions de la passe
-    # 3 bis comptent aussi : « une adoption qui multiplierait le nombre de titres du document
-    # mérite le signal de la passe 3, au même titre qu'un groupe trop nombreux » (Robin,
-    # 18.09.2026).
+    # Compté après l'éventuel rejet ci-dessus, adoptions de la passe 3 bis comprises.
     total_final = n_conserves_p4 + len(assignation_p3) + len(adoptions) + len(assignation_liste)
     if total_final > MAX_TITRES:
-        # Signal, jamais un rejet (voir le commentaire ci-dessus) : la relectrice tranche,
-        # l'outil ne jette rien en silence et n'accepte rien sans le dire.
+        # Un signal pour la rédaction, pas un rejet.
         trace.append({'portee': 'document', 'source': None, 'style': '',
                       'decision': 'signal_nombre_titres_inhabituel',
                       'motif': ('%d titre(s) retenu(s), bien au-delà de ce qu\'on observe '
@@ -1340,9 +1097,8 @@ def classer_titres(document):
                                'pas d\'un entretien ou d\'un glossaire'
                                % (total_final, MEDIANE_TITRES_CORPUS, MAX_TITRES))})
     if not rejet_contrainte and not groupes_retenus and niveaux_a_chercher and groupes_bruts:
-        # « En cas de doute : rien, et on le dit » (§5.1). Des candidats existaient, aucun
-        # groupe n'a convaincu (signature/longueur/dispersion/homogénéité) — jamais resserrer
-        # les critères pour forcer un chiffre plausible.
+        # En cas de doute, rien n'est promu et la trace le dit : des candidats existaient,
+        # aucun groupe n'a rempli les critères.
         n_examines = sum(len(v) for v in groupes_bruts.values())
         trace.append({'portee': 'document', 'source': None, 'style': '',
                       'decision': 'aucune_promotion_decelee',
@@ -1351,8 +1107,8 @@ def classer_titres(document):
                                'longueurs homogènes et répartition dans le document'
                                % (n_examines, len(groupes_bruts)))})
 
-    # Trace des groupes examinés, retenus ou non — c'est elle que Robin lit pour juger
-    # (§5.1 : « groupe : italique, 11 pt, 3 à 8 mots, 9 occurrences réparties → niveau 2 »).
+    # Trace des groupes examinés, retenus ou non (« groupe : italique, 11 pt, 3 à 8 mots,
+    # 9 occurrences réparties → niveau 2 »).
     for sig, indices, niveau in groupes_retenus:
         mots = [len(_mots(paras[i].texte().rstrip())) for i in indices]
         rabattu = ' (rabattu, plafond de %d groupes dépassé)' % MAX_NIVEAUX if sig in groupes_rabattus else ''
@@ -1370,19 +1126,15 @@ def classer_titres(document):
                                % (_texte_signature(sig), min(mots), max(mots), len(indices),
                                   sorted(niveaux_a_chercher) or '(aucun)')})
 
-    # Assemblage final — une ligne de trace par paragraphe, dans l'ordre du document.
+    # Assemblage final : une ligne de trace par paragraphe, dans l'ordre du document.
     n_promus = n_retrogrades = n_conserves_declares = n_non_promus = n_exclus = n_adoptes = 0
     n_promus_liste = 0
     stats_exclus = {}
     for idx, p in enumerate(paras):
         if idx in assignation_liste:
-            # Titre en liste numérotée (§5.1, révision du 19.09.2026) : PASSE AVANT le test
-            # `idx in exclus` — ces paragraphes y figurent toujours sous 'liste' (la passe 1
-            # ne les en a jamais retirés, voir _detecter_titres_liste), mais leur promotion
-            # prime. Deux mutations volontaires, hors de la seule règle « niveau_retenu, seul
-            # champ écrit » du §4 (voir le contrat, §5.1, révision du 19.09.2026) : la liste
-            # disparaît (le gabarit numérote lui-même les Titre1) et un numéro manuel de tête
-            # est retiré du premier fragment.
+            # Titre en liste numérotée. Testé avant `idx in exclus`, où il figure sous
+            # 'liste'. La liste est retirée (le gabarit numérote les Titre1), ainsi que le
+            # numéro manuel de tête.
             niveau, motif, prefixe = assignation_liste[idx]
             p.niveau_retenu = niveau
             p.liste = None
@@ -1460,15 +1212,14 @@ def titres_du_plan(document):
     """Après classer_titres() (ou le cas A), sur les paragraphes de premier niveau. Rend
     (n_promus, n_numeros_retires, trace).
 
-    La numérotation d'un titre Word (« 1 », « 1.1 ») vient de son style : le lecteur la lit
-    comme une liste (_liste_depuis remonte le numPr hérité), et l'écrivain la reposait comme
-    une liste « 1. », « 2. » qui remplaçait celle du gabarit. Un titre retenu perd donc sa
-    liste : c'est le gabarit qui le numérote.
+    La numérotation d'un titre Word (« 1 », « 1.1 ») vient de son style, et le lecteur la lit
+    comme une liste (_liste_depuis remonte le numPr hérité). Un titre retenu perd sa liste,
+    sinon l'écrivain poserait une liste « 1. », « 2. » à la place de la numérotation du
+    gabarit.
 
-    Un paragraphe de corps numéroté par LA MÊME liste que les titres déclarés est un titre
-    dont l'autrice ou l'auteur n'a pas posé le style (mesuré sur un manuscrit réel de 2027 :
-    deux sections sur onze). Il prend le niveau que ce cran de liste porte chez les titres
-    déclarés, à défaut le cran + 1 — jamais au-delà de 3."""
+    Un paragraphe de corps numéroté par la même liste que les titres déclarés est un titre
+    dont le style n'a pas été posé. Il prend le niveau que ce cran de liste a chez les titres
+    déclarés, à défaut le cran + 1, au plus 3."""
     paras = _paragraphes_premier_niveau(document)
     niveau_par_cran = {}
     for p in paras:
@@ -1499,20 +1250,13 @@ def titres_du_plan(document):
 
 
 # ---------------------------------------------------------------------------------
-# Nettoyage de la mise en forme manuelle — §5.2. Ce qui reste est aussi important que ce
-# qui part : italique, exposant, indice et liens ne sont JAMAIS touchés ici.
-#
-# ⚠ Trou du contrat, constaté en écrivant ce module (voir le rapport de chantier) : le champ
-# `barre` (barré) n'apparaît NI dans « ce qui part » NI dans « ce qui reste » du §5.2.
-# Décision prise ici, faute de mieux : traité comme police/taille/couleur — retiré sans
-# réserve de titre, un texte barré n'ayant normalement pas sa place dans un article publié.
+# Nettoyage de la mise en forme manuelle. Italique, exposant, indice et liens sont conservés.
+# Le barré est retiré comme la police, la taille ou la couleur : il n'a pas sa place dans un
+# article publié.
 FORME_RETIREE_TOUJOURS = ('police', 'taille', 'couleur', 'surlignage', 'petites_capitales',
                            'majuscules', 'barre')
-# « gras et souligné du corps de texte » (§5.2, texte exact) : retirés SEULEMENT quand le
-# paragraphe est resté corps (niveau_retenu == 0) — un titre garde son gras.
+# Gras et souligné ne sont retirés que du corps (niveau_retenu == 0) : un titre garde son gras.
 FORME_RETIREE_CORPS_SEUL = ('gras', 'souligne')
-# italique, exposant, indice : jamais dans les deux listes ci-dessus, donc jamais touchés.
-# `lien` (sur Fragment, pas dans `forme`) : jamais touché non plus, mêmes raisons.
 
 
 def _paragraphe_vide(paragraphe):
@@ -1523,28 +1267,21 @@ def _paragraphe_vide(paragraphe):
 
 
 def _images_seules(bloc):
-    """Un paragraphe qui ne porte que des images (voir nettoyer_mise_en_forme, fusion des
-    vides) — même définition que manuscrit_gabarit._images_seules()."""
+    """Un paragraphe qui ne porte que des images ; même définition que
+    manuscrit_gabarit._images_seules()."""
     return (isinstance(bloc, Paragraphe)
             and any(f.image is not None for f in bloc.fragments)
             and not any(f.texte.strip() for f in bloc.fragments if f.image is None))
 
 
 def _nettoyer_fragments(paragraphe, est_corps):
-    """Mute chaque Fragment.forme en place ; rend l'ensemble des clés effectivement retirées
-    (pour le motif) et les deux signalements (gras intégral / majuscules intégrales),
-    évalués sur la forme D'ORIGINE — avant tout retrait, sans quoi le signal disparaîtrait
-    avec le champ qu'il regarde.
+    """Modifie chaque Fragment.forme en place ; rend les clés retirées (pour le motif) et les
+    signalements (gras intégral, majuscules intégrales), évalués sur la forme d'origine,
+    avant tout retrait.
 
-    ⚠ Correction du 19.09.2026 (§5.2, décision du superviseur) : « signalé sans être touché »
-    (le texte même du contrat) était violé pour le gras — un paragraphe entièrement gras et
-    non retenu comme titre voyait son gras RETIRÉ dans la même passe qui le SIGNALE (mesuré :
-    16 paragraphes sur 3bis_CSPS_Revue3_2026_FLOW_Piloting_OFP.docx). Décision : le gras d'un
-    paragraphe de corps ENTIÈREMENT gras est conservé (une relectrice doit pouvoir le voir),
-    le signalement reste dans le rapport. Le gras PARTIEL du corps, lui, part normalement —
-    seul le gras intégral déclenche cette exception. Les majuscules forcées, elles, restent
-    retirées dans tous les cas (FORME_RETIREE_TOUJOURS) : la décision du superviseur ne
-    portait que sur le gras."""
+    Un paragraphe de corps entièrement gras est signalé et garde son gras, pour que la
+    rédaction le voie ; le gras partiel est retiré. Les majuscules forcées sont retirées dans
+    tous les cas."""
     fragments_non_vides = _fragments_non_vides(paragraphe)
     signalements = []
     gras_integral = False
@@ -1574,11 +1311,8 @@ def _nettoyer_fragments(paragraphe, est_corps):
 
 def _nettoyer_paragraphe(paragraphe, source_tableau=None):
     """`source_tableau` : `.source` du Tableau qui porte ce paragraphe (None au premier
-    niveau). Un paragraphe de cellule a un `.source` LOCAL à sa cellule (0, 1, …) — plusieurs
-    cellules d'un même document produisent donc le même « paragraphe 0 », inutile et jamais
-    ancrable. La trace porte alors le `.source` du tableau, avec `dans_tableau=True`, plutôt
-    que cette position locale (mesuré sur 3_VF_Chanier-Delorme_Article CSPS_290626.docx :
-    5 lignes « paragraphe 0 » distinctes avant ce correctif, toutes en cellule)."""
+    niveau). Un paragraphe de cellule a un `.source` local à sa cellule (0, 1, …), ambigu
+    dans la trace : celle-ci porte donc le `.source` du tableau, avec `dans_tableau=True`."""
     est_corps = (paragraphe.niveau_retenu == 0)
     champs_retires, signalements = _nettoyer_fragments(paragraphe, est_corps)
 
@@ -1633,16 +1367,10 @@ def _nettoyer_paragraphe(paragraphe, source_tableau=None):
 
 def _paragraphes_en_profondeur(blocs, source_tableau=None):
     """Chaque (Paragraphe, source_tableau) atteignable depuis `blocs` (Paragraphe | Tableau), à
-    N'IMPORTE QUELLE PROFONDEUR de cellule — jamais les Tableau eux-mêmes. `source_tableau` est
-    le `.source` du Tableau PORTEUR (celui qui contient directement la cellule), None au
-    premier niveau — un tableau imbriqué dans une cellule écrase la valeur avec la sienne, le
-    plus proche l'emporte. À ne pas confondre avec _paragraphes_premier_niveau() (réservée à
-    classer_titres()/§5.1, qui ne doit statuer QUE sur le premier niveau : un paragraphe de
-    cellule ne peut pas devenir un titre).
-
-    Correction du 19.09.2026 (§5.2) : nettoyer_mise_en_forme() ne bouclait QUE sur
-    document.blocs (premier niveau) — 171 paragraphes en cellule, mesurés sur le corpus réel,
-    gardaient donc taille/police/couleur/gras alors que le §5.2 dit « tout le corps »."""
+    toute profondeur de cellule, sans les Tableau eux-mêmes. `source_tableau` est le
+    `.source` du tableau le plus proche qui contient la cellule, None au premier niveau.
+    classer_titres() utilise _paragraphes_premier_niveau() : un paragraphe de cellule ne
+    devient pas un titre."""
     for b in blocs:
         if isinstance(b, Tableau):
             for rangee in b.rangees:
@@ -1653,15 +1381,11 @@ def _paragraphes_en_profondeur(blocs, source_tableau=None):
 
 
 def nettoyer_mise_en_forme(document):
-    """Applique le §5.2 à chaque Paragraphe de `document`, à N'IMPORTE QUELLE PROFONDEUR —
-    premier niveau, cellules de tableau (à toute profondeur d'imbrication) ET notes de bas de
-    page / de fin (document.notes) — (mutation en place : formes de Fragment,
-    alignement/retrait de Paragraphe, et la liste `blocs` elle-même pour la fusion des
-    paragraphes vides consécutifs, celle-ci réservée au premier niveau : la notion de
-    « paragraphes vides consécutifs » n'a de sens que dans le fil principal du texte).
-    Suppose `classer_titres()` déjà passé : le retrait de gras/souligné dépend de
-    `niveau_retenu` (toujours 0 pour un paragraphe de cellule ou de note, qui ne peut jamais
-    devenir un titre). Rend (stats, trace)."""
+    """Nettoie la mise en forme de chaque Paragraphe de `document` : premier niveau, cellules
+    de tableau à toute profondeur et notes (document.notes). Modifie en place les formes,
+    l'alignement et le retrait, et, au premier niveau seulement, fusionne les paragraphes
+    vides consécutifs. Suppose `classer_titres()` déjà passé : le retrait du gras dépend de
+    `niveau_retenu` (0 pour une cellule ou une note). Rend (stats, trace)."""
     trace = []
     n_vides_retires = 0
 
@@ -1675,13 +1399,11 @@ def nettoyer_mise_en_forme(document):
             j = i + 1
             while j < n and isinstance(blocs[j], Paragraphe) and _paragraphe_vide(blocs[j]):
                 j += 1
-            # Entre deux paragraphes d'images, le NOMBRE de vides est une information
-            # (décision de Robin, 29.09.2026) : jusqu'à pronto_modele.MAX_VIDES_ENTRE_IMAGES,
-            # les deux images sont la même figure ; au-delà, deux figures. Fondus en un seul
-            # vide, trois vides en disaient autant qu'un, et deux figures devenaient un
-            # groupe. On en garde donc un de plus que le plafond — assez pour que l'écriture
-            # (manuscrit_gabarit._regrouper_blocs) voie la coupure —, jamais davantage ;
-            # l'écriture ramène de toute façon les vides consécutifs à un seul en sortie.
+            # Entre deux paragraphes d'images, le nombre de vides compte : jusqu'à
+            # pronto_modele.MAX_VIDES_ENTRE_IMAGES, les deux images forment une même figure ;
+            # au-delà, deux figures. On garde donc un vide de plus que ce plafond, pour que
+            # manuscrit_gabarit._regrouper_blocs voie la coupure ; l'écriture ramène ensuite
+            # les vides consécutifs à un seul.
             garder = 1
             if (j - i > pronto_modele.MAX_VIDES_ENTRE_IMAGES and nouveaux_blocs[:-1]
                     and _images_seules(nouveaux_blocs[-2]) and j < n
@@ -1722,8 +1444,8 @@ def nettoyer_mise_en_forme(document):
 
 
 # ---------------------------------------------------------------------------------
-# Désérialisation JSON — voir le schéma documenté en tête de fichier. Une construction non
-# reconnue est ignorée en silence plutôt qu'inventée, comme lire_yaml() de szh_commun.
+# Lecture du JSON décrit en tête de fichier. Une construction non reconnue est ignorée, comme
+# dans lire_yaml() de szh_commun.
 
 def image_depuis_json(obj):
     octets = b''
@@ -1780,11 +1502,9 @@ def bloc_depuis_json(obj):
 
 
 def document_depuis_json(obj):
-    """`notes` : dict[int, list[bloc]] (§4, révision du 19.09.2026) — les clés JSON sont des
-    chaînes (contrainte du format), reconverties en int ici. Une entrée dont la clé n'est pas
-    un entier est ignorée en silence, comme le reste de cette désérialisation (voir l'en-tête
-    du fichier) ; une ANCIENNE trace au format liste (avant cette révision) est acceptée en
-    repli, toutes ses notes regroupées sous la clé 0 — mieux qu'une perte totale."""
+    """`notes` : dict[int, list[bloc]] ; les clés JSON sont des chaînes, converties en int.
+    Une clé non entière est ignorée. Une liste plate est acceptée, ses notes regroupées sous
+    la clé 0."""
     blocs = [bloc_depuis_json(b) for b in (obj.get('blocs') or [])]
     notes_brutes = obj.get('notes')
     notes = {}
@@ -1804,12 +1524,9 @@ def document_depuis_json(obj):
 
 
 # ---------------------------------------------------------------------------------
-# Sérialisation JSON — le sens inverse, pour que le mode --diagnostic rende non seulement
-# les DÉCISIONS (trace) mais l'ÉTAT RÉEL du document une fois muté : sans ça, un test ne
-# peut vérifier que ce qui doit survivre (italique, exposant, indice, liens) a vraiment
-# survécu — il ne peut lire que ce que le module RACONTE avoir fait dans le motif, jamais ce
-# qu'il a fait réellement. `octets` n'est jamais renvoyé (ce module n'écrit pas de .docx) ;
-# seule sa longueur informe, pour ne pas prétendre transporter un contenu binaire silencieux.
+# Écriture en JSON : le mode --diagnostic rend l'état du document après traitement, pour que
+# les tests vérifient ce qui a réellement survécu (italique, exposant, indice, liens). Les
+# octets des images ne sont pas renvoyés, seulement leur nombre.
 
 def image_vers_json(image):
     return {'nom': image.nom, 'octets_taille': len(image.octets), 'surface': image.surface,
@@ -1851,8 +1568,7 @@ def bloc_vers_json(bloc):
 
 
 def document_vers_json(document):
-    # `notes` : dict[int, list[bloc]] (§4, révision du 19.09.2026) — JSON n'a que des clés
-    # chaîne, converties ici ; document_depuis_json() fait le chemin inverse.
+    # Les clés de `notes` deviennent des chaînes, seules admises en JSON.
     obj = {'styles': list(document.styles), 'langue': document.langue,
            'revisions': document.revisions, 'commentaires': document.commentaires,
            'notes': {str(id_note): [bloc_vers_json(b) for b in blocs]
@@ -1864,9 +1580,8 @@ def document_vers_json(document):
 
 
 # ---------------------------------------------------------------------------------
-# Mode diagnostic — sur le modèle de la CLI de docx-titres.py (celle de pronto_modele.py,
-# elle, n'a pas de CLI : principal() y est une fonction de bibliothèque). C'est ce mode qui
-# rend ce module testable avant que manuscrit_docx.py / manuscrit_odt.py n'existent.
+# Mode diagnostic, sur le modèle de la CLI de docx-titres.py : lit un Document JSON sur stdin
+# et rend les décisions et l'état final. Il permet de tester ce module sans fichier Word.
 
 def principal(argv):
     if '--diagnostic' not in argv[1:]:
@@ -1876,8 +1591,8 @@ def principal(argv):
 
     try:
         sys.stdin.reconfigure(encoding='utf-8')
-        # stderr aussi : le message d'erreur JSON ci-dessous porte un accent, et la
-        # console Windows (cp1252) plante sur un accent combinant venu du partage.
+        # stderr aussi : le message d'erreur ci-dessous peut porter un accent combinant, sur
+        # lequel une console Windows en cp1252 plante.
         sys.stderr.reconfigure(encoding='utf-8')
     except Exception:
         pass
@@ -1899,14 +1614,12 @@ def principal(argv):
         'taille_dominante': dominante,
         'titres': {'stats': stats_titres, 'trace': trace_titres},
         'formatage': {'stats': stats_formatage, 'trace': trace_formatage},
-        # L'état RÉEL du document après les deux passes — pas seulement ce que la trace dit
-        # avoir fait. C'est lui qu'un test doit lire pour vérifier qu'un champ protégé
-        # (italique, exposant, indice, `lien`) a bien survécu, et non seulement que le motif
-        # en parle. Voir document_vers_json().
+        # L'état du document après les deux passes, où les tests vérifient les champs
+        # protégés (italique, exposant, indice, `lien`).
         'document': document_vers_json(document),
     }
-    # ensure_ascii=True : la console Windows n'est pas garantie en UTF-8 (§2 du contrat, même
-    # piège que wsl.exe) — l'échappement \uXXXX se relit sans perte en JSON, dans les deux sens.
+    # ensure_ascii=True : la console Windows n'est pas forcément en UTF-8 ; les \uXXXX se
+    # relisent sans perte.
     print(json.dumps(resultat, ensure_ascii=True))
     return 0
 

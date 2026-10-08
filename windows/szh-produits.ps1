@@ -1,74 +1,50 @@
 ﻿# Emplacements des revues et des livres (test ou production), lecteur YAML plat, identité
 # d'un numéro ou d'un livre, écriture de leurs clés, liens szh:// et intention d'ouverture.
-# Compatibilité : Windows PowerShell 5.1 (proscrire ?. ?? ?: && ||).
+# Compatible Windows PowerShell 5.1 : pas de ?. ?? ?: && ||.
 
-# ---- Emplacement des revues (et des livres) : test ou production ----
+# ---- Emplacement des revues et des livres : test ou production ----
 # Seul endroit qui décide où vivent les revues : le cockpit ne calcule aucun chemin
-# SharePoint, il délègue l'archivage à archive-revue.ps1. Sous-dossiers identiques en test
-# et en production, seule la base change, si bien qu'un essai exerce le code réel.
+# SharePoint et confie l'archivage à archive-revue.ps1.
 #
-# Une SEULE table pour les deux racines, et c'est une exigence du propriétaire : un essai
-# dans le dossier de test exerce exactement les chemins de la production, au nom de dossier
-# près. Ne jamais faire dépendre une de ces six lignes de l'emplacement actif.
+# Une seule table pour les deux racines : un essai dans le dossier de test passe par les
+# mêmes chemins que la production, seule la base change. Ces lignes ne dépendent pas de
+# l'emplacement actif.
 #
-# L'hypothèse « BU »/« 54_Buch » est tranchée depuis le 15.09.2026 : elle supposait que les
-# livres restaient dans le dossier produit d'une autre équipe. Ce n'est plus le cas — les
-# trois produits vivent maintenant dans NOTRE arbre à nous (szh-ancrage.ps1,
-# $SzhSegmentApplication), les livres sous « Books ». Il n'y a donc plus rien à deviner, et
-# plus de clé de configuration pour rattraper une devinette.
+# Les trois produits vivent dans l'arbre de l'application (szh-ancrage.ps1,
+# $SzhSegmentApplication), les livres sous « Books ».
 #
-# Forme ARRÊTÉE par le propriétaire le 15.09.2026, après un premier essai à trois niveaux :
-#   * un numéro en cours vit DIRECTEMENT sous son dossier produit — `Revue\2026-01`. Le
-#     niveau `01_Redaction`/`01_Redaktion` qui s'intercalait a disparu : il ne portait
-#     aucune information (tout ce qui n'est pas archivé est en rédaction) et coûtait un
-#     clic à chaque ouverture, dans un Explorateur comme dans OneDrive ;
-#   * les archives sortent du dossier produit et se regroupent sous UN `_Archive\`, un
-#     sous-dossier par produit — `_Archive\Revue\2020-05`. Ce qui dort est ainsi hors du
-#     chemin de ce qu'on ouvre tous les jours, et un seul dossier se replie pour cacher
-#     dix ans de numéros des trois produits d'un coup.
-# Conséquence à ne pas perdre de vue : les deux états n'ont PLUS la même profondeur sous la
-# racine (un cran en cours, deux aux archives). Tout code qui remonte d'un numéro vers la
-# racine doit reconnaître des NOMS et non compter des crans — voir racineArbre()
-# (vscodium-extension/szh-cockpit/lib/kirby-contenu.js), qui traite les deux cas.
+# Forme de l'arbre :
+#   * un numéro en cours est directement sous son dossier produit : `Revue\2026-01` ;
+#   * les archives sont regroupées sous `_Archive\`, un sous-dossier par produit :
+#     `_Archive\Revue\2020-05`.
+# Les deux états n'ont donc pas la même profondeur sous la racine. Le code qui remonte d'un
+# numéro vers la racine reconnaît des noms au lieu de compter des niveaux (voir racineArbre()
+# dans vscodium-extension/szh-cockpit/lib/kirby-contenu.js).
 $script:SzhSousDossiers = @{
   revue       = @{ encours = 'Revue';        archive = '_Archive\Revue' }
   zeitschrift = @{ encours = 'Zeitschrift';  archive = '_Archive\Zeitschrift' }
   livre       = @{ encours = 'Books';        archive = '_Archive\Books' }
 }
 
-# Le reste de l'arbre qui suit la racine ACTIVE (test ou production), à l'identique sous les
-# deux : ce n'est PAS `_Systeme\`, qui ne la suit jamais (voir Get-SzhDossierSysteme
-# ci-dessus). Déclaré ici pour que la cible existe en UN seul endroit côté PowerShell ; seul
-# le mode test les crée (Initialize-SzhEmplacementsTest) — en production l'arborescence est
-# celle de SharePoint, un poste n'a pas à l'inventer.
-#   _NewsUndActu\          la bibliothèque de fiches et d'actualités, partagée par les DEUX
-#                          rédactions (docs/FORMAT-DOCUMENTATION-KIRBY.md) : `Fiches\` porte
-#                          les fiches elles-mêmes, `_Statuts\fr\` et `_Statuts\de\` leur état
-#                          par langue. Ce n'est plus le magasin par revue d'avant le
-#                          15.09.2026 (`_NewsUndActu\Revue\`, `_NewsUndActu\Zeitschrift\`) :
-#                          la bibliothèque ne trie plus par revue d'origine, elle trie par
-#                          langue. Le cockpit lit et écrit ces mêmes trois dossiers de son
-#                          côté (hors périmètre de ce dépôt PowerShell).
+# Les autres dossiers qui suivent la racine active (test ou production), identiques sous
+# les deux. Seul le mode test les crée (Initialize-SzhEmplacementsTest) ; en production,
+# l'arborescence est celle de SharePoint.
+#   _NewsUndActu\          la bibliothèque de fiches et d'actualités, commune aux deux
+#                          rédactions (docs/FORMAT-DOCUMENTATION-KIRBY.md) : `Fiches\` pour
+#                          les fiches, `_Statuts\fr\` et `_Statuts\de\` pour leur état par
+#                          langue. Le cockpit en gère le contenu.
 #   Exports                les sorties du secrétariat, un sous-dossier par export (le cockpit).
 #
-# `_Systeme\` (rapports d'erreur, journaux, suggestions, inventaire des postes) N'EST PAS
-# dans cette liste : il vit TOUJOURS sur SharePoint, ancré via Resolve-SzhAncrage
-# (Get-SzhDossierSysteme ci-dessus), jamais sous la racine de test. Le mettre ici le ferait
-# créer sous `Revues-TESTING` par Initialize-SzhEmplacementsTest, exactement ce qu'il faut
-# éviter -- le poste doit voir SharePoint même en mode développeur pour ces quatre dossiers.
+# `_Systeme\` (rapports d'erreur, journaux, suggestions, inventaire des postes) n'est pas
+# dans cette liste : il est toujours sur SharePoint, trouvé par Resolve-SzhAncrage (voir
+# Get-SzhDossierSysteme), même quand le poste travaille dans la racine de test.
 #
-# `_Archive\` n'est PAS listé ici non plus, et ce n'est pas un oubli : ses trois sous-dossiers
-# sont les moitiés « archive » de $SzhSousDossiers ci-dessus, créés à ce titre. Les y répéter
-# donnerait deux endroits à corriger le jour où un produit s'ajoute. Eux prennent la
-# capitale de leur dossier produit (`_Archive\Revue`) : on les lit à l'Explorateur.
+# `_Archive\` non plus : ses sous-dossiers sont les moitiés « archive » de $SzhSousDossiers.
 
-# Le nom de la bibliothèque partagée, écrit ici et nulle part ailleurs : windows\szh-migration.ps1
-# réutilise directement $SzhDossiersCommuns et $SzhSousDossiers (même portée de script, dot-sourcé
-# juste après), sans jamais recomposer ces chemins lui-même. Ses trois sous-dossiers ne sont pas un jeton de produit — la
-# bibliothèque trie par langue, pas par revue d'origine, depuis qu'elle a remplacé le magasin
-# par revue (`_NewsUndActu\Revue\`, `_NewsUndActu\Zeitschrift\`) du 15.09.2026 : voir
-# docs/FORMAT-DOCUMENTATION-KIRBY.md. Le cockpit gère le contenu de `Fiches\` et de
-# `_Statuts\` ; ce dépôt PowerShell ne fait que garantir que les trois dossiers existent.
+# Le nom de la bibliothèque partagée, écrit ici seulement. windows\szh-migration.ps1, chargé
+# juste après, réutilise $SzhDossiersCommuns et $SzhSousDossiers. Les sous-dossiers de la
+# bibliothèque sont rangés par langue et non par produit (voir
+# docs/FORMAT-DOCUMENTATION-KIRBY.md) ; ce code garantit seulement qu'ils existent.
 $script:SzhNomDossierReserve = '_NewsUndActu'
 $script:SzhDossiersBibliotheque = @(
   (Join-Path $SzhNomDossierReserve 'Fiches'),
@@ -81,28 +57,24 @@ $script:SzhDossiersCommuns = @($SzhDossiersBibliotheque) + @(
 )
 
 # Les deux racines par défaut, dernier recours de Get-SzhBaseRevuesPour ci-dessous.
-#   prod : la bibliothèque SharePoint, PLUS le dossier de l'application -- assemblé à partir
-#          de $SzhDeriveBaseProduits (szh-ancrage.ps1) pour que le nom de l'application ne
-#          soit écrit qu'à UN seul endroit du PowerShell. En temps normal cette chaîne ne
-#          sert pas : c'est l'ancrage SharePoint résolu qui donne la racine.
-#   dev  : la racine d'essai, INCHANGÉE et à garder telle quelle -- deux postes la portent
-#          déjà, avec les numéros de mise au point dedans.
-# Les trois produits partagent la même racine : seuls les sous-dossiers ci-dessus changent.
+#   prod : la bibliothèque SharePoint et le dossier de l'application, tiré de
+#          $SzhDeriveBaseProduits (szh-ancrage.ps1). Normalement, c'est l'ancrage SharePoint
+#          résolu qui donne la racine.
+#   dev  : la racine d'essai, déjà utilisée par des postes : à ne pas renommer.
+# Les trois produits partagent la même racine ; seuls les sous-dossiers changent.
 $script:SzhBasesDefaut = @{
   prod = (Join-Path '%USERPROFILE%\SZH CSPS\Daten_Allgemein - General' $SzhDeriveBaseProduits)
   dev  = '%USERPROFILE%\OneDrive - SZH CSPS\Revues-TESTING'
 }
 
-# Les deux valeurs de `emplacementRevues` dans config.json. Cette clé remplace `devMode` :
-# elle dit son effet — l'endroit où sont les revues — là où « mode développeur » ne parlait
-# que du développeur. L'ancienne clé reste lue, des postes la portent déjà.
+# Les deux valeurs de `emplacementRevues` dans config.json. L'ancienne clé `devMode` est
+# encore lue : des postes la portent.
 $script:SzhEmplacementTest = 'test'
 $script:SzhEmplacementProd = 'production'
 
-# Booléen d'un JSON écrit à la main : $true/$false, "true"/"false", 1/0. Tout le reste rend
-# $null, soit « clé absente ». Sans cette normalisation, `"devMode": "false"` vaut vrai ici
-# ([bool]'false' est $true) et faux côté JavaScript : les deux moitiés liraient deux
-# racines différentes pour la même configuration.
+# Booléen d'un JSON écrit à la main : $true/$false, "true"/"false", 1/0 ; tout le reste rend
+# $null (« clé absente »). Sans cela, `"devMode": "false"` vaudrait vrai ici ([bool]'false'
+# est $true) et faux côté JavaScript.
 function Resolve-SzhBooleenConfig($Valeur) {
   if ($null -eq $Valeur) { return $null }
   if ($Valeur -is [bool]) { return $Valeur }
@@ -117,11 +89,10 @@ function Resolve-SzhBooleenConfig($Valeur) {
   return $null
 }
 
-# Résolution pure : la clé neuve, puis l'ancienne, puis le défaut historique « test ». Rien
-# n'est lu du disque ici — c'est Initialize-SzhEmplacementRevues qui interroge le disque, une
-# fois, pour écrire la valeur en clair. Mêmes règles et même ordre que
-# resoudreEmplacementRevues() de lib/archivage.js ; test/js/emplacements.test.js compare les
-# deux sur les mêmes configurations.
+# Sans lecture du disque : `emplacementRevues`, puis `devMode`, puis « test » par défaut.
+# Initialize-SzhEmplacementRevues consulte le disque une fois pour écrire la valeur. Mêmes
+# règles que resoudreEmplacementRevues() de lib/archivage.js ; test/js/emplacements.test.js
+# compare les deux.
 function Resolve-SzhEmplacementRevues($Config) {
   if ($Config) {
     $brut = $null
@@ -139,39 +110,30 @@ function Resolve-SzhEmplacementRevues($Config) {
   return $SzhEmplacementTest
 }
 
-# ---- Surcharges d'ESSAI, une par racine (jamais un réglage d'utilisateur) ----
-# Modèle exact de $env:SZH_ANCRAGE (szh-ancrage.ps1) et de $env:SZH_RAPPORTS
-# (lib/rapport-erreur.js) : une variable d'environnement, posée par un banc de test ou par
-# une main experte le temps d'un essai, et jamais écrite nulle part. Elle remplace la racine
-# TELLE QUELLE — aucune dérivation, aucun `2_Produkte\…` ajouté dessous.
-#
-# Pourquoi deux variables, et pourquoi elles existent :
-#   * $env:SZH_RACINE_TEST  -> la racine de TEST. Elle ne dérive d'AUCUN ancrage (« dev » n'a
-#     jamais rien eu à voir avec SharePoint), donc plus rien ne pourrait la détourner vers un
-#     dossier jetable depuis que la clé de configuration qui le permettait a disparu. Sans
-#     cette variable, test/js/lanceur.test.js n'aurait plus de moyen d'exercer le lanceur
-#     ailleurs que dans le vrai OneDrive du poste.
-#   * $env:SZH_RACINE_PROD  -> la racine de PRODUCTION, pour la symétrie. $env:SZH_ANCRAGE
-#     suffit le plus souvent (la racine en dérive, dossier de l'application compris) ;
-#     celle-ci sert quand un essai veut poser la racine exacte sans fabriquer d'ancrage
-#     autour d'elle.
-# Documentées dans docs/EMPLACEMENTS.md, §4.
+# ---- Racines d'essai, une par emplacement ----
+# Comme $env:SZH_ANCRAGE (szh-ancrage.ps1) et $env:SZH_RAPPORTS (lib/rapport-erreur.js) :
+# une variable d'environnement posée pour un essai ou un test, jamais écrite nulle part.
+# Elle remplace la racine telle quelle, sans rien y ajouter.
+#   * $env:SZH_RACINE_TEST : la racine de test. Elle ne dérive d'aucun ancrage ; c'est le
+#     seul moyen pour test/js/lanceur.test.js de faire travailler le lanceur ailleurs que
+#     dans le OneDrive du poste.
+#   * $env:SZH_RACINE_PROD : la racine de production. $env:SZH_ANCRAGE suffit le plus
+#     souvent ; celle-ci donne la racine exacte sans fabriquer d'ancrage.
+# Voir docs/EMPLACEMENTS.md.
 $script:SzhVariableRacine = @{ prod = 'SZH_RACINE_PROD'; dev = 'SZH_RACINE_TEST' }
 
-# Base d'un emplacement donné. Les deux clés gardent leurs noms d'avant (`dev`, `prod`).
+# Base d'un emplacement (clés `dev` et `prod`).
 #
 # Trois sources, de la plus forte à la plus faible :
-#   1. la surcharge d'essai ci-dessus, s'il y en a une ;
-#   2. pour « prod » seulement : l'ancrage SharePoint résolu (szh-ancrage.ps1,
-#      Resolve-SzhAncrage), dont la racine des produits dérive ;
-#   3. le défaut codé en dur ($SzhBasesDefaut), tout dernier recours.
+#   1. la racine d'essai ci-dessus, s'il y en a une ;
+#   2. pour « prod » seulement : l'ancrage SharePoint résolu (Resolve-SzhAncrage), dont la
+#      racine des produits dérive ;
+#   3. le défaut écrit en dur ($SzhBasesDefaut).
 #
-# ⚠ La clé de configuration qui primait ici a été SUPPRIMÉE le 15.09.2026, à la demande
-#   explicite du propriétaire : un chemin écrit à la main dans un fichier de configuration
-#   survivait à un déménagement de la bibliothèque et rendait le poste muet sans rien dire.
-#   La racine de production vient donc du dossier trouvé sur le disque, jamais d'un réglage.
-#   Un poste dont la bibliothèque est synchronisée ailleurs se répare en rattachant
-#   l'ancrage (`ancrageSharePoint`), pas en recopiant un chemin complet.
+# La racine de production vient du dossier trouvé sur le disque, pas d'un chemin écrit dans
+# la configuration, qui ne suivrait pas un déplacement de la bibliothèque. Un poste dont la
+# bibliothèque est synchronisée ailleurs se répare en rattachant l'ancrage
+# (`ancrageSharePoint`).
 function Get-SzhBaseRevuesPour([string]$Emplacement) {
   $cle = 'prod'
   if ($Emplacement -eq $SzhEmplacementTest) { $cle = 'dev' }
@@ -184,15 +146,13 @@ function Get-SzhBaseRevuesPour([string]$Emplacement) {
   return [Environment]::ExpandEnvironmentVariables($SzhBasesDefaut[$cle])
 }
 
-# ---- `_Systeme\` : TOUJOURS sur SharePoint, jamais sur la racine active ----
-# journaux, suggestions et inventaire des postes (rapports d'erreur : mécanisme séparé,
-# szh-rapport.ps1) ne doivent jamais atterrir dans le dossier de test, même quand le poste y
-# travaille : c'est le seul point de rendez-vous entre les deux rédactions et entre les
-# postes. Résout l'ancrage lui-même plutôt que de passer par Get-SzhBaseRevuesPour, qui
-# suivrait `emplacementRevues` -- exactement ce qu'il faut éviter ici. Crée le dossier s'il
-# manque (il est à nous, contrairement aux dossiers de produits que SharePoint fournit) ;
-# rend '' si l'ancrage n'est pas résolu -- l'appelant journalise et passe son tour, jamais de
-# repli silencieux vers OneDrive (docs/RAPPORTS-ERREUR.md, même règle que pour un rapport).
+# ---- `_Systeme\` : toujours sur SharePoint ----
+# Journaux, suggestions et inventaire des postes (les rapports d'erreur passent par
+# szh-rapport.ps1) vont sur SharePoint même quand le poste travaille dans la racine de
+# test : c'est là que les rédactions et les postes les retrouvent. L'ancrage est résolu
+# directement, sans Get-SzhBaseRevuesPour, qui suivrait `emplacementRevues`. Crée le
+# dossier s'il manque. Rend '' si l'ancrage n'est pas résolu : l'appelant journalise et
+# n'écrit rien, sans repli vers OneDrive (voir docs/RAPPORTS-ERREUR.md).
 function Get-SzhDossierSysteme([string]$SousDossier) {
   $ancrage = $null
   try { $ancrage = Resolve-SzhAncrage } catch { return '' }
@@ -208,16 +168,14 @@ function Get-SzhDossierSysteme([string]$SousDossier) {
 }
 
 # Combien de numéros (et de livres) dorment sous un emplacement : un dossier portant un
-# ausgabe.yaml ou un buch.yaml, dans les six dossiers des trois produits — trois en cours à
-# la racine, trois sous `_Archive\`. Ne lève jamais — un OneDrive non synchronisé rend 0.
+# ausgabe.yaml ou un buch.yaml, dans les six dossiers des trois produits (trois en cours à
+# la racine, trois sous `_Archive\`). Sans exception : un OneDrive non synchronisé rend 0.
 function Measure-SzhNumeros([string]$Emplacement) {
   $base = Get-SzhBaseRevuesPour $Emplacement
   $total = 0
   foreach ($produit in @('revue', 'zeitschrift', 'livre')) {
     $manifeste = [string]$SzhProduits[$produit].manifeste
     foreach ($etat in @('encours', 'archive')) {
-      # Les trois produits lisent la même table : depuis que les livres vivent dans notre
-      # arbre, aucun des six chemins n'est une hypothèse rattrapable par une configuration.
       $racine = Join-Path $base $SzhSousDossiers[$produit][$etat]
       if (-not (Test-Path $racine)) { continue }
       try {
@@ -229,21 +187,17 @@ function Measure-SzhNumeros([string]$Emplacement) {
   return $total
 }
 
-# Écrit l'emplacement en clair dans config.json quand il n'y est pas : la racine de tout le
-# travail ne doit pas dépendre d'un défaut implicite, qu'une mise à jour pourrait renverser
-# sous les pieds du rédacteur.
+# Écrit l'emplacement dans config.json quand il n'y est pas, pour qu'il ne dépende pas d'un
+# défaut qu'une mise à jour pourrait changer.
 #
-#   * `emplacementRevues` déjà là et valide -> rien ;
-#   * `devMode` seul -> recopié sous le nom neuf, décision inchangée ;
-#   * ni l'un ni l'autre -> le disque tranche, et jamais contre ce qui existe :
-#     « production » seulement si la racine de production porte des numéros et celle de test
-#     aucun. Dans tous les autres cas « test », c'est-à-dire ce que le poste voyait déjà.
-#     Une racine de test vide n'a rien à perdre ; si OneDrive n'avait rien synchronisé
-#     encore, le compte des deux racines part au journal, et une ligne de config.json
-#     suffit à revenir (docs/EMPLACEMENTS.md).
+#   * `emplacementRevues` déjà présent et valide : rien ;
+#   * `devMode` seul : recopié sous `emplacementRevues`, même valeur ;
+#   * ni l'un ni l'autre : « production » si la racine de production porte des numéros et
+#     celle de test aucun, « test » sinon. Le compte des deux racines va au journal ; une
+#     ligne de config.json suffit à changer (docs/EMPLACEMENTS.md).
 #
-# N'écrit rien si config.json n'existe pas : bootstrap.ps1 le crée lui-même, et un fichier
-# posé ici l'empêcherait d'y mettre `repo` et `revuesRoots`. Au plus une fois par processus.
+# N'écrit rien si config.json n'existe pas : bootstrap.ps1 le crée lui-même, avec `repo` et
+# `revuesRoots`. Au plus une fois par processus.
 $script:SzhEmplacementFige = $false
 function Initialize-SzhEmplacementRevues {
   if ($SzhEmplacementFige) { return '' }
@@ -279,7 +233,7 @@ function Initialize-SzhEmplacementRevues {
   return $choisi
 }
 
-# Emplacement actif : passage obligé de tout le monde, et il fige la valeur au premier appel.
+# Emplacement actif. Le premier appel écrit la valeur dans config.json si besoin.
 function Get-SzhEmplacementRevues {
   [void](Initialize-SzhEmplacementRevues)
   return (Resolve-SzhEmplacementRevues (Get-SzhConfig))
@@ -323,12 +277,10 @@ function Get-SzhEmplacements {
   }
 }
 
-# En mode test seulement, crée les dossiers manquants — les six des trois produits (trois en
-# cours à la racine, trois sous `_Archive\`), plus ceux de $SzhDossiersCommuns, pour que la
-# racine d'essai montre l'arbre COMPLET et pas seulement les dossiers qu'un geste a fini par
-# créer. En production, jamais : l'arborescence est celle de SharePoint, un poste n'a pas à
-# l'inventer. New-Item -Force crée au passage le `_Archive\` parent, qui n'est déclaré nulle
-# part comme dossier à part entière : il n'existe que pour porter ces trois-là.
+# En mode test seulement, crée les dossiers manquants : les six des trois produits (trois en
+# cours, trois sous `_Archive\`) et ceux de $SzhDossiersCommuns, pour que la racine d'essai
+# montre l'arbre complet. En production, l'arborescence est celle de SharePoint.
+# New-Item -Force crée au passage le dossier parent `_Archive\`.
 function Initialize-SzhEmplacementsTest {
   # En simulation, seule une racine d'essai désignée reçoit l'arbre, jamais celle du poste.
   if (($env:SZH_LANCEUR_SIMULE -eq '1') -and (-not $env:SZH_RACINE_TEST)) { return $false }
@@ -345,8 +297,7 @@ function Initialize-SzhEmplacementsTest {
 }
 
 # $Jeton = 'revue' | 'zeitschrift' | 'livre', $Etat = 'encours' | 'archive' ; '' si jeton
-# inconnu. Le livre n'a pas de « numéro » (volume + numéro) : il partage néanmoins ce point
-# d'entrée, open-livre.ps1 s'en servant exactement comme open-revue.ps1 s'en sert déjà.
+# inconnu. open-livre.ps1 s'en sert comme open-revue.ps1.
 function Get-SzhEmplacementRevue([string]$Jeton, [string]$Etat) {
   if (-not $SzhProduits.ContainsKey($Jeton)) { return '' }
   return [string](Get-SzhEmplacements).$Jeton.$Etat
@@ -408,15 +359,12 @@ function Get-SzhRevueEtat([string]$Dossier) {
   }
 }
 
-# État complet d'un dossier de livre, sur le modèle de Get-SzhRevueEtat ci-dessus, pour le
-# l'onglet « Book » du lanceur. Réutilise Get-SzhAusgabe (l'analyseur YAML plat), qui ne sait
-# rien du nom du fichier qu'on lui donne — buch.yaml n'est ici qu'un chemin de plus.
+# État complet d'un dossier de livre, sur le modèle de Get-SzhRevueEtat, pour l'onglet
+# « Book » du lanceur. Lit buch.yaml avec Get-SzhAusgabe.
 #
-# ⚠ La langue du texte se lit dans `lang:` : c'est la clé que lit réellement la chaîne
-#   (pipeline/livre-assembler.py, `meta.get('lang')`) et celle des deux livres du banc
-#   (test/livre-normal, test/livre-falc). `langue:` — l'orthographe de l'exemple de
-#   docs/ARCHITECTURE-LIVRES.md — reste tolérée pour un buch.yaml qui l'aurait suivi à la
-#   lettre, mais `lang:` l'emporte si les deux sont présentes.
+# La langue se lit dans `lang:`, la clé que lit la chaîne (pipeline/livre-assembler.py,
+# `meta.get('lang')`). `langue:` est acceptée aussi ; `lang:` l'emporte si les deux sont
+# présentes.
 function Get-SzhLivreEtat([string]$Dossier) {
   $valeurs = Get-SzhAusgabe (Join-Path $Dossier 'buch.yaml')
   $titre = ''
@@ -441,33 +389,25 @@ function Get-SzhLivreEtat([string]$Dossier) {
 }
 
 # ---- Identité d'un numéro : année, numéro, volume ----
-# Le volume est le millésime de la revue : un par année civile. Il s'imprime sur la
-# couverture (szh-maquette.lua) et part dans OJS en <volume> ; se tromper l'étiquetterait
-# faux partout, sans qu'un message le dise. Il n'a donc pas à être saisi : l'année le donne,
-# chaque revue ayant sa propre année de départ.
-#
-# Relevé sur ojs.szh.ch le 24.08.2026, neuf millésimes de suite pour chacune, sans trou :
+# Le volume est le millésime de la revue, un par année civile. Il s'imprime sur la
+# couverture (szh-maquette.lua) et part dans OJS en <volume>. Il se déduit de l'année, avec
+# une année de départ propre à chaque revue (relevé sur ojs.szh.ch, 2018 à 2026) :
 #   Revue        2018 -> Vol. 8  … 2026 -> Vol. 16    soit annee - 2010
 #   Zeitschrift  2018 -> Bd. 24  … 2026 -> Bd. 32     soit annee - 1994
-# Un volume par année, sans exception sur ces neuf-là. Ne pas déduire autre chose du compte
-# de numéros visible dans l'archive : une année en cours en montre moins que les autres, et
-# la numérotation elle-même a changé de forme au fil du temps — ni l'un ni l'autre ne dit
-# quoi que ce soit du volume. Une revue pourrait néanmoins sauter un volume ou en doubler
-# un : le formulaire garde un réglage manuel, et c'est lui qui tranche le jour où le compte
-# se décale.
+# Le nombre de numéros d'une année ne dit rien du volume. Si une revue sautait ou doublait
+# un volume, le formulaire garde un réglage manuel.
 $script:SzhVolumeAnneeZero = @{
   revue       = 2010
   zeitschrift = 1994
 }
 
 # ---- Couleur annuelle d'un numéro ----
-# Miroir de couleurAnnuelle() dans vscodium-extension/szh-cockpit/lib/yaml.js : deux calculs
-# qui doivent dire la même chose, et test/js/couleur-annuelle.test.js les compare (il lit ce
-# fichier en texte et extrait les ancres par expression régulière).
+# Même calcul que couleurAnnuelle() dans vscodium-extension/szh-cockpit/lib/yaml.js ;
+# test/js/couleur-annuelle.test.js les compare (il lit ce fichier en texte et en extrait les
+# ancres par expression régulière).
 #
-# La palette, dans l'ordre alphabétique des noms français — Bleu acier, Capucine,
-# Mountbatten, Moutarde, Poireau, Rouge — qui décide, dans cet ordre, de la couleur de
-# l'année suivante. Réordonner cette liste change donc les couleurs futures des deux revues.
+# La palette, dans l'ordre alphabétique des noms français, donne la couleur de l'année
+# suivante : réordonner la liste change les couleurs futures des deux revues.
 $script:SzhCouleursNumero = @(
   @{ cle = 'bleuacier';   hex = '#5F9FBC' },
   @{ cle = 'capucine';    hex = '#EB5E51' },
@@ -477,8 +417,8 @@ $script:SzhCouleursNumero = @(
   @{ cle = 'rouge';       hex = '#D31932' }
 )
 
-# Les deux numéros de 2026 réellement parus (Zeitschrift vol. 32, Revue vol. 16), relevés par
-# la rédaction : tout le reste s'en déduit, et il n'y a donc rien à tenir à jour chaque année.
+# Les couleurs des numéros parus en 2026 (Zeitschrift vol. 32, Revue vol. 16) : les autres
+# années s'en déduisent.
 $script:SzhCouleurAnneeAncre = @{
   zeitschrift = @{ annee = 2026; cle = 'bleuacier' }
   revue       = @{ annee = 2026; cle = 'poireau' }
@@ -510,33 +450,32 @@ function Get-SzhVolumePour([string]$Produit, [int]$Annee) {
   return $volume
 }
 
-# Première année dont le volume existe : la borne basse du formulaire, pour qu'il ne propose
-# jamais un volume nul ou négatif.
+# Première année dont le volume existe : la borne basse du formulaire, qui ne propose ainsi
+# pas de volume nul ou négatif.
 function Get-SzhPremiereAnnee([string]$Produit) {
   $jeton = Get-SzhJetonRevue $Produit
   if ($jeton -and $SzhVolumeAnneeZero.ContainsKey($jeton)) { return ($SzhVolumeAnneeZero[$jeton] + 1) }
   return 1
 }
 
-# Nom de dossier d'un numéro : la convention « AAAA-NN », numéro sur deux chiffres. Toute la
-# chaîne s'y appuie — szh-maquette.lua y prend l'année quand `date:` est vide, lib/yaml.js le
-# titre de la barre latérale — et c'est pourquoi ce nom se déduit et ne se saisit pas.
+# Nom de dossier d'un numéro : « AAAA-NN », numéro sur deux chiffres. szh-maquette.lua y lit
+# l'année quand `date:` est vide, et lib/yaml.js le titre de la barre latérale ; le nom se
+# déduit donc, il ne se saisit pas.
 function Get-SzhNomNumero([int]$Annee, [int]$Numero) {
   return ('{0:0000}-{1:00}' -f $Annee, $Numero)
 }
 
 # Entier d'une valeur d'ausgabe.yaml, 0 si elle n'en est pas une : « 01 » et « 1 » sont le
-# même numéro, et un champ vide ne doit ressembler à aucun.
+# même numéro, et un champ vide n'en est aucun.
 function Get-SzhEntierYaml($Valeur) {
   $texte = ([string]$Valeur).Trim()
   if ($texte -notmatch '^[0-9]{1,6}$') { return 0 }
   return [int]$texte
 }
 
-# Un numéro se reconnaît à son couple volume + numéro, jamais à son nom de dossier : deux
-# dossiers différents peuvent porter le même couple, et c'est précisément ce qu'il faut
-# refuser. On cherche donc dans les deux emplacements du produit, en cours et archives — un
-# numéro archivé reste un numéro publié, et son volume est pris.
+# Un numéro se reconnaît à son couple volume + numéro, pas à son nom de dossier : deux
+# dossiers peuvent porter le même couple, ce qu'il faut refuser. La recherche couvre les
+# numéros en cours et les archives : un numéro archivé occupe toujours son volume.
 #
 # Rend $null, ou le premier numéro trouvé : { nom, chemin, dossier, archive }.
 function Find-SzhNumeroVolume([string]$Produit, [int]$Volume, [int]$Numero) {
@@ -554,8 +493,8 @@ function Find-SzhNumeroVolume([string]$Produit, [int]$Volume, [int]$Numero) {
       $fichier = Join-Path $d.FullName 'ausgabe.yaml'
       if (-not (Test-Path $fichier)) { continue }
       $valeurs = Get-SzhAusgabe $fichier
-      # Le produit vient du jeton du numéro, pas de son emplacement : un dossier rangé du
-      # mauvais côté ne doit pas bloquer la création d'un numéro de l'autre revue.
+      # Le produit vient du jeton du numéro, pas de son emplacement : un dossier mal rangé ne
+      # bloque pas la création d'un numéro de l'autre revue.
       $sien = ''
       if ($valeurs.ContainsKey('revue')) { $sien = Get-SzhJetonRevue $valeurs['revue'] }
       if ($sien -ne $jeton) { continue }
@@ -573,17 +512,14 @@ function Find-SzhNumeroVolume([string]$Produit, [int]$Volume, [int]$Numero) {
 }
 
 # ---- Identité d'un livre : titre, année, référence B ----
-# Un livre n'a pas de « numéro d'une année » : il a un titre, une année et une référence —
-# les dossiers réels s'appellent « Buch_2019-B301-Thaler », « 2025-B328-SZH_ProspectrumFALC_DE ».
-# La convention retenue pour les nouveaux livres, plus régulière : « <année>-B<référence>-<nom> »,
-# le <nom> étant déduit du titre, jamais saisi séparément — même principe que
-# Get-SzhNomNumero ci-dessus.
+# Un livre a un titre, une année et une référence B. Nom de dossier d'un livre neuf :
+# « <année>-B<référence>-<nom> », le <nom> étant déduit du titre (comme Get-SzhNomNumero).
+# Des dossiers plus anciens ont d'autres formes (« Buch_2019-B301-Thaler »).
 #
-# Translittération vers ASCII (accents retirés, tout le reste réduit à des « _ ») : un nom
-# de dossier lisible sans dépendre d'un jeu de caractères, sur le modèle de la
-# translittération de l'import (iconv -t ASCII//TRANSLIT, pipeline/Makefile). Borné à 40
-# caractères : le nom compte plusieurs fois dans un chemin de sortie (out/<nom>.pdf…), et un
-# titre entier dépasserait vite la limite Windows de 260 caractères.
+# Translittération en ASCII (accents retirés, le reste réduit à des « _ »), comme à l'import
+# (iconv -t ASCII//TRANSLIT, pipeline/Makefile). 40 caractères au plus : le nom revient
+# plusieurs fois dans un chemin de sortie (out/<nom>.pdf…), et la limite Windows est de 260
+# caractères.
 function Get-SzhSlugLivre([string]$Titre) {
   $texte = ([string]$Titre).Trim()
   $decompose = $texte.Normalize([Text.NormalizationForm]::FormD)
@@ -602,11 +538,9 @@ function Get-SzhNomLivre([int]$Annee, [int]$Reference, [string]$Titre) {
   return ('{0}-B{1}-{2}' -f $Annee, $Reference, (Get-SzhSlugLivre $Titre))
 }
 
-# Un livre se reconnaît à sa référence B, jamais à son nom de dossier — même principe que
-# Find-SzhNumeroVolume ci-dessus, adapté : buch.yaml ne porte pas cette référence en clé (elle
-# ne vit que dans le nom du dossier), donc c'est le nom qui est lu, avec le motif que produit
-# Get-SzhNomLivre. On cherche dans les deux emplacements — en cours et archives — un livre
-# archivé restant un livre publié.
+# Un livre se reconnaît à sa référence B, comme un numéro à son volume (Find-SzhNumeroVolume).
+# buch.yaml ne porte pas cette référence : elle est lue dans le nom du dossier, selon le
+# motif de Get-SzhNomLivre. La recherche couvre les livres en cours et les archives.
 #
 # Rend $null, ou le premier livre trouvé : { nom, titre, chemin, dossier, archive }.
 function Find-SzhLivreReference([int]$Reference) {
@@ -642,11 +576,9 @@ function Find-SzhLivreReference([int]$Reference) {
 # `lang` restent des jetons nus, le sed du Makefile ne comprenant pas les guillemets.
 # `$Vide` autorise une valeur vide, pour qu'un appel sans valeur n'efface pas une clé.
 #
-# `$NomFichier` : « ausgabe.yaml » par défaut, pour que new-revue.ps1 n'ait rien à changer ;
-# new-livre.ps1 passe « buch.yaml », même mécanique d'écriture, seul le nom change. ⚠ Le
-# paramètre est nommé avec une majuscule pour ne pas être confondu avec la variable locale
-# `$fichier` ci-dessous — PowerShell ignore la casse des noms de variables, et les deux
-# auraient sinon désigné la même case mémoire.
+# `$NomFichier` : « ausgabe.yaml » par défaut ; new-livre.ps1 passe « buch.yaml ». Son nom
+# diffère de la variable locale `$fichier` : PowerShell ignore la casse des noms de
+# variables.
 function Set-SzhAusgabeCle([string]$Dossier, [string]$Cle, [string]$Valeur, [bool]$Cite, [bool]$Vide, [string]$NomFichier = 'ausgabe.yaml') {
   if ((-not $Valeur) -and (-not $Vide)) { return $false }
   $fichier = Join-Path $Dossier $NomFichier
@@ -667,18 +599,17 @@ function Set-SzhAusgabeCle([string]$Dossier, [string]$Cle, [string]$Valeur, [boo
   return $true
 }
 
-# `version-toolkit` dit avec quelle version le numéro (ou le livre) a été fabriqué, de quoi
-# le recomposer plus tard à l'identique. Posée à la création, jamais réécrite ensuite.
+# `version-toolkit` : la version avec laquelle le numéro ou le livre a été créé, pour le
+# recomposer plus tard à l'identique. Posée à la création seulement.
 function Set-SzhAusgabeVersion([string]$Dossier, [string]$Version, [string]$NomFichier = 'ausgabe.yaml') {
   return (Set-SzhAusgabeCle $Dossier 'version-toolkit' $Version $true $false $NomFichier)
 }
 
 # ---- Identifiant fixe d'un numéro ou d'un livre : `id:` ----
-# 16 caractères [A-Za-z0-9], posé UNE FOIS à la création (new-revue.ps1, new-livre.ps1) ou
-# par la migration (windows\szh-migration.ps1, sur un manifeste plus ancien qui n'en a pas
-# encore), et JAMAIS recalculé ensuite — c'est ce qui rend un lien szh:// (§ ci-dessous)
-# valable après un renommage ou un archivage du dossier, là où le nom du dossier ne l'était
-# pas. Alphabet identique à celui du lien (`RE_ID`, lib/liens.js).
+# 16 caractères [A-Za-z0-9], posé une fois à la création (new-revue.ps1, new-livre.ps1) ou
+# par la migration (windows\szh-migration.ps1) pour un manifeste qui n'en a pas, puis jamais
+# recalculé : un lien szh:// (voir plus bas) reste ainsi valable après un renommage ou un
+# archivage du dossier. Même alphabet que le lien (`RE_ID`, lib/liens.js).
 $script:SzhIdMotif = '^[A-Za-z0-9]{16}$'
 $script:SzhIdAlphabet = [char[]]'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 
@@ -687,11 +618,9 @@ function Test-SzhIdValide([string]$Id) {
   return ($Id -match $SzhIdMotif)
 }
 
-# Get-Random n'a rien de cryptographique, et n'a pas besoin de l'être : un id n'est pas un
-# secret, seulement un nom qui ne se devine pas à la suite d'un autre. 16 caractères d'un
-# alphabet de 62 -- l'espace est large, et une collision entre deux numéros de la même
-# rédaction resterait de toute façon repérable (deux dossiers, un seul `id:` : Find-SzhRevue
-# rend le premier trouvé, jamais une erreur silencieuse qui perdrait l'autre).
+# Get-Random suffit : un id n'est pas un secret. 16 caractères sur un alphabet de 62 rendent
+# une collision improbable ; en cas de collision, Find-SzhRevue rend le premier dossier
+# trouvé.
 function New-SzhId {
   $sb = New-Object System.Text.StringBuilder
   for ($i = 0; $i -lt 16; $i++) {
@@ -700,8 +629,8 @@ function New-SzhId {
   return $sb.ToString()
 }
 
-# Pose un id SEULEMENT s'il manque : rend $false sans rien écrire si `id:` est déjà présent
-# et non vide -- jamais un recalcul. Rend $true si un id neuf a été posé.
+# Pose un id seulement s'il manque : rend $false sans rien écrire si `id:` est déjà présent
+# et valide, $true si un id neuf a été posé.
 function Set-SzhAusgabeIdSiAbsent([string]$Dossier, [string]$NomFichier = 'ausgabe.yaml') {
   $fichier = Join-Path $Dossier $NomFichier
   if (-not (Test-Path -LiteralPath $fichier)) { return $false }
@@ -711,36 +640,32 @@ function Set-SzhAusgabeIdSiAbsent([string]$Dossier, [string]$NomFichier = 'ausga
 }
 
 # ---- Liens profonds « szh:// » ----
-# DEUX verbes, à garder alignés avec lib/liens.js, qui fabrique les liens côté cockpit :
+# Deux verbes, alignés avec lib/liens.js, qui fabrique les liens côté cockpit :
 #
 #   szh://traduction/<produit>/<id>[/<article>]
-#     Collé dans un e-mail par « Envoyer pour traduction ». Inchangé depuis son origine.
+#     Collé dans un e-mail par « Envoyer pour traduction ».
 #
 #   szh://ouvrir/<produit>/<id>
-#     Ce que porte le raccourci posé à la racine de chaque numéro (Set-SzhRaccourciRevue,
-#     szh-shell.ps1). Il a fallu un second verbe parce que ce raccourci n'a rien à demander
-#     au cockpit : il ouvre le dossier, il ne vise aucun panneau. Le livre s'y ajoute aux
-#     deux revues — il porte le même raccourci, mais n'a pas de suivi de traduction.
+#     Porté par le raccourci posé à la racine de chaque numéro ou livre
+#     (Set-SzhRaccourciRevue, szh-shell.ps1). Il ouvre le dossier sans viser de panneau du
+#     cockpit. Le livre n'a pas de suivi de traduction, seulement ce verbe.
 #
-# Depuis le 23.09.2026, le lien porte l'IDENTIFIANT du numéro (`id:` d'ausgabe.yaml ou de
-# buch.yaml — voir Set-SzhAusgabeIdSiAbsent ci-dessus), jamais son nom de dossier : un
-# renommage ou un archivage ne casse donc plus un lien déjà envoyé. Pas de rétrocompatibilité
-# avec un ancien lien par nom : aucune production n'était en cours au moment du changement.
+# Le lien porte l'identifiant du numéro (`id:` d'ausgabe.yaml ou de buch.yaml, voir
+# Set-SzhAusgabeIdSiAbsent), pas son nom de dossier : un renommage ou un archivage ne casse
+# pas un lien déjà envoyé.
 #
-# Un lien vient d'un e-mail ou d'un fichier .lnk recopié par OneDrive, donc d'une source non
-# fiable, d'où l'alphabet strict de l'id ci-dessous — 16 caractères [A-Za-z0-9], qui exclut
-# par construction tout séparateur de chemin, toute lettre de lecteur et tout « .. ».
+# Un lien vient d'un e-mail ou d'un .lnk recopié par OneDrive, source non fiable : l'id
+# (16 caractères [A-Za-z0-9]) exclut tout séparateur de chemin, toute lettre de lecteur et
+# tout « .. ».
 #
-# ⚠ Les deux motifs sont recopiés caractère pour caractère dans lib/liens.js
-#   (MOTIF_TRADUCTION, MOTIF_OUVRIR) ; test/js/raccourcis-portables.test.js compare les
-#   quatre littéraux et casse dès qu'un côté bouge seul.
+# Les deux motifs sont recopiés tels quels dans lib/liens.js (MOTIF_TRADUCTION,
+# MOTIF_OUVRIR) ; test/js/raccourcis-portables.test.js compare les quatre littéraux.
 $script:SzhLienMotif = '^szh://traduction/(revue|zeitschrift)/([A-Za-z0-9]{16})(?:/([a-z0-9][a-z0-9-]{0,63}))?/?$'
 $script:SzhLienMotifOuvrir = '^szh://ouvrir/(revue|zeitschrift|livre)/([A-Za-z0-9]{16})/?$'
 
 # Analyse un lien -> { vue, produit, id, article }, ou $null si la grammaire n'est pas
 # respectée. Le protocole Windows peut ajouter un « / » final ou un caractère nul.
-# « traduction » d'abord, pour que le verbe le plus ancien garde exactement le chemin de
-# code qu'il avait ; « ouvrir » ensuite, et $Matches ne porte alors que trois groupes.
+# « traduction » d'abord, puis « ouvrir », dont $Matches ne porte que trois groupes.
 function Get-SzhLien([string]$Lien) {
   if (-not $Lien) { return $null }
   $net = ([string]$Lien).Trim().Trim([char]0)
@@ -765,10 +690,8 @@ function Get-SzhLien([string]$Lien) {
   return $null
 }
 
-# Fabrique le lien « ouvrir » d'un numéro, '' si quoi que ce soit cloche. Se relit
-# elle-même par Get-SzhLien plutôt que de refaire les contrôles : le lien qui sort d'ici
-# est, par construction, un lien que le lanceur acceptera de rouvrir — sans quoi le
-# raccourci serait posé et mort du même geste.
+# Fabrique le lien « ouvrir » d'un numéro, '' si une valeur est invalide. Le lien est relu
+# par Get-SzhLien : ce qui sort d'ici est donc un lien que le lanceur acceptera.
 function New-SzhLienOuvrir([string]$Produit, [string]$Id) {
   $p = ([string]$Produit).Trim().ToLower()
   $lien = 'szh://ouvrir/' + $p + '/' + ([string]$Id).Trim()
@@ -776,25 +699,23 @@ function New-SzhLienOuvrir([string]$Produit, [string]$Id) {
   return $lien
 }
 
-# Le produit d'un dossier, lu sur le disque : buch.yaml d'abord, ausgabe.yaml ensuite —
-# même ordre que archive-revue.ps1, lib/profil.js et le Makefile. '' si ce dossier n'est ni
-# une revue ni un livre. Sert à Set-SzhRaccourciRevue, dont tous les appelants ne savent pas
-# forcément dire de quel produit il s'agit.
+# Le produit d'un dossier, lu sur le disque : buch.yaml d'abord, ausgabe.yaml ensuite, comme
+# archive-revue.ps1, lib/profil.js et le Makefile. '' si ce n'est ni une revue ni un livre.
+# Sert à Set-SzhRaccourciRevue, dont les appelants ne connaissent pas toujours le produit.
 function Get-SzhJetonDossier([string]$Dossier) {
   if (-not $Dossier) { return '' }
   if (Test-Path (Join-Path $Dossier 'buch.yaml')) { return 'livre' }
   if (-not (Test-Path (Join-Path $Dossier 'ausgabe.yaml'))) { return '' }
-  # La clé « revue: » décide entre revue et Zeitschrift ; absente ou illisible, on retombe
-  # sur la revue, exactement comme Get-SzhProduitInfo.
+  # La clé « revue: » décide entre revue et Zeitschrift ; absente ou illisible : la revue,
+  # comme dans Get-SzhProduitInfo.
   $jeton = ''
   try { $jeton = (Get-SzhRevueEtat $Dossier).jeton } catch { $jeton = '' }
   if ($jeton) { return $jeton }
   return 'revue'
 }
 
-# Le verbe « traduction » : « en cours » d'abord, puis les archives, de la racine ACTIVE du
-# poste seulement -- le balayage des deux racines est celui de Find-SzhProduitOuvrir, qui prend
-# ici ces deux dossiers en paramètre. '' si introuvable.
+# Le verbe « traduction » : les numéros en cours puis les archives, dans la racine active du
+# poste seulement, passés à Find-SzhProduitOuvrir. '' si introuvable.
 function Find-SzhRevue([string]$Produit, [string]$Id) {
   $p = ([string]$Produit).Trim().ToLower()
   $racines = New-Object System.Collections.ArrayList
@@ -806,19 +727,12 @@ function Find-SzhRevue([string]$Produit, [string]$Id) {
 }
 
 # ---- Où le verbe « ouvrir » cherche son numéro ----
-# Deux racines, dans cet ordre : la racine ACTIVE du poste, puis celle de PRODUCTION.
+# Deux racines, dans cet ordre : la racine active du poste, puis celle de production.
 #
-# La demande du propriétaire était « la production, et elle seule » : les dossiers d'essai
-# ne servent que ponctuellement, et un lien qui n'y trouve rien n'est pas un problème. La
-# production est donc toujours balayée, et le raccourci d'un vrai numéro marche toujours.
-# S'y ajoute la racine active, EN PREMIER, pour une raison qui n'existait pas du côté de
-# « traduction » : ce raccourci-ci est posé par new-revue.ps1 et new-livre.ps1 quel que soit
-# le mode du poste. Un numéro créé dans la racine d'essai recevrait donc un raccourci qui ne
-# peut rien ouvrir, et la personne qui essaie l'outil verrait justement le geste qu'on lui
-# demande d'essayer échouer sous ses yeux. En production les deux racines sont la même, et
-# ce premier passage ne change alors strictement rien.
-#
-# Rendue dédoublonnée : en production, une seule racine, donc un seul balayage.
+# La production est toujours parcourue : le raccourci d'un vrai numéro fonctionne quel que
+# soit le mode du poste. La racine active passe en premier, car new-revue.ps1 et
+# new-livre.ps1 posent aussi ce raccourci sur un numéro créé dans la racine d'essai. En
+# production, les deux racines sont la même et la liste est dédoublonnée.
 function Get-SzhRacinesOuverture([string]$Produit) {
   $racines = New-Object System.Collections.ArrayList
   $p = ([string]$Produit).Trim().ToLower()
@@ -840,11 +754,10 @@ function Get-SzhRacinesOuverture([string]$Produit) {
   return $racines
 }
 
-# Le dossier visé par un lien « ouvrir », '' si introuvable — l'appelant en fait alors un
-# message, jamais un silence. Le manifeste attendu dépend du produit (buch.yaml pour le
-# livre, ausgabe.yaml sinon) ; chaque dossier candidat est ouvert et son `id:` comparé —
-# depuis le 23.09.2026 le lien ne porte plus le nom du dossier, seulement l'id. $Racines, quand
-# il est donné, remplace le balayage par défaut (Get-SzhRacinesOuverture).
+# Le dossier visé par un lien « ouvrir », '' si introuvable (l'appelant affiche alors un
+# message). Le manifeste dépend du produit (buch.yaml pour le livre, ausgabe.yaml sinon) ;
+# l'`id:` de chaque dossier candidat est comparé à celui du lien. $Racines, s'il est donné,
+# remplace les racines par défaut (Get-SzhRacinesOuverture).
 function Find-SzhProduitOuvrir([string]$Produit, [string]$Id, [string[]]$Racines = $null) {
   $p = ([string]$Produit).Trim().ToLower()
   if (-not $SzhProduits.ContainsKey($p)) { return '' }
@@ -867,9 +780,9 @@ function Find-SzhProduitOuvrir([string]$Produit, [string]$Id, [string[]]$Racines
 
 # ---- Intention d'ouverture, à usage unique ----
 # Le lanceur ne peut pas dire à VSCodium quel panneau ouvrir : il dépose une intention que
-# le cockpit lit, vérifie, consomme et supprime. Chemin, clés et unité à garder alignés
-# avec lib/liens.js : `pose` en millisecondes Unix, péremption 5 min. Posée hors du
-# dossier de revue, où rien de technique n'entre.
+# le cockpit lit, vérifie, consomme et supprime. Chemin, clés et unité alignés avec
+# lib/liens.js : `pose` en millisecondes Unix, péremption 5 min. Le fichier est hors du
+# dossier de revue, qui ne contient rien de technique.
 $script:SzhIntentionFile = Join-Path $env:LOCALAPPDATA 'SZH\intention.json'
 
 function Set-SzhIntention([string]$Revue, [string]$Vue, [string]$Article) {
@@ -885,20 +798,17 @@ function Set-SzhIntention([string]$Revue, [string]$Vue, [string]$Article) {
 }
 
 # ---- Lien "szh://..." recu : on ouvre, on ne liste pas ----
-# Deux verbes arrivent ici (Get-SzhLien), et par deux portes differentes :
+# Deux verbes arrivent ici (Get-SzhLien) :
 #   * "traduction" vient d'un courriel, par le gestionnaire de protocole. Revue et
-#     Zeitschrift seulement, et une intention deposee pour que le cockpit ouvre le suivi de
-#     traduction en arrivant.
-#   * "ouvrir" vient du raccourci pose a la racine du numero (Set-SzhRaccourciRevue). Le
-#     livre en est, puisqu'il porte le meme raccourci. Aucune intention : il n'y a aucun
-#     panneau a viser, le dossier s'ouvre et c'est tout.
+#     Zeitschrift seulement ; une intention est deposee pour que le cockpit ouvre le suivi
+#     de traduction.
+#   * "ouvrir" vient du raccourci pose a la racine du numero ou du livre
+#     (Set-SzhRaccourciRevue). Pas d'intention : le dossier s'ouvre, sans panneau vise.
 # Appelee par open-revue.ps1 apres les taches de demarrage (Invoke-SzhTachesDemarrage).
 #
-# Ce chemin n'ouvre aucune fenetre et ne touche pas a la langue du poste. Il le faisait : un
-# clic sur un lien Zeitschrift depuis Outlook basculait tout l'outil en allemand, pour tous
-# les comptes du poste. La langue est un reglage, et un lien recu par courriel n'en est pas
-# un. Rend le code de sortie ; sous $env:SZH_LANCEUR_SIMULE=1, ecrit son verdict en JSON au
-# lieu d'ouvrir ou d'afficher quoi que ce soit.
+# N'ouvre pas la fenetre du lanceur et ne change pas la langue du poste : un lien recu par
+# courriel n'est pas un reglage. Rend le code de sortie ; sous $env:SZH_LANCEUR_SIMULE=1,
+# ecrit son verdict en JSON au lieu d'ouvrir ou d'afficher quoi que ce soit.
 function Open-SzhLien([string]$Lien) {
   $simule = ($env:SZH_LANCEUR_SIMULE -eq '1')
   $cible = Get-SzhLien $Lien
@@ -911,8 +821,8 @@ function Open-SzhLien([string]$Lien) {
     [void][System.Windows.Forms.MessageBox]::Show((T 'lien.invalide' @($Lien)), $SzhNomApplication)
     return 1
   }
-  # Deux verbes, deux resolutions. "traduction" : la racine ACTIVE du poste, en cours puis
-  # archives. "ouvrir" balaie la racine active puis celle de PRODUCTION, et connait le livre.
+  # "traduction" : la racine active du poste, en cours puis archives. "ouvrir" : la racine
+  # active puis celle de production, livre compris.
   $dossierLien = ''
   if ($cible.vue -eq 'ouvrir') { $dossierLien = Find-SzhProduitOuvrir $cible.produit $cible.id }
   else { $dossierLien = Find-SzhRevue $cible.produit $cible.id }
@@ -921,8 +831,8 @@ function Open-SzhLien([string]$Lien) {
       Write-SzhPlanJson ([pscustomobject]@{ lien = $Lien; vue = $cible.vue; erreur = 'introuvable' })
       return 1
     }
-    # Un echec muet serait le pire : le raccourci ne fait rien, et personne ne sait
-    # pourquoi. Le livre a sa variante du message, "le numero" ne voulant rien dire pour lui.
+    # Un message dit pourquoi le raccourci n'ouvre rien. Le livre a sa variante du message
+    # ("le numero" ne le concerne pas).
     $cleIntrouvable = 'lien.introuvable'
     if ($cible.produit -eq 'livre') { $cleIntrouvable = 'lien.introuvable.livre' }
     Add-Type -AssemblyName System.Windows.Forms
@@ -930,8 +840,8 @@ function Open-SzhLien([string]$Lien) {
       (T $cleIntrouvable @($cible.id, $cible.produit)), $SzhNomApplication)
     return 1
   }
-  # A usage unique, jamais bloquante : sans elle, la revue s'ouvre sans aller droit au
-  # panneau. Rien a deposer pour "ouvrir", qui ne vise aucun panneau.
+  # Intention a usage unique, sans blocage : sans elle, la revue s'ouvre sans aller au
+  # panneau. Rien a deposer pour "ouvrir".
   if ($cible.vue -ne 'ouvrir') {
     try { Set-SzhIntention $dossierLien $cible.vue $cible.article } catch { }
   }
@@ -952,10 +862,10 @@ function Open-SzhLien([string]$Lien) {
 #                       produit.
 #   icone             : le nom du fichier .ico, sous windows\.
 #   nomRaccourci / descRaccourci : les clés de texte du nom du fichier .lnk posé à la racine du
-#                       dossier et de sa description. Le NOM est le même dans les trois langues
-#                       (le dossier se partage sur OneDrive entre des postes de langues
-#                       différentes : un nom qui change laisserait des raccourcis orphelins) ;
-#                       la description se traduit. Zeitschrift garde le raccourci de la revue.
+#                       dossier et de sa description. Le nom est le même dans toutes les
+#                       langues (le dossier est partagé sur OneDrive entre postes de langues
+#                       différentes, et un nom traduit laisserait des raccourcis en double) ;
+#                       la description se traduit. Zeitschrift reprend le raccourci de la revue.
 $script:SzhProduits = @{
   revue = @{
     jeton             = 'revue'

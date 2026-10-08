@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# ooxml_lecture.py — lecture bas niveau d'un .docx : espaces de noms, styles, texte d'un
-# paragraphe, images et blocs du corps. Aucune règle de gabarit ni d'import ; stdlib seule.
+# Lecture bas niveau d'un .docx : espaces de noms, styles, texte d'un paragraphe, images et
+# blocs du corps. Aucune règle de gabarit ni d'import ; bibliothèque standard seulement.
 
 import os
 import xml.etree.ElementTree as ET
