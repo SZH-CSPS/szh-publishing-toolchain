@@ -246,8 +246,10 @@ Effet de la bascule :
 | Numéro déjà ouvert dans l'éditeur | reste ouvert et compile : son chemin est celui de la fenêtre | idem |
 | `_Systeme\`, toolkit, WSL, journaux, réglages | inchangés | inchangés |
 
-Un poste neuf démarre en `test` : `bootstrap.ps1` écrit `devMode = $true`. Sur un poste de
-rédaction, on passe en production juste après l'installation.
+Un poste neuf démarre en `production` : `bootstrap.ps1` écrit
+`"emplacementRevues": "production"`. Un poste dont le `config.json` n'a ni
+`emplacementRevues` ni `devMode` reçoit la valeur choisie au premier lancement (production
+si seule la racine de production contient des numéros, test sinon).
 
 ### Passer un poste en production
 

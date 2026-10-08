@@ -126,28 +126,28 @@ Une fois par poste, en administrateur.
    `www.sumatrapdfreader.org` (installation). La liste et les autres points à voir avec le
    prestataire informatique sont dans [`SECURITE.md`](SECURITE.md).
 
-6. Passer le poste en production (section suivante), puis faire le
+6. Vérifier que le poste voit la production (section suivante), puis faire le
    [contrôle rapide](#le-contrôle-rapide) dans la session de chaque rédacteur.
 
-### Passer un poste neuf du mode test à la production
+### Production et mode test
 
-`bootstrap.ps1` crée un `config.json` neuf réglé sur les dossiers de test (`devMode = $true`).
-Un poste neuf cherche donc les numéros dans `%USERPROFILE%\OneDrive - SZH CSPS\Revues-TESTING`.
-Sur un poste de rédaction, il faut le basculer après l'installation :
+`bootstrap.ps1` crée un `config.json` neuf réglé sur la production
+(`"emplacementRevues": "production"`). Un poste neuf cherche donc les numéros sous
+`…\Daten_Allgemein - General\2_Produkte\54_Pronto`. Après l'installation :
 
 1. Vérifier que la bibliothèque SharePoint `Daten_Allgemein - General` est synchronisée par
-   OneDrive sur le poste : la racine de production en dépend
-   (`…\Daten_Allgemein - General\2_Produkte\54_Pronto`).
-2. Ouvrir Pronto, Accueil → **Paramètres** → « Mode développeur (dossiers de test) » →
-   **Désactivé**. Le réglage vaut pour tout le poste. À la main, c'est la clé
-   `"emplacementRevues": "production"` de `C:\ProgramData\SZH\config.json` (l'ancienne clé
-   `devMode` est encore lue quand `emplacementRevues` manque).
-3. Vérifier : la bannière « Mode test » de l'Accueil disparaît, les numéros de production
-   s'affichent, et un numéro ouvert ne porte plus le badge « Dossier de test ». Le journal
-   du mois (`C:\ProgramData\SZH\logs\szh-<AAAA-MM>.log`) note
+   OneDrive sur le poste : la racine de production en dépend.
+2. Vérifier que les numéros de production s'affichent dans l'Accueil, sans bandeau
+   « Mode test ». Le journal du mois (`C:\ProgramData\SZH\logs\szh-<AAAA-MM>.log`) note
    `revues : emplacement "…" -> <chemin>`.
 
-La bascule ne déplace aucun fichier. Les numéros créés en mode test restent dans
+Pour un poste d'essai ou de développement : Accueil → **Paramètres** → « Mode développeur
+(dossiers de test) » → **Activé**. Les numéros sont alors cherchés dans
+`%USERPROFILE%\OneDrive - SZH CSPS\Revues-TESTING`. À la main, c'est la clé
+`"emplacementRevues": "test"` de `C:\ProgramData\SZH\config.json`. Le réglage vaut pour
+tout le poste.
+
+Changer de mode ne déplace aucun fichier. Les numéros créés en mode test restent dans
 `Revues-TESTING` ; pour les garder, on les déplace à la main vers `…\54_Pronto\Revue` (ou
 `Zeitschrift`). Le détail des deux racines est dans [`EMPLACEMENTS.md`](EMPLACEMENTS.md).
 
@@ -834,7 +834,7 @@ Rien à faire. La couleur de l'année et le numéro de volume se calculent depui
 La clé `emplacementRevues` (`test` ou `production`) de `C:\ProgramData\SZH\config.json` vaut
 pour tout le poste. Elle se change dans Accueil → Paramètres → « Mode développeur (dossiers
 de test) ». Elle ne déplace aucun fichier. Voir
-[Passer un poste neuf en production](#passer-un-poste-neuf-du-mode-test-à-la-production) et
+[Production et mode test](#production-et-mode-test) et
 [`EMPLACEMENTS.md`](EMPLACEMENTS.md).
 
 ### Sauvegardes

@@ -78,12 +78,13 @@ if (-not (Test-Path $SzhConfigFile)) {
     # Dossiers hors de l'arborescence officielle, que le lanceur signale. Vide sur un
     # poste neuf.
     revuesRoots = @()
-    # Mode développeur : les revues sont cherchées, créées et archivées sous la racine
-    # d'essai. Se change dans l'onglet « Paramètres » du lanceur.
-    #
-    # Les racines ne sont pas écrites ici : la production vient de l'ancrage SharePoint,
-    # l'essai d'une valeur par défaut (Get-SzhBaseRevuesPour, docs/EMPLACEMENTS.md).
-    devMode     = $true
+    # Un poste neuf travaille en production. Le mode test se choisit dans Accueil →
+    # Paramètres → « Mode développeur ». devMode est écrit avec, pour un toolkit plus
+    # ancien (même règle que configAvecEmplacement de lib/archivage.js). Les racines ne
+    # sont pas écrites ici : la production vient de l'ancrage SharePoint, le test d'une
+    # valeur par défaut (Get-SzhBaseRevuesPour, docs/EMPLACEMENTS.md).
+    emplacementRevues = $SzhEmplacementProd
+    devMode     = $false
   }
   Set-SzhJson $SzhConfigFile $cfg
 }
@@ -429,7 +430,7 @@ try {
   # Les disques des distributions sont rangés par SID : l'exclusion couvre les sous-dossiers.
   Attention ('Antivirus : exclure {0}\WSL\ (tous sous-dossiers, *.vhdx) et {1}\*, + processus vmcompute.exe, vmmem.exe, wsl.exe, wslservice.exe.' -f $SzhBase, $SzhStaging)
   Attention 'Chaque utilisateur du poste recevra réglages + raccourcis à sa prochaine connexion (tâche planifiée).'
-  Attention ('Nouvelle revue : menu Démarrer > « ' + $SzhNomApplication + ' », onglet Revue (ou Zeitschrift) > « Nouvelle revue... ».')
+  Attention ('Nouvelle revue : menu Démarrer > « ' + $SzhNomApplication + ' », Accueil, onglet « Nouveau ».')
   Attention ('Mise à jour à la demande : menu Démarrer > « ' + $SzhNomMiseAJour + ' ».')
   Attention ('Contrôle : powershell -ExecutionPolicy Bypass -File "{0}", dans la session du rédacteur.' -f (Join-Path $SzhToolkit 'windows\diagnostic.ps1'))
 

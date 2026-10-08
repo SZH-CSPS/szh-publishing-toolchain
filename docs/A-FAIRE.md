@@ -30,10 +30,6 @@ est faite. Les questions à trancher sont marquées « À décider ».
   recompiler un ancien numéro, revenir à la dernière.
 - Éprouver l'archivage : cas normal, échec (PDF ouvert dans SumatraPDF), dossier déjà
   existant, désarchivage, raccourci « Ouvrir la revue.lnk » sur un autre poste.
-- À décider : passer `emplacementRevues` à `production` par défaut. Aujourd'hui, une clé
-  absente vaut `test`, et `bootstrap.ps1` installe un poste neuf en mode test.
-- `bootstrap.ps1` affiche encore, en fin d'installation, « onglet Revue (ou Zeitschrift) >
-  Nouvelle revue... » : le chemin est aujourd'hui Accueil → onglet Nouveau.
 - La clé `revuesRoots` ne sert plus qu'à compter des numéros : la vider ou la retirer.
 - `_Systeme\journaux` et `_Systeme\suggestions` n'ont aucun écrivain.
 - Vérifier le cockpit (Node) et la WSL (Python) derrière un proxy authentifié : seul
