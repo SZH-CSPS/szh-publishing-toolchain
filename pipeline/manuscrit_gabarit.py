@@ -652,11 +652,9 @@ def _run_xml(fragment, registre, espace='document'):
 
 
 def _runs_xml(fragments, registre, espace='document'):
-    """Concatène les runs d'une liste de Fragment, en enveloppant dans <w:hyperlink> chaque
-    séquence CONSÉCUTIVE de fragments qui partagent le même lien non nul — un lien porté par
-    plusieurs runs voisins (mise en forme coupée en plusieurs w:r à la lecture, §4 du contrat)
-    ne doit donner qu'un seul w:hyperlink, pas un par run. `espace` : 'document' ou 'notes' —
-    voir _Registre, jamais confondre les deux parties d'une relation."""
+    """Concatène les runs d'une liste de Fragment. Chaque suite de fragments voisins qui
+    partagent le même lien donne un seul <w:hyperlink> : un lien coupé en plusieurs runs par
+    sa mise en forme reste un seul lien. `espace` : 'document' ou 'notes' (voir _Registre)."""
     morceaux = []
     i, n = 0, len(fragments)
     while i < n:
@@ -676,20 +674,17 @@ def _runs_xml(fragments, registre, espace='document'):
 
 
 def _paragraphe_simple_xml(texte, style_id):
-    """Un paragraphe à un seul run de texte plat, sans mise en forme — les lignes
-    d'étiquette (« Texte alternatif : … ») des blocs figure/tableau qui n'ont pas de fragments
-    à préserver (voir _meta_paragraphes_xml pour la Légende, seul champ qui peut en avoir)."""
+    """Un paragraphe à un seul run de texte sans mise en forme. Sert aux clés d'un bloc
+    figure ou tableau qui n'ont pas de mise en forme à garder (toutes sauf la légende)."""
     return ('<w:p><w:pPr><w:pStyle w:val="%s"/></w:pPr>'
             '<w:r><w:t xml:space="preserve">%s</w:t></w:r></w:p>' % (style_id, _echapper(texte)))
 
 
 def _type_liste_effectif(liste):
-    """'puce'|'numero' à partir de Paragraphe.liste (numId, ilvl, format) — le format résolu
-    par le lecteur depuis numbering.xml (§5.4) s'il est déterminé ('puce'/'numero'), sinon le
-    REPLI de l'écrivain : puce, la forme la plus commune — et JAMAIS en silence, voir l'appel
-    à ce repli dans _convertir_niveau_racine(), qui le trace. Accepte aussi un couple
-    (numId, ilvl) sans 3e élément (documents fabriqués avant le §5.4, ou fixtures de test) :
-    même repli, même raison."""
+    """'puce' ou 'numero' d'après Paragraphe.liste (numId, ilvl, format) : le format lu
+    dans numbering.xml du manuscrit, ou la puce s'il est indéterminé ou absent (couple
+    (numId, ilvl) sans troisième élément). Ce repli est tracé par
+    _convertir_niveau_racine()."""
     format_lu = liste[2] if len(liste) > 2 else ''
     return format_lu if format_lu in ('puce', 'numero') else 'puce'
 
@@ -701,11 +696,9 @@ def _numpr_xml(liste, registre):
 
 
 def _paragraphe_xml(paragraphe, style_id, registre, espace='document'):
-    """Un paragraphe de corps ou de titre — `style_id` vide pour un paragraphe SANS pStyle
-    (utilisé pour le contenu de cellule d'un tableau du manuscrit, jamais restylé, voir la
-    décision n°3 de l'en-tête). Si `paragraphe.liste` est renseigné, porte AUSSI un w:numPr
-    natif — jamais le numId d'origine (§5.4) : _numpr_xml() résout un numId de LA SORTIE par
-    correspondance, via le registre."""
+    """Un paragraphe de corps ou de titre. `style_id` vide : pas de w:pStyle (contenu d'une
+    cellule de tableau du manuscrit, qui garde son style). Un paragraphe de liste reçoit en
+    plus un w:numPr, dont le numId est celui de la sortie (voir _numpr_xml())."""
     runs = _runs_xml(paragraphe.fragments, registre, espace)
     interieur = ('<w:pStyle w:val="%s"/>' % style_id) if style_id else ''
     if paragraphe.liste is not None:
@@ -718,33 +711,27 @@ def _style_pour_paragraphe(paragraphe, registre):
     styles = registre.styles
     if paragraphe.niveau_retenu in styles.titre:
         return styles.titre[paragraphe.niveau_retenu]
-    # Une citation du manuscrit (« Quote », « Citation », « Zitat », « Intense Quote »…) garde
-    # sa nature : réécrite en corps de texte, elle perdait son retrait et son bloc à l'import.
+    # Une citation du manuscrit (« Quote », « Citation », « Zitat », « Intense Quote »…) reste
+    # une citation, pour que l'import la relise en bloc de citation.
     if mm._est_style_citation(paragraphe.style):
         return styles.citation
     return styles.maison.get(pronto_modele.normaliser_nom_style(paragraphe.style), styles.corps)
 
 
 # ---------------------------------------------------------------------------------
-# Tableaux imbriqués (le tableau du manuscrit lui-même, posé dans la rangée 1 d'un bloc
-# tableau, OU un tableau imbriqué dans une cellule, OU un tableau qui ouvre une note) —
-# colspan (w:gridSpan) ET rowspan (w:vMerge), miroir en écriture de _tableau_depuis()/
-# _vmerge_continuation() de manuscrit_docx.py.
+# Tableaux du manuscrit (contenu d'un bloc tableau, tableau dans une cellule ou dans une
+# note), avec fusions horizontales (w:gridSpan) et verticales (w:vMerge). Pendant en écriture
+# de _tableau_depuis() et _vmerge_continuation() de manuscrit_docx.py.
 
 def _grille_ecriture(rangees):
-    """[[emplacement, ...], ...], ncols — un emplacement est {'type': 'cell', 'col', 'cellule'}
-    ou {'type': 'continue', 'col', 'colspan'} (case(s) masquée(s) par une fusion verticale
-    démarrée plus haut ; `colspan` reprend EXACTEMENT celui de la cellule de départ).
+    """([[emplacement, ...], ...], ncols). Un emplacement est {'type': 'cell', 'col',
+    'cellule'} ou {'type': 'continue', 'col', 'colspan'} : case masquée par une fusion
+    verticale ouverte plus haut, de la même largeur que la cellule de départ.
 
-    Deux défauts mesurés, corrigés ici :
-    - `ncols` se calculait sur la SEULE rangée 0 : une rangée plus large plus loin dans le
-      tableau se faisait tronquer, ses cellules en trop simplement jetées. Corrigé : le
-      MAXIMUM sur toutes les rangées ;
-    - une fusion à la fois verticale ET horizontale perdait son gridSpan sur les lignes de
-      continuation (une continuation par COLONNE individuelle au lieu d'une seule, large de
-      `colspan`) — ce qui désynchronisait le nombre de <w:tc> de la ligne par rapport au
-      tblGrid. Corrigé : `pending` retient la paire (colspan, rowspan_restant) d'un seul
-      tenant, jamais colonne par colonne."""
+    `ncols` est le maximum sur toutes les rangées, pour qu'une rangée plus large ne soit pas
+    tronquée. `pending` garde (colspan, rangées restantes) d'un seul tenant : une fusion à la
+    fois verticale et horizontale donne une seule continuation large de `colspan`, et le
+    nombre de <w:tc> de chaque ligne reste accordé au tblGrid."""
     if not rangees:
         return [], 0
     ncols = max((sum(c.colspan for c in rangee) for rangee in rangees), default=0) or 1
@@ -776,8 +763,8 @@ def _grille_ecriture(rangees):
 
 
 def _fermer_sur_paragraphe(xml_contenu):
-    """Word exige qu'une cellule (w:tc) se termine par un paragraphe, jamais par un tableau —
-    ajoute un paragraphe vide si le dernier bloc écrit était un tableau."""
+    """Ajoute un paragraphe vide si le contenu finit par un tableau : Word exige qu'une
+    cellule (w:tc) se termine par un paragraphe."""
     return xml_contenu if xml_contenu.rstrip().endswith('</w:p>') or not xml_contenu \
         else xml_contenu + PARAGRAPHE_VIDE
 
@@ -788,14 +775,11 @@ def _contenu_cellule_xml(blocs, registre, espace='document'):
         if isinstance(bloc, mm.Tableau):
             morceaux.append(_tableau_xml(bloc, registre, espace))
         else:
-            # Décision n°3 de l'en-tête : une image dans une cellule reste EN PLACE, en ligne
-            # — jamais extraite dans un bloc figure imbriqué. Pas de restyle : le contenu d'un
-            # tableau du manuscrit n'est pas retouché par §5.1/§5.2, qui ne portent que sur les
-            # paragraphes de PREMIER NIVEAU (voir manuscrit_modele.py,
-            # _paragraphes_premier_niveau) — SAUF un style maison déjà posé (SZH Cle, SZH
-            # Aide…), gardé tel quel : c'est lui que le lecteur du gabarit reconnaît, et un
-            # tableau fixe recopié sans lui ne se relirait plus (voir _tableaux_fixes_du_
-            # document).
+            # Une image dans une cellule reste en ligne, sans bloc figure. Le contenu d'une
+            # cellule n'est pas restylé (le classement des titres et le nettoyage ne portent
+            # que sur le premier niveau), sauf un style maison déjà posé (SZH Cle, SZH Aide…) :
+            # c'est par lui que le lecteur reconnaît un tableau fixe recopié (voir
+            # _tableaux_fixes_du_document).
             style_id = registre.styles.maison.get(
                 pronto_modele.normaliser_nom_style(bloc.style), '')
             morceaux.append(_paragraphe_xml(bloc, style_id, registre, espace))
@@ -837,27 +821,17 @@ def _tableau_xml(tableau, registre, espace='document'):
 
 
 # ---------------------------------------------------------------------------------
-# Blocs figure/tableau — révision du 21.09.2026 (décision de Robin) : cinq paragraphes de
-# métadonnées (Légende/Texte alternatif/Copyright/Source/Note, style SZH Cle Abb/Tab) puis le contenu
-# — une image en ligne, ou le tableau du manuscrit directement. Plus de tableau enveloppe :
-# c'est la bordure ouverte du style (haut/gauche/droite, pas en bas — voir word/styles.xml du
-# gabarit) qui dessine seule le cadre, les paragraphes consécutifs de même bordure se
-# fusionnant visuellement dans Word. Le risque mesuré au §10 du contrat (LibreOffice qui fond
-# deux `w:tbl`/`table:table` adjacents) ne peut plus se produire pour un bloc FIGURE, qui n'a
-# plus de tableau du tout ; pour un bloc TABLEAU, il ne peut plus se produire non plus, puisque
-# son contenu est désormais TOUJOURS précédé d'au moins un paragraphe de clé — deux tableaux ne
-# peuvent donc plus jamais se toucher directement à cause d'un bloc.
+# Blocs figure et tableau : cinq paragraphes de clé (Légende, Texte alternatif, Copyright,
+# Source, Note) en style SZH Cle Abb/Tab, puis le contenu (une image en ligne, ou le tableau
+# du manuscrit). Le style a une bordure ouverte en bas ; Word fusionne les bordures des
+# paragraphes voisins, qui dessinent ainsi un seul cadre. Le contenu d'un bloc tableau suit
+# toujours au moins une clé : un bloc ne met jamais deux tableaux en contact.
 
 def _meta_paragraphes_xml(champs, registre):
-    """Les paragraphes de métadonnées d'un bloc (cinq), en style SZH Cle Abb/Tab — remplace
-    l'ancienne rangée de tableau (_rangee_meta_xml). `champs['legende']` peut être soit une
-    chaîne (Copyright/Source/Note/Texte alternatif, ou Légende sans contenu retrouvé dans le manuscrit
-    — jamais inventée), soit une LISTE DE FRAGMENTS (la légende déjà écrite dans le manuscrit,
-    préservée avec sa mise en forme — voir _cherche_legende) : une légende aplatie en texte
-    plat perdrait ses exposants, d'où la distinction. `registre.champs_bloc`/`registre.
-    separateur_cle` : le jeu d'étiquettes et le séparateur de LA LANGUE demandée à ecrire()
-    (voir CHAMPS_BLOC/_SEPARATEUR_CLE) — jamais le module-level CHAMPS_BLOC directement, qui
-    est maintenant un dict PAR langue, pas une liste."""
+    """Les cinq paragraphes de clé d'un bloc. `champs['legende']` est une chaîne, ou la liste
+    des fragments d'une légende trouvée dans le manuscrit, écrite avec sa mise en forme
+    (exposants, italiques). Étiquettes et séparateur viennent de `registre.champs_bloc` et
+    `registre.separateur_cle`, fixés par ecrire() selon la langue."""
     paras = []
     for cle, label in registre.champs_bloc:
         valeur = champs.get(cle)
@@ -876,8 +850,7 @@ def _meta_paragraphes_xml(champs, registre):
 
 
 def _image_paragraphe_xml(image, registre):
-    """Le contenu d'un bloc figure : un paragraphe ordinaire portant l'image, en ligne — plus
-    de rangée de tableau autour (remplace _rangee_image_xml)."""
+    """Le contenu d'un bloc figure : un paragraphe qui porte l'image en ligne."""
     rid = registre.enregistrer_image(image)
     docpr_id = registre.nouveau_docpr_id()
     return '<w:p><w:r>%s</w:r></w:p>' % _drawing_xml(rid, image, docpr_id,
@@ -885,38 +858,30 @@ def _image_paragraphe_xml(image, registre):
 
 
 def _meta_et_contenu_xml(champs, contenu_xml, registre):
-    """Un bloc figure ou tableau complet : les paragraphes de clé suivis directement du
-    contenu — remplace l'ancien _bloc_xml (qui enveloppait tout dans un <w:tbl>). `contenu_xml`
-    est soit _image_paragraphe_xml(...), soit _tableau_xml(...) directement (le tableau du
-    manuscrit n'est plus jamais imbriqué dans une cellule d'enveloppe, voir plus bas)."""
+    """Un bloc figure ou tableau : les paragraphes de clé, puis `contenu_xml`
+    (_image_paragraphe_xml() ou _tableau_xml())."""
     return _meta_paragraphes_xml(champs, registre) + contenu_xml
 
 
 # ---------------------------------------------------------------------------------
-# Traversée du corps — extraction des images en blocs figure, des tableaux en blocs tableau,
-# association d'une légende déjà écrite dans le manuscrit (§5.3), et le paragraphe vide
-# obligatoire autour de chaque bloc (§10, décision n°2 de l'en-tête).
+# Parcours du corps : images en blocs figure, tableaux en blocs tableau, légende déjà écrite
+# dans le manuscrit reprise dans le bloc, paragraphe vide autour de chaque bloc.
 
 def _texte_paragraphe(paragraphe):
     return paragraphe.texte().strip()
 
 
 def _cherche_legende(blocs, idx, consommes):
-    """([indices consommés], fragments) d'une légende déjà écrite dans le manuscrit pour le
-    bloc figure/tableau à `idx` — ([], None) si rien ne convient. Rend la liste de FRAGMENT
-    (mise en forme comprise, jamais un texte déjà aplati — voir _meta_paragraphes_xml).
+    """([indices consommés], fragments) de la légende déjà écrite dans le manuscrit pour le
+    bloc figure ou tableau à `idx`, ou ([], None). Les fragments gardent leur mise en forme.
 
-    Deux formes reconnues :
-    - un titre bref (« Tableau 1 », SANS ponctuation finale, ≤ 20 caractères) qui matche
-      RE_LEGENDE à lui seul, immédiatement suivi d'un paragraphe qui porte le texte de la
-      légende proprement dit — mesuré sur un manuscrit réel (« Le coenseignement
-      développemental… ») où le gabarit de l'autrice sépare le numéro du tableau et son
-      texte sur deux paragraphes ; cherchée en PRIORITÉ pour ne pas laisser le titre seul se
-      faire consommer sans son texte par la forme à un seul paragraphe ci-dessous ;
-    - à défaut, un seul paragraphe voisin (suivant PUIS précédent, convention la plus
-      fréquente : légende sous la figure) qui matche RE_LEGENDE à lui seul — le contrat ne dit
-      pas si la légende attendue se trouve avant ou après le bloc qu'elle nomme, les deux sont
-      acceptées."""
+    Deux formes, cherchées dans cet ordre :
+    - juste avant le bloc, un titre bref (« Tableau 1 », 20 caractères au plus, sans
+      ponctuation finale) qui correspond à RE_LEGENDE, suivi d'un paragraphe qui porte le
+      texte de la légende. Cherchée d'abord, pour que le titre ne parte pas seul avec la
+      forme suivante ;
+    - un paragraphe voisin qui correspond à RE_LEGENDE, le suivant puis le précédent (la
+      légende est le plus souvent sous la figure)."""
     i_titre, i_texte = idx - 2, idx - 1
     if (i_titre >= 0 and i_titre not in consommes and i_texte not in consommes
             and i_texte < len(blocs)):
@@ -948,15 +913,10 @@ def _cherche_legende(blocs, idx, consommes):
 
 
 def _associer_legendes(blocs):
-    """Précalcule, AVANT toute génération de XML, la légende éventuellement trouvée pour
-    chaque bloc image/tableau, et l'ensemble complet des indices de paragraphe consommés en
-    légende. Nécessaire en un passage séparé : un paragraphe-légende qui PRÉCÈDE son bloc
-    (cas fréquent, légende écrite avant l'image) serait sinon déjà émis comme corps ordinaire
-    au moment où le bloc qui le consomme est atteint, dans un simple passage en avant — la
-    même légende apparaîtrait alors DEUX FOIS en sortie (une fois comme paragraphe de corps,
-    une fois dans le champ « Légende : »), l'exact défaut que le §5.3 interdit (« retirée du
-    corps »). Mesuré par sabotage inverse : sans ce pré-passage, un cas réel (légende avant
-    l'image) double le texte de la légende dans le .docx produit."""
+    """(legendes, consommes) : la légende trouvée pour chaque bloc image ou tableau, et les
+    indices des paragraphes pris comme légende. Calculé avant toute écriture : une légende
+    placée avant son bloc serait sinon déjà écrite en corps de texte quand le bloc la
+    réclame, et apparaîtrait deux fois."""
     consommes = set()
     legendes = {}          # indice du bloc image/tableau -> liste de Fragment
     sans_legende = []
@@ -964,9 +924,8 @@ def _associer_legendes(blocs):
         est_image = isinstance(bloc, mm.Paragraphe) and any(f.image is not None
                                                              for f in bloc.fragments)
         est_tableau = isinstance(bloc, mm.Tableau)
-        # Un bloc reconnu (voir _regrouper_blocs) cherche sa légende comme les autres — sauf
-        # si l'autrice ou l'auteur en a TAPÉ une sous « Légende : » : on n'en prend alors
-        # aucune autre, et un paragraphe « Figure 1 : … » voisin reste dans le texte, visible.
+        # Un bloc reconnu (voir _regrouper_blocs) qui a déjà une clé « Légende : » saisie n'en
+        # cherche pas d'autre : un paragraphe « Figure 1 : … » voisin reste alors dans le texte.
         est_bloc = isinstance(bloc, _Bloc) and not bloc.legende_saisie()
         if not (est_image or est_tableau or est_bloc):
             continue
@@ -977,12 +936,10 @@ def _associer_legendes(blocs):
         else:
             sans_legende.append(idx)
 
-    # Second passage (29.09.2026) : une légende séparée de son bloc par un paragraphe VIDE
-    # (« Abbildung 1: Schatzkarte… », ¶ vide, puis l'image) n'était jamais voisine, donc
-    # jamais trouvée. On saute alors jusqu'à MAX_VIDES_LEGENDE vides — mais dans quel sens
-    # d'abord ? Sauter les vides rend une légende atteignable depuis DEUX blocs (celui qu'elle
-    # suit, celui qu'elle précède) : c'est la convention du document (légendes au-dessus ou
-    # au-dessous, à la majorité ; à égalité, au-dessous comme le premier passage) qui tranche.
+    # Second passage : légende séparée de son bloc par des paragraphes vides (jusqu'à
+    # MAX_VIDES_LEGENDE). Une telle légende peut être à portée de deux blocs ; le sens se
+    # choisit à la majorité des légendes du document (au-dessus ou au-dessous), au-dessous à
+    # égalité.
     if sans_legende:
         dessus = dessous = 0
         for idx in legendes:
@@ -1013,7 +970,7 @@ def _est_paragraphe_texte(bloc):
 
 def _legende_apres_vides(blocs, idx, pas, consommes):
     """([indices], fragments) de la légende du bloc `idx` dans le sens `pas` (-1 au-dessus,
-    +1 au-dessous), en sautant 1 à MAX_VIDES_LEGENDE paragraphes vides — None sinon. Mêmes
+    +1 au-dessous), en sautant 1 à MAX_VIDES_LEGENDE paragraphes vides, ou None. Mêmes
     deux formes que _cherche_legende() : un paragraphe qui matche RE_LEGENDE, ou le titre bref
     (« Abbildung 1 ») suivi de son texte sur le paragraphe d'après."""
     j, vides = idx + pas, 0
@@ -1031,7 +988,7 @@ def _legende_apres_vides(blocs, idx, pas, consommes):
         return (RE_LEGENDE.match(t) and len(t) <= 20
                 and not t.rstrip().endswith((':', '.', '!', '?')))
 
-    # Forme à deux paragraphes : titre bref PUIS texte, dans l'ordre du document.
+    # Forme à deux paragraphes : titre bref puis texte, dans l'ordre du document.
     i_titre, i_texte = (j - 1, j) if pas < 0 else (j, j + 1)
     if (0 <= i_titre and i_texte < len(blocs) and i_titre not in consommes
             and i_texte not in consommes
@@ -1052,33 +1009,27 @@ def _texte_legende_trace(fragments):
 
 
 # ---------------------------------------------------------------------------------
-# Figures et tableaux reconnus AVANT l'écriture (décision de Robin, 29.09.2026).
+# Figures et tableaux reconnus avant l'écriture. Chaque contenu de figure (une ou plusieurs
+# images) ou de tableau devient un `_Bloc`, qui emporte les clés qui le précèdent :
+#   - clés tapées à la main (« Légende : … » en style Normal) ou déjà au style
+#     « SZH Cle Abb/Tab » d'un document au gabarit ;
+#   - plusieurs images d'un même paragraphe, plusieurs paragraphes d'images à la suite, ou un
+#     tableau de mise en page qui ne porte que des images : une seule figure.
+# L'import (pronto_modele.py) relit un bloc à plusieurs images comme un groupe d'images
+# (`::: {.szh-grille}`), avec un numéro et une légende.
 #
-# Trois défauts mesurés sur le nettoyeur, que ce passage corrige ensemble :
-#   1. les clés TAPÉES à la main juste avant une image (« Légende : … », « Crédit : … » en
-#      style Normal, sans le style du gabarit) n'étaient pas reconnues : elles restaient en
-#      corps de texte, et l'image recevait un second jeu de clés, vides ;
-#   2. deux images dans un même paragraphe, ou plusieurs paragraphes d'images à la suite, ou
-#      un tableau de mise en page qui ne porte que des images, donnaient DEUX blocs figure
-#      vides (ou un bloc tableau vide) — là où l'autrice ou l'auteur montrait UNE figure ;
-#   3. un document déjà au gabarit voyait ses clés « SZH Cle Abb/Tab » réécrites en corps de
-#      texte, suivies d'un nouveau jeu de clés vides.
-# Chaque contenu de figure (images) ou de tableau devient donc UN `_Bloc`, qui emporte les
-# clés qui le précèdent. L'import (pronto_modele.py) relit ensuite un bloc à plusieurs images
-# comme un groupe d'images (`::: {.szh-grille}`), un numéro, une légende.
-#
-# ⚠ Rien n'est jamais jeté ici : une clé reconnue part DANS le bloc (sa valeur y est écrite),
-#   une clé dont l'étiquette n'est reconnue par rien reste un paragraphe du texte (cas B), ou
-#   garde tel quel le jeu de clés du document (cas A, `cles_brutes`), que l'import dira.
+# Rien n'est perdu : une clé reconnue est écrite dans le bloc ; une clé non reconnue reste
+# un paragraphe du texte, ou, si elle porte le style du gabarit, le jeu de clés du document
+# est recopié tel quel (`cles_brutes`) et l'import le signale.
 
 class _Bloc:
     """Un bloc figure ou tableau à écrire d'un seul tenant. `rangees` : liste de listes
-    d'Image (figure) — une rangée par paragraphe ou par rangée de tableau du manuscrit ;
-    `tableau` : le Tableau du manuscrit (bloc tableau). `champs` : ce que les clés saisies
-    disaient ('legende' en fragments, les autres en texte), '' pour une clé absente ou vide.
-    `cles` : les paragraphes de clé consommés. `cles_brutes` : vrai quand une clé stylée du
-    gabarit porte une étiquette que personne ne connaît — le jeu de clés est alors recopié tel
-    quel, jamais « normalisé » en perdant cette ligne. `source` : celle du premier contenu."""
+    d'Image (figure), une rangée par paragraphe ou par rangée de tableau du manuscrit.
+    `tableau` : le Tableau du manuscrit (bloc tableau). `champs` : les valeurs des clés
+    saisies ('legende' en fragments, les autres en texte, '' si absente ou vide). `cles` :
+    les paragraphes de clé consommés. `cles_brutes` : vrai quand une clé au style du gabarit
+    porte une étiquette inconnue ; le jeu de clés est alors recopié tel quel, pour ne pas
+    perdre cette ligne. `source` : celle du premier contenu."""
 
     __slots__ = ('nature', 'rangees', 'tableau', 'champs', 'cles', 'cles_brutes', 'source',
                  'note_reprise')
@@ -1125,11 +1076,11 @@ def _est_vide(bloc):
 
 
 def _rangees_tableau_images(tableau):
-    """Les rangées d'images d'un tableau de MISE EN PAGE — chaque cellule ne porte que des
-    images ou rien, au moins une image en tout — ou None pour tout autre tableau. Même
-    décision que pronto_modele.est_tableau_images() : une cellule qui porte AUSSI un texte
-    (« a) avant ») fait un vrai tableau, parce qu'un groupe d'images n'a nulle part où poser
-    une sous-légende par image — voir sa docstring."""
+    """Les rangées d'images d'un tableau de mise en page (chaque cellule ne porte que des
+    images ou rien, au moins une image en tout), ou None pour tout autre tableau. Même règle
+    que pronto_modele.est_tableau_images() : une cellule qui porte aussi un texte (« a)
+    avant ») fait un vrai tableau, un groupe d'images n'ayant pas de sous-légende par
+    image."""
     rangees = []
     for rangee in tableau.rangees:
         images = []
@@ -1146,7 +1097,7 @@ def _rangees_tableau_images(tableau):
 
 
 def _fragments_apres_deux_points(paragraphe):
-    """Les fragments de la VALEUR d'une clé « Étiquette : valeur », mise en forme comprise
+    """Les fragments de la valeur d'une clé « Étiquette : valeur », mise en forme comprise
     (une légende garde ses italiques), sans l'étiquette ni les blancs qui la suivent."""
     res, vu = [], False
     for f in paragraphe.fragments:
@@ -1171,10 +1122,10 @@ def _fragments_apres_deux_points(paragraphe):
 
 def _lire_cle(paragraphe):
     """(champ, paragraphe) pour un paragraphe de clé de figure/tableau : « Étiquette :
-    valeur », l'étiquette reconnue par pronto_modele.identifier_cle() contre CANON_FIGURE —
-    la MÊME reconnaissance que l'import, tolérance aux fautes comprise. Un paragraphe au style
-    « SZH Cle Abb/Tab » dont l'étiquette n'est reconnue par rien rend ('?', paragraphe) : c'est
-    une clé du gabarit, que le document porte telle quelle. None pour tout le reste."""
+    valeur », l'étiquette reconnue par pronto_modele.identifier_cle() contre CANON_FIGURE,
+    comme à l'import, tolérance aux fautes comprise. Un paragraphe au style
+    « SZH Cle Abb/Tab » d'étiquette inconnue rend ('?', paragraphe). None pour tout le
+    reste."""
     if not isinstance(paragraphe, mm.Paragraphe) or paragraphe.liste is not None:
         return None
     if any(f.image is not None for f in paragraphe.fragments):
@@ -1182,10 +1133,10 @@ def _lire_cle(paragraphe):
     texte = paragraphe.texte().strip()
     stylee = (pronto_modele.normaliser_nom_style(paragraphe.style)
               == pronto_modele.NOM_STYLE_CLE_BLOC)
-    # « Abbildung 1: Schatzkarte » est une LÉGENDE déjà écrite, pas une clé : « abbildung »
-    # est un alias de Légende dans CANON_FIGURE, et « Abbildung 1 » s'en approche assez pour
-    # passer — la légende perdait alors son « Abbildung 1 » (mesuré sur tmp/docx-dev : un mot
-    # de moins par figure). Elle suit la voie des légendes (_associer_legendes), entière.
+    # « Abbildung 1: Schatzkarte » est une légende déjà écrite, pas une clé : « abbildung »
+    # est un alias de Légende dans CANON_FIGURE, et « Abbildung 1 » en est assez proche pour
+    # être reconnu, ce qui ôterait « Abbildung 1 » de la légende. Elle passe donc par
+    # _associer_legendes(), entière.
     if not stylee and RE_LEGENDE.match(texte):
         return None
     if ':' in texte:
@@ -1200,9 +1151,9 @@ def _lire_cle(paragraphe):
 
 def _cles_avant(blocs, idx, pris):
     """Les indices (ordre du document) des paragraphes de clé qui précèdent directement le
-    contenu à `idx` : un paragraphe vide toléré juste avant le contenu (même fausse
-    manipulation que l'import tolère), puis une suite de clés, chaque champ une seule fois,
-    jamais un paragraphe déjà pris par un autre bloc."""
+    contenu à `idx` : un paragraphe vide toléré juste avant le contenu (comme à l'import),
+    puis une suite de clés, chaque champ une seule fois, hors paragraphes déjà pris par un
+    autre bloc."""
     j = idx - 1
     if j >= 0 and j not in pris and _est_vide(blocs[j]):
         j -= 1
@@ -1237,21 +1188,19 @@ def _champs_des_cles(paragraphes):
     return champs, brutes
 
 
-# Étiquettes d'une note de figure ou de tableau TAPÉE sous le contenu, en clair : la note d'un
-# tableau APA, « Note : … ». Reconnaissance STRICTE (pas de score de proximité) et réservée au
-# paragraphe qui suit immédiatement le contenu — un « Note : » ailleurs dans le corps n'est
-# jamais une note de bloc. La forme APA 7, « Note. » suivi du texte (et « Notiz. »,
-# « Anmerkung. » en allemand), est reconnue aussi, au singulier seulement : c'est ainsi
-# qu'APA l'écrit sous un tableau (demande du lot A, mesurée sur RV02_Redaction le 30.09.2026).
+# Étiquette d'une note de figure ou de tableau tapée sous le contenu (« Note : … », comme
+# sous un tableau APA). Reconnaissance stricte, sans tolérance aux fautes, et seulement dans
+# le paragraphe qui suit immédiatement le contenu. La forme APA 7 « Note. » (et « Notiz. »,
+# « Anmerkung. ») est reconnue aussi, au singulier seulement.
 _RE_NOTE_ADJACENTE = re.compile(
     r'^\s*(?:(?:notes?|remarques?|notizen?|anmerkung(?:en)?|hinweis(?:e)?|nota)\s*:'
     r'|(?:note|notiz|anmerkung)\.)\s*(?=\S)', re.I)
 
 
 def _note_adjacente(bloc):
-    """(texte de la note sans l'étiquette) si `bloc` est un paragraphe de texte « Note : … »
-    — ni image, ni liste, ni appel de note de bas de page (une note reprise dans une clé
-    perdrait l'appel) —, sinon None."""
+    """Le texte de la note sans l'étiquette si `bloc` est un paragraphe « Note : … » sans
+    image, sans liste et sans appel de note de bas de page (que la clé perdrait), sinon
+    None."""
     if not isinstance(bloc, mm.Paragraphe) or bloc.liste is not None:
         return None
     if any(f.image is not None or getattr(f, 'note', None) is not None
@@ -1265,12 +1214,11 @@ def _note_adjacente(bloc):
 
 
 def _regrouper_blocs(blocs):
-    """La liste « virtuelle » que _convertir_niveau_racine() écrit : chaque contenu de figure
-    (images seules, groupe, tableau de mise en page) ou de tableau PRÉCÉDÉ DE CLÉS devient un
-    `_Bloc` à la place de son premier contenu, ses clés et ses autres contenus en sont
-    retirés. Une image seule sans clé, un tableau sans clé restent tels quels (voie de
-    toujours) ; un paragraphe mêlant texte et images aussi, sauf qu'il n'y porte qu'UN bloc
-    pour toutes ses images (voir _convertir_niveau_racine)."""
+    """La liste de blocs que _convertir_niveau_racine() écrit. Un contenu de figure (images
+    seules, groupe, tableau de mise en page) ou de tableau précédé de clés, ou suivi d'une
+    note, devient un `_Bloc` à la place de son premier contenu ; ses clés et ses autres
+    contenus sont retirés de la liste. Une image seule ou un tableau sans clé restent tels
+    quels, comme un paragraphe mêlant texte et images (voir _convertir_niveau_racine)."""
     n = len(blocs)
     pris = set()
     blocs_par_debut = {}
@@ -1283,11 +1231,10 @@ def _regrouper_blocs(blocs):
             if rangees is None:
                 tableau = bloc
         elif _images_seules(bloc):
-            # Décision de Robin (29.09.2026), la même qu'à l'import (pronto_modele.
-            # MAX_VIDES_ENTRE_IMAGES) : les images qui se suivent, séparées de 0, 1 ou 2
-            # paragraphes VIDES au plus, sont UNE figure ; un texte, une nouvelle série de
-            # clés (un texte aussi) ou un troisième vide l'arrêtent. Les vides sautés sont
-            # consommés avec le groupe — ils ne portent rien, rien ne se perd.
+            # Comme à l'import (pronto_modele.MAX_VIDES_ENTRE_IMAGES) : des images qui se
+            # suivent, séparées au plus de deux paragraphes vides, forment une figure. Un
+            # texte, une clé ou un vide de plus l'arrêtent. Les vides sautés partent avec le
+            # groupe.
             rangees = [_images_du_paragraphe(bloc)]
             j = i + 1
             while j < n:
@@ -1307,9 +1254,9 @@ def _regrouper_blocs(blocs):
         groupe = rangees is not None and (len(rangees) > 1 or len(rangees[0]) > 1
                                            or isinstance(bloc, mm.Tableau))
         champs, brutes = _champs_des_cles([blocs[k] for k in cles])
-        # Le paragraphe qui suit IMMÉDIATEMENT le contenu, s'il commence par « Note : » : c'est
-        # la note du bloc. Il reste dans le texte quand une clé Note saisie la dit déjà, ou
-        # quand le jeu de clés est recopié tel quel (aucune place où l'écrire).
+        # Le paragraphe qui suit immédiatement le contenu, s'il commence par « Note : », est la
+        # note du bloc. Il reste dans le texte si une clé Note est déjà saisie, ou si le jeu de
+        # clés est recopié tel quel (pas de place où l'écrire).
         note_para = None
         if fin + 1 < n and (fin + 1) not in pris and not champs.get('note') and not brutes:
             note_texte = _note_adjacente(blocs[fin + 1])
@@ -1318,7 +1265,7 @@ def _regrouper_blocs(blocs):
                 champs['note'] = note_texte
                 pris.add(fin + 1)
         if not cles and not groupe and note_para is None:
-            i = fin + 1                   # image seule ou tableau sans clé : voie de toujours
+            i = fin + 1                   # image seule ou tableau sans clé : laissé tel quel
             continue
         blocs_par_debut[i] = _Bloc('figure' if rangees is not None else 'tableau',
                                    rangees=rangees, tableau=tableau, champs=champs,
@@ -1337,9 +1284,8 @@ def _regrouper_blocs(blocs):
 
 
 def blocs_figure(document):
-    """Les `_Bloc` que l'écriture posera, vus AVANT elle — pour que le nettoyeur juge les
-    images comme elles sortiront (texte alternatif saisi sous « Texte alternatif : » compris),
-    sans refaire la reconnaissance ailleurs."""
+    """Les `_Bloc` que l'écriture posera. Le nettoyeur s'en sert pour juger les images telles
+    qu'elles sortiront (texte alternatif saisi sous « Texte alternatif : » compris)."""
     return [b for b in _regrouper_blocs(document.blocs) if isinstance(b, _Bloc)]
 
 
@@ -1381,52 +1327,32 @@ def _bloc_xml(bloc, fragments_legende, registre):
 
 
 def _convertir_niveau_racine(blocs, registre, trace):
-    """Rend (xml_du_corps, correspondance) — xml_du_corps hors les deux tableaux fixes.
+    """Rend (xml_du_corps, correspondance), le corps sans les deux tableaux fixes.
 
-    `correspondance` (ajout du 19.09.2026, pour un module d'annotation) : une liste de
-    {'source': Paragraphe.source du bloc d'ORIGINE, 'sortie': indice RELATIF, parmi les <w:p>
-    écrits ICI, du <w:p> qui le porte} — un couple par paragraphe de CORPS effectivement écrit
-    comme <w:p> de premier niveau ; jamais pour un paragraphe consommé comme légende ou fondu
-    comme vide surnuméraire, qui ne produit rien. `source` est le vrai `Paragraphe.source` du
-    bloc, pas sa position dans `blocs` : les deux ne coïncident plus dès que l'appelant a retiré
-    des blocs de la liste avant d'appeler cette fonction (l'en-tête, §5.5) — un `para` d'alerte
-    porte toujours `Paragraphe.source`, jamais une position de liste. L'indice `sortie` est
-    RELATIF à ce que cette fonction écrit seule : ecrire() y ajoute le nombre de <w:p> qui la
-    précèdent dans le document final pour obtenir l'indice ABSOLU demandé.
+    `correspondance` : une entrée {'source': Paragraphe.source d'origine, 'sortie': indice,
+    parmi les <w:p> écrits ici, du <w:p> qui le porte} par paragraphe de corps écrit au
+    premier niveau. Un paragraphe pris comme légende ou un vide en trop n'en a pas. `source`
+    est le `Paragraphe.source` du bloc et non sa position dans `blocs`, car l'appelant a pu
+    retirer des blocs (les tableaux fixes). ecrire() ajoute à `sortie` le nombre de <w:p>
+    qui précèdent le corps.
 
-    Entrée `'bloc'` (ajout du 22.09.2026, demande du coordinateur — ancrage de
-    A11y.TexteAlternatif.*) : EN PLUS des entrées ci-dessus, une entrée par bloc figure/tableau,
-    {'source': Paragraphe.source du paragraphe PORTEUR de l'image (bloc figure) ou
-    Tableau.source (bloc tableau), 'sortie': indice du <w:p> de la clé « Texte alternatif : »,
-    'bloc': 'figure'|'tableau'} — CE paragraphe-clé, lui, N'A PAS le texte de `source` (c'est le
-    seul point d'ancrage réel qu'un bloc puisse offrir : ni l'image ni le tableau qu'il
-    enveloppe ne sont eux-mêmes un texte). `manuscrit_annoter.py` reconnaît cette entrée à la
-    présence de la clé `'bloc'` et ancre alors sur CE paragraphe entier (c'est l'endroit où la
-    relectrice écrira l'alt), sans jamais y chercher un `found` littéral. Une entrée normale et
-    une entrée `bloc` peuvent partager le même `source` (un paragraphe qui porte À LA FOIS du
-    texte et une image) : la RÉSOLUTION entre les deux revient à l'appelant (manuscrit_annoter.
-    py), pas à cette fonction, qui se contente de rendre les deux, honnêtement.
+    S'y ajoute une entrée par bloc figure ou tableau, pour ancrer les alertes
+    A11y.TexteAlternatif.* : {'source': source du paragraphe qui porte l'image ou du
+    Tableau, 'sortie': indice du <w:p> de la clé « Texte alternatif : », 'bloc': 'figure' ou
+    'tableau'}. Ce paragraphe ne contient pas le texte de `source` : manuscrit_annoter.py
+    reconnaît l'entrée à sa clé 'bloc' et ancre sur le paragraphe entier. Un paragraphe qui
+    porte texte et image a les deux entrées, de même `source` ; manuscrit_annoter.py choisit.
     """
     blocs = _regrouper_blocs(blocs)
     n = len(blocs)
     legendes, consommes = _associer_legendes(blocs)
-    segments = []          # (est_bloc, xml, idx_source_ou_None, est_vide, n_wp, type_bloc)
-    # `type_bloc` (ajout du 22.09.2026) : None pour un paragraphe de corps ordinaire,
-    # 'figure'/'tableau' pour un bloc — c'est lui qui distingue, dans la boucle de
-    # construction de `correspondance` plus bas, une entrée normale (`idx_source` = SA propre
-    # source, `sortie` = SA position) d'une entrée `bloc` (`idx_source` = la source du
-    # paragraphe/tableau qui porte le bloc, `sortie` = la position de sa clé « Texte
-    # alternatif : », toujours DEUXIÈME des clés — voir CHAMPS_BLOC/_INDICE_CLE_ALT).
-    # `n_wp` (ajouté le 21.09.2026, avec la nouvelle forme des blocs) : le nombre de <w:p>
-    # RÉELLEMENT écrits par ce segment au premier niveau du corps — 1 pour un paragraphe de
-    # corps ordinaire, comme avant ; pour un bloc, ce n'est PLUS zéro comme du temps de
-    # l'enveloppe <w:tbl> unique : un bloc écrit désormais ses paragraphes de clé (SZH
-    # Cle Abb/Tab) en <w:p> de plein droit, plus un cinquième pour l'image d'un bloc figure (le
-    # contenu d'un bloc tableau, lui, est un <w:tbl>, qui n'en ajoute aucun). Sans ce compte
-    # correct, `compteur_wp` déraille dès le premier bloc rencontré et toute la table de
-    # correspondance qui le suit pointe le mauvais <w:p> — mesuré : le contrôle du corpus réel
-    # (§11) rougissait entièrement après le premier bloc de chaque manuscrit illustré tant que
-    # ce champ n'existait pas.
+    # (est_bloc, xml, source ou None, est_vide, n_wp, type_bloc[, indice_alt])
+    # `type_bloc` : None pour un paragraphe de corps, 'figure' ou 'tableau' pour un bloc.
+    # `n_wp` : nombre de <w:p> écrits par le segment au premier niveau du corps. 1 pour un
+    # paragraphe ; pour un bloc, ses clés plus une par rangée d'images (le tableau d'un bloc
+    # tableau est un <w:tbl> et ne compte pas). `compteur_wp`, et donc toute la
+    # correspondance, en dépend.
+    segments = []
 
     idx = 0
     while idx < n:
@@ -1488,9 +1414,8 @@ def _convertir_niveau_racine(blocs, registre, trace):
                     style_id = _style_pour_paragraphe(p_texte, registre)
                     segments.append((False, _paragraphe_xml(p_texte, style_id, registre),
                                       bloc.source, False, 1, None))
-                # Plusieurs images dans une phrase (29.09.2026) : UN bloc pour toutes, comme
-                # pour un paragraphe d'images seules — deux blocs vides pour une figure qu'on
-                # montrait d'un tenant, c'était le défaut mesuré. Le texte reste au-dessus.
+                # Plusieurs images dans un paragraphe de texte : un seul bloc pour toutes, comme
+                # pour un paragraphe d'images seules. Le texte reste au-dessus.
                 fragments_legende = legendes.get(idx)
                 if len(images) > 1:
                     groupe = _Bloc('figure', rangees=[images], source=bloc.source)
@@ -1541,10 +1466,7 @@ def _convertir_niveau_racine(blocs, registre, trace):
                                   bloc.source, est_vide, 1, None))
         idx += 1
 
-    # Défaut mesuré (§10, décision n°2 de l'en-tête) : des paragraphes vides consécutifs —
-    # venus du manuscrit, ou de plusieurs blocs voisins ajoutant chacun leur propre demande de
-    # séparateur — pouvaient s'empiler à deux ou trois autour d'un même bloc. Fondus ici à UN
-    # SEUL au maximum, jamais zéro.
+    # Des paragraphes vides consécutifs du manuscrit sont réduits à un seul.
     segments_reduits = []
     for seg in segments:
         if seg[3] and segments_reduits and segments_reduits[-1][3]:
@@ -1558,8 +1480,8 @@ def _convertir_niveau_racine(blocs, registre, trace):
     precedent_est_vide = False
     for i, seg in enumerate(segments_reduits):
         est_bloc, xml, idx_source, est_vide, n_wp, type_bloc = seg[:6]
-        # Position de la clé « Texte alternatif : » dans le bloc : la deuxième des clés,
-        # sauf pour un jeu de clés recopié tel quel (`_Bloc.cles_brutes`), qui la donne.
+        # Position de la clé « Texte alternatif : » dans le bloc : _INDICE_CLE_ALT, sauf pour
+        # un jeu de clés recopié tel quel (`_Bloc.cles_brutes`), qui la donne.
         indice_alt = seg[6] if len(seg) > 6 else _INDICE_CLE_ALT
         if (i > 0 and _separateur_requis(est_bloc, precedent_est_bloc)
                 and not precedent_est_vide and not est_vide):
@@ -1569,10 +1491,8 @@ def _convertir_niveau_racine(blocs, registre, trace):
         if not est_bloc and idx_source is not None:
             correspondance.append({'source': idx_source, 'sortie': compteur_wp})
         elif est_bloc and idx_source is not None:
-            # La clé « Texte alternatif : » est la DEUXIÈME des paragraphes de clé
-            # (CHAMPS_BLOC : légende, alt, crédit, source, note) — `compteur_wp` vise ici le premier
-            # <w:p> du bloc (« Légende : »), +1 pour atteindre celui-ci. Vrai pour un bloc
-            # figure ET un bloc tableau : les deux partagent _meta_paragraphes_xml().
+            # `compteur_wp` vise le premier <w:p> du bloc ; la clé « Texte alternatif : » est
+            # `indice_alt` paragraphes plus loin, pour un bloc figure comme pour un tableau.
             correspondance.append({'source': idx_source, 'sortie': compteur_wp + indice_alt,
                                     'bloc': type_bloc})
         compteur_wp += n_wp
@@ -1583,8 +1503,7 @@ def _convertir_niveau_racine(blocs, registre, trace):
 
 def alerte_notes_reprises(trace, langue):
     """L'avertissement du rapport quand des paragraphes « Note : » ont quitté le corps pour la
-    clé Note d'un bloc (voir _note_adjacente) — None s'il n'y en a pas. `trace` : celle que
-    ecrire() rend."""
+    clé Note d'un bloc (voir _note_adjacente), ou None. `trace` : celle que rend ecrire()."""
     n = sum(1 for l in trace if l.get('decision') == 'note_reprise')
     if not n:
         return None
@@ -1601,22 +1520,16 @@ def alerte_notes_reprises(trace, langue):
 
 
 def _separateur_requis(est_bloc_courant, est_bloc_precedent):
-    """§5.3/§10 : un bloc figure/tableau ne touche JAMAIS son voisin, quel qu'il soit — c'est
-    précisément l'adjacence TABLEAU-TABLEAU que LibreOffice fond en un seul tableau (mesuré,
-    §10 : 4 tableaux côté .docx, 3 côté .odt sur le gabarit réel). Un paragraphe de corps
-    entre deux AUTRES paragraphes de corps, lui, n'a jamais montré ce défaut : on ne lui
-    impose pas de ligne vide supplémentaire (décision n°2 de l'en-tête). Fonction unique
-    délibérément séparée de l'assemblage : c'est LE point que le contrôle n°5 du §11 sabote
-    pour prouver qu'il garde vraiment quelque chose. Le fondu des vides consécutifs (voir
-    l'appelant) décide ENSUITE s'il faut vraiment injecter ce séparateur, ou si un paragraphe
-    vide du manuscrit lui-même en tient déjà lieu."""
+    """Vrai si un paragraphe vide doit séparer deux segments : un bloc figure ou tableau ne
+    touche pas son voisin, car LibreOffice fusionne deux tableaux qui se touchent. Deux
+    paragraphes de corps n'en ont pas besoin. L'appelant n'ajoute pas le séparateur si un
+    vide du manuscrit en tient lieu. Fonction séparée pour qu'un test puisse la saboter."""
     return est_bloc_courant or est_bloc_precedent
 
 
 # ---------------------------------------------------------------------------------
-# Relations et types de contenu — ajout PUR (jamais de retrait) de ce que les images et les
-# liens du document exigent, par simple manipulation de texte : le gabarit livré n'a besoin
-# d'aucune de ces entrées aujourd'hui (aucune image, aucun hyperlien dans son propre exemple).
+# Relations et types de contenu : ajout, par manipulation de texte, de ce que demandent les
+# images et les liens du document.
 
 def _ajouter_relations(rels_xml, nouvelles):
     if not nouvelles:
@@ -1643,10 +1556,9 @@ def _ajouter_types_contenu(ct_xml, extensions):
     return ct_xml.replace('</Types>', morceaux + '</Types>')
 
 
-# Seul retrait volontaire de ce module (voir ecrire()) : les parties du commentaire Word
-# d'aide du gabarit (ancré sur son propre bloc figure d'exemple, jamais recopié — le corps
-# écrit ici vient de `document.blocs`, pas du gabarit). Noms de fichier TELS QUE Word les
-# écrit (mesurés sur les deux gabarits V4, 29.09.2026).
+# Parties du commentaire Word d'aide du gabarit, retirées par ecrire() : il est ancré sur le
+# bloc figure d'exemple du gabarit, qui n'est pas recopié. Noms de fichier tels que Word les
+# écrit.
 _NOMS_COMMENTAIRES_GABARIT = ('comments.xml', 'commentsExtended.xml', 'commentsIds.xml',
                                'commentsExtensible.xml', 'people.xml')
 _PARTIES_COMMENTAIRES_GABARIT = tuple('word/' + n for n in _NOMS_COMMENTAIRES_GABARIT)
@@ -1665,82 +1577,70 @@ def _retirer_overrides(ct_xml, noms_parties):
 
 
 # ---------------------------------------------------------------------------------
-# En-tête (§5.5 du contrat, ajouté le 19.09.2026) — remplissage des DEUX tableaux fixes
-# (métadonnées, autrices et auteurs) depuis l'EnTete que manuscrit_entete.extraire_entete()
-# a reconnue. Ce module reste un écrivain pur : `entete` arrive déjà TRANCHÉE, comme
-# `decisions` — aucune reconnaissance ici, seulement la traduction en XML, exactement à
-# l'endroit où pronto_docx.lire()/pronto_modele.extraire_table_metadonnees()/
-# extraire_table_auteurs() vont la relire.
+# En-tête : remplissage des deux tableaux fixes (métadonnées, autrices et auteurs) depuis
+# l'EnTete reconnue par manuscrit_entete.extraire_entete(), aux cellules que relisent
+# pronto_modele.extraire_table_metadonnees() et extraire_table_auteurs().
 #
-# Gabarits V4 (29.09.2026, deux fichiers FR/DE) : les étiquettes ne sont plus une seule forme
-# figée (« Titre (FR) » quel que soit le produit) — le gabarit DE écrit « Titel (DE) »,
-# « Vorname: », « E-Mail: »… La reconnaissance d'étiquette ne repose donc plus sur une poignée
-# de regex françaises, mais sur `pronto_modele.identifier_cle()` contre CANON_METADONNEES /
-# CANON_AUTEUR — LA MÊME table et LA MÊME tolérance (accent oublié, alias) que le LECTEUR
-# (pronto_modele.extraire_table_metadonnees()/extraire_table_auteurs()) : un jeton reconnu à
-# l'écriture est GARANTI reconnu à la relecture, par construction, sur les deux gabarits à la
-# fois — jamais une deuxième table à tenir synchronisée avec la première.
+# Les étiquettes diffèrent selon le gabarit (« Titre (FR) », « Titel (DE) », « Vorname: »…).
+# Elles sont reconnues par pronto_modele.identifier_cle() contre CANON_METADONNEES et
+# CANON_AUTEUR, la même table et la même tolérance que le lecteur : ce que l'écriture
+# reconnaît, la relecture le reconnaît aussi.
 
 _RE_TR_XML = re.compile(r'<w:tr\b.*?</w:tr>', re.S)
 _RE_TC_XML = re.compile(r'<w:tc\b.*?</w:tc>', re.S)
 _RE_P_XML = re.compile(r'<w:p\b.*?</w:p>', re.S)
 _RE_T_XML = re.compile(r'<w:t\b[^>]*>(.*?)</w:t>', re.S)
 
-# jeton CANON_METADONNEES -> attribut d'EnTete à écrire. « type » et « motscles » n'y figurent
-# PAS : jamais déduits du texte du manuscrit (décision du brief de chantier — la relectrice les
-# choisit dans le cockpit) ; reconnus quand même par identifier_cle() (ils sont dans la table),
-# mais sans destination ici, comme avant ce chantier.
+# Jeton CANON_METADONNEES → attribut d'EnTete. « type » et « motscles » restent vides : la
+# rédaction les choisit dans le cockpit.
 _JETON_VERS_CHAMP_METADONNEES = {'titre': 'titre', 'soustitre': 'sous_titre', 'resume': 'resume'}
 
-# jeton CANON_AUTEUR -> champ du dict `auteur` (manuscrit_entete.CHAMPS_AUTEUR_ENTETE). Les
-# clés CLES_AUTEUR_SANS_DESTINATION (adresse/biographie/telephone/photo) n'y figurent PAS :
-# elles n'ont pas de champ dans EnTete.auteurs. `ror` n'est jamais lu dans le manuscrit, il
-# vient de manuscrit_identifiants (et reste alors « à vérifier », voir ci-dessous).
-# 'affiliation' est le seul jeton dont le NOM diffère du champ EnTete (`institution`).
+# Jeton CANON_AUTEUR → champ du dict `auteur` (manuscrit_entete.CHAMPS_AUTEUR_ENTETE). Les
+# clés CLES_AUTEUR_SANS_DESTINATION (adresse, biographie, téléphone, photo) n'ont pas de champ
+# dans EnTete.auteurs. `ror` ne se lit pas dans le manuscrit : il vient de
+# manuscrit_identifiants, à vérifier. Seul 'affiliation' change de nom (`institution`).
 _JETON_VERS_CHAMP_AUTEUR = {
     'prenom': 'prenom', 'nom': 'nom', 'fonction': 'fonction',
     'affiliation': 'institution', 'orcid': 'orcid', 'email': 'email', 'ror': 'ror',
 }
 
-# Auteur de révision des valeurs TROUVÉES par recherche (auteur['a_verifier']) : écrites en
+# Auteur de révision des valeurs trouvées par recherche (auteur['a_verifier']) : écrites en
 # révision Word suivie, pour que la rédaction les voie et les accepte ou les rejette.
 _AUTEUR_REVISION_IDENTIFIANTS = {'fr': 'Recherche ROR/ORCID — à vérifier',
                                  'de': 'ROR/ORCID-Suche — bitte prüfen'}
 # `w:id` provisoire d'une de ces révisions : renuméroté dans ecrire() au-delà de tout `w:id`
-# déjà présent dans le document, pour ne jamais coller avec ceux que pose manuscrit_annoter.
+# déjà présent dans le document, pour ne pas croiser ceux que pose manuscrit_annoter.
 _ID_REVISION_PROVISOIRE = 'SZH-ID-A-RENUMEROTER'
 
 LANGUE_PRODUIT_TEXTE = {'fr': 'français', 'de': 'deutsch'}
 
-# Préfixe de la ligne « Mots-clés » écrite en tête du corps (voir ecrire()), PAR LANGUE — même
-# convention de deux-points que _SEPARATEUR_CLE (FR : insécable avant, DE : collé).
+# Préfixe de la ligne « Mots-clés » écrite en tête du corps (voir ecrire()), par langue, avec
+# la même convention de deux-points que _SEPARATEUR_CLE.
 _PREFIXE_MOTS_CLES = {'fr': 'Mots-clés\u00a0: ', 'de': 'Schlüsselwörter: '}
 
 
 def _texte_xml_brut(fragment_xml):
     """Concatène tous les <w:t> d'un fragment XML brut (cellule ou paragraphe isolé),
-    décodé au minimum — sert UNIQUEMENT à reconnaître une étiquette, jamais réinjecté."""
+    décodé au minimum. Sert seulement à reconnaître une étiquette."""
     texte = ''.join(_RE_T_XML.findall(fragment_xml))
     return (texte.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
             .replace('&apos;', "'").replace('&quot;', '"'))
 
 
 def _etiquette_premiere_ligne(cellule_xml):
-    """Le texte du PREMIER <w:p> d'une cellule — l'étiquette elle-même, jamais la ligne
-    d'aide qui peut la suivre dans la même cellule (« facultatif », « 400 à 600 signes… ») :
-    mesuré sur les deux gabarits, la cellule « Champ » du tableau de métadonnées porte deux
-    paragraphes pour Sous-titre/Résumé/Type d'article. Passer les DEUX à identifier_cle()
-    ferait exploser la longueur comparée (LONGUEUR_ETIQUETTE_SCORE) et effondrer le score."""
+    """Le texte du premier <w:p> d'une cellule : l'étiquette, sans la ligne d'aide qui peut la
+    suivre (« facultatif », « 400 à 600 signes… », pour Sous-titre, Résumé et Type
+    d'article). Avec l'aide, le texte dépasserait LONGUEUR_ETIQUETTE_SCORE et
+    identifier_cle() ne le reconnaîtrait plus."""
     p = _RE_P_XML.search(cellule_xml)
     return _texte_xml_brut(p.group(0)) if p else ''
 
 
 def _inserer_dans_paragraphe(p_xml, valeur, revision=None):
-    """Ajoute un <w:r> portant `valeur` juste avant le </w:p> qui referme `p_xml` — le
-    paragraphe reste par ailleurs inchangé (style, langue). `p_xml` peut être un paragraphe
-    isolé ou une cellule qui n'en contient qu'un seul (le tableau des métadonnées, mesuré :
-    chaque cellule « valeur » est un unique paragraphe vide). `revision` : l'auteur de révision
-    — le run est alors enveloppé dans un <w:ins> (révision suivie, id à renuméroter)."""
+    """Ajoute un <w:r> portant `valeur` juste avant le dernier </w:p> de `p_xml`, sans
+    toucher au style ni à la langue. `p_xml` est un paragraphe, ou une cellule qui n'en a
+    qu'un (cellule « valeur » du tableau des métadonnées). `revision` : auteur de révision ;
+    le run est alors enveloppé dans un <w:ins> (révision suivie, id à renuméroter)."""
     if not valeur:
         return p_xml
     i = p_xml.rindex('</w:p>')
@@ -1754,11 +1654,9 @@ def _inserer_dans_paragraphe(p_xml, valeur, revision=None):
 
 def _remplir_table_metadonnees(table_xml, entete):
     """Remplit les cellules « valeur » du tableau de métadonnées : Titre, Sous-titre, Résumé
-    (dans la langue du PRODUIT — chaque gabarit ne porte qu'une ligne, « (FR) » ou « (DE) »
-    selon le fichier) et Langue de l'article (français/deutsch). « Type d'article » reste
-    toujours vide. L'étiquette est débarrassée d'un éventuel suffixe « (FR)/(DE)/(IT) »
-    (RE_SUFFIXE_LANGUE) avant d'être reconnue — « Titel (DE) » vise le même jeton `titre` que
-    « Titre (FR) ». Rend (xml, trace)."""
+    (une ligne par gabarit, dans la langue du produit) et Langue de l'article (français ou
+    deutsch). « Type d'article » reste vide. Le suffixe « (FR) », « (DE) » ou « (IT) » de
+    l'étiquette est retiré (RE_SUFFIXE_LANGUE) avant la reconnaissance. Rend (xml, trace)."""
     trace = []
     lignes = _RE_TR_XML.findall(table_xml)
     if not lignes:
@@ -1779,7 +1677,7 @@ def _remplir_table_metadonnees(table_xml, entete):
         elif champ in _JETON_VERS_CHAMP_METADONNEES:
             valeur = getattr(entete, _JETON_VERS_CHAMP_METADONNEES[champ])
         else:
-            continue                          # 'type'/'motscles' : jamais remplis (brief)
+            continue                          # 'type' et 'motscles' restent vides
         if not valeur:
             continue
         nouvelle_cellule = _inserer_dans_paragraphe(cellules[1], valeur)
@@ -1792,13 +1690,10 @@ def _remplir_table_metadonnees(table_xml, entete):
 
 
 def _remplir_fiche_auteur(cellule_xml, auteur, langue='fr'):
-    """(cellule remplie, nombre de champs remplis) — une ligne « Étiquette : » (FR) ou
-    « Étiquette: » (DE, collée) par champ ; un champ de `auteur['a_verifier']` (trouvé par
-    recherche, pas lu dans le manuscrit) est écrit en révision suivie. L'étiquette
-    reconnue contre CANON_AUTEUR — même mécanisme que _remplir_table_metadonnees, jamais de
-    suffixe de langue à retirer ici (« Vorname: », pas « Vorname (DE): »). Ne modifie QUE les
-    paragraphes dont l'étiquette est reconnue ; toute ligne inconnue du gabarit reste telle
-    quelle."""
+    """(cellule remplie, nombre de champs remplis). La fiche a une ligne « Étiquette : » par
+    champ, reconnue contre CANON_AUTEUR ; seules les lignes reconnues sont remplies. Un champ
+    de `auteur['a_verifier']` (trouvé par recherche, pas lu dans le manuscrit) est écrit en
+    révision suivie."""
     paragraphes = _RE_P_XML.findall(cellule_xml)
     nouvelle_cellule = cellule_xml
     rempli = 0
@@ -1823,10 +1718,9 @@ def _remplir_fiche_auteur(cellule_xml, auteur, langue='fr'):
 
 
 def _remplir_table_auteurs(table_xml, entete, langue='fr'):
-    """Une fiche par auteur reconnu, à l'endroit exact où pronto_modele.extraire_table_
-    auteurs() va les relire. Plus d'auteurs que de fiches dans le gabarit : la DERNIÈRE fiche
-    est dupliquée autant de fois que nécessaire (décision du brief). Moins d'auteurs : les
-    fiches en trop restent vides, comme livrées. Rend (xml, trace)."""
+    """Remplit une fiche par auteur reconnu, là où pronto_modele.extraire_table_auteurs() les
+    relit. S'il y a plus d'auteurs que de fiches, la dernière fiche est dupliquée ; les fiches
+    en trop restent vides. Rend (xml, trace)."""
     trace = []
     lignes = _RE_TR_XML.findall(table_xml)
     if len(lignes) < 2:
@@ -1900,15 +1794,11 @@ def _porte_szh_cle(tableau):
 
 def _tableaux_fixes_du_document(blocs):
     """{rang (0 = métadonnées, 1 = autrices et auteurs) : indice dans `blocs`} des tableaux
-    fixes que le DOCUMENT porte déjà — cas A, document déjà au gabarit. Même règle que le
-    lecteur du gabarit (pronto_modele.principal : les deux premiers tableaux, par position),
-    plus une garde : le tableau doit porter des paragraphes « SZH Cle », sans quoi ce n'est
-    pas un tableau fixe mais un tableau de contenu qui se trouve en tête.
-
-    Défaut mesuré (29.09.2026) : un document déjà au gabarit ressortait du nettoyeur avec
-    QUATRE tableaux de tête — les deux du gabarit, vides, puis les siens, remplis, recopiés
-    dans le corps. À la réimportation, le lecteur prenait les deux vides comme tableaux fixes
-    et imprimait les deux remplis au milieu de l'article."""
+    fixes que porte un document déjà au gabarit (cas A). Même règle que le lecteur
+    (pronto_modele.principal : les deux premiers tableaux), et le tableau doit porter des
+    paragraphes « SZH Cle » ; sinon c'est un tableau de contenu placé en tête. ecrire() met
+    ces tableaux à la place de ceux, vides, du gabarit : recopiés dans le corps, ils seraient
+    relus comme du contenu."""
     tables = [i for i, b in enumerate(blocs) if isinstance(b, mm.Tableau)]
     return {rang: i for rang, i in enumerate(tables[:2]) if _porte_szh_cle(blocs[i])}
 
@@ -1917,23 +1807,19 @@ def _tableaux_fixes_du_document(blocs):
 # Point d'entrée.
 
 def ecrire(document, chemin_gabarit, chemin_sortie, decisions=None, entete=None, langue='fr'):
-    """Écrit un .docx au gabarit Pronto depuis un Document du §4, en PARTANT d'une copie du
-    gabarit livré (`chemin_gabarit`) — jamais un .docx fabriqué de zéro (§5.3). `decisions` :
-    les (stats, trace) déjà produits par manuscrit_modele.classer_titres()/
-    nettoyer_mise_en_forme() sur CE document (facultatif, non réinterprété ici — voir l'en-
-    tête : ce module ne prend AUCUNE décision, il ne fait que les traduire en styles Word) ;
-    simplement recopié dans le retour, pour qu'un seul objet porte tout l'historique d'un
-    document au moment d'écrire le rapport. `entete` : l'EnTete que manuscrit_entete.
-    extraire_entete() a reconnue (§5.5 du contrat), déjà tranchée elle aussi — None en cas A
-    (§1 : le gabarit est déjà rempli, rien à écrire ici) ou si l'appelant ne la fournit pas ;
-    remplit alors les DEUX tableaux fixes (titre/sous-titre/résumé/langue, fiches d'autrices
-    et auteurs) au lieu de les recopier vides. `langue` : 'fr' (défaut, compatibilité des
-    appels existants) ou 'de' — choisit les LIBELLÉS écrits par ce module lui-même (étiquettes
-    des blocs figure/tableau, ligne « Mots-clés »), PAS la reconnaissance des étiquettes déjà
-    tapées par l'autrice ou l'auteur (identifier_cle() contre CANON_FIGURE/CANON_METADONNEES/
-    CANON_AUTEUR reconnaît les deux jeux à la fois, quelle que soit cette valeur) ; une valeur
-    inattendue retombe sur 'fr', tracé. Rend un dict {'stats', 'trace', 'decisions',
-    'correspondance'} — voir la docstring de _convertir_niveau_racine pour ce dernier champ.
+    """Écrit `chemin_sortie`, un .docx au gabarit Pronto, depuis `document`, en partant d'une
+    copie du gabarit `chemin_gabarit`.
+
+    `decisions` : les (stats, trace) de manuscrit_modele.classer_titres() et
+    nettoyer_mise_en_forme() sur ce document, facultatifs, recopiés tels quels dans le
+    retour pour le rapport. `entete` : l'EnTete reconnue par manuscrit_entete.
+    extraire_entete() ; si elle est fournie, les deux tableaux fixes sont remplis. None en
+    cas A (document déjà au gabarit). `langue` : 'fr' ou 'de', pour les libellés que ce module
+    écrit (clés des blocs, ligne « Mots-clés ») ; la reconnaissance des étiquettes saisies
+    accepte les deux langues. Une autre valeur retombe sur 'fr', tracé.
+
+    Rend {'stats', 'trace', 'decisions', 'correspondance'} ; pour `correspondance`, voir
+    _convertir_niveau_racine().
     """
     trace_langue = []
     if langue not in CHAMPS_BLOC:
@@ -1949,14 +1835,9 @@ def ecrire(document, chemin_gabarit, chemin_sortie, decisions=None, entete=None,
         ct_xml = zin.read('[Content_Types].xml').decode('utf-8')
         contenus = {nom: zin.read(nom) for nom in noms}
 
-    # Le gabarit porte un commentaire Word d'aide, ancré sur son propre bloc figure d'exemple
-    # (word/comments.xml + commentsExtended/Ids/Extensible.xml + people.xml, et leurs relations
-    # / Override) — jamais recopié : le corps qu'écrit ce module est RECONSTRUIT depuis
-    # `document.blocs` (voir plus bas), l'exemple du gabarit et son ancre disparaissent avec
-    # lui. Sans ce retrait, ces cinq parties restent dans l'archive de sortie, ORPHELINES (plus
-    # aucune commentRangeStart/End/commentReference nulle part dans le document produit) —
-    # `manuscrit_annoter.py` ne sait ajouter un commentaire QUE si aucun comments.xml n'existe
-    # déjà (sinon il tente d'ajouter à celui, périmé, du gabarit).
+    # Le commentaire Word d'aide du gabarit est ancré sur le bloc figure d'exemple, qui n'est
+    # pas recopié : ses parties, relations et Override sont retirés. Restées orphelines, elles
+    # gêneraient manuscrit_annoter.py, qui crée son propre comments.xml.
     parties_orphelines = [n for n in _PARTIES_COMMENTAIRES_GABARIT if n in contenus]
     for nom in parties_orphelines:
         del contenus[nom]
@@ -1998,10 +1879,8 @@ def ecrire(document, chemin_gabarit, chemin_sortie, decisions=None, entete=None,
     rid_existants = [int(m) for m in re.findall(r'Id="rId(\d+)"', rels_xml)]
     registre = _Registre(max(rid_existants, default=0) + 1, numbering_xml_gabarit)
     registre.largeur_max_dxa = _largeur_utile_page_dxa(sect_xml)
-    # Styles réels du gabarit COURANT (voir _StylesResolus) — résolus AVANT tout XML écrit :
-    # tout le reste de cette fonction, et tout ce qu'appelle _convertir_niveau_racine, lit
-    # registre.styles/registre.champs_bloc/registre.separateur_cle, jamais une constante
-    # module-level codée pour un seul gabarit.
+    # Styles du gabarit courant (voir _StylesResolus) et libellés de la langue, résolus avant
+    # toute écriture : la suite les lit dans le registre.
     registre.styles = _StylesResolus(styles_xml_gabarit)
     registre.champs_bloc = CHAMPS_BLOC[langue]
     registre.separateur_cle = _SEPARATEUR_CLE[langue]
@@ -2017,8 +1896,8 @@ def ecrire(document, chemin_gabarit, chemin_sortie, decisions=None, entete=None,
                                % ', '.join(sorted(n.rsplit('/', 1)[-1]
                                                    for n in parties_orphelines))})
     trace.extend(registre.styles.trace)
-    # Cas A : les tableaux fixes du DOCUMENT remplacent ceux, vides, du gabarit — recopiés avec
-    # leurs styles maison (SZH Cle, SZH Aide) et leurs photos, jamais dupliqués dans le corps.
+    # Cas A : les tableaux fixes du document remplacent ceux, vides, du gabarit, avec leurs
+    # styles maison (SZH Cle, SZH Aide) et leurs photos, et sortent du corps.
     fixes = _tableaux_fixes_du_document(document.blocs) if entete is None else {}
     for rang, i in sorted(fixes.items()):
         xml_fixe = _tableau_xml(document.blocs[i], registre)
@@ -2035,10 +1914,8 @@ def ecrire(document, chemin_gabarit, chemin_sortie, decisions=None, entete=None,
     corps_xml, correspondance_relative = _convertir_niveau_racine(blocs_corps, registre, trace)
     trace.extend(trace_entete)
 
-    # §5.5 : aucun des deux gabarits ne porte de champ mots-clés — repli documenté par le brief
-    # de chantier : un paragraphe de Corps de texte en tête du corps, jamais un champ inventé
-    # dans le tableau des métadonnées. Préfixe PAR LANGUE (FR « Mots-clés : », DE
-    # « Schlüsselwörter: » — même convention de deux-points que les blocs figure/tableau).
+    # Les gabarits n'ont pas de champ mots-clés : ils vont dans un paragraphe de corps de texte
+    # en tête du corps, préfixé selon la langue (_PREFIXE_MOTS_CLES).
     prefixe_mots_cles_xml = ''
     if entete is not None and entete.mots_cles:
         ligne_mc = _PREFIXE_MOTS_CLES[langue] + ', '.join(entete.mots_cles)
@@ -2050,17 +1927,14 @@ def ecrire(document, chemin_gabarit, chemin_sortie, decisions=None, entete=None,
                       'motif': "aucun champ mots-clés dans le gabarit : écrits en premier "
                                "paragraphe du corps (« %s »)" % ligne_mc})
 
-    # Décision n°7 de l'en-tête : les deux <w:p/> qui séparent les deux tableaux fixes du
-    # gabarit précèdent le corps — d'où le décalage entre l'indice RELATIF que rend
-    # _convertir_niveau_racine (qui ignore tout ce qu'elle n'écrit pas elle-même) et
-    # l'indice ABSOLU, parmi tous les <w:p> enfants directs de w:body, que demande le futur
-    # module d'annotation. Le paragraphe des mots-clés, quand il existe, s'ajoute à ce
-    # décalage : c'est un <w:p> de plus AVANT le premier paragraphe du corps proprement dit.
+    # Indices de la correspondance rendus absolus (parmi les <w:p> enfants de w:body) : le
+    # corps est précédé des deux <w:p/> qui suivent les tableaux fixes, et de la ligne des
+    # mots-clés si elle existe.
     PREFIXE_WP_TABLEAUX_FIXES = 2 + (1 if prefixe_mots_cles_xml else 0)
     correspondance = []
     for c in correspondance_relative:
         entree = {'source': c['source'], 'sortie': c['sortie'] + PREFIXE_WP_TABLEAUX_FIXES}
-        if 'bloc' in c:  # entrée de bloc (§22.09.2026) : propagée telle quelle, jamais perdue.
+        if 'bloc' in c:  # entrée de bloc figure ou tableau
             entree['bloc'] = c['bloc']
         correspondance.append(entree)
 
@@ -2086,9 +1960,8 @@ def ecrire(document, chemin_gabarit, chemin_sortie, decisions=None, entete=None,
                                "générique posé, Word pourra mal les afficher"
                                % ', '.join(sorted(registre.extensions_inconnues))})
 
-    # §5.4 : une définition de liste a été réutilisée ou injectée pour chaque TYPE
-    # ('puce'/'numero') effectivement employé par le document — une ligne de trace par type,
-    # jamais en silence sur la voie choisie.
+    # Une ligne de trace par type de liste employé : définition du gabarit réutilisée, ou
+    # définition ajoutée.
     for ligne in registre.listes.trace:
         motif = (("réutilise la définition « %s » déjà adéquate du gabarit (numId %s)"
                   % (ligne['type'], ligne['numid'])) if ligne['voie'] == 'gabarit' else
@@ -2103,9 +1976,8 @@ def ecrire(document, chemin_gabarit, chemin_sortie, decisions=None, entete=None,
     if numbering_xml_final is not None:
         contenus['word/numbering.xml'] = numbering_xml_final.encode('utf-8')
         if numbering_xml_gabarit is None:
-            # Filet de sécurité jamais exercé par le gabarit livré (il porte déjà ce fichier,
-            # relié et déclaré) : un gabarit qui n'aurait AUCUN numbering.xml a aussi besoin
-            # de sa relation et de son entrée [Content_Types].xml pour rester un .docx valide.
+            # Gabarit sans numbering.xml (le gabarit livré en a un) : la partie ajoutée a
+            # besoin de sa relation et de son Override pour que le .docx reste valide.
             if 'numbering.xml' not in rels_xml_final:
                 rid_num = registre._nouveau_rid('document')
                 rels_xml_final = _ajouter_relations(rels_xml_final, [
@@ -2117,7 +1989,7 @@ def ecrire(document, chemin_gabarit, chemin_sortie, decisions=None, entete=None,
                     '"application/vnd.openxmlformats-officedocument.wordprocessingml.'
                     'numbering+xml"/></Types>')
 
-    # Notes de bas de page (contrat partagé du 19.09.2026) — voir l'en-tête, décision n°6.
+    # Notes de bas de page (voir l'en-tête du fichier).
     for ligne in registre.notes.trace:
         trace.append(ligne)
     orphelines = registre.notes.orphelines()
@@ -2140,8 +2012,7 @@ def ecrire(document, chemin_gabarit, chemin_sortie, decisions=None, entete=None,
     if footnotes_xml_final is not None:
         contenus['word/footnotes.xml'] = footnotes_xml_final.encode('utf-8')
         if footnotes_xml_gabarit is None:
-            # Filet de sécurité jamais exercé par le gabarit livré (il porte déjà ce fichier,
-            # relié et déclaré) — même logique que pour numbering.xml plus haut.
+            # Gabarit sans footnotes.xml : comme pour numbering.xml plus haut.
             if 'footnotes.xml' not in rels_xml_final:
                 rid_fn = registre._nouveau_rid('document')
                 rels_xml_final = _ajouter_relations(rels_xml_final, [
@@ -2153,9 +2024,8 @@ def ecrire(document, chemin_gabarit, chemin_sortie, decisions=None, entete=None,
                     '"application/vnd.openxmlformats-officedocument.wordprocessingml.'
                     'footnotes+xml"/></Types>')
 
-    # Relations propres à footnotes.xml (une note qui porte une image ou un lien) : une
-    # PARTIE différente de l'archive, avec son PROPRE fichier .rels — jamais mélangées à
-    # celles de document.xml (voir _Registre).
+    # Relations des notes qui portent une image ou un lien : dans footnotes.xml.rels, distinct
+    # de document.xml.rels (voir _Registre).
     nouvelles_relations_notes = [
         (rid, REL_IMAGE, 'media/' + nomfichier, False)
         for rid, nomfichier, _ext, _octets in registre.images_notes

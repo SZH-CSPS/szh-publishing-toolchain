@@ -4,7 +4,7 @@
     "Lu par le formulaire du cockpit, le convertisseur Kirby -> pandoc et les filtres Lua ; il vit dans pipeline/ pour partir avec le toolkit (le cockpit le cherche dans le dépôt puis dans toolkit/pipeline/, comme lib/citations.js) ; les blueprints de kirby/site/blueprints/ en sont générés et ne s'éditent jamais à la main.",
     "Noms de champs : a-z, 0-9 et _ seulement (règle Kirby). `title` est le titre natif d'une page Kirby. Les valeurs de liste sont des jetons, jamais des libellés.",
     "saisie : texte | texte_long | url | date (AAAA-MM-JJ) | date_partielle (AAAA, AAAA-MM ou AAAA-MM-JJ) | annee | liste | derive | structure | fichier.",
-    "Voir docs/TODO/kirby-cms.md pour ce que le site Kirby doit reprendre."
+    "Ce que le site Kirby reprend : docs/FORMAT-DOCUMENTATION-KIRBY.md, section « Le site Kirby »."
   ],
   "version": 1,
   "_dossiers": "types[].dossier : nom du sous-dossier de _NewsUndActu/Fiches/ qui range ce type. Un mot allemand en minuscules ASCII (ü devient ue, ö devient oe) : c'est aussi le segment d'adresse du site Kirby. Ne se renomme jamais une fois des fiches écrites.",
@@ -2791,7 +2791,7 @@
     "de": "{genre} vom {date}: {libelle}"
   },
   "kirby": {
-    "_lisezmoi": "Conventions de l'arborescence écrite par Pronto. Voir docs/TODO/kirby-cms.md §1 : le suffixe de langue est à confirmer sur une vraie instance.",
+    "_lisezmoi": "Conventions de l'arborescence écrite par Pronto. Le suffixe de langue reste à confirmer sur une vraie instance (docs/A-FAIRE.md).",
     "pageDocumentation": "documentation",
     "fichierContenu": "{template}.{langue}.txt",
     "separateur": "----",
