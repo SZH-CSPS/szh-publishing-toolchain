@@ -1,7 +1,7 @@
 // L'onglet Secrétariat de l'Accueil côté hôte (lib/accueil-secretariat-hote.js) : les
 // arguments passés à outils/secretariat-cli.js, le dossier Exports\<action>, l'historique
-// partagé dans _Systeme\exports, et aucun enfant qui survive à l'Accueil. Un faux CLI tient lieu du vrai : il
-// note ses arguments et son pid, puis répond ou dort.
+// partagé dans _Systeme\exports, et aucun enfant qui survive à l'Accueil. Un faux CLI tient
+// lieu du vrai : il note ses arguments et son pid, puis répond ou dort.
 //
 //   node --test test/js/accueil-secretariat.test.js
 'use strict';
@@ -72,7 +72,7 @@ async function attendre(condition, ms) {
   return condition();
 }
 
-// ---- Le côté enfant : l'extension activée, un export lancé, puis le geste qui doit le tuer ----
+// ---- Le côté enfant : l'extension activée, un export lancé, puis l'action qui doit le tuer ----
 async function enfant() {
   const { revueDEssai, activerHote } = require('./hote-factice');
   const { MSG } = require(path.join(COCKPIT, 'lib', 'messages.js'));
@@ -116,7 +116,7 @@ if (CAS) {
   const EXPORTS = path.join(BASE, 'Exports');
   const oublier = () => { envoyes.length = 0; reveles.length = 0; dossiers.length = 0; try { fs.rmSync(JOURNAL); } catch (e) { /* vide */ } };
   // Un test qui échoue en laissant un enfant ne doit pas figer le fichier : ses tuyaux le tiendraient en vie.
-  // On tue par l'hôte, jamais par un pid relevé plus tôt, que Windows a pu redonner à un autre processus.
+  // On tue par l'hôte, pas par un pid relevé plus tôt, que Windows a pu redonner à un autre processus.
   test.after(() => hote.arreter());
   const fin = () => envoyes.filter((m) => m.type === MSG.ACCUEIL_FIN).pop();
   const val = (args, k) => args[args.indexOf(k) + 1];
@@ -211,7 +211,7 @@ if (CAS) {
 
   // ---- L'historique partagé : _Systeme\exports, le même pour tous les postes ----
   const viderHisto = () => { fs.rmSync(HISTO, { recursive: true, force: true }); };
-  // Un « poste » : son propre globalState, branché sur l'hôte le temps d'un geste.
+  // Un « poste » : son propre globalState, branché sur l'hôte le temps d'une action.
   const poste = (etat) => ({ get: (k) => etat[k], update: (k, v) => { if (v === undefined) { delete etat[k]; } else { etat[k] = v; } return Promise.resolve(); } });
   const brancher = (m) => hote.configurer({ memoire: m });
   test.afterEach(() => { brancher({ get: (k) => memoire[k], update: (k, v) => { memoire[k] = v; return Promise.resolve(); } }); emplacement('test'); });
@@ -495,7 +495,7 @@ if (CAS) {
     } finally { delete process.env.SZH_FAUX_MODE; hote.arreter(); }
   });
 
-  // Les trois gestes qui ferment l'Accueil, dans l'extension activée : chacun dans son
+  // Les trois actions qui ferment l'Accueil, dans l'extension activée : chacune dans son
   // propre processus, le faux vscode ne s'activant qu'une fois.
   for (const cas of ['fermeture', 'dossier', 'desactivation']) {
     test('secrétariat : ' + cas + ' de l’Accueil pendant un export, et aucun enfant ne survit', () => {

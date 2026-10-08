@@ -1,91 +1,77 @@
 'use strict';
 
-// Rend UN gabarit Twig avec le moteur du cockpit (lib/gabarits.js), pour que le socle
-// PowerShell (Get-SzhCourriel, windows/szh-common.ps1) se serve du MÊME moteur que le cockpit au lieu d'en porter un
-// second écrit à la main. Ne connaît rien aux courriels : chemin et variables lui arrivent
-// tout faits, il ne fait qu'appeler compiler(...).rendre(...).
+// Rend un gabarit Twig avec le moteur du cockpit (lib/gabarits.js), pour que les scripts
+// PowerShell (Get-SzhCourriel, windows/szh-common.ps1) utilisent le même moteur. Le script
+// reçoit le chemin et les variables, et appelle compiler(...).rendre(...).
 //
-// Lancé par VSCodium-en-Node (ELECTRON_RUN_AS_NODE=1) -- voir Get-SzhCourriel pour le
-// patron d'appel (Invoke-SzhNodeCockpit, windows/szh-shell.ps1).
+// Lancé par VSCodium en mode Node (ELECTRON_RUN_AS_NODE=1), par Invoke-SzhNodeCockpit
+// (windows/szh-shell.ps1).
 //
-// Entrée : un JSON sur STDIN, jamais en argument -- un corps de courriel porte des accents,
-// des guillemets et des retours à la ligne qu'une ligne de commande Windows digère mal :
+// Entrée : un JSON sur stdin, pas en argument (accents, guillemets et retours à la ligne
+// passent mal sur une ligne de commande Windows) :
 //   { "chemin": "<chemin du .twig>", "variables": { ... } }
-// Sortie : un JSON sur STDOUT, rien d'autre sur ce flux :
+// Sortie : un JSON sur stdout, seul sur ce flux :
 //   { "ok": true, "blocs": { ... } }
 //   { "ok": false, "erreur": "<message>" }
 // Code de sortie : 0 si ok, 1 sinon.
 //
-// Cas particulier du rapport du nettoyeur de manuscrit (rapport-manuscrit.twig) : le
-// moteur de gabarits (lib/gabarits.js, hors de portée de ce fichier) ne sait ni trancher
-// (pas d'arithmétique, pas d'indexation par crochets) ni juger la qualité d'une image
-// (lib/qualite-image.js, la seule vérité sur « trop petit », partagée avec le reste du
-// produit). `variables.rapport`, quand il est fourni, porte le JSON BRUT du nettoyeur
-// (pipeline/manuscrit-nettoyer.py) ; ce fichier le transforme en `variables.vue` -- une
-// vue déjà groupée, plafonnée et jugée -- AVANT de rendre, avec la même fonction que ce
-// que prouvent les tests (module.exports). Les autres appelants (courriels, exports) ne
-// passent jamais `variables.rapport` : ce cas particulier ne les touche pas.
+// Rapport du nettoyeur de manuscrit (rapport-manuscrit.twig) : quand `variables.rapport`
+// porte le JSON brut du nettoyeur (pipeline/manuscrit-nettoyer.py), il est d'abord
+// transformé en `variables.vue` (alertes groupées et plafonnées, images jugées par
+// lib/qualite-image.js), ce que le moteur de gabarits ne sait pas faire.
 
 const fs = require('fs');
 const path = require('path');
 const { compiler } = require(path.join(__dirname, '..', 'lib', 'gabarits.js'));
 const { qualiteImage } = require(path.join(__dirname, '..', 'lib', 'qualite-image.js'));
 
-// Un BOM en tête d'un texte UTF-8 ne doit jamais entrer dans le rendu -- ni dans un bloc,
-// ni dans une comparaison. Sert autant au .twig lu ci-dessous qu'à l'entrée reçue sur
-// STDIN : VSCodium-en-Node en pose un en tête de ce que reçoit fs.readFileSync(0, 'utf8')
-// quand l'appelant est un pipe de Windows PowerShell -- constaté sur ce poste, pas une
-// hypothèse.
+// Retire un BOM de tête, sur le .twig comme sur l'entrée : lue depuis un pipe de Windows
+// PowerShell, l'entrée stdin commence par un BOM.
 function sansBom(texte) {
   if (texte.charCodeAt(0) === 0xfeff) { return texte.slice(1); }
   return texte;
 }
 
-// Lecture bloquante de stdin : ce script ne fait qu'un aller-retour, jamais de flux long.
+// Lecture bloquante de stdin : le script ne fait qu'un aller-retour.
 function lireEntree() {
   return sansBom(fs.readFileSync(0, 'utf8'));
 }
 
 // ---- Vue du rapport du nettoyeur de manuscrit --------------------------------------------
-// Tout ce que rapport-manuscrit.twig ne peut pas faire lui-même (le moteur n'a ni
-// arithmétique ni indexation par crochets, §-en-tête de lib/gabarits.js) : plafonner une
-// liste d'occurrences, grouper par famille puis par règle, juger une image. Une seule
-// fonction pure, testée directement (test/js/manuscrit-rapport.test.js) sans passer par un
-// sous-processus à chaque cas.
+// Ce que rapport-manuscrit.twig ne peut pas faire (le moteur n'a ni arithmétique ni
+// indexation par crochets, voir lib/gabarits.js) : plafonner les occurrences, grouper par
+// famille puis par règle, juger les images. Fonction pure, testée par
+// test/js/manuscrit-rapport.test.js.
 
 const MAX_OCCURRENCES_PAR_REGLE = 10;
 const RANG_SEVERITE = { error: 3, warning: 2, suggestion: 1 };
 
 function rangSeverite(s) { return RANG_SEVERITE[s] || 0; }
 
-// Bornes de longueur du résumé (Forme.LongueurResume.*) : pipeline/manuscrit_regles.py,
-// RESUME_MIN_REVUE/RESUME_MAX_REVUE/RESUME_MAX_ZEITSCHRIFT. Une alerte ne porte la
-// fourchette que quand le résumé la dépasse (§ »suggested« de la règle) -- pour l'afficher
-// aussi dans le cas normal, sans dupliquer le SEUIL DE DÉTECTION (aucune décision reprise
-// ici, juste les trois nombres déjà publiés au rédacteur dans les lignes directrices), donc
-// ⚠ à resynchroniser si ces trois constantes bougent côté Python.
+// Bornes de longueur du résumé, copiées de pipeline/manuscrit_regles.py
+// (RESUME_MIN_REVUE, RESUME_MAX_REVUE, RESUME_MAX_ZEITSCHRIFT) : l'alerte
+// Forme.LongueurResume.* ne donne la fourchette (`suggested`) que si le résumé en sort, et
+// le rapport l'affiche dans tous les cas. À tenir égales aux constantes Python.
 const RESUME_MIN_REVUE = 400;
 const RESUME_MAX_REVUE = 600;
 const RESUME_MAX_ZEITSCHRIFT = 700;
 
-// Le nom de fichier seul, jamais le chemin WSL/Windows qui le précède -- une relectrice ne
-// lit ni /mnt/c/... ni un chemin de poste.
+// Le nom de fichier sans son chemin WSL ou Windows.
 function nomFichier(chemin) {
   const s = String(chemin || '');
   const i = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
   return i === -1 ? s : s.slice(i + 1);
 }
 
-// Identité d'une alerte : les huit champs du contrat (§7 de l'architecture), dans l'ordre --
-// sert à retrouver, dans `annotation.renvoyees_au_rapport`/`non_ancrees`, si CETTE occurrence
-// a été postée en révision/commentaire dans le .docx ou seulement renvoyée ici.
+// Identité d'une alerte : ses huit champs, dans l'ordre. Sert à savoir, par
+// `annotation.renvoyees_au_rapport` et `non_ancrees`, si une occurrence a été posée dans le
+// .docx (révision ou commentaire) ou seulement renvoyée au rapport.
 function cleAlerte(a) {
   return JSON.stringify([a.rule, a.severity, a.action, a.para, a.span, a.found, a.suggested, a.message]);
 }
 
-// `annotation` (pipeline/manuscrit_annoter.py, §7 ter) n'est pas encore branché dans la CLI
-// (19.09.2026) : ce cas rend un ensemble vide, et toute occurrence ressort simplement « pas
-// prouvée postée » -- jamais une supposition dans un sens ou dans l'autre.
+// Clés des alertes non posées dans le .docx, d'après `annotation`
+// (pipeline/manuscrit_annoter.py). Sans annotation (--sans-annotation), l'ensemble est vide.
 function alertesNonPosees(annotation) {
   const ens = new Set();
   if (!annotation) { return ens; }
@@ -94,10 +80,9 @@ function alertesNonPosees(annotation) {
   return ens;
 }
 
-// Familles puis règles, dans cet ordre : sévérité la plus grave d'abord, puis le plus
-// d'occurrences, puis l'ordre alphabétique pour un résultat stable. Chaque règle plafonne
-// ses occurrences affichées à dix (§10 du contrat : « deux cents signalements rendent
-// l'outil détestable ») ; `reste` porte ce qui dépasse, jamais recalculé dans le gabarit.
+// Familles puis règles, triées par sévérité, puis nombre d'occurrences, puis ordre
+// alphabétique (pour un résultat stable). Chaque règle affiche au plus dix occurrences ;
+// `reste` compte les autres.
 function construireAlertes(alertesBrutes, annotation) {
   const liste = (alertesBrutes && alertesBrutes.liste) || [];
   const nonPosees = alertesNonPosees(annotation);
@@ -142,10 +127,9 @@ function construireAlertes(alertesBrutes, annotation) {
   return familles;
 }
 
-// Le verdict de qualité d'image vient d'UN SEUL endroit (lib/qualite-image.js, §7 de
-// l'architecture) : le nettoyeur ne rapporte que des pixels, jamais un jugement. `figure`
-// est la seule famille possible ici -- un manuscrit n'a pas de portrait d'auteur·ice, ceux-là
-// viennent du gestionnaire de médias, ailleurs dans le cockpit.
+// Le verdict de qualité d'image vient de lib/qualite-image.js ; le nettoyeur ne rapporte
+// que les dimensions. Toutes les images d'un manuscrit sont des figures (les portraits
+// passent par le gestionnaire de médias).
 function construireImages(compteurs) {
   const details = (compteurs && compteurs.images && compteurs.images.details) || [];
   return details.map((im) => {
@@ -158,10 +142,9 @@ function construireImages(compteurs) {
   });
 }
 
-// L'en-tête reconnue (§5.5 de l'architecture) : absente en cas A (pas de ré-analyse, la
-// clé `entete` du rapport vaut alors `null`) et en cas de champ non trouvé -- ce dernier se
-// lit sur la VALEUR (vide), jamais sur un indice supposé, pour rester correct même si
-// `indices_consommes` change de forme un jour.
+// L'en-tête reconnue, ou null quand le rapport n'en a pas (`entete` vaut null en cas A,
+// sans ré-analyse). Un champ absent se lit sur sa valeur vide, pas sur
+// `indices_consommes`.
 function construireEntete(decisions, produit, alertesBrutes) {
   const brut = decisions && decisions.entete;
   if (!brut) { return null; }
@@ -192,9 +175,8 @@ function construireEntete(decisions, produit, alertesBrutes) {
   };
 }
 
-// Titres retenus (niveau_retenu > 0 -- estVide de lib/gabarits.js traite 0 comme vide, la
-// même convention sert ici) : jamais une liste de codes de décision recopiée à la main,
-// pour rester correct même si manuscrit_modele.py en gagne une nouvelle.
+// Titres retenus : niveau_retenu > 0 (0 compte comme vide, comme dans lib/gabarits.js).
+// Le filtre ne dépend pas des codes de décision de manuscrit_modele.py.
 function construireTitres(decisions) {
   const t = (decisions && decisions.titres) || {};
   const stats = t.stats || {};
@@ -219,9 +201,8 @@ function construireTitres(decisions) {
   };
 }
 
-// Un paragraphe de corps entièrement gras, conservé (§5.2 : « signalé sans être touché »),
-// non retenu comme titre -- le seul signal qui distingue un intertitre manqué d'un simple
-// gras de corps, faute de texte de paragraphe dans le contrat (voir le rapport de chantier).
+// Paragraphes de corps entièrement en gras, laissés tels quels et non retenus comme titres :
+// des intertitres possiblement manqués, que la relecture tranche.
 function construireGrasNonPromus(decisions) {
   const trace = (decisions && decisions.formatage && decisions.formatage.trace) || [];
   return trace
@@ -229,9 +210,9 @@ function construireGrasNonPromus(decisions) {
     .map((e) => ({ source: e.source, motif: e.motif || '', dans_tableau: !!e.dans_tableau }));
 }
 
-// [typo-avertissement] <code> | <contexte> | <phrase fr> | [de] <phrase de> -- une ligne
-// stderr brute (szh-typographie.lua, §6). On n'en garde que la phrase de la langue du
-// produit, jamais l'étiquette technique qui la précède.
+// Lignes stderr de szh-typographie.lua :
+//   [typo-avertissement] <code> | <contexte> | <phrase fr> | [de] <phrase de>
+// On n'en garde que la phrase dans la langue du produit.
 function construireAvertissementsTypo(avertissements, produit) {
   const langueAllemande = produit === 'zeitschrift';
   return (avertissements || []).map((ligne) => {
@@ -255,11 +236,9 @@ function construireAvertissementsImport(liste, produit) {
   return phrases;
 }
 
-// Bibliographie (pipeline/manuscrit_biblio.py, §7 bis) : pas encore branchée dans la CLI
-// (19.09.2026) -- `rapport.bibliographie` n'existe pas aujourd'hui sur aucun manuscrit
-// réel. Cette fonction lit la forme documentée par le brief (stats : references, citations,
-// citees_absentes, doi_normalises, doi_retrouves, crossref{…}) SI elle apparaît un jour,
-// sans jamais supposer qu'elle est là.
+// Bibliographie (pipeline/manuscrit_biblio.py) : lit `rapport.bibliographie.stats`
+// (references, citations, citees_absentes, doi_normalises, doi_retrouves, crossref{…}),
+// ou null si absent.
 function construireBibliographie(rapport) {
   const brut = rapport && rapport.bibliographie;
   if (!brut || !brut.stats) { return null; }
@@ -348,11 +327,8 @@ function main() {
   }
 }
 
-// require.main === module : ce script reste directement exécutable (VSCodium-en-Node, un
-// aller-retour JSON sur stdin/stdout, comportement inchangé) et redevient aussi un module
-// require()-able pour test/js/manuscrit-rapport.test.js, qui exerce construireVueRapportManuscrit
-// sans relancer un sous-processus à chaque cas -- une lecture bloquante de stdin dans un
-// process de test resterait accrochée sans jamais rendre la main.
+// Exécutable directement, et requérable par test/js/manuscrit-rapport.test.js sans lire
+// stdin (une lecture bloquante resterait accrochée dans un test).
 if (require.main === module) { main(); }
 
 module.exports = { construireVueRapportManuscrit, main };

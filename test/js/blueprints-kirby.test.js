@@ -1,16 +1,17 @@
-// Éprouve kirby/generer-blueprints.js : les blueprints committés dans
-// kirby/site/blueprints/{pages,files}/ égalent la génération depuis le contrat unique
-// pipeline/kirby/champs-documentation.json, et les garanties structurelles tenues par le
-// générateur : chaque liste a ses deux langues ; aucun nom de champ hors a-z0-9_, aucun champ
-// nommé `image` (docs/TODO/kirby-cms.md §10) ; un champ `files` référence un gabarit files/<cle>.yml
-// réel, sans `alt` (décoratif) ; translate:false pour tout champ commun (pas traduire:true
-// dans le JSON), rien pour les traduisibles, et par sous-champ dans le structure `suivi` ;
-// ausgabe/ordre présents en hidden traduisibles sur chaque fiche ; plus de blueprint de
-// rubriques (elles restent dans le numéro, jamais sur Kirby) ; chaque type a sa page parente
-// (le dossier types[].dossier, ex. buecher\ — depuis 8e89548), en minuscules ASCII [a-z]+, et
-// actualites.yml liste désormais ces sept pages dossier au lieu des fiches directement ; la
-// saisie `liste_multiple` (genre/pays du film, 23.09.2026) génère un champ `multiselect`,
-// mêmes options traduites qu'un select, séparateur ", " fixé explicitement.
+// Vérifie kirby/generer-blueprints.js. Les blueprints versionnés dans
+// kirby/site/blueprints/{pages,files}/ sont égaux à ce que génère le contrat
+// pipeline/kirby/champs-documentation.json, et le générateur garantit :
+//   - chaque liste a ses deux langues ;
+//   - aucun nom de champ hors a-z0-9_, aucun champ nommé `image` ;
+//   - un champ `files` renvoie à un gabarit files/<cle>.yml réel, sans `alt` (décoratif) ;
+//   - translate:false pour tout champ commun (sans traduire:true dans le JSON), rien pour les
+//     traduisibles, et un réglage par sous-champ dans le structure `suivi` ;
+//   - ausgabe et ordre présents en champs cachés traduisibles sur chaque fiche ;
+//   - pas de blueprint de rubriques (elles restent dans le numéro) ;
+//   - chaque type a sa page parente (le dossier types[].dossier, ex. buecher\), en
+//     minuscules ASCII [a-z]+, et actualites.yml liste ces sept pages dossier ;
+//   - la saisie `liste_multiple` (genre et pays du film) donne un champ `multiselect`, avec
+//     les mêmes options traduites qu'un select et le séparateur ", ".
 //
 //   node --test test/js/blueprints-kirby.test.js
 'use strict';
@@ -41,8 +42,7 @@ test('blueprints committés : identiques octet pour octet à la génération', (
   }
 });
 
-// Les deux sous-dossiers connus (pages/, files/) — pas de troisième famille de blueprint
-// aujourd'hui, mais on ne va pas chercher plus loin que ce que construireTous() peut produire.
+// Les deux sous-dossiers que construireTous() produit : pages/ et files/.
 function fichiersYamlSurDisque(sousDossier) {
   const dossier = path.join(gen.DOSSIER_BLUEPRINTS, sousDossier);
   if (!fs.existsSync(dossier)) return [];
@@ -81,8 +81,8 @@ test('listes : chaque jeton a un libellé fr et de non vides', () => {
   }
 });
 
-// Corollaire côté blueprint généré : les options select ET multiselect portent aussi les
-// deux langues (même après le suffixe canton ajouté pour les instruments `local: true`).
+// Côté blueprint généré, les options select et multiselect portent aussi les deux langues,
+// y compris avec le suffixe canton des instruments `local: true`.
 test('blueprints générés : les options select et multiselect ont toutes fr et de', () => {
   const docs = gen.construireTous(contrat);
   const walker = (fields) => {
@@ -101,12 +101,11 @@ test('blueprints générés : les options select et multiselect ont toutes fr et
 
 // ---- saisie `liste_multiple` -> champ Kirby `multiselect` --------------------------------
 //
-// Vérifié sur getkirby.com/docs/reference/panel/fields/multiselect (23.09.2026) : mêmes
-// options traduites qu'un select (un objet par jeton, une clé par langue), stockage en
-// liste séparée par `separator` (fixé ici à ', ' — virgule + espace — pour matcher la
-// convention « jeton1, jeton2 » du contrat, jamais le défaut Kirby ','). `genre` et `pays`
-// (type film) sont les deux seuls champs `liste_multiple` du contrat (23.09.2026) ; `pays`
-// est la liste ISO 3166-1 complète (250 jetons), chacun avec fr et de.
+// Selon getkirby.com/docs/reference/panel/fields/multiselect : mêmes options traduites qu'un
+// select (un objet par jeton, une clé par langue), stockage en liste séparée par
+// `separator`. Celui-ci vaut ', ' pour suivre la convention « jeton1, jeton2 » du contrat,
+// et non le défaut Kirby ','. `genre` et `pays` (type film) sont les champs `liste_multiple`
+// du contrat ; `pays` est la liste ISO 3166-1 complète (250 jetons), en fr et en de.
 test('liste_multiple : genre et pays (film) génèrent un champ multiselect, séparateur ", ", translate:false', () => {
   const docs = gen.construireTous(contrat);
   const champsFilm = docs['pages/film.yml'].fields;
@@ -128,8 +127,8 @@ test('liste_multiple : genre et pays (film) génèrent un champ multiselect, sé
       assert.strictEqual(options[it.jeton].de, it.de, 'film.' + cle + '.' + it.jeton + ' : de divergent');
     }
   }
-  // pays : la liste ISO 3166-1 complète (plus Kosovo), 250 jetons — un décompte fixe pour
-  // détecter tout de suite une liste tronquée ou dupliquée à la génération.
+  // pays : la liste ISO 3166-1 complète plus le Kosovo, 250 jetons. Un décompte fixe repère
+  // une liste tronquée ou dupliquée à la génération.
   assert.strictEqual(Object.keys(champsFilm.pays.options).length, 250,
     '250 options pays attendues (ISO 3166-1 + Kosovo)');
 });
@@ -159,10 +158,9 @@ test('champs files : `uploads` a son gabarit files/<cle>.yml, sans champ alt (d�
 
 // ---- Traductibilité : translate:false pour tout champ commun, rien pour les traduisibles --
 //
-// docs/FORMAT-DOCUMENTATION-KIRBY.md : « Champs traduisibles (traduire:true du JSON) …
-// propres à chaque fichier de langue. Tous les autres champs … sont COMMUNS ». Un champ
-// `structure` lui-même (ex. `suivi`) n'a pas de translate propre : sa traductibilité se règle
-// sous-champ par sous-champ, donc on descend récursivement au lieu de le contrôler lui-même.
+// Voir docs/FORMAT-DOCUMENTATION-KIRBY.md : les champs traduisibles (traduire:true) sont
+// propres à chaque fichier de langue, les autres sont communs. Un champ `structure` (ex.
+// `suivi`) n'a pas de translate propre : on descend dans ses sous-champs.
 
 function verifierTraduction(champsJson, fieldsYaml, origine) {
   for (const champ of champsJson) {
@@ -207,7 +205,7 @@ test('champs système : ausgabe et ordre en hidden, translate:true, sur chaque b
   }
 });
 
-// ---- Plus de blueprint pour les rubriques : elles restent dans le numéro -----------------
+// ---- Pas de blueprint pour les rubriques : elles restent dans le numéro ------------------
 
 test('actualites.yml : pas de champ `fields` (rubriques restées dans le numéro), une section listant les sept dossiers de type', () => {
   const docs = gen.construireTous(contrat);
@@ -235,10 +233,10 @@ test('actualites.yml : pas de champ `fields` (rubriques restées dans le numéro
 
 // ---- Chaque type a sa page parente (le dossier types[].dossier, ex. buecher\) ------------
 //
-// docs/FORMAT-DOCUMENTATION-KIRBY.md (8e89548) : une fiche vit sous
-// `_NewsUndActu\Fiches\<dossier du type>\<slug>\`. Ce dossier est une page Kirby à part, entre
-// la bibliothèque (actualites.yml) et les fiches : elle doit exister pour chaque type, avec le
-// libellé du type et une section listant les fiches de ce type.
+// Voir docs/FORMAT-DOCUMENTATION-KIRBY.md : une fiche vit sous
+// `_NewsUndActu\Fiches\<dossier du type>\<slug>\`. Ce dossier est une page Kirby entre la
+// bibliothèque (actualites.yml) et les fiches. Elle existe pour chaque type, avec le libellé
+// du type et une section qui liste ses fiches.
 
 test('types[].dossier : minuscules ASCII [a-z]+ pour chaque type (segment d’adresse du site)', () => {
   for (const [cleType, type] of Object.entries(contrat.types)) {
@@ -264,8 +262,7 @@ test('chaque type a sa page parente (dossier en minuscules) : titre du type, une
       nomFichier + ' : la section doit lister les enfants du gabarit de fiche ' + cleType);
     assert.strictEqual(section.sortable, false);
   }
-  // Pas de collision entre le nom de gabarit d’un dossier et celui d’une fiche : deux pages
-  // différentes (parent/enfant) doivent avoir deux gabarits différents.
+  // Le gabarit d’un dossier et celui de ses fiches portent des noms différents.
   const nomsDossier = new Set(Object.values(contrat.types).map((t) => t.dossier.toLowerCase()));
   for (const cleType of Object.keys(contrat.types)) {
     assert.ok(!nomsDossier.has(cleType),

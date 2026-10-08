@@ -4,7 +4,7 @@
 -- toujours la police livrée).
 --
 -- Police  : pipeline/fonts/OpenSans-SemiCondensed-SemiBold.ttf (177288 octets)
--- Poids   : 600, celui de .szh-title — voir socle.css §1
+-- Poids   : 600, celui de .szh-title — voir socle.css
 -- Lecteur : test/metriques-titre.py, qui dit aussi ce qui n’est pas modélisé
 --           (crénage, ligatures optionnelles).
 

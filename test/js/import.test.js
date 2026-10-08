@@ -1,16 +1,13 @@
-// Contrôles de l'import Word : les trois façons qu'il avait de perdre un article sans
-// le dire.
+// Contrôles de l'import Word : aucun article ne se perd sans le dire.
 //
 //   node --test "test/js/*.test.js"
 //
-// 1. Deux Word aux titres proches recevaient le même slug une fois borné à 39 caractères,
-//    et le second était « déjà converti (ignoré) » — compté hors des échecs, sortie 0.
-// 2. Sans fiche <slug>.meta.yaml, l'article compilait avec un titre de document vide, le
-//    PDF s'annonçant tout de même conforme PDF/UA.
-// 3. Un tableau sans rangée d'en-tête gras sortait sans un seul <th>, sans un mot.
-//
-// Et le piège du correctif 1 : suffixer sans distinguer remplacerait la perte silencieuse
-// par un doublon silencieux. Le champ `source:` de la fiche sépare les deux cas.
+// 1. Deux Word aux titres proches, dont les slugs se confondent une fois bornés à 39
+//    caractères, reçoivent des slugs distincts. Le champ `source:` de la fiche distingue
+//    un homonyme d'un redépôt du même Word, qui ne crée pas de doublon.
+// 2. Un article sans fiche <slug>.meta.yaml ne compile pas : son titre de document serait
+//    vide.
+// 3. Un tableau sans rangée d'en-tête est signalé.
 //
 // Deux familles de contrôle, comme contrats.test.js : l'unité, sur slugifierArticleUnique ;
 // et la cohérence, où le shell du Makefile doit reprendre les mêmes constantes que le JS.
@@ -36,7 +33,7 @@ const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
 
 const MAX = slug.LONGUEUR_MAX_SLUG_ARTICLE;
 
-// Les trois fichiers mesurés sur le corpus de l'éditeur : le tiret est un demi-cadratin.
+// Trois noms de fichier réels : le tiret est un demi-cadratin.
 const TEIL = [
   'Inklusive Bildung in der Sekundarstufe I – Teil 1.docx',
   'Inklusive Bildung in der Sekundarstufe I – Teil 2.docx',
@@ -46,7 +43,7 @@ const TEIL = [
 // ---- Désambiguïsation des slugs ----
 
 test('slug d’article : les trois parties d’un même dossier ne se marchent plus dessus', () => {
-  // Le défaut, tel qu'il était : la borne de 39 caractères écrase les trois en un.
+  // Bornés à 39 caractères, les trois slugs bruts se confondent.
   const bruts = TEIL.map(slug.slugifierArticle);
   assert.strictEqual(new Set(bruts).size, 1,
     'la collision mesurée n’existe plus — ce contrôle n’a plus de sujet');
@@ -60,9 +57,8 @@ test('slug d’article : les trois parties d’un même dossier ne se marchent p
   ]);
 });
 
-// B1 (26.08.2026, demande de Robin) : le numéro de tête du Word ne nomme plus le dossier
-// — voir contrats.test.js pour le contrôle miroir avec le Makefile, et numeroOrdreArticle()
-// pour ce que ce nombre devient (l'ordre initial dans ausgabe.yaml, hors périmètre ici).
+// Le numéro de tête du Word ne nomme pas le dossier (contrôle miroir du Makefile dans
+// contrats.test.js) ; il décide de l'ordre (numeroOrdreArticle()).
 test('slug d’article : un nom libre est rendu tel quel, sans suffixe', () => {
   assert.strictEqual(slug.slugifierArticleUnique('4_Titre.docx', []), 'titre');
   assert.strictEqual(slug.slugifierArticleUnique('4_Titre.docx', ['autre']), 'titre');
@@ -94,8 +90,7 @@ test('slug d’article : la borne de 39 caractères tient, suffixe compris', () 
 });
 
 test('slug d’article : au-delà de 99 homonymes, on refuse plutôt que d’inventer', () => {
-  // Bornée à 200 tours : une régression qui ne s’arrête plus plante ce test en échec net,
-  // pas en boucle infinie tuée par un délai externe (observé une fois, 120 s pour rien).
+  // Bornée à 200 tours : une régression échoue ici au lieu de boucler sans fin.
   const pris = [];
   let s = slug.slugifierArticleUnique('Titre.docx', pris);
   let tours = 0;
@@ -115,15 +110,11 @@ test('slug d’article : au-delà de 99 homonymes, on refuse plutôt que d’inv
 test('Makefile : la désambiguïsation du shell reprend les constantes de slug.js', () => {
   const mk = lire('pipeline', 'Makefile');
   // La boucle cherche un slug libre au lieu d'abandonner sur « déjà converti ».
-  // ⚠ Le dossier des unités est une VARIABLE depuis que l'import sert aussi aux chapitres
-  //   d'un livre ($(UNITES_DIR), qui vaut « articles » par défaut et « chapitres » sous
-  //   livre.mk). Le contrat porte sur la BOUCLE, pas sur le nom du dossier : c'est elle qui
-  //   cherche un slug libre au lieu d'abandonner, et c'est elle qui doit rester.
-  // ⚠ Depuis que le cockpit préfixe le dossier d'un article nouvellement importé sur son
-  //   rang (« 00-inclusion », lib/import-hote.js), un simple test [ -e ] sur le slug nu ne
-  //   verrait pas un dossier déjà préfixé et laisserait passer un doublon. La boucle
-  //   interroge donc dossier_existant(), qui regarde les deux formes — voir sa définition
-  //   plus haut dans la recette, juste après dire().
+  // Le dossier des unités est une variable : $(UNITES_DIR) vaut « articles », ou
+  // « chapitres » sous livre.mk. Le contrôle porte sur la boucle, pas sur le nom du dossier.
+  // Le cockpit préfixe le dossier d'un article importé (« 00-inclusion »,
+  // lib/import-hote.js) : la boucle interroge dossier_existant(), qui reconnaît le slug nu
+  // et la forme préfixée.
   assert.match(mk, /while dossier_existant "\$\$slug" >\/dev\/null; do/,
     'la boucle de désambiguïsation a disparu du Makefile');
   assert.match(mk, /dossier_existant\(\) \{ \\/,
@@ -145,7 +136,7 @@ test('Makefile : la désambiguïsation du shell reprend les constantes de slug.j
 
 test('Makefile : un Word resté sur le carreau fait échouer l’import, et all le propage', () => {
   const mk = lire('pipeline', 'Makefile');
-  // Le « - » devant l'appel à import avalait le code de retour.
+  // Pas de « - » devant l'appel à import : il avalerait le code de retour.
   assert.ok(mk.indexOf('-@$(MAKE) --no-print-directory -f $(THIS) import') === -1,
     'l’appel à import est de nouveau précédé d’un « - » : l’échec est avalé');
   assert.match(mk, /^\t@\$\(MAKE\) --no-print-directory -f \$\(THIS\) import$/m,
@@ -168,7 +159,7 @@ test('Makefile : un article sans titre de fiche ne se compile plus', () => {
     'verifie-dossier ne contrôle pas les titres');
   assert.ok(mk.indexOf('$(call exiger_titre,$(notdir $*))') !== -1,
     'la cible HTML ne contrôle pas le titre de son article');
-  // La fiche étant exigée, --metadata-file n'est plus conditionnel.
+  // La fiche étant exigée, --metadata-file est inconditionnel.
   assert.ok(mk.indexOf('--metadata-file="$$slug.meta.yaml"') !== -1,
     'la fiche n’est plus passée à pandoc');
   // Le message doit nommer le geste de correction, et exister en allemand.
@@ -182,10 +173,9 @@ test('import-docx.sh : des métadonnées illisibles ne passent plus pour un impo
   const sh = lire('pipeline', 'import-docx.sh');
   assert.ok(!/(docx-meta|pronto-lire)\.py"[^\n]*\|\| true/.test(sh),
     'le « || true » sur le lecteur est de retour : l’article s’importerait sans fiche');
-  // Depuis le branchement du lecteur du gabarit (22.09.2026), le programme appelé n'est plus
-  // écrit en dur : $LECTEUR vaut pronto-lire.py pour un document au gabarit « Pronto »,
-  // docx-meta.py pour un Word hérité. Ce qui ne doit pas bouger, c'est que son échec soit
-  // TESTÉ — un import qui continue sans fiche fait disparaître l'article du numéro sans un mot.
+  // $LECTEUR vaut pronto-lire.py pour un document au gabarit « Pronto », docx-meta.py pour
+  // un autre Word. Son échec doit être testé : un import qui continue sans fiche ferait
+  // disparaître l'article du numéro sans le dire.
   assert.match(sh, /if ! STATS="\$\(python3 "\$LECTEUR"/,
     'l’échec du lecteur n’est plus testé');
   assert.match(sh, /--reconnaitre/,
@@ -222,8 +212,8 @@ test('docx-tables.py : un tableau sans en-tête avertit sans faire échouer l’
   // L'article et le tableau sont nommés.
   assert.match(py, /article « %s »/, 'l’avertissement ne nomme plus l’article');
   assert.match(py, /'tableau %d'/, 'l’avertissement ne nomme plus le tableau');
-  // Et surtout : rien de tout cela ne change le code de sortie. Les deux seuls retours
-  // non nuls restent la lecture impossible du .docx et l'appel mal formé.
+  // Le code de sortie ne change pas : les seuls retours non nuls restent la lecture
+  // impossible du .docx et l'appel mal formé.
   assert.strictEqual((py.match(/^ *return 1$/gm) || []).length, 1,
     'un nouveau chemin d’échec est apparu dans docx-tables.py');
   assert.strictEqual((py.match(/^ *return 2$/gm) || []).length, 1,
@@ -235,11 +225,10 @@ test('docx-tables.py : un tableau sans en-tête avertit sans faire échouer l’
 
 // ---- Tableau sans en-tête : le champ `debut`, pour que la flèche vise le bon tableau ----
 //
-// `tableau %d` reste un numéro nu — une recherche littérale de « 2 » tombe sur la première
-// date ou le premier numéro de page venu avant le bon tableau. `debut` porte un extrait de
-// la première cellule : un texte que le cockpit peut chercher tel quel. fabriquerDocxTableaux
-// (plus bas dans ce fichier) fabrique le .docx : une table sans w:tblHeader et sans première
-// rangée tout en gras, ce que docx-tables.py lit comme un tableau plat.
+// `tableau %d` est un numéro nu : chercher « 2 » dans le texte tomberait sur la première
+// date venue. `debut` porte un extrait de la première cellule, que le cockpit peut chercher
+// tel quel. fabriquerDocxTableaux (plus bas) fabrique une table sans w:tblHeader ni
+// première rangée en gras, que docx-tables.py lit comme un tableau plat.
 
 test('docx-tables.py : tableau sans en-tête — `debut` porte le texte de la première cellule', { skip: sansPython }, () => {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-tableau-debut-'));
@@ -262,8 +251,7 @@ test('docx-tables.py : tableau sans en-tête — `debut` porte le texte de la pr
     const ligne = String(r.stderr).split(/\r?\n/)
       .find((l) => l.indexOf('tableau-sans-entete') !== -1);
     assert.ok(ligne, 'aucun constat tableau-sans-entete : ' + r.stderr);
-    // Le champ `tableau` reste un numéro nu, inchangé : c'est lui que la phrase affichée
-    // continue de nommer.
+    // Le champ `tableau` reste un numéro nu : c'est lui que la phrase affichée nomme.
     assert.match(ligne, /\|\s*tableau 1\s*\|/, 'le champ `tableau` a disparu ou changé de forme : ' + ligne);
     // Le nouveau champ `debut` porte le texte de la première cellule, pas le numéro.
     assert.match(ligne, /\|\s*debut « Canton de Zurich et ses environs proches »\s*\|/,
@@ -273,14 +261,10 @@ test('docx-tables.py : tableau sans en-tête — `debut` porte le texte de la pr
   }
 });
 
-// Non-régression : lib/journal.js n'extrait le numéro du champ `tableau` que parce que le
-// texte de la ligne suit le patron « nom valeur » (champsNommes()) — « tableau 1 » s'y lit
-// nom=tableau, valeur=1, exactement comme « article « 02-essai » » s'y lit nom=article,
-// valeur=02-essai. C'est ce dépouillement, pas le texte écrit par docx-tables.py, qui rend
-// déjà un numéro nu à la phrase du cockpit (i18n.js: « …dans le tableau {0}… ») — vérifié
-// en exécutant la chaîne réelle. Si `champs.tableau` se met à porter autre chose qu'une
-// suite de chiffres (le mot « tableau » compris dedans, une légende, une chaîne vide), la
-// substitution {0} de la phrase se dégraderait en silence.
+// lib/journal.js lit les champs de la ligne selon le patron « nom valeur » (champsNommes()) :
+// « tableau 1 » donne nom=tableau, valeur=1. La phrase du cockpit (i18n.js : « …dans le
+// tableau {0}… ») attend dans `champs.tableau` une suite de chiffres ; autre chose (le mot
+// « tableau », une légende, une chaîne vide) dégraderait la phrase sans erreur.
 test('docx-tables.py : le champ `tableau`, une fois parsé, ne contient que des chiffres', { skip: sansPython }, () => {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-tableau-numero-nu-'));
   try {
@@ -378,7 +362,7 @@ test('docx-meta.py : la fiche reçoit la langue de l’article et son Word d’o
   assert.match(py, /'lang': langue if langue in LANGUES_META else '',/,
     'le champ lang ne part plus dans la fiche');
   // $SZH_SOURCE (posée par import-docx.sh) porte le nom d'origine d'un .odt converti à la
-  // volée en .docx ; repli sur le basename comme avant l'acceptation de l'ODT.
+  // volée en .docx ; à défaut, le nom du fichier lu.
   assert.match(py, /'source': os\.environ\.get\('SZH_SOURCE'\) or os\.path\.basename\(chemin_docx\),/,
     'le champ source ne part plus dans la fiche, ou a perdu le repli SZH_SOURCE (import .odt)');
   // …et sérialisés, dans l'ordre du cockpit : type, lang, source, doi.
@@ -395,15 +379,15 @@ test('docx-meta.py : la fiche reçoit la langue de l’article et son Word d’o
 
 test('docx-meta.py : une langue devinée est écrite, mais elle est dite', () => {
   const py = lire('pipeline', 'docx-meta.py');
-  // Écrite dans tous les cas : un champ vide bloquerait la composition d'un article dont
-  // la langue diffère de celle du numéro. Aucune condition sur langue_source à l'écriture.
+  // Écrite dans tous les cas, sans condition sur langue_source : un champ vide bloquerait
+  // la composition d'un article dont la langue diffère de celle du numéro.
   assert.ok(py.indexOf("'lang': langue if langue in LANGUES_META else ''") !== -1);
-  // Et signalée quand elle vient d'une déduction, jamais sur une fiche conservée.
+  // Signalée quand elle est déduite, pas sur une fiche conservée.
   assert.match(py, /if meta_ecrit and langue_source in \('contenu', 'defaut'\):/,
     'la provenance d’une langue devinée n’est plus signalée');
   assert.ok(py.indexOf("'langue-deduite'") !== -1, 'le code de l’avertissement a changé');
-  // Même mécanique d'avertissement que docx-tables.py : un seul motif pour l'interface —
-  // szh_commun.avertir(), partagé, que docx-meta.py appelle avec son propre préfixe.
+  // Même avertissement que docx-tables.py : szh_commun.avertir(), que docx-meta.py appelle
+  // avec son propre préfixe.
   assert.match(py, /PREFIXE_AVERT = '\[import-avertissement\]'/);
   assert.match(py, /szh_commun\.avertir\(PREFIXE_AVERT, code, champs, fr, de\)/);
   const commun = lire('pipeline', 'szh_commun.py');
@@ -411,19 +395,18 @@ test('docx-meta.py : une langue devinée est écrite, mais elle est dite', () =>
   assert.match(commun, /'\[de\] '/, 'l’avertissement n’existe qu’en français');
 });
 
-// ---- Le tableau des auteurs : ce qui l'a fait tomber en silence ----
+// ---- Le tableau des auteurs : titres reconnus, et refus signalé ----
 //
-// Un seul « ém. » inconnu coûtait les quatre autrices et auteurs d'un article, sans un
-// mot : la cellule refusée faisait tomber le tableau entier, la fiche se rabattait sur la
-// byline (des noms, rien d'autre), et rien ne le disait. Sur les 486 Word du corpus de
-// mise au point, ces règles font passer les tableaux lus de 404 à 421, sans régression.
+// Une cellule refusée fait tomber tout le tableau des auteurs, et la fiche se rabat sur la
+// byline (des noms seulement). Les titres doivent donc être bien reconnus, et un refus
+// doit se dire.
 
 test('docx-meta.py : un titre académique composé ne fait plus tomber le tableau', () => {
   // La bibliothèque des noms vit dans heritage_meta.py ; la lecture des cellules, dans docx-meta.py.
   const py = lire('pipeline', 'heritage_meta.py');
   const cellules = lire('pipeline', 'docx-meta.py');
-  // Le test d'un jeton vit en UN endroit, et il découpe le jeton : « Univ.-Prof. »,
-  // « Dipl.-Psych. », « Dr.in ». Allonger la liste à chaque graphie ne tenait pas.
+  // Le test d'un jeton vit en un seul endroit, et il découpe le jeton : « Univ.-Prof. »,
+  // « Dipl.-Psych. », « Dr.in ».
   assert.match(py, /def _est_titre_academique\(jeton\):/,
     'le test d’un titre académique n’est plus centralisé');
   assert.match(py, /re\.split\(r'\[\.\\-\/\]', jeton/,
@@ -432,15 +415,14 @@ test('docx-meta.py : un titre académique composé ne fait plus tomber le tablea
     '« Dr.in » redeviendrait un prénom, et deux portraits se battraient pour un slug');
   // La chaîne d'honneur « Dr. Dr. et Prof. h. c. » : le liant tombe entre deux titres.
   assert.match(py, /LIANTS_TITRE = /, 'les liants d’une chaîne d’honneur ne tombent plus');
-  // Les deux bouts passent par la même fonction, jamais par un test réécrit sur place.
+  // Les deux bouts passent par la même fonction.
   assert.strictEqual((py.match(/_oter_titres\(/g) || []).length, 4,
     'l’épluchage des titres s’est remis à vivre en plusieurs exemplaires');
   // Un titre écrit lettre par lettre (« , M. A. ») ne se lit pas jeton par jeton.
   assert.match(py, /colle = ''\.join\(queue\)\.replace\('\.', ''\)\.lower\(\)/,
     '« Lisa Neumann, M. A. » garderait son titre dans le nom');
-  // « Prof. Dr. » seul sur sa ligne : le nom est à la suivante. Uniquement dans ce cas —
-  // chercher un nom plus loin dans n'importe quelle cellule ferait passer un encadré de
-  // contenu pour un bloc auteurs.
+  // « Prof. Dr. » seul sur sa ligne : le nom est à la suivante. Dans ce cas seulement :
+  // chercher un nom plus loin ferait passer un encadré de contenu pour un bloc auteurs.
   assert.match(cellules, /if not premier and len\(lignes\) > 1 and not sans_titres_academiques\(/,
     'une cellule dont la 1re ligne ne porte que des titres reste illisible');
 });
@@ -488,9 +470,9 @@ test('docx-meta.py : un encadré de fin ne masque plus le bloc auteurs', { skip:
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-encadre-fin-'));
   try {
     const docx = path.join(base, '01-essai.docx');
-    // Corps : titre + un paragraphe, puis DEUX tableaux en fin de document — le bloc
-    // auteurs d'abord, un encadré de contenu (une table des matières) juste après. Les
-    // deux tombent après les 40 % du document exigés par le garde-fou de position.
+    // Corps : titre et un paragraphe, puis deux tableaux en fin de document : le bloc
+    // auteurs, puis un encadré de contenu (une table des matières). Les deux tombent après
+    // les 40 % du document qu'exige le garde-fou de position.
     fabriquerDocxTableaux(docx, [
       { p: ['Title', 'Un titre quelconque'] },
       { p: ['Normal', 'Le corps du texte commence ici, avec le et la et les et des mots.'] },
@@ -504,9 +486,8 @@ test('docx-meta.py : un encadré de fin ne masque plus le bloc auteurs', { skip:
     const stats = JSON.parse(lignes[lignes.length - 1]);
     const fiche = fs.readFileSync(path.join(base, '01-essai.meta.yaml'), 'utf8');
 
-    // Le refus de l'encadré de contenu (dernier tableau) ne doit pas arrêter la remontée :
-    // le bloc auteurs, placé juste avant lui, doit être atteint et lu — c'est le tableau
-    // n° 1 du document (« tableaux_consommes »), pas un repli sur une byline absente.
+    // Le refus de l'encadré de contenu (dernier tableau) n'arrête pas la remontée : le bloc
+    // auteurs, juste avant, est lu (tableau n° 1 dans « tableaux_consommes »).
     assert.strictEqual(stats.auteurs.n, 1,
       'le bloc auteurs derrière l’encadré refusé n’a pas été lu : ' + JSON.stringify(stats.auteurs));
     assert.strictEqual(stats.auteurs.source, 'tableau');
@@ -522,19 +503,18 @@ test('docx-meta.py : un encadré de fin ne masque plus le bloc auteurs', { skip:
 
 test('docx-meta.py : un tableau d’auteurs non lu, et un crédit emporté, se disent', () => {
   const py = lire('pipeline', 'docx-meta.py');
-  // C'est l'avertissement manquant qui a laissé passer les cas pendant tout un corpus :
-  // la fiche n'avait que des noms, l'export partait sans affiliation ni e-mail, et le
-  // rédacteur n'avait rien à l'écran.
+  // Un tableau d'auteurs refusé se signale : sinon la fiche n'aurait que des noms, et
+  // l'export partirait sans affiliation ni e-mail.
   assert.ok(py.indexOf("'tableau-auteurs-non-lu'") !== -1,
     'le repli sur la byline est redevenu muet');
   assert.match(py, /if refuses_parlants and not auteurs_table:/,
     'le repli ne se dit plus, ou se dit quand le tableau a été lu');
-  // Un e-mail dans un tableau refusé : c'est ce signal, et lui seul, qui distingue un
-  // bloc auteurs illisible d'un encadré de contenu qu'on a eu raison de laisser.
+  // Un e-mail dans un tableau refusé distingue un bloc auteurs illisible d'un encadré de
+  // contenu.
   assert.match(py, /RE_EMAIL\.search\(' '\.join\(texte_paragraphe\(p\)/,
     'le tri entre bloc auteurs illisible et encadré de contenu a disparu');
-  // Le crédit du portrait n'a pas de champ dans le schéma : il part avec le tableau, donc
-  // il se dit. Règle d'or — ne jamais perdre de texte en silence.
+  // Le crédit du portrait n'a pas de champ dans le schéma : il est perdu avec le tableau,
+  // et cela se dit.
   assert.match(py, /RE_CREDIT_PHOTO = re\.compile\(/,
     'un crédit sous le portrait fait de nouveau tomber le tableau entier');
   assert.ok(py.indexOf("'credit-photo-non-repris'") !== -1,
@@ -549,10 +529,8 @@ test('docx-meta.py : un tableau d’auteurs non lu, et un crédit emporté, se d
 });
 
 test('la fiche garde son champ source après un passage par le formulaire', () => {
-  // `source:` est une clé de première classe de lib/yaml.js. Ce contrôle vérifie qu'elle
-  // survit à un aller-retour du sérialiseur — sinon la détection du redépôt s'éteindrait
-  // au premier enregistrement. Le trajet complet par le formulaire, où la carte ne porte
-  // pas le champ et où ecrireCartesArticles() le relit du fichier, est dans
+  // `source:` survit à un aller-retour du sérialiseur (lib/yaml.js), sans quoi la détection
+  // du redépôt cesserait au premier enregistrement. Le trajet par le formulaire est dans
   // test/js/licence.test.js.
   const yaml = require(path.join(COCKPIT, 'lib', 'yaml.js'));
   const nom = 'Inklusive Bildung in der Sekundarstufe I – Teil 1.docx';

@@ -1,42 +1,30 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# manuscrit_typo.py — le pont typographique du nettoyeur de manuscrit (§6 de
-# docs/ARCHITECTURE-nettoyeur-manuscrit.md). Une seule fonction publique,
-# normaliser_paragraphes(), qui NE RÉÉCRIT PAS la typographie de la maison : elle construit
-# un AST pandoc depuis les fragments Word de chaque paragraphe, l'envoie une seule fois (pour
-# tout le document) au filtre pipeline/filters/szh-typographie.lua dans la WSL, puis
-# réinjecte le texte normalisé dans les fragments d'origine sans perdre leur mise en forme.
+# Pont typographique du nettoyeur de manuscrit (voir docs/ARCHITECTURE-nettoyeur-manuscrit.md).
+# normaliser_paragraphes() construit un AST pandoc depuis les fragments Word, l'envoie en un
+# seul appel au filtre pipeline/filters/szh-typographie.lua, puis réinjecte le texte
+# normalisé dans les fragments d'origine en gardant leur mise en forme. Les règles
+# typographiques vivent dans le filtre, pas ici.
 #
-# Ce module ne connaît RIEN des décisions (titres, formatage à retirer, blocs figure/tableau
-# — tout ça vit dans manuscrit_modele.py, jamais ici) et n'importe PAS les classes Fragment /
-# Paragraphe : il travaille en duck-typing contre les signatures exactes du §4 du contrat
+# Le module n'importe pas Fragment ni Paragraphe : il en utilise la forme
 # (Fragment(texte, image, forme, lien, source, note), Paragraphe(style, niveau_declare,
-# niveau_retenu, fragments, liste, alignement, retrait, source)) et reconstruit ses objets de
-# sortie par `type(paragraphe)(...)` / `type(fragment)(...)` — la classe réelle n'a donc
-# jamais besoin d'exister au moment où CE fichier est écrit ; elle doit seulement exister
-# À L'EXÉCUTION, avec cette forme.
+# niveau_retenu, fragments, liste, alignement, retrait, source)) et recrée ses objets par
+# type(x)(...).
 #
-# `Fragment.note` (int|None, `texte == ''` quand rempli, §4 du contrat) porte l'appel de note
-# (w:footnoteReference/w:endnoteReference). Un fragment à note est une unité OPAQUE, au même
-# titre qu'une image : jamais envoyé au filtre, réinséré tel quel à sa place (voir
-# _partitionner, _fragment_depuis). Lu via `getattr(..., 'note', None)`, jamais un accès
-# direct `f.note` : un Fragment-like plus ancien qui ne le porterait pas encore ne doit pas
-# lever `AttributeError` ici.
+# Un fragment qui porte une image ou un appel de note (`note`, lu par getattr) est opaque :
+# il n'est pas envoyé au filtre et reprend sa place tel quel.
 #
-# Mesures qui gouvernent ce module :
+# Pièges :
+# - le JSON passé par un pipe à pandoc dans la WSL ressort en UTF-8 propre (seul
+#   `wsl -l -v` parle UTF-16) ;
+# - un AST construit à la main ne passe pas par l'extension « smart » de pandoc : `--` tapé
+#   tel quel n'est pas converti, alors qu'un vrai cadratin l'est par le filtre ;
+# - les guillemets courbes de Word deviennent des chevrons dans le filtre ; les guillemets
+#   droits non appariés sont signalés (code C2). Aucun nœud Quoted n'est donc construit ici.
 #
-# - Piper des octets JSON à travers `wsl.exe -d SZH-Publishing -- pandoc ...` (arguments en
-#   tableau, jamais `-e bash -lc`) rend un flux UTF-8 parfaitement propre — vérifié octet par
-#   octet. La mise en garde du contrat sur « la sortie de wsl.exe n'est pas de l'UTF-8 propre »
-#   vaut pour `wsl -l -v` (UTF-16), pas pour un programme Linux relayé tel quel par un pipe.
-# - `--` littéral ne devient PAS insécable + demi-cadratin : cette conversion vient de
-#   l'extension « smart » du lecteur Markdown de pandoc, jamais atteinte par un AST construit
-#   à la main (`-f json`). Un vrai cadratin (U+2014, ce que pose l'autocorrection Word) DEVIENT
-#   bien insécable + demi-cadratin — le filtre le traite lui-même. La différence ne se voit
-#   que sur `--` tapé tel quel, un cas rare : signalé, pas réimplémenté en Python.
-# - Les guillemets droits non appariés ne sont pas convertis (le filtre le dit, code C2) ;
-#   les guillemets courbes de l'autocorrection Word le sont, en chevrons — ce module n'a donc
-#   jamais besoin de construire de nœud Quoted pandoc.
+# Le filtre a toujours raison sur le contenu. Ce module vérifie seulement deux invariants :
+# le texte envoyé est bien la concaténation des fragments d'origine, et le texte réinjecté
+# reproduit exactement le texte rendu par le filtre.
 
 import difflib
 import json
@@ -44,53 +32,25 @@ import os
 import subprocess
 import time
 
-# ---------------------------------------------------------------------------------------
-# Révision du 19.09.2026 : l'ancien garde-fou comparait chaque caractère perdu/ajouté par la
-# réinjection à une liste blanche « typographique », et abandonnait le paragraphe dès qu'un
-# caractère en sortait. Mesuré sur lot-A : 4 paragraphes sur 845 abandonnés À TORT, parce que
-# le filtre corrigeait du contenu réel que la liste ne connaissait pas (A -> À en début de
-# phrase, 3ème -> 3e, une espace fine U+2009 -> l'insécable fine U+202F, une apostrophe
-# courbe ouvrante U+2018 -> un chevron simple U+2039). Le filtre a raison dans les quatre
-# cas — ce pont n'a pas à le rejuger.
-#
-# Le vrai invariant, désormais le SEUL : le texte réinjecté dans les fragments doit être
-# identique, caractère pour caractère, au texte que le filtre a rendu (vérifié explicitement
-# dans _reconstruire_unite, jamais supposé) ; et le texte envoyé au filtre pour cette unité
-# doit rester identique à la concaténation des fragments d'origine entre les deux passes. Les
-# deux échecs restent réels mais deviennent des bugs de CE module, jamais un verdict sur une
-# correction du filtre.
-# ---------------------------------------------------------------------------------------
-
-# Délai généreux : un lot de paragraphes reste un appel unique, mais une distro froide (pas
-# encore préchauffée) peut prendre plusieurs secondes à répondre. Un délai qui expire est
-# traité comme une indisponibilité de pandoc (repli), jamais comme une exception qui remonte.
+# Une distribution WSL froide peut mettre plusieurs secondes à répondre. Un délai dépassé
+# vaut indisponibilité de pandoc : repli, sans exception qui remonte.
 DELAI_SECONDES = 90
 
 
 class _EchecReconstruction(Exception):
-    """Interne : lève quand la réinjection d'UNE unité de texte ne peut pas garantir les deux
-    invariants du §6 (révision du 19.09.2026) : le texte des fragments d'origine ne correspond
-    plus à celui envoyé au filtre, ou le texte reconstruit ne reproduit pas EXACTEMENT celui
-    que le filtre a rendu. Capturée à l'échelle du PARAGRAPHE entier — un seul échec dans une
-    de ses unités (séparées par une image, voir plus bas) abandonne tout le paragraphe, jamais
-    seulement le fragment fautif. Ce n'est plus jamais un jugement sur LE CONTENU d'une
-    correction du filtre — seulement un bug de reconstruction, de CE module."""
+    """La réinjection d'une unité de texte viole un des deux invariants (voir l'en-tête).
+    Capturée au niveau du paragraphe : tout le paragraphe ressort intact."""
 
 
 class _PandocIndisponible(Exception):
-    """Interne : lève quand l'outillage externe (wsl.exe, la distro, pandoc) n'a pas pu
-    répondre. Capturée à l'échelle du LOT ENTIER : c'est le repli obligatoire du contrat,
-    tous les paragraphes ressortent inchangés."""
+    """wsl.exe, la distribution ou pandoc n'a pas répondu. Capturée au niveau du lot : tous
+    les paragraphes ressortent inchangés."""
 
 
 def _construire_inlines(texte):
-    """Un paragraphe pandoc en Str/Space, construits à la main (§6 : « un AST pandoc construit
-    à la main depuis les fragments »). Découpe sur l'espace ASCII SEULEMENT : les autres
-    espaces (insécable, fine...) restent le contenu d'un Str, exactement comme le rend pandoc
-    lui-même (constaté : "p. 5" ressort comme un seul Str, espace ordinaire compris, sur un
-    texte qui contient l'abréviation « p. »). L'opération est son propre inverse par
-    construction (`_a_plat` rejoint avec des espaces simples), donc aucune information n'est
-    perdue même sur des espaces multiples, en tête ou en fin de texte."""
+    """Un paragraphe pandoc en Str/Space. Découpe sur l'espace ASCII seulement : les autres
+    espaces (insécable, fine) restent dans le Str, comme pandoc le fait lui-même.
+    _a_plat() est l'inverse exact, espaces multiples compris."""
     mots = texte.split(' ')
     inlines = []
     for i, mot in enumerate(mots):
@@ -102,10 +62,8 @@ def _construire_inlines(texte):
 
 
 def _a_plat(inlines):
-    """L'inverse de _construire_inlines, appliqué à ce que le filtre a rendu. Lève si un
-    type d'inline imprévu apparaît (le filtre ne doit produire, sur une entrée qui ne
-    contient jamais de Quoted ni de code, que du Str/Space/SoftBreak) : mieux vaut abandonner
-    la reconstruction que de deviner ce qu'un noeud inconnu représente."""
+    """L'inverse de _construire_inlines, appliqué à ce que le filtre a rendu. Lève sur tout
+    inline autre que Str, Space ou SoftBreak plutôt que de deviner ce qu'il représente."""
     morceaux = []
     for el in inlines:
         t = el.get('t')
@@ -119,9 +77,8 @@ def _a_plat(inlines):
 
 
 def _executer_pandoc(entree_json, langue, racine_depot):
-    """Lance pandoc avec le filtre de typographie. La CLI tourne toujours dans la WSL (le
-    lanceur passe par `wsl -d SZH-Publishing -e python3 ...`), où pandoc est sur le PATH.
-    Rend l'objet `subprocess.CompletedProcess`."""
+    """Lance pandoc avec le filtre de typographie (ce script tourne dans la WSL, où pandoc
+    est sur le PATH). Rend le subprocess.CompletedProcess."""
     chemin_filtre_natif = os.path.join(racine_depot, 'pipeline', 'filters', 'szh-typographie.lua')
     commande = ['pandoc', '-f', 'json', '-t', 'json', '-M', 'lang=%s' % langue,
                 '--lua-filter', chemin_filtre_natif]
@@ -133,19 +90,13 @@ def _executer_pandoc(entree_json, langue, racine_depot):
 
 
 def _appeler_pandoc(textes, langue, racine_depot):
-    """Un seul appel pandoc pour TOUT le lot (le coût de démarrage ne se paie qu'une fois,
-    §6 du contrat). `textes` est la liste ordonnée des unités à normaliser (une par run de
-    fragments texte ininterrompu par une image) ; rend `(textes_normalises, avertissements)` —
-    la liste des textes normalisés dans le même ordre, et les lignes brutes
-    `[typo-avertissement]` que le filtre a émises sur stderr (révision du 19.09.2026 : lues
-    aussi sur un appel RÉUSSI, plus seulement sur l'échec — avant, elles étaient capturées puis
-    jetées en silence sur un succès). Lève _PandocIndisponible pour tout ce qui empêche une
-    réponse — c'est l'appelant qui décide du repli, jamais cette fonction.
+    """Un seul appel pandoc pour tout le lot, pour ne payer le démarrage qu'une fois.
 
-    Un élément de `textes` est une chaîne (corps) ou un couple (texte, niveau) : niveau 1 à 6
-    part en Header, pour que le filtre y applique ses règles de TITRE (A4 majuscules
-    accentuées, L2 soudure des mots outils) — en Para, un intertitre « Ecole et Etat » restait
-    tel quel et levait C3 comme s'il était du corps (mesuré le 30.09.2026)."""
+    `textes` : liste ordonnée de chaînes (corps) ou de couples (texte, niveau). Un niveau de
+    1 à 6 part en Header, pour que le filtre applique ses règles de titre (A4 majuscules
+    accentuées, L2 mots outils). Rend (textes_normalises, avertissements), ces derniers
+    étant les lignes `[typo-avertissement]` lues sur stderr. Lève _PandocIndisponible si
+    pandoc ne répond pas ; l'appelant décide du repli."""
     blocs_envoyes = []
     for t in textes:
         texte, niveau = (t, 0) if isinstance(t, str) else t
@@ -179,9 +130,8 @@ def _appeler_pandoc(textes, langue, racine_depot):
         textes_normalises = [_a_plat(b['c'][2] if b.get('t') == 'Header' else b.get('c', []))
                              for b in blocs]
     except _EchecReconstruction as e:
-        # Un type d'inline imprévu au niveau du LOT ENTIER (pas d'une unité isolée) est une
-        # anomalie de l'outillage, pas d'un paragraphe précis : traité comme une
-        # indisponibilité, pour que le lot entier reparte inchangé plutôt qu'à moitié.
+        # Un inline imprévu dans la réponse est une anomalie de l'outillage : tout le lot
+        # repart inchangé plutôt qu'à moitié.
         raise _PandocIndisponible(str(e))
 
     avertissements = [ligne for ligne in r.stderr.decode('utf-8', 'replace').splitlines()
@@ -190,11 +140,9 @@ def _appeler_pandoc(textes, langue, racine_depot):
 
 
 def _voisin_gauche(index_fragment, i1):
-    """Le fragment d'origine dont hérite un caractère INSÉRÉ, per le contrat : « un caractère
-    inséré prend celui de son voisin de gauche ». i1 est la position (dans le texte d'origine
-    de l'unité) où l'insertion se produit ; sans voisin de gauche (insertion en tout début de
-    texte), on retombe sur le tout premier fragment de l'unité plutôt que sur rien — un choix
-    arbitraire mais stable, jamais laissé à None tant qu'il existe au moins un fragment."""
+    """Index du fragment dont hérite un caractère inséré à la position i1 : son voisin de
+    gauche, ou le premier fragment pour une insertion en tête. None seulement sans
+    fragment."""
     if i1 > 0:
         return index_fragment[i1 - 1]
     if index_fragment:
@@ -203,18 +151,12 @@ def _voisin_gauche(index_fragment, i1):
 
 
 def _reconstruire_unite(fragments_texte, texte_envoye, texte_normalise):
-    """Réinjecte `texte_normalise` dans `fragments_texte` (une liste de Fragment-like, tous à
-    image=None, run consécutif au sein d'un paragraphe). Rend une nouvelle liste de fragments
-    couvrant EXACTEMENT `texte_normalise`, chacun héritant du `forme`/`lien` de son fragment
-    d'origine.
+    """Réinjecte `texte_normalise` dans `fragments_texte` (fragments de texte consécutifs
+    d'un paragraphe). Rend une nouvelle liste de fragments qui couvre exactement
+    `texte_normalise`, chacun gardant la forme et le lien de son fragment d'origine.
 
-    Révision du 19.09.2026 : le filtre est la vérité, ce module ne juge plus SES corrections
-    (voir la note en tête de fichier). _EchecReconstruction ne protège donc plus contre « un
-    caractère typographique inattendu » — seulement contre les deux façons dont CE module
-    pourrait trahir le texte : `texte_envoye` (ce qui a vraiment été soumis au filtre pour
-    cette unité) qui ne correspondrait plus à `fragments_texte` (garde d'entrée), ou une
-    reconstruction qui ne reproduirait pas `texte_normalise` caractère pour caractère (garde
-    de sortie, l'invariant du §6)."""
+    Lève _EchecReconstruction si `texte_envoye` ne correspond plus aux fragments (garde
+    d'entrée) ou si le résultat ne reproduit pas `texte_normalise` (garde de sortie)."""
     texte_origine = ''.join(f.texte for f in fragments_texte)
     if texte_origine != texte_envoye:
         raise _EchecReconstruction(
@@ -222,21 +164,17 @@ def _reconstruire_unite(fragments_texte, texte_envoye, texte_normalise):
             "filtre (%r)" % (texte_origine, texte_envoye))
 
     if texte_origine == texte_normalise:
-        # Rien n'a changé : pas la peine de repasser par le diff, et surtout pas de risque
-        # de reconstruire différemment un texte que le filtre n'a pas touché.
         return list(fragments_texte)
 
-    # La carte : chaque caractère de texte_origine pointe vers l'index (dans
-    # fragments_texte) du fragment qui l'a fourni.
+    # Pour chaque caractère d'origine, l'index du fragment qui l'a fourni.
     index_fragment = []
     for idx, f in enumerate(fragments_texte):
         index_fragment.extend([idx] * len(f.texte))
 
     matcher = difflib.SequenceMatcher(None, texte_origine, texte_normalise, autojunk=False)
 
-    # segments : liste de (caractère, index_fragment_origine) dans l'ordre du texte NORMALISÉ.
-    # Le filtre a toujours raison : un 'replace'/'insert' pose le caractère du filtre, un
-    # 'delete' pur ne réinjecte plus rien — sans plus jamais juger CE que le filtre a changé.
+    # segments : (caractère, index du fragment d'origine) dans l'ordre du texte normalisé.
+    # 'replace' et 'insert' posent le texte du filtre ; 'delete' ne pose rien.
     segments = []
     for tag, i1, i2, j1, j2 in matcher.get_opcodes():
         if tag == 'equal':
@@ -246,31 +184,26 @@ def _reconstruire_unite(fragments_texte, texte_envoye, texte_normalise):
 
         ajoute = texte_normalise[j1:j2]   # '' si tag == 'delete'
         if not ajoute:
-            continue  # 'delete' pur : les caractères perdus ne réapparaissent nulle part.
+            continue
 
         origine_idx = _voisin_gauche(index_fragment, i1)
         if origine_idx is None:
-            # Ne peut arriver que si fragments_texte est vide, donc texte_origine == '' -
-            # exclu en amont (seuls les runs non vides sont envoyés à pandoc). Garde par
-            # prudence : mieux vaut abandonner que d'inventer une forme neutre.
+            # Impossible en pratique (seuls les textes non vides partent à pandoc) ; on
+            # abandonne plutôt que d'inventer une forme.
             raise _EchecReconstruction('caractère ajouté sans fragment d’origine disponible')
         for c in ajoute:
             segments.append((c, origine_idx))
 
-    # Garde de sortie (l'invariant du §6) : le texte assemblé DOIT reproduire exactement
-    # celui rendu par le filtre. Mathématiquement garanti par construction ci-dessus (les
-    # opcodes de SequenceMatcher couvrent tout `texte_normalise` sans trou ni recouvrement) —
-    # vérifié quand même, explicitement : un filet de sécurité ne vaut rien s'il est supposé.
+    # Garde de sortie. Les opcodes couvrent déjà tout texte_normalise ; on le vérifie
+    # quand même.
     texte_reconstruit = ''.join(c for c, _ in segments)
     if texte_reconstruit != texte_normalise:
         raise _EchecReconstruction(
             'la reconstruction (%r) ne reproduit pas le texte rendu par le filtre (%r)'
             % (texte_reconstruit, texte_normalise))
 
-    # Regroupe les segments consécutifs de MÊME fragment d'origine en un seul nouveau
-    # fragment — jamais par égalité de forme, pour garder la correspondance avec le
-    # `source` (index du w:r) que porte le fragment d'origine, utile aux révisions natives
-    # futures (§4, §12 du contrat).
+    # Regroupe les segments consécutifs issus du même fragment d'origine (et non de même
+    # forme), pour garder le lien avec `source`, l'index du w:r d'origine.
     resultat = []
     courant_idx = None
     courant_chars = []
@@ -288,31 +221,17 @@ def _reconstruire_unite(fragments_texte, texte_envoye, texte_normalise):
 
 
 def _fragment_depuis(original, caracteres):
-    """Un nouveau fragment texte, même classe et même forme/lien/source que `original`,
-    portant `caracteres` comme texte. `type(original)(...)` plutôt qu'un import de Fragment :
-    voir l'en-tête du fichier — ce module ne dépend jamais de l'existence du module qui
-    définit la classe réelle, seulement de sa signature.
-
-    Révision du 19.09.2026 : recopie aussi `note` (via `getattr`, jamais un accès direct — voir
-    l'en-tête). `original` est toujours un fragment de TEXTE ici (un fragment à note est opaque,
-    voir _partitionner : il ne traverse jamais _fragment_depuis), donc `note` vaut déjà None en
-    pratique — recopié quand même explicitement plutôt que supposé : un filet, pas une devinette."""
+    """Un fragment de même classe, forme, lien, source et note que `original`, avec
+    `caracteres` pour texte."""
     return type(original)(''.join(caracteres), None, original.forme, original.lien,
                            original.source, note=getattr(original, 'note', None))
 
 
 def _partitionner(fragments):
-    """Découpe la liste de fragments d'un paragraphe en unités : soit ('opaque', fragment) pour
-    un fragment qui porte une image OU une note (jamais touché ici, réinséré tel quel à sa
-    place), soit ('texte', [fragments...]) pour un run maximal de fragments consécutifs SANS
-    image ni note. Une image ou une note coupe le fil du texte : la typographie ne doit jamais
-    faire comme si le texte de part et d'autre se touchait.
-
-    Révision du 19.09.2026 (§4 du contrat) : un fragment à note (`getattr(f, 'note', None) is
-    not None`) est désormais traité comme une image — avant cette révision, il retombait dans
-    le run de texte courant, `_partitionner` ne sachant rien de `note` : mesuré sur
-    2-fin-de-document_Article_RSPS.docx, 11 notes sur 12 disparaissaient (le lecteur en rend 12,
-    la sortie n'en portait plus qu'1)."""
+    """Découpe les fragments d'un paragraphe en unités : ('opaque', fragment) pour une image
+    ou un appel de note, réinséré tel quel, et ('texte', [fragments]) pour une suite
+    maximale de fragments de texte. Une image ou une note coupe le texte : la typographie ne
+    traite pas ses deux côtés comme contigus."""
     unites = []
     courant = []
     for f in fragments:
@@ -331,27 +250,19 @@ def _partitionner(fragments):
 def normaliser_paragraphes(paragraphes, langue, racine_depot):
     """Rend (paragraphes_normalises, traces, abandons, avertissements, statut).
 
-    `paragraphes` : liste de Paragraphe-like (§4 du contrat). `langue` : 'fr' ou 'de', passée
-    telle quelle en `-M lang=`. `racine_depot` : chemin de la racine du dépôt, pour retrouver
-    pipeline/filters/szh-typographie.lua quel que soit l'endroit où le toolkit est déployé.
+    `paragraphes` : liste de Paragraphe-like. `langue` : 'fr' ou 'de', passée en
+    `-M lang=`. `racine_depot` : racine du dépôt, où se trouve le filtre.
 
-    `traces` : liste de chaînes, pour le rapport — au moins une ligne sur l'appel pandoc
-    (nombre d'unités, durée) ou sur le repli. `abandons` : liste de dicts
-    {'source': paragraphe.source, 'motif': str} — un par paragraphe dont la réinjection a
-    échoué et qui ressort donc identique à l'entrée (§6, révision du 19.09.2026 : n'arrive
-    plus que sur un bug de CE module, jamais sur une correction du filtre qu'on aurait
-    jugée). `avertissements` : lignes brutes `[typo-avertissement]` lues sur stderr d'un
-    appel pandoc RÉUSSI — à redécouper par manuscrit_regles._reprendre_avertissements_typo,
-    jamais ici. `statut` : 'appliquee' si pandoc a répondu (même sans rien à normaliser),
-    'repli' si l'outillage était indisponible — destiné à la ligne stdout de la CLI, jamais
-    un jugement sur le contenu du document.
+    `traces` : lignes pour le rapport (appel pandoc ou repli). `abandons` :
+    {'source', 'motif'} pour chaque paragraphe dont la réinjection a échoué et qui ressort
+    intact. `avertissements` : lignes brutes `[typo-avertissement]`, découpées ensuite par
+    manuscrit_regles._reprendre_avertissements_typo. `statut` : 'appliquee' si pandoc a
+    répondu, 'repli' s'il était indisponible.
     """
     traces = []
     abandons = []
 
-    # Un paragraphe peut contenir plusieurs unités de texte (coupées par des images). On
-    # bâtit la liste à plat de toutes les unités de TOUS les paragraphes, pour ne faire
-    # qu'UN SEUL appel pandoc quel que soit le nombre de paragraphes (§6 du contrat).
+    # Toutes les unités de texte de tous les paragraphes, à plat, pour un seul appel pandoc.
     plan = []  # (index_paragraphe, index_unite_dans_le_paragraphe)
     textes_a_envoyer = []
     unites_par_paragraphe = []  # même longueur que `paragraphes`
@@ -364,10 +275,9 @@ def normaliser_paragraphes(paragraphes, langue, racine_depot):
                 continue
             texte = ''.join(f.texte for f in contenu)
             if texte == '':
-                continue  # rien à envoyer à pandoc pour un run de texte vide
+                continue
             plan.append((ip, iu))
-            # Un intertitre retenu part en Header (voir _appeler_pandoc) : même texte, mêmes
-            # fragments, seules les règles de titre s'y ajoutent.
+            # Un intertitre part en Header pour recevoir aussi les règles de titre.
             textes_a_envoyer.append((texte, min(getattr(p, 'niveau_retenu', 0) or 0, 6)))
 
     if not textes_a_envoyer:
@@ -379,9 +289,8 @@ def normaliser_paragraphes(paragraphes, langue, racine_depot):
         textes_normalises, avertissements = _appeler_pandoc(textes_a_envoyer, langue,
                                                               racine_depot)
     except _PandocIndisponible as e:
-        # Repli obligatoire (§6) : AUCUN paragraphe n'est touché, une seule trace explique
-        # pourquoi. On ne renseigne jamais `abandons` ici — ce n'est pas un échec de
-        # reconstruction paragraphe par paragraphe, c'est l'outillage entier qui a manqué.
+        # Repli : aucun paragraphe n'est touché. Ce n'est pas un abandon de paragraphe, d'où
+        # `abandons` vide.
         traces.append(
             'manuscrit-typo : repli sans typographie (pandoc/wsl indisponible) — %s' % e)
         return list(paragraphes), traces, abandons, [], 'repli'
@@ -389,9 +298,8 @@ def normaliser_paragraphes(paragraphes, langue, racine_depot):
     traces.append('manuscrit-typo : %d unité(s) normalisée(s) via pandoc en %.1f ms.'
                    % (len(textes_a_envoyer), duree_ms))
 
-    # texte envoyé / texte normalisé, par (index_paragraphe, index_unite) — les DEUX clés
-    # sont nécessaires désormais : _reconstruire_unite vérifie que l'un n'a pas divergé du
-    # fragment d'origine entre les deux passes (garde d'entrée du §6).
+    # Texte envoyé et texte normalisé par (paragraphe, unité) ; le premier sert à la garde
+    # d'entrée de _reconstruire_unite.
     envoye_par_cle = {}
     normalise_par_cle = {}
     for (ip, iu), (texte_env, _niveau), texte_norm in zip(plan, textes_a_envoyer,
@@ -410,14 +318,14 @@ def normaliser_paragraphes(paragraphes, langue, racine_depot):
                     continue
                 texte_norm = normalise_par_cle.get((ip, iu))
                 if texte_norm is None:
-                    # Run de texte vide, jamais envoyé à pandoc : rien à reconstruire.
+                    # Texte vide, non envoyé à pandoc.
                     nouveaux_fragments.extend(contenu)
                     continue
                 texte_env = envoye_par_cle[(ip, iu)]
                 nouveaux_fragments.extend(_reconstruire_unite(contenu, texte_env, texte_norm))
         except _EchecReconstruction as e:
             abandons.append({'source': p.source, 'motif': str(e)})
-            resultat.append(p)  # intact, jamais un texte reconstruit à moitié
+            resultat.append(p)  # intact plutôt que reconstruit à moitié
             continue
         resultat.append(type(p)(p.style, p.niveau_declare, p.niveau_retenu, nouveaux_fragments,
                                  p.liste, p.alignement, p.retrait, p.source))
@@ -430,12 +338,11 @@ def normaliser_paragraphes(paragraphes, langue, racine_depot):
 
 
 def normaliser_textes(textes, langue, racine_depot):
-    """Le même pont pour des textes qui ne sont pas des paragraphes Word : les champs de
-    l'en-tête (titre, sous-titre, résumé, mots-clés, fonction et institution des auteurs),
-    que le nettoyeur écrit dans les tableaux du gabarit. `textes` : liste de chaînes ou de
-    couples (texte, niveau) comme pour _appeler_pandoc — niveau 1 et 2 pour le titre et le
-    sous-titre. Un seul appel pandoc. Rend (textes_normalises, traces, avertissements,
-    statut) ; en repli, les textes ressortent inchangés et `statut` vaut 'repli'."""
+    """Le même pont pour les champs de l'en-tête (titre, sous-titre, résumé, mots-clés,
+    fonction et institution des auteurs), que le nettoyeur écrit dans les tableaux du
+    gabarit. `textes` : chaînes ou couples (texte, niveau), comme pour _appeler_pandoc.
+    Rend (textes_normalises, traces, avertissements, statut) ; en repli, textes inchangés et
+    statut 'repli'."""
     a_envoyer = [(i, t) for i, t in enumerate(textes)
                  if (t if isinstance(t, str) else t[0]).strip()]
     resultat = [t if isinstance(t, str) else t[0] for t in textes]

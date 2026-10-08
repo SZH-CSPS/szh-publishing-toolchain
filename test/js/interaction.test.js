@@ -1,17 +1,17 @@
-// La garde d'interaction : un QuickPick de VS Code se ferme dès que le focus bouge, et la
-// fin d'une compilation le lui volait — réassignation du HTML de l'aperçu, notification
-// des contrôles. Le rédacteur qui choisissait un titre ou parcourait un panneau
-// (Ctrl+Alt+A/S/D) voyait son geste s'évaporer dès qu'un PDF sortait.
+// La garde d'interaction. Un QuickPick de VS Code se ferme dès que le focus bouge ; la fin
+// d'une compilation (HTML de l'aperçu réassigné, notification des contrôles) le fermerait
+// pendant que le rédacteur choisit un titre ou parcourt un panneau (Ctrl+Alt+A/S/D). Ces
+// actions attendent donc la fermeture du QuickPick.
 //
 //   node --test "test/js/*.test.js"
 //
 // Deux familles de contrôle :
-//   1. lib/interaction.js tout seul — le module est pur, pas de vscode : exécution
-//      immédiate hors interaction, rétention pendant, une action par clé, rejeu à la
-//      fermeture de la DERNIÈRE interaction, et un compteur qui survit aux exceptions.
+//   1. lib/interaction.js seul (module pur, sans vscode) : exécution immédiate hors
+//      interaction, rétention pendant, une action par clé, rejeu à la fermeture de la
+//      dernière interaction, et un compteur qui survit aux exceptions.
 //   2. L'hôte réellement activé : chaque panneau du cockpit tient la garde tant que son
-//      QuickPick est ouvert, la notification de fin de compilation attend la fermeture —
-//      mais la barre d'état, inoffensive pour le focus, suit sans attendre.
+//      QuickPick est ouvert, et la notification de fin de compilation attend la fermeture.
+//      La barre d'état, sans effet sur le focus, suit sans attendre.
 'use strict';
 
 const test = require('node:test');
@@ -46,7 +46,7 @@ test('garde : pendant une interaction, l’action attend la fermeture', async ()
   g.differer('apercu', () => traces.push('apercu'));
   assert.deepStrictEqual(traces, [], 'l’action est partie pendant le QuickPick');
   resoudre('mon-choix');
-  // Le choix du rédacteur traverse la garde intact — c'est lui qu'on protège.
+  // Le choix du rédacteur traverse la garde intact.
   assert.strictEqual(await p, 'mon-choix');
   assert.deepStrictEqual(traces, ['apercu'], 'l’action n’a pas été rejouée à la fermeture');
   assert.ok(!g.interactionEnCours());
@@ -65,7 +65,7 @@ test('garde : une seule action par clé — la dernière gagne, les clés distin
   resoudre(undefined);
   await p;
   // Une Map garde la position de la première insertion : « apercu » reste devant
-  // « notif », mais c'est bien sa DERNIÈRE version qui tourne.
+  // « notif », mais c'est sa dernière version qui tourne.
   assert.deepStrictEqual(traces, ['apercu-3', 'notif-1'],
     'soit un empilement de refresh, soit une clé écrasée à tort');
 });
@@ -96,10 +96,10 @@ test('garde : une exception dans le choix ne casse ni le compteur ni le rejeu', 
   const p = g.sousGarde(() => new Promise((x, r) => { rejeter = r; }));
   g.differer('apercu', () => traces.push('apercu'));
   rejeter(new Error('boum'));
-  // L'exception remonte au point d'appel — la garde ne l'avale pas —
+  // L'exception remonte au point d'appel, la garde ne l'avale pas…
   await assert.rejects(p, /boum/);
-  // — mais le compteur est redescendu et la file a été vidée quand même : sinon, tous les
-  // rafraîchissements suivants resteraient différés pour toujours.
+  // … mais le compteur est redescendu et la file a été vidée : sinon, tous les
+  // rafraîchissements suivants resteraient différés.
   assert.ok(!g.interactionEnCours(), 'un choix qui échoue laisserait la garde fermée à jamais');
   assert.deepStrictEqual(traces, ['apercu']);
   g.differer('suite', () => traces.push('suite'));
@@ -125,9 +125,9 @@ test('garde : re-différer pendant le rejeu exécute tout de suite, sans boucle'
   const traces = [];
   let resoudre;
   const p = g.sousGarde(() => new Promise((r) => { resoudre = r; }));
-  // rechargerApercuHtmlSiChange différé peut, en tournant, repasser par differer : plus
-  // aucune interaction n'est ouverte à ce moment-là, donc exécution immédiate — la file
-  // ayant été vidée avant le rejeu, pas de boucle sur soi-même.
+  // rechargerApercuHtmlSiChange, rejoué, peut repasser par differer : aucune interaction
+  // n'est plus ouverte, il s'exécute donc tout de suite. La file est vidée avant le rejeu,
+  // ce qui évite une boucle.
   g.differer('apercu', () => {
     traces.push('premier');
     g.differer('apercu', () => traces.push('second'));
@@ -202,13 +202,12 @@ test('hôte : la fin d’une compilation attend la fermeture du QuickPick — la
 
 // ---- 3. Contrat de source : aucun QuickPick du cockpit hors garde ----
 
-// Un futur showQuickPick posé sans garde referait le bogue en silence : on relit la
-// source. Les appels directs sont écrits « sousGarde(() => vscode.window.show… » ;
-// choisirTitreImportant enchaîne deux choix sous une garde englobante, testée à part.
-// Volontairement lu seul, sans lib/ : ce contrat compte déjà lib/panneaux.js et
-// lib/formatting.js comme des entrées à part (avec leur propre exception « englobes ») ;
-// les concaténer sous la clé 'extension.js' compterait deux fois leurs appels et fausserait
-// le compte. Ce test connaît déjà, fichier par fichier, où vivent ces fonctions.
+// Tout showQuickPick passe par une garde : on relit la source. Les appels directs sont
+// écrits « sousGarde(() => vscode.window.show… » ; choisirTitreImportant enchaîne deux
+// choix sous une garde englobante, testée à part.
+// extension.js est lu seul, sans lib/ : lib/panneaux.js et lib/formatting.js sont des
+// entrées à part (avec leur exception « englobes »), et les concaténer compterait leurs
+// appels deux fois.
 test('contrat : tous les showQuickPick/showInputBox du cockpit passent par la garde', () => {
   const fichiers = {
     'lib/panneaux.js': fs.readFileSync(path.join(COCKPIT, 'lib', 'panneaux.js'), 'utf8'),
@@ -240,7 +239,7 @@ test('contrat : tous les showQuickPick/showInputBox du cockpit passent par la ga
 });
 
 test('contrat : l’aperçu et la notification de fin de compilation passent par differer', () => {
-  // Concaténé à lib/ : préalable au découpage d'extension.js, voir hote-factice.js.
+  // Concaténé à lib/ (sourceExtensionEtLib, hote-factice.js).
   const source = sourceExtensionEtLib(COCKPIT);
   assert.ok(source.indexOf("differer('apercu-html'") !== -1,
     'rechargerApercuHtmlSiChange réassigne webview.html sans garde : le focus repart');

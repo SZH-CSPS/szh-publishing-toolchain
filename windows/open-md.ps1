@@ -1,22 +1,18 @@
 ﻿<#
 .SYNOPSIS
-  Ouverture d'un .md par double-clic : cible de l'association « Ouvrir avec » →
-  « Pronto » (ProgId SZH.Markdown posé par update.ps1). Reçoit le chemin du fichier
-  en premier argument positionnel, remonte jusqu'au dossier de revue ou de livre (celui qui
-  porte buch.yaml ou ausgabe.yaml) et ouvre VSCodium sur le dossier puis sur le fichier.
+  Ouvre un .md double-cliqué (association « Pronto », ProgId SZH.Markdown posé par
+  update.ps1). Remonte jusqu'au dossier de revue ou de livre (celui qui porte ausgabe.yaml
+  ou buch.yaml) et ouvre VSCodium sur ce dossier puis sur le fichier.
 
 .DESCRIPTION
-  Il ne compile rien et n'appelle pas WSL : le Makefile n'a aucun verrou et un build lancé
-  ici courrait contre ceux de « folderOpen » et de « Trigger Task on Save », un PDF ouvert
-  hors de l'éditeur ferait échouer le « mv » atomique sans que personne ne lise l'erreur,
-  et la colonne 2 appartient à l'aperçu du cockpit. Le dossier est ouvert en plus du
-  fichier : sans lui, ni l'aperçu ni la régénération ne s'activent.
+  Le script ne compile rien : le Makefile n'a pas de verrou, et une compilation lancée ici
+  entrerait en concurrence avec celles du cockpit. Le dossier est ouvert avec le fichier
+  parce que l'aperçu et la régénération ne s'activent que sur un dossier ouvert.
 
-  SZH_OPENMD_SIMULE=1 : la commande qui aurait été lancée et les messages destinés à
-  l'utilisateur partent sur la sortie standard, un test automatisé resterait sinon bloqué
-  sur une boîte de dialogue.
+  SZH_OPENMD_SIMULE=1 : la commande et les messages partent sur la sortie standard au lieu
+  d'une boîte de dialogue (pour les tests).
 
-  Compatibilité : Windows PowerShell 5.1 (proscrire ?. ?? ?: && ||).
+  Compatibilité : Windows PowerShell 5.1.
 #>
 [CmdletBinding()]
 param(
@@ -25,28 +21,20 @@ param(
 
 . "$PSScriptRoot\szh-common.ps1"
 
-# Mode simulation (tests / diagnostic) : voir l'en-tête.
 $script:SzhSimule = ($env:SZH_OPENMD_SIMULE -eq '1')
 
-# Le journal ne doit pas faire échouer une ouverture (dossier de logs absent ou en
-# lecture seule) : l'échec d'écriture est avalé.
+# Un journal impossible à écrire ne fait pas échouer l'ouverture.
 function Write-SzhTrace([string]$Message) {
   try { Write-SzhLog ('open-md : ' + $Message) } catch { }
 }
 
-# Lancé par hidden.vbs, sans console, avec $ErrorActionPreference = 'Stop' hérité du socle
-# (szh-common.ps1:4) : une exception non interceptée plus bas tuerait le script sans
-# fenêtre, sans boîte de dialogue et sans ligne de journal — depuis un .md double-cliqué,
-# cela se lit « il ne s'est rien passé ». `trap` plutôt qu'un try/catch enveloppant : il
-# couvre toute la portée sans réindenter tout le fichier.
-# Mode simulation respecté : un test ne doit jamais rester bloqué sur une
-# boîte de dialogue, la sortie standard en tient lieu.
+# Le script tourne sans console avec $ErrorActionPreference = 'Stop' (szh-common.ps1) :
+# sans ce trap, une exception le terminerait sans message ni journal. Le trap couvre tout le
+# script ; en simulation, l'erreur part sur la sortie standard.
 trap {
   $souci = $_.Exception.Message
   Write-SzhTrace ('ERREUR : ' + $souci)
-  # Rapport d'erreur automatique et silencieux (docs/RAPPORTS-ERREUR.md) : Write-SzhRapport ne
-  # bloque jamais, n'affiche rien et se tait de lui-même en simulation (D2, D5, en-tête de
-  # szh-rapport.ps1 -- $env:SZH_OPENMD_SIMULE).
+  # Rapport d'erreur silencieux (docs/RAPPORTS-ERREUR.md), muet en simulation.
   try {
     Write-SzhRapport -Code 'LANCEUR-TRAP' -Source 'lanceur' -Etape 'ouverture d''un fichier .md' `
       -Message $souci -Pile $_.ScriptStackTrace -Fichiers @($Fichier)
@@ -64,9 +52,8 @@ trap {
   exit 1
 }
 
-# Lancé par hidden.vbs, donc sans console : Write-Host ne serait vu de personne et
-# Show-SzhErreur, qui attend une touche, bloquerait un processus invisible. D'où WinForms.
-# Réservé aux cas anormaux, le cas nominal est silencieux.
+# Message en boîte WinForms : sans console, Write-Host ne se voit pas et Show-SzhErreur
+# attendrait une touche. Réservé aux cas anormaux.
 function Show-SzhMessage([string]$Texte) {
   Write-SzhTrace ('message = ' + ($Texte -replace "`r", '' -replace "`n", ' | '))
   if ($script:SzhSimule) { Write-Host ('[MESSAGE] ' + $Texte); return }
@@ -76,11 +63,9 @@ function Show-SzhMessage([string]$Texte) {
   } catch { }
 }
 
-# Remontée jusqu'au dossier de revue ou de livre, .Parent jusqu'à $null : pas de profondeur
-# maximale, une revue ou un livre pouvant être n'importe où sous OneDrive. buch.yaml d'abord,
-# comme lib/profil.js et le Makefile (LIVRE_CONFIG := $(wildcard buch.yaml)) : un livre n'a
-# pas d'ausgabe.yaml, et un chapitre (chapitres/<slug>/<slug>.md) tombait donc dans la branche
-# « hors revue » faute de le chercher aussi. $null si ni l'un ni l'autre.
+# Rend le premier dossier parent qui porte buch.yaml (livre) ou ausgabe.yaml (revue), sans
+# limite de profondeur ; $null s'il n'y en a pas. buch.yaml est testé d'abord, comme dans
+# lib/profil.js et le Makefile.
 function Find-SzhRacineRevue([System.IO.DirectoryInfo]$Depart) {
   $d = $Depart
   while ($null -ne $d) {
@@ -91,8 +76,7 @@ function Find-SzhRacineRevue([System.IO.DirectoryInfo]$Depart) {
   return $null
 }
 
-# Un article est un <racine>\articles\<slug>\<slug>.md, le .md portant le nom de son
-# dossier. Ne sert qu'à qualifier la trace : l'ouverture est la même dans les deux cas.
+# Vrai pour un article, <racine>\articles\<slug>\<slug>.md. Ne sert qu'au journal.
 function Test-SzhArticle([System.IO.FileInfo]$Md, [string]$Racine) {
   $dossier = $Md.Directory
   if ($null -eq $dossier) { return $false }
@@ -102,18 +86,12 @@ function Test-SzhArticle([System.IO.FileInfo]$Md, [string]$Racine) {
   return ($Md.BaseName -eq $dossier.Name)
 }
 
-# Un seul Start-Process, chaque chemin quoté séparément : VSCodium lit l'argument dossier
-# comme « ouvrir ce dossier » et l'argument fichier comme « ouvrir cet onglet ». Nom propre
-# (Start-SzhCodiumFichier, pas Start-SzhCodium) : le socle (szh-common.ps1) déclare déjà une
-# fonction Start-SzhCodium, avec une autre signature — la collision occultait silencieusement
-# celle du socle. Distincte à dessein, pas fusionnée : ouvrir deux chemins d'un coup et
-# respecter le mode simulation sont les deux besoins d'open-md.ps1, ni l'un ni l'autre
-# n'existant côté socle.
+# Lance VSCodium en un seul Start-Process, chaque chemin entre guillemets : le dossier
+# s'ouvre comme espace de travail, le fichier comme onglet. Le nom diffère de
+# Start-SzhCodium (szh-common.ps1), qui a une autre signature et serait masqué.
 function Start-SzhCodiumFichier([string]$Codium, [string[]]$Chemins) {
-  # Avant tout le reste, même geste que le Start-SzhCodium du lanceur principal : un article
-  # ouvert par double-clic doit compiler avec les mêmes variables SZH_SHLINK_URL/CLE,
-  # SZH_OJS_CLE qu'une revue ouverte depuis le lanceur -- Set-SzhEnvironnementSecrets vit dans
-  # le socle commun (seul fichier que ce script dot-source).
+  # Mêmes variables secrètes (SZH_SHLINK_URL, SZH_SHLINK_CLE, SZH_OJS_CLE) qu'à l'ouverture
+  # depuis le lanceur, pour compiler de la même façon.
   Set-SzhEnvironnementSecrets
   $arguments = (($Chemins | ForEach-Object { '"{0}"' -f $_ }) -join ' ')
   Write-SzhTrace ('ouverture -> {0} {1}' -f $Codium, $arguments)
@@ -123,9 +101,8 @@ function Start-SzhCodiumFichier([string]$Codium, [string[]]$Chemins) {
   }
   # ELECTRON_RUN_AS_NODE hérité ferait exécuter le dossier comme un script Node.
   if (Test-Path 'Env:ELECTRON_RUN_AS_NODE') { Remove-Item 'Env:ELECTRON_RUN_AS_NODE' -ErrorAction SilentlyContinue }
-  # Le filet que la copie locale avait perdu : comme la version du socle, un Start-Process
-  # qui échoue (VSCodium désinstallé entre la vérification et l'appel, chemin trop long…)
-  # est journalisé plutôt que de tuer silencieusement le script sans qu'aucune trace ne le dise.
+  # Un échec de Start-Process (VSCodium désinstallé entre-temps, chemin trop long…) est
+  # journalisé.
   try {
     Start-Process -FilePath $Codium -ArgumentList $arguments
   } catch {
@@ -154,7 +131,7 @@ if (-not (Test-Path -LiteralPath $chemin -PathType Leaf)) {
 $md = Get-Item -LiteralPath $chemin
 $complet = $md.FullName
 
-# ---- L'éditeur : sans lui, rien n'est possible ; on donne le contact du support ----
+# ---- L'éditeur : s'il manque, on donne le contact du support ----
 $codium = Get-VSCodiumExe
 if (-not $codium) {
   Write-SzhTrace 'VSCodium introuvable'
@@ -163,26 +140,22 @@ if (-not $codium) {
 }
 
 # ---- Chemin réseau (UNC) ----
-# On ouvre quand même : lire et corriger un texte marche, mais WSL ne monte pas l'UNC et
-# la fabrication du PDF échouerait. Le message part après l'ouverture, pour accompagner
-# plutôt que barrer la route.
+# Le fichier s'ouvre quand même, mais WSL ne monte pas un chemin UNC : le PDF ne pourra pas
+# être fabriqué. Le message le dit après l'ouverture.
 $estUnc = $complet.StartsWith('\\')
 
 # ---- La revue ou le livre : remontée jusqu'à ausgabe.yaml ou buch.yaml ----
 $racine = Find-SzhRacineRevue $md.Directory
 
 if ($null -eq $racine) {
-  # Hors de toute revue ou livre : on ouvre le fichier seul, ouvrir un dossier arbitraire
-  # serait pire, et on annonce la limite. Le message T 'openmd.horsrevue' sert aux deux --
-  # il ne nomme ni l'un ni l'autre.
+  # Hors de toute revue ou livre : le fichier s'ouvre seul, et un message annonce la limite.
   Write-SzhTrace ('hors revue : ' + $complet)
   Start-SzhCodiumFichier $codium @($complet)
   if ($estUnc) { Show-SzhMessage (T 'openmd.reseau') } else { Show-SzhMessage (T 'openmd.horsrevue') }
   exit 0
 }
 
-# Dans une revue ou un livre : dossier puis fichier, le même geste dans les deux cas -- seule
-# la trace en dit lequel, pour ne rien supposer d'autre en aval.
+# Dans une revue ou un livre : dossier puis fichier. Seul le journal distingue les cas.
 $estLivre = Test-Path -LiteralPath (Join-Path $racine.FullName 'buch.yaml')
 $estArticle = Test-SzhArticle $md $racine.FullName
 if ($estLivre) {

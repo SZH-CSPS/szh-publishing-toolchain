@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# heritage_meta.py — ce que l'import des Word hérités (docx-meta.py) et le nettoyeur partagent
-# sans OOXML : déclencheurs de tête, DOI, e-mail, ORCID, noms d'auteur·e·s, légendes.
-# stdlib seule.
+# Analyse de texte commune à l'import des Word hérités (docx-meta.py) et au nettoyeur, sans
+# OOXML : déclencheurs de tête, DOI, e-mail, ORCID, noms d'auteurs, légendes.
 
 import re
 import os
@@ -11,8 +10,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pronto_modele import LANGUES_META
 
-# Une légende (« Figure 1 : … », « Tableau 2 — … ») n'est pas un titre : elle est traitée
-# par szh-legendes.lua. Lue par docx-titres.py, manuscrit_modele.py et manuscrit_gabarit.py.
+# Une légende (« Figure 1 : … », « Tableau 2 — … ») n'est pas un titre ; szh-legendes.lua la
+# traite. Utilisé par docx-titres.py, manuscrit_modele.py et manuscrit_gabarit.py.
 RE_LEGENDE = re.compile(
     r'^(?:figure|fig\.?|abbildung|abb\.?|illustration|grafik|tableau|tabelle|table)\s+\d+',
     re.I)
@@ -20,8 +19,8 @@ RE_LEGENDE = re.compile(
 
 # ---------------------------------------------------------------------------------
 # Déclencheurs multilingues en tête de paragraphe. La langue d'un résumé vient de son
-# déclencheur ; celle des mots-clés vient de la langue du document, les deux revues
-# écrivant « Keywords: » quel que soit l'idiome.
+# déclencheur ; celle des mots-clés, de la langue du document (« Keywords: » s'écrit dans
+# toutes les langues).
 
 RE_RESUME = re.compile(
     r'^\s*(r[ée]sum[ée]|zusammenfassung|riassunto|abstract)\b\s*[:.]?\s*', re.I)
@@ -38,7 +37,7 @@ RE_JOURNAL = re.compile(
 
 def langue_resume(declencheur):
     d = re.sub(r'[^a-z]', '', declencheur.lower().replace('é', 'e').replace('è', 'e'))
-    return LANG_RESUME.get(d)          # None pour « abstract » (résolu en langue doc)
+    return LANG_RESUME.get(d)          # None pour « abstract » : langue du document
 
 
 def nettoyer_doi(txt):
@@ -57,10 +56,10 @@ def langue_du_doi(doi):
 
 
 def decouper_keywords(texte, langue_doc):
-    """Ligne de mots-clés -> map langue -> [mots]. Cas bilingue des deux revues :
-    « kw fr, kw fr / kw de, kw de » — un slash espacé, des virgules des deux côtés — donne
-    la moitié gauche à la langue du document et la droite à l'autre. Sinon tout va dans la
-    langue du document, découpé sur , ; · et « / » espacé."""
+    """Ligne de mots-clés -> {langue: [mots]}. Forme bilingue « kw fr, kw fr / kw de, kw de »
+    (barre oblique entourée d'espaces, virgules des deux côtés) : la moitié gauche va à la
+    langue du document, la droite à l'autre. Sinon tout va à la langue du document,
+    découpé sur , ; · et « / »."""
     langue_doc = langue_doc if langue_doc in LANGUES_META else 'fr'
     moities = re.split(r'\s+/\s+', texte)
     if len(moities) == 2 and ',' in moities[0] and ',' in moities[1] \
@@ -80,23 +79,16 @@ def decouper_liste(texte):
 
 
 # ---------------------------------------------------------------------------------
-# Titre à deux-points. Les deux revues écrivent souvent le sous-titre à la suite du titre,
-# sur une seule ligne et sans style Untertitel derrière : « Inclusion scolaire : le rôle de
-# l'enseignant », « Frühförderung: Wege in die Praxis ». Faute de sous-titre, la ligne
-# entière partait en titre — et la maquette, qui compose les deux différemment, n'avait
-# plus rien à composer.
-#
-# On scinde au premier deux-points SUIVI D'UN ESPACE. Ce détail suffit à laisser dehors
-# tout ce qui n'est pas une scission : heures (« 10:30 »), rapports, et URL (« https:// »),
-# où le deux-points colle à ce qui suit. La partie gauche ne peut pas enjamber un
-# deux-points : le premier est donc le seul point de coupe examiné, et une heure en tête de
-# titre empêche la scission au lieu de la déplacer.
+# Titre à deux-points : le sous-titre suit souvent le titre sur la même ligne, sans style
+# propre (« Inclusion scolaire : le rôle de l'enseignant »). On coupe au premier
+# deux-points suivi d'une espace, ce qui écarte heures (« 10:30 ») et URL (« https:// »).
+# Seul le premier deux-points est examiné : une heure en tête de titre empêche la coupe.
 
 RE_TITRE_DEUX_POINTS = re.compile(r'^([^:]+?)\s*:\s+(\S.*)$')
 
 
 def scinder_titre(titre):
-    """(titre, sous-titre) — le sous-titre est '' quand la ligne ne se scinde pas."""
+    """(titre, sous-titre), le sous-titre valant '' si la ligne ne se coupe pas."""
     m = RE_TITRE_DEUX_POINTS.match(titre or '')
     if not m:
         return (titre or '').strip(), ''
@@ -123,20 +115,18 @@ TITRES_ACAD = {'dr', 'dre', 'drs', 'dott', 'ssa', 'prof', 'pd', 'dres', 'phil', 
                'hc', 'mag', 'mlaw', 'blaw', 'msed', 'edd', 'mba', 'ms', 'mph', 'ing',
                'paed', 'päd', 'soz', 'pol', 'oec', 'hsg', 'msw', 'bsw', 'ded', 'sc',
                'h', 'c', 'univ', 'doz', 'priv'}
-# Suffixe féminin autrichien collé au titre (« Dr.in », « Prof.in ») : jamais un titre à
-# lui seul, seulement le fragment d'un jeton qui en contient un.
+# Suffixe féminin autrichien collé au titre (« Dr.in », « Prof.in ») : admis seulement à
+# côté d'un vrai titre dans le même jeton.
 SUFFIXES_TITRE = {'in', 'innen'}
-# Liants d'une chaîne d'honneur (« Dr. Dr. et Prof. h. c. ») : sautés seulement entre
-# deux titres, jamais devant un nom.
+# Liants entre titres (« Dr. Dr. et Prof. h. c. ») : retirés seulement après un titre.
 LIANTS_TITRE = {'et', 'und', 'and', '&', '/'}
 RE_EMAIL = re.compile(r'\b([\w.+-]+@[\w-]+(?:\.[\w-]+)+)\b')
 RE_ORCID = re.compile(r'\b(\d{4}-\d{4}-\d{4}-\d{3}[\dxX])\b')
 
 
 def _est_titre_academique(jeton):
-    """Un jeton est un titre académique si tous ses fragments en sont, et au moins un
-    vraiment : « Univ.-Prof. », « Dipl.-Psych. », « Dr.in ». Découper sur le point et le
-    tiret évite d'allonger la liste à chaque graphie composée rencontrée."""
+    """Vrai si tous les fragments du jeton (coupé sur . - /) sont des titres ou des
+    suffixes, dont au moins un titre : « Univ.-Prof. », « Dipl.-Psych. », « Dr.in »."""
     fragments = [f for f in re.split(r'[.\-/]', jeton.strip('.,;')) if f]
     if not fragments:
         return False
@@ -152,7 +142,7 @@ def _est_titre_academique(jeton):
 
 def _oter_titres(jetons, gauche):
     """Retire les titres académiques d'un bout de la liste, liants compris dès qu'un titre
-    est déjà tombé de ce côté. Retourne le nombre de jetons retirés."""
+    a été retiré de ce côté. Rend le nombre de jetons retirés."""
     otes = 0
     while jetons:
         j = jetons[0] if gauche else jetons[-1]
@@ -188,9 +178,9 @@ def _sans_titres_academiques(t):
 sans_titres_academiques = _sans_titres_academiques   # alias public (manuscrit_noms.py)
 
 
-# Lignes-préfixes de rôle dans les cellules du tableau des auteurs (« Article rédigé
-# par », « En collaboration avec », « Entretien réalisé par »…) : elles précèdent le nom
-# sur leur propre ligne et sont sautées, le schéma d'auteur n'ayant pas de champ rôle.
+# Lignes de rôle dans les cellules du tableau des auteurs (« Article rédigé par »,
+# « Entretien réalisé par »…), seules sur leur ligne avant le nom. Elles sont sautées : la
+# fiche d'auteur n'a pas de champ rôle.
 RE_ROLE = re.compile(
     r'^(article\s+r[ée]dig[ée]\s+par|en\s+collaboration\s+avec|'
     r'entretien\s+(r[ée]alis[ée]|men[ée])\s+par|propos\s+recueillis\s+par|'
@@ -200,10 +190,10 @@ RE_ROLE = re.compile(
 
 
 def decouper_ligne_nom(t):
-    """(nom_nettoye, reste_fonction) : si la partie avant la première virgule est un nom
-    plausible, la queue, débarrassée des titres académiques de tête, amorce la fonction —
-    « Sabrina Eigenmann, MA Studienleitung MAS IF » donne (« Sabrina Eigenmann »,
-    « Studienleitung MAS IF »)."""
+    """(nom_nettoye, reste_fonction). Si la partie avant la première virgule est un nom
+    plausible, la suite, sans ses titres de tête, devient le début de la fonction :
+    « Sabrina Eigenmann, MA Studienleitung MAS IF » -> (« Sabrina Eigenmann »,
+    « Studienleitung MAS IF »). ('', '') si aucun nom n'est trouvé."""
     nettoye = _sans_titres_academiques(t)
     if nom_plausible(nettoye):
         return nettoye, ''
@@ -238,8 +228,8 @@ def nom_plausible(t):
 
 
 def decouper_prenom_nom(t):
-    """Découpe prudente : premier jeton = prénom, le reste = nom (« Anne-Françoise de
-    Chambrier », « Rachel Sermier Dessemontet »). Un seul jeton : tout dans nom."""
+    """Premier jeton = prénom, le reste = nom (« Anne-Françoise de Chambrier », « Rachel
+    Sermier Dessemontet »). Un seul jeton : tout dans nom."""
     jetons = t.split()
     if len(jetons) >= 2:
         return jetons[0], ' '.join(jetons[1:])
@@ -265,11 +255,10 @@ def auteurs_depuis_byline(txt):
 
 
 def ressemble_a_une_reference(t):
-    """Ce paragraphe se lit-il comme une référence ? Ne décide JAMAIS de ce qui est
-    détaché — le style seul en décide. Ne sert qu'à choisir s'il y a lieu de prévenir le
-    rédacteur qu'une référence est restée dans le texte : sans ce filtre, la note « rédigé
-    avec l'aide d'une IA » et l'annexe qui suivent parfois la liste déclencheraient une
-    alerte pour rien."""
+    """Vrai si le paragraphe ressemble à une référence bibliographique. Sert seulement à
+    décider s'il faut signaler une référence restée dans le texte (le style seul décide
+    de ce qui est détaché) : une note ou une annexe après la liste ne déclenche pas
+    d'alerte."""
     if len(t) < 25:
         return False
     if t.startswith('http'):

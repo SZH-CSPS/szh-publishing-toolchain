@@ -4,8 +4,8 @@
 //
 // Quatre familles : l'aller-retour du fichier .txt (lireTxt/ecrireTxt, listes YAML), les
 // calculs purs (curia, ordre des fiches, racine de l'arbre), la bibliothèque sur disque
-// (arborescences jetables sous un dossier temporaire, jamais dans le dépôt), et les statuts
-// de traduction / vues du réservoir.
+// (arborescences jetables sous un dossier temporaire), et les statuts de traduction / vues
+// du réservoir.
 'use strict';
 
 const test = require('node:test');
@@ -462,9 +462,9 @@ test('dossierDuType / cheminDossierType / cheminFiche : dérivés du contrat, ja
   assert.strictEqual(kc.cheminDossierType(racine, 'zorglub'), null);
 });
 
-// La collision de slug (même titre, ou titres qui slugifient pareil) se gère DANS LE DOSSIER
-// DE SON TYPE, jamais à travers toute la bibliothèque : un livre et un film peuvent porter le
-// même slug, chacun sous son propre dossier (docs/FORMAT-DOCUMENTATION-KIRBY.md).
+// La collision de slug (même titre, ou titres qui donnent le même slug) se gère dans le
+// dossier du type : un livre et un film peuvent porter le même slug, chacun sous son propre
+// dossier (docs/FORMAT-DOCUMENTATION-KIRBY.md).
 test('creerFiche : deux types différents peuvent porter le même slug, chacun dans son dossier', () => {
   const { racine, idRevue } = arbreJetable();
   try {
@@ -474,7 +474,7 @@ test('creerFiche : deux types différents peuvent porter le même slug, chacun d
     assert.strictEqual(livreCree.slug, filmCree.slug, 'le même slug de base est repris par les deux types');
     assert.ok(kc.lireFicheSlugLangue(racine, livreCree.slug, 'fr', 'livre'));
     assert.ok(kc.lireFicheSlugLangue(racine, filmCree.slug, 'fr', 'film'));
-    // Une seconde fiche du MÊME type reçoit -2 : la collision, elle, se gère dans ce dossier.
+    // Une seconde fiche du même type reçoit -2.
     const livreCree2 = kc.creerFiche(racine, 'fr', 'livre', livre('Même titre'), idRevue);
     assert.strictEqual(livreCree2.slug, livreCree.slug + '-2');
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }
@@ -505,8 +505,8 @@ test('un fichier <type>.<lang>.txt rangé sous le dossier d’un AUTRE type est 
   console.error = (msg) => erreurs.push(String(msg));
   try {
     const { slug } = kc.creerFiche(racine, 'fr', 'livre', livre('Livre égaré'), idRevue);
-    // Un fichier de type « film » posé à la main sous le dossier buecher\<slug>\ : rangement
-    // fautif (déplacement manuel, script tiers…), jamais produit par ce module lui-même.
+    // Un fichier de type « film » posé à la main sous buecher\<slug>\ : un rangement fautif
+    // que ce module ne produit pas.
     fs.writeFileSync(path.join(kc.cheminFiche(racine, 'livre', slug), 'film.fr.txt'),
       'Title: Intrus\n\n----\n\nUuid: intrus\n', 'utf8');
     const f = kc.lireFicheSlugLangue(racine, slug, 'fr', 'livre');
@@ -580,7 +580,7 @@ test('aller-retour bilingue : champs communs recopiés dans l’autre langue, ch
     assert.strictEqual(de.uuid, uuid, 'même Uuid dans les deux langues');
     assert.strictEqual(de.valeurs.editeur, 'Éditions X');
 
-    // On réécrit le TITRE allemand (traduire) et l'ÉDITEUR (commun) côté allemand.
+    // On réécrit le titre allemand (traduit) et l'éditeur (commun) côté allemand.
     kc.enregistrerFicheLangue(racine, slug, 'de', 'livre',
       Object.assign({}, de.valeurs, { title: 'Titre allemand', editeur: 'Verlag Y' }));
 

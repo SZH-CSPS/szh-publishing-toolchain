@@ -1,32 +1,24 @@
 #!/usr/bin/env python3
-# pronto-lire.py — CLI UNIQUE du lecteur du gabarit « Pronto — modèle d'article » (.docx).
-# Appelle pronto_docx.lire(), passe le modèle neutre qu'il rend à pronto_modele.principal().
-# Toutes les RÈGLES du gabarit vivent dans pronto_modele.py ; toute la lecture du format vit
-# dans pronto_docx.py ; ce fichier ne fait que les brancher l'un à l'autre. Un .odt n'arrive
-# jamais ici : import-docx.sh (et le nettoyeur) le convertissent d'abord en .docx.
+# Ligne de commande du lecteur du gabarit « Pronto — modèle d'article » (.docx). Passe le
+# modèle neutre rendu par pronto_docx.lire() à pronto_modele.principal(). Les règles du
+# gabarit sont dans pronto_modele.py, la lecture du format dans pronto_docx.py. Un .odt est
+# converti en .docx avant d'arriver ici (import-docx.sh, nettoyeur).
 #
 #   python3 pronto-lire.py <fichier.docx> <slug> <dossier-article>   -> 0 = lu, 1 = bloquant (clé
 #                                                            non reconnue), 3 = fichier illisible
 #   python3 pronto-lire.py --reconnaitre <fichier.docx>   -> 0 = au gabarit, 10 = non,
 #                                                            tout autre code = panne
 #
-# Reprend EXACTEMENT le contrat de sortie de l'ancien pipeline/docx-pronto.py (git log), lui
-# -même écrit pour remplacer un jour pipeline/docx-meta.py : même <dossier-article>/<slug>.
-# meta.yaml (jamais écrasé, propriété du formulaire du cockpit), même ligne JSON de stats sur
-# stdout, mêmes fichiers d'instructions pour les maillons suivants si $SZH_META / $SZH_PHOTOS
-# sont posées, une ligne « LETTRE<TAB>valeur » par instruction (Y type, L langue, T tableau
-# consommé, P paragraphe de clé d'un bloc à retirer du corps, FI/FT les champs d'un bloc à
-# poser sur son image ou sur son tableau, B/BT bibliographie) — voir l'en-tête de
-# pronto_modele.py pour le détail complet. Ce lecteur n'émet JAMAIS de G ni de F : dans le
-# gabarit Pronto, titre, sous-titre, résumé, type et autrices/auteurs vivent tous DANS un
-# tableau, et la légende d'une figure ou d'un tableau est une clé de bloc, jamais une légende
-# Word stylée voisine.
+# pipeline/import-docx.sh choisit ce lecteur pour un document au gabarit (--reconnaitre), et
+# docx-meta.py pour les autres. Sorties, communes avec docx-meta.py :
+# <dossier-article>/<slug>.meta.yaml (jamais écrasé : il appartient au formulaire du
+# cockpit), une ligne JSON de statistiques sur stdout, et, si $SZH_META / $SZH_PHOTOS sont
+# posées, des fichiers d'instructions « LETTRE<TAB>valeur » pour les étapes suivantes (voir
+# l'en-tête de pronto_modele.py). Ce lecteur n'émet ni G ni F : dans le gabarit, titre,
+# sous-titre, résumé, type et auteurs sont dans un tableau, et la légende d'une figure ou
+# d'un tableau est une clé de bloc.
 #
-# BRANCHÉ sur la chaîne d'import réelle depuis le 22.09.2026 : pipeline/import-docx.sh choisit
-# ce lecteur pour tout document qui déclare les styles du gabarit (mode `--reconnaitre`
-# ci-dessous), et l'ancien docx-meta.py pour tous les autres.
-#
-# stdlib uniquement : pas de PyYAML dans la WSL de la flotte.
+# Bibliothèque standard seule : la WSL n'a pas PyYAML.
 
 import json
 import os
@@ -44,34 +36,30 @@ RECONNAISSEURS = {
     '.docx': pronto_docx.est_pronto,
 }
 
-# Les autres noms de fichier sous lesquels une même image peut apparaître dans le .md (Word
-# range un SVG derrière un aperçu bitmap ; pandoc cite le SVG). Table tenue À CÔTÉ du modèle
-# neutre — voir pronto_docx.variantes_images() pour pourquoi elle n'entre pas dans Par.images.
+# Les autres noms sous lesquels une même image peut apparaître dans le .md (Word range un
+# SVG derrière un aperçu bitmap ; pandoc cite le SVG). Voir pronto_docx.variantes_images().
 VARIANTES = {
     '.docx': pronto_docx.variantes_images,
 }
 
 
 PAS_AU_GABARIT = 10
-# Le fichier ne s'ouvre pas (document.xml mal formé, zip cassé) : ce n'est pas une étiquette à
-# corriger, et import-docx.sh ne doit pas le dire comme tel.
+# Le fichier ne s'ouvre pas (zip cassé, document.xml mal formé) : import-docx.sh le signale
+# autrement qu'une clé à corriger.
 LECTURE_IMPOSSIBLE = 3
 
 
 def reconnaitre(chemin):
-    """Mode `--reconnaitre` : sort 0 si ce document est au gabarit Pronto, PAS_AU_GABARIT
-    (10) sinon. Tout autre code est une panne (un plantage Python sort en 1), que le shell
-    signale au lieu de la prendre pour un « non ». C'est pipeline/import-docx.sh qui pose la
-    question, une fois par document déposé, pour choisir entre ce lecteur et l'ancien
-    docx-meta.py. N'écrit rien, ne juge pas le contenu : la seule question est « ce fichier
-    vient-il du gabarit ? » ; un fichier illisible n'en vient pas (est_pronto rend Faux)."""
+    """Mode `--reconnaitre` : 0 si le document est au gabarit Pronto, PAS_AU_GABARIT (10)
+    sinon, y compris s'il est illisible. Tout autre code (1 pour un plantage Python) est une
+    panne, que import-docx.sh signale. N'écrit rien."""
     ext = os.path.splitext(chemin)[1].lower()
     reconnaisseur = RECONNAISSEURS.get(ext)
     return 0 if reconnaisseur is not None and reconnaisseur(chemin) else PAS_AU_GABARIT
 
 
 def principal(argv):
-    try:  # console Windows en cp1252 : un accent combinant (nom venu du partage) y plante.
+    try:  # une console en cp1252 plante sur un accent combinant
         sys.stdout.reconfigure(encoding='utf-8')
         sys.stderr.reconfigure(encoding='utf-8')
     except Exception:
@@ -106,9 +94,8 @@ def principal(argv):
     try:
         blocs = lecteur(chemin)
     except Exception as e:
-        # Bloquant : un .docx corrompu, illisible, ou d'une forme inattendue au point de ne
-        # même pas s'ouvrir comme un zip, ne donne ni fiche ni instructions ; import-docx.sh
-        # refuse l'import et le Word reste en attente.
+        # Bloquant : ni fiche ni instructions ; import-docx.sh refuse l'import et le Word
+        # reste en attente.
         print('[pronto-lire] lecture impossible de %s : %s' % (chemin, e), file=sys.stderr)
         pronto_modele.avertir(
             'fichier-illisible',
@@ -126,21 +113,18 @@ def principal(argv):
         return LECTURE_IMPOSSIBLE
 
     # $SZH_PRODUIT : le jeton `revue:` du numéro (« revue » | « zeitschrift »), posé par
-    # pipeline/import-docx.sh, d'où vient la LANGUE de l'article — le gabarit ne la porte plus
-    # depuis le 22.09.2026. Absente (appel direct en ligne de commande, hors d'un numéro) :
-    # repli sur le français, dit par l'avertissement 'langue-deduite'.
+    # import-docx.sh ; il donne la langue de l'article. Absent (appel à la main) : français,
+    # avec l'avertissement 'langue-deduite'.
     try:
         variantes = VARIANTES[ext](chemin)
-    except Exception:   # jamais bloquant : l'appariement se fera sur le seul nom principal.
+    except Exception:   # l'appariement se fera sur le seul nom principal
         variantes = {}
     stats = pronto_modele.principal(blocs, chemin, slug, dossier,
                                      produit=os.getenv('SZH_PRODUIT', ''),
                                      variantes=variantes)
     if stats.get('bloquant'):
-        # Décision de Robin (22.09.2026) : une clé PRÉSENTE (valeur non vide) que le lecteur
-        # n'a pas su ranger ne doit jamais s'importer en silence — principal() n'a rien écrit
-        # (ni meta.yaml, ni $SZH_META/$SZH_PHOTOS). Le message liste chaque clé, son texte et
-        # son emplacement, en plus des avertissements [import-avertissement] déjà émis.
+        # Une clé remplie que le lecteur n'a pas su ranger bloque l'import : principal() n'a
+        # rien écrit. On liste chaque clé, son texte et son emplacement.
         for entree in stats.get('cles_non_reconnues', []):
             print('[pronto-lire] clé non reconnue : « %s » (%s)'
                   % (entree.get('texte', ''), entree.get('lieu', '')), file=sys.stderr)

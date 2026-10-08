@@ -3,47 +3,32 @@
 // et son articulation avec Get-SzhBaseRevuesPour (windows/szh-produits.ps1).
 //
 //   node --test test/js/ancrage-sharepoint.test.js
-//   node --test "test/js/*.test.js"                 (référence : voir plus bas)
 //
-// Le défaut réel que ce fichier garde, trouvé en cours de route (relecture adversariale,
-// avant tout commit) : la première version de Resolve-SzhAncrage couvrait les CINQ niveaux
-// de résolution, fenêtre de sélection de dossier comprise -- et Get-SzhBaseRevuesPour
-// l'appelle. Or cet accesseur de chemin est appelé depuis archive-revue.ps1 et new-revue.ps1,
-// qui tournent SANS CONSOLE (ils ont leur propre MessageBox d'erreur précisément pour ça) :
-// un simple archivage aurait donc pu faire surgir un sélecteur de dossier en plein milieu.
-// Corrigé en scindant le contrat en deux avant même d'écrire ce test :
-//   * Resolve-SzhAncrage ne couvre plus que les niveaux 1 à 4 (essai, config, cache, auto) et
-//     n'ouvre JAMAIS de fenêtre -- même sans SZH_LANCEUR_SIMULE=1, même quand rien n'est
-//     trouvable. C'est elle que Get-SzhBaseRevuesPour appelle.
-//   * Initialize-SzhAncrage porte seul le niveau 5 (anti-harcèlement puis demande), pour un
-//     futur appel unique par le lanceur à son démarrage -- jamais depuis un accesseur.
-//   * La résolution passive est mémoïsée en portée script (Clear-SzhAncrageMemo la vide) :
-//     sans ça, Get-SzhEmplacements + Get-SzhEmplacementRevue balayaient le disque deux à
-//     trois fois par ouverture de lanceur.
-// Une deuxième chose que ce fichier garde explicitement : le nom du dossier de l'application
-// (« 54_Pronto ») ne vit qu'à UN endroit du PowerShell,
-// $script:SzhSegmentApplication -- tout l'arbre de production en dérive, et le contrat du lot
-// est qu'une seule chaîne soit à corriger si ce dossier changeait de nom. Le jumeau JavaScript,
-// SEGMENT_APPLICATION (lib/rapport-erreur.js), est gardé de même par
-// test/js/rapport-erreur.test.js, et test/js/rapport-erreur-ps.test.js compare les deux
-// dérivations sur un même ancrage.
+// Ce que le fichier vérifie :
+//   * Resolve-SzhAncrage couvre les niveaux 1 à 4 (essai, config, cache, détection auto) et
+//     n'ouvre aucune fenêtre, même sans SZH_LANCEUR_SIMULE=1. Get-SzhBaseRevuesPour l'appelle
+//     depuis archive-revue.ps1 et new-revue.ps1, qui tournent sans console : un sélecteur de
+//     dossier y surgirait en plein archivage ;
+//   * Initialize-SzhAncrage porte seule le niveau 5 (délai entre deux demandes, puis fenêtre),
+//     pour le démarrage du lanceur ;
+//   * la résolution passive est mémorisée en portée script (Clear-SzhAncrageMemo la vide),
+//     pour ne pas balayer le disque à chaque appel ;
+//   * le nom du dossier de l'application (« 54_Pronto ») n'est écrit qu'à un endroit du
+//     PowerShell, $script:SzhSegmentApplication. Son pendant JavaScript, SEGMENT_APPLICATION
+//     (lib/rapport-erreur.js), est vérifié par test/js/rapport-erreur.test.js, et
+//     test/js/rapport-erreur-ps.test.js compare les deux sur un même ancrage.
 //
-// Technique reprise telle quelle de test/js/courriel-support.test.js et
-// test/js/orphelins-toolkit.test.js : les VRAIS .ps1 du dépôt sont dot-sourcés (jamais
-// réécrits ni recopiés) dans des scripts pilotes générés à la volée, écrits AVEC BOM UTF-8
-// (PowerShell 5.1 relit un .ps1 sans BOM avec la page de code ANSI du poste, pas en UTF-8),
-// exécutés par spawnSync('powershell.exe', ...), sautés proprement si powershell.exe manque.
-// Chaque groupe de scénarios tient dans UN SEUL processus PowerShell (comme le « bilan » de
-// orphelins-toolkit.test.js) : un « pilote » construit toutes les arborescences jetables sous
-// UNE racine fs.mkdtempSync (jamais un chemin fixe), enchaîne les scénarios, et sérialise tout
-// en un seul JSON relu ici.
+// Montage : les vrais .ps1 du dépôt sont dot-sourcés dans des scripts pilotes écrits avec BOM
+// UTF-8 (PowerShell 5.1 lit un .ps1 sans BOM dans la page de code ANSI du poste), lancés par
+// spawnSync, et sautés si powershell.exe manque. Chaque groupe de scénarios tient dans un
+// seul processus PowerShell : le pilote construit ses arborescences sous une racine
+// fs.mkdtempSync, enchaîne les scénarios et rend un seul JSON.
 //
-// Aucun test ne touche le vrai C:\ProgramData\SZH, le vrai %LOCALAPPDATA%\SZH ni le vrai
-// SharePoint du poste : SZH_BASE, LOCALAPPDATA, USERPROFILE, OneDrive, OneDriveCommercial et
-// SZH_ANCRAGE sont systématiquement redirigés vers des dossiers jetables AVANT tout
-// dot-source, et SZH_LANCEUR_SIMULE=1 est posé partout où une fenêtre serait sinon légitime
-// (Request-SzhAncrageUtilisateur) -- sauf dans le scénario qui prouve justement que
-// Resolve-SzhAncrage n'en ouvre aucune, y compris SANS cette variable.
+// Aucun test ne touche le vrai C:\ProgramData\SZH, %LOCALAPPDATA%\SZH ni le SharePoint du
+// poste : SZH_BASE, LOCALAPPDATA, USERPROFILE, OneDrive, OneDriveCommercial et SZH_ANCRAGE
+// sont redirigés vers des dossiers jetables avant tout dot-source. SZH_LANCEUR_SIMULE=1 est
+// posé partout où une fenêtre pourrait s'ouvrir, sauf dans le scénario qui prouve que
+// Resolve-SzhAncrage n'en ouvre aucune sans cette variable.
 'use strict';
 
 const test = require('node:test');
@@ -61,30 +46,25 @@ const COMMUN_PS1 = path.join(RACINE, 'windows', 'szh-common.ps1');
 const ANCRAGE_SOURCE = fs.readFileSync(ANCRAGE_PS1, 'utf8');
 const PRODUITS_SOURCE = fs.readFileSync(PRODUITS_PS1, 'utf8');
 
-// Le nom du dossier de l'application vit à UN seul endroit côté PowerShell, et ce fichier le
-// LIT plutôt que de le recopier — un futur renommage ne doit pas casser un test sans avoir
-// rien cassé de réel.
+// Le nom du dossier de l'application est lu dans szh-ancrage.ps1 plutôt que recopié : un
+// renommage ne casse pas ce test.
 const SEGMENT_APPLICATION = (function () {
   const m = ANCRAGE_SOURCE.match(/\$script:SzhSegmentApplication\s*=\s*'([^']+)'/);
   assert.ok(m, 'szh-ancrage.ps1 ne déclare plus $script:SzhSegmentApplication');
   return m[1];
 })();
 
-// ---- PowerShell, comme dans les autres fichiers du dépôt ----
+// ---- PowerShell ----
 
 const { POWERSHELL, sansPowerShell } = require('./gardes');
 
-// Sans BOM sous PowerShell 5.1, un .ps1 SANS ce préfixe se relit avec la page de code ANSI
-// du poste (mêmes précautions que les autres fichiers de ce dépôt).
+// PowerShell 5.1 lit un .ps1 sans BOM dans la page de code ANSI du poste.
 function ecrirePs1(chemin, contenu) {
   fs.writeFileSync(chemin, '\ufeff' + contenu, 'utf8');
 }
 
 // Le corps d'une fonction PowerShell : de sa ligne de déclaration jusqu'à la première ligne
-// qui n'est QUE « } », en colonne 0 -- identique en principe à corpsFonction des autres
-// fichiers de test, mais tolérant aux deux fins de ligne : szh-ancrage.ps1 est écrit en LF
-// pur (sans BOM, ASCII strict -- un choix délibéré du texte d'origine), quand le reste du
-// dépôt (szh-produits.ps1, szh-common.ps1...) est en CRLF avec BOM.
+// réduite à « } » en colonne 0. Accepte LF et CRLF.
 function corpsFonction(source, nom) {
   const lignes = source.replace(/\r\n/g, '\n').split('\n');
   let debut = -1;
@@ -118,13 +98,13 @@ function executerPilote(prefixe, dossierTravail, contenuPs1, args) {
 // =====================================================================================
 
 test('le nom du dossier de l’application ne vit qu’à UN seul endroit du PowerShell', () => {
-  // Tout l'arbre de production pend sous ce segment, et le contrat est qu'UNE SEULE chaîne
-  // soit à corriger si le dossier de l'application changeait de nom.
+  // Tout l'arbre de production pend sous ce segment : un renommage du dossier de
+  // l'application ne doit toucher qu'une chaîne.
   const declarations = ANCRAGE_SOURCE.match(/\$script:SzhSegmentApplication\s*=\s*'[^']+'/g) || [];
   assert.strictEqual(declarations.length, 1,
     'szh-ancrage.ps1 doit déclarer $script:SzhSegmentApplication exactement une fois');
   const segment = declarations[0].match(/'([^']+)'/)[1];
-  // Les deux dérivés en descendent, et ne réécrivent donc jamais le segment en dur.
+  // Les deux chemins dérivés en descendent, sans réécrire le segment en dur.
   assert.ok(ANCRAGE_SOURCE.indexOf("$script:SzhDeriveBaseProduits = Join-Path '2_Produkte' $SzhSegmentApplication") !== -1,
     'la base des produits ne dérive plus du segment de l’application');
   assert.ok(ANCRAGE_SOURCE.indexOf('$script:SzhDeriveDossierRapports = Join-Path $SzhDeriveBaseProduits') !== -1,
@@ -136,14 +116,11 @@ test('le nom du dossier de l’application ne vit qu’à UN seul endroit du Pow
 });
 
 test('le dossier des rapports a déménagé dans notre arbre : plus aucune trace du dossier étranger', () => {
-  // Il vivait sous « Edition SZH CSPS allgemein\_AutoReportToolbox… », un dossier appartenant
-  // à une autre équipe, dont on reproduisait jusqu'à la faute de frappe SharePoint. Depuis le
-  // 15.09.2026 il est sous `_Systeme\rapports`, chez nous, et l'ancien chemin n'est plus lu.
+  // Le dossier des rapports est `_Systeme\rapports`, dans l'arbre de Pronto.
   assert.ok(ANCRAGE_SOURCE.indexOf("Join-Path $SzhDeriveBaseProduits '_Systeme\\rapports'") !== -1,
     'le dossier des rapports ne pend plus sous _Systeme\\rapports');
-  // Le nom complet du dossier étranger ne doit plus apparaître NULLE PART dans le fichier —
-  // ni en littéral, ni en commentaire : c'est le repère le plus sûr, la faute de frappe
-  // « Zeitscrhiften » ne pouvant venir que de l'ancien chemin.
+  // L'ancien dossier, chez une autre équipe, ne doit plus être nommé dans szh-ancrage.ps1,
+  // même en commentaire. Sa faute de frappe « Zeitscrhiften » en fait un repère sûr.
   assert.ok(ANCRAGE_SOURCE.indexOf('_AutoReportToolboxZeitscrhiften') === -1,
     'l’ancien dossier des rapports est encore nommé en entier dans szh-ancrage.ps1');
 });
@@ -155,10 +132,8 @@ test('Find-SzhAncrageParDescente : les plafonds par défaut sont bien 3 niveaux 
 });
 
 test('Resolve-SzhAncrage : aucune fenêtre n’est atteignable depuis son propre corps (contrôle statique)', () => {
-  // Contrôle direct sur le texte : Resolve-SzhAncrage ne doit mentionner ni la fonction qui
-  // ouvre la fenêtre, ni la classe .NET du sélecteur, ni le garde-fou anti-harcèlement (ce
-  // dernier appartient désormais à Initialize-SzhAncrage seule -- une résolution PASSIVE n'a
-  // rien à faire de « depuis combien de temps a-t-on demandé »).
+  // Resolve-SzhAncrage ne mentionne ni la fonction qui ouvre la fenêtre, ni la classe .NET du
+  // sélecteur, ni le délai entre deux demandes, qui appartient à Initialize-SzhAncrage.
   const corps = corpsFonction(ANCRAGE_SOURCE, 'Resolve-SzhAncrage');
   assert.ok(corps.indexOf('Request-SzhAncrageUtilisateur') === -1,
     'Resolve-SzhAncrage appelle encore Request-SzhAncrageUtilisateur -- elle n’est plus censée pouvoir demander');
@@ -183,8 +158,8 @@ test('Initialize-SzhAncrage existe, porte bien le niveau 5, et vide la mémoïsa
 });
 
 test('Get-SzhBaseRevuesPour appelle la résolution PASSIVE (Resolve-SzhAncrage), jamais Initialize-SzhAncrage', () => {
-  // C'est la garantie de fond : un accesseur de chemin, appelé par des scripts sans console
-  // (archive-revue.ps1, new-revue.ps1), ne doit jamais pouvoir remonter jusqu'à une fenêtre.
+  // Un accesseur de chemin, appelé par des scripts sans console (archive-revue.ps1,
+  // new-revue.ps1), ne doit pas pouvoir ouvrir de fenêtre.
   const corps = corpsFonction(PRODUITS_SOURCE, 'Get-SzhBaseRevuesPour');
   assert.ok(corps.indexOf('Resolve-SzhAncrage') !== -1,
     'Get-SzhBaseRevuesPour ne consulte plus l’ancrage du tout');
@@ -193,11 +168,7 @@ test('Get-SzhBaseRevuesPour appelle la résolution PASSIVE (Resolve-SzhAncrage),
 });
 
 // =====================================================================================
-// ---- Groupe 1 : décisions et accès disque, szh-ancrage.ps1 seul (aucune dépendance à
-//      szh-common.ps1 pour les 13 fonctions ci-dessous -- exactement le découpage que le
-//      fichier revendique lui-même dans son en-tête : « la décision séparée de l'accès
-//      disque, pour que les tests puissent l'éprouver sans construire une seule
-//      arborescence, et l'accès disque avec de vraies arborescences jetables »). ---------
+// ---- Groupe 1 : décisions et accès disque, szh-ancrage.ps1 seul, sans szh-common.ps1 ------
 // =====================================================================================
 
 function piloteGroupe1() {
@@ -206,9 +177,9 @@ function piloteGroupe1() {
   p('$ErrorActionPreference = \'Stop\'');
   p('$Travail = $args[0]');
   p('$Sortie = $args[1]');
-  // Neutralise tout de suite les trois variables d'environnement dont dépend la détection
-  // automatique (Get-SzhRacinesCandidates) : sur CE poste, %USERPROFILE%\SZH CSPS et
-  // %OneDrive% pointent vers le VRAI SharePoint -- interdit de toucher.
+  // Neutralise d'abord les trois variables dont dépend la détection automatique
+  // (Get-SzhRacinesCandidates) : sur un vrai poste, %USERPROFILE%\SZH CSPS et %OneDrive%
+  // mènent au SharePoint.
   p('$env:USERPROFILE = Join-Path $Travail \'profil-neutre\'');
   p('New-Item -ItemType Directory -Force -Path $env:USERPROFILE | Out-Null');
   p('Remove-Item Env:OneDriveCommercial -ErrorAction SilentlyContinue');
@@ -220,7 +191,7 @@ function piloteGroupe1() {
   p('$resultats = [ordered]@{}');
   p('');
 
-  // ---- section 2.4 : dix cas ----
+  // ---- dix cas ----
   p('$dix = [ordered]@{}');
   p('');
   p('# cas 1 : l\'ancrage lui-même');
@@ -380,7 +351,7 @@ function piloteGroupe1() {
   p('$resultats[\'erreur_enumeration\'] = [ordered]@{ aclOk = $aclOk; attendu = $ancreAcl; obtenu = $obtenuAcl; leve = $leveAcl }');
   p('');
 
-  // ---- échec propre : aucun ancrage nulle part -> $null, jamais une exception ----
+  // ---- échec propre : aucun ancrage -> $null, sans exception ----
   p('$cE = ND (Join-Path $Travail \'echec-propre\')');
   p('ND (Join-Path $cE \'RienIci\\NiLa\') | Out-Null');
   p('$leveEchec = $false');
@@ -389,11 +360,10 @@ function piloteGroupe1() {
   p('$resultats[\'echec_propre\'] = [ordered]@{ obtenu = $obtenuEchec; leve = $leveEchec }');
   p('');
 
-  // ---- dérivés (2.1) ----
+  // ---- chemins dérivés ----
   p('$resultats[\'derives\'] = [ordered]@{');
-  // "C:\Ancrage" plutôt qu'une lettre fantaisiste : Join-Path lève DriveNotFoundException
-  // sur une lettre de lecteur qui ne correspond à aucun PSDrive réel du poste -- C: existe
-  // toujours sous Windows.
+  // "C:\Ancrage" : Join-Path lève DriveNotFoundException sur une lettre de lecteur sans
+  // PSDrive, et C: existe toujours sous Windows.
   p('  base = (Get-SzhBaseProduitsDepuisAncrage \'C:\\Ancrage\')');
   p('  rapports = (Get-SzhDossierRapportsDepuisAncrage \'C:\\Ancrage\')');
   p('  baseVide = (Get-SzhBaseProduitsDepuisAncrage \'\')');
@@ -401,7 +371,7 @@ function piloteGroupe1() {
   p('}');
   p('');
 
-  // ---- anti-harcèlement, pur ----
+  // ---- délai entre deux demandes (Test-SzhDemandeRecente) ----
   p('$maintenant = (Get-Date).ToUniversalTime()');
   p('$etatRecent = New-Object psobject -Property @{ ancrageDemandeLe = $maintenant.AddHours(-1).ToString(\'o\') }');
   p('$etatVieux = New-Object psobject -Property @{ ancrageDemandeLe = $maintenant.AddHours(-25).ToString(\'o\') }');
@@ -414,7 +384,7 @@ function piloteGroupe1() {
   p('}');
   p('');
 
-  // ---- Request-SzhAncrageUtilisateur ne s'active jamais en simulation ----
+  // ---- Request-SzhAncrageUtilisateur reste inactive en simulation ----
   p('$env:SZH_LANCEUR_SIMULE = \'1\'');
   p('$resultats[\'demande_simulee\'] = (Request-SzhAncrageUtilisateur)');
   p('Remove-Item Env:SZH_LANCEUR_SIMULE -ErrorAction SilentlyContinue');
@@ -502,8 +472,8 @@ test('dossiers système : sautés y compris comme conteneurs, sans bloquer un an
 test('une erreur d’énumération (accès refusé) est avalée, sans interrompre la recherche', { skip: sansPowerShell }, () => {
   const e = decisions.lu.erreur_enumeration;
   if (!e.aclOk) {
-    // Le refus d'accès n'a pas réellement pris sur ce poste (droits particuliers) : le
-    // scénario ne prouve rien, on ne l'affirme pas à tort.
+    // Le refus d'accès n'a pas pris sur ce poste (droits particuliers) : le scénario ne
+    // prouve rien.
     return;
   }
   assert.strictEqual(e.leve, false, 'Find-SzhAncrageParDescente a levé une exception au lieu de l’avaler');
@@ -554,9 +524,9 @@ test('unitaires purs : casse/espaces, dossiers système, racines candidates', { 
 });
 
 // =====================================================================================
-// ---- Groupe 2 : orchestration complète, windows/szh-common.ps1 (le VRAI socle) --------
+// ---- Groupe 2 : orchestration complète, avec windows/szh-common.ps1 ----------------------
 //      Requis pour Resolve-SzhAncrage (config.json, etat-utilisateur.json, Write-SzhLog),
-//      Initialize-SzhAncrage et Get-SzhBaseRevuesPour, exactement comme en production.
+//      Initialize-SzhAncrage et Get-SzhBaseRevuesPour, comme en production.
 // =====================================================================================
 
 function piloteGroupe2() {
@@ -565,9 +535,9 @@ function piloteGroupe2() {
   p('$ErrorActionPreference = \'Stop\'');
   p('$Travail = $args[0]');
   p('$Sortie = $args[1]');
-  // Toutes les racines qui pourraient faire fuiter le VRAI poste, redirigées avant même le
-  // dot-source : SZH_BASE (config.json, logs), LOCALAPPDATA (etat-utilisateur.json),
-  // USERPROFILE/OneDrive*/OneDriveCommercial (détection automatique).
+  // Les racines qui mèneraient au vrai poste, redirigées avant le dot-source : SZH_BASE
+  // (config.json, logs), LOCALAPPDATA (etat-utilisateur.json), USERPROFILE et OneDrive*
+  // (détection automatique).
   p('$env:SZH_BASE = Join-Path $Travail \'programdata\'');
   p('$env:LOCALAPPDATA = Join-Path $Travail \'localappdata\'');
   p('$env:USERPROFILE = Join-Path $Travail \'profil-neutre\'');
@@ -634,10 +604,9 @@ function piloteGroupe2() {
   p('}');
   p('');
 
-  // ---- Get-SzhBaseRevuesPour : la non-régression ----
-  // Repart d'un état propre : le scénario précédent (revalidation du cache) laisse
-  // etat-utilisateur.json avec un ancrageSharePoint valide (le cas "hit"), qui gagnerait
-  // sinon la résolution avant même que la détection automatique n'entre en jeu.
+  // ---- Get-SzhBaseRevuesPour : même résultat que le défaut codé en dur ----
+  // Repart d'un état propre : le scénario précédent laisse dans etat-utilisateur.json un
+  // ancrageSharePoint valide, qui gagnerait la résolution avant la détection automatique.
   p('Set-SzhJson $SzhConfigFile ([ordered]@{})');
   p('Set-SzhJson $SzhEtatUtilisateurFile ([ordered]@{})');
   p('$ancParallele = ND (Join-Path $Travail \'regression\\parallele\\Daten_Allgemein - General\')');
@@ -676,7 +645,7 @@ function piloteGroupe2() {
   p('}');
   p('');
 
-  // ---- garde-fou majeur : aucune fenêtre atteignable depuis Resolve-SzhAncrage, SANS simulation ----
+  // ---- aucune fenêtre atteignable depuis Resolve-SzhAncrage, sans simulation ----
   p('$script:temoinDemandeAppelee = $false');
   p('function Request-SzhAncrageUtilisateur { $script:temoinDemandeAppelee = $true; return \'NE-DOIT-JAMAIS-ARRIVER\' }');
   p('Remove-Item Env:SZH_LANCEUR_SIMULE -ErrorAction SilentlyContinue   # PAS de simulation : le pire cas');
@@ -754,10 +723,8 @@ test('cache : une valeur qui ne pointe plus sur un dossier existant est ignorée
 });
 
 test('Get-SzhBaseRevuesPour : une racine écrite dans config.json ne prime PLUS — l’ancrage gagne', { skip: sansPowerShell }, () => {
-  // Le propriétaire l'a demandé en clair le 15.09.2026 : un chemin recopié à la main dans un
-  // fichier de configuration survivait à un déménagement de la bibliothèque et rendait le
-  // poste muet sans un mot. La racine de production vient maintenant du dossier trouvé sur le
-  // disque, et d'aucun réglage.
+  // La racine de production vient du dossier trouvé sur le disque, pas d'un réglage : un
+  // chemin recopié dans la configuration survivrait au déménagement de la bibliothèque.
   const b = orchestration.lu.base_revues_pour.configIgnoree;
   assert.strictEqual(b.obtenu, b.attendu);
   assert.notStrictEqual(b.obtenu, b.refuse,

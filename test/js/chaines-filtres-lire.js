@@ -1,8 +1,7 @@
 // Lit les chaînes de filtres de pipeline/filtres.mk sans make : affectations `NOM := …`,
 // références $(NOM) et $(filter-out a b,$(NOM)), la seule syntaxe que ce fichier emploie.
 // Rend { NOM: [noms de filtres] }, chaque nom désignant pipeline/filters/szh-<nom>.lua.
-// test/js/chaines-filtres.test.js compare ce lecteur à la sortie réelle de make : s'ils
-// divergent, c'est lui qui rougit, et les contrôles statiques qui s'en servent avec lui.
+// test/js/chaines-filtres.test.js compare ce lecteur à la sortie réelle de make.
 'use strict';
 
 const fs = require('fs');

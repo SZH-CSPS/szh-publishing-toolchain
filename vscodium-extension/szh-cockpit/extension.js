@@ -1,13 +1,11 @@
-// Extension « Pronto » : la barre latérale du cockpit dans l'Explorateur de VSCodium
-// (articles, Word en attente, traductions) et les commandes associées. La vue n'apparaît
-// que si le dossier ouvert est une publication — un numéro de revue (ausgabe.yaml) ou un
-// livre (buch.yaml) : lib/profil.js dit lequel, et pose la clé de contexte qui va avec.
+// Extension « Pronto » : la vue du cockpit dans l'Explorateur de VSCodium (articles, Word
+// en attente, traductions) et ses commandes. La vue s'affiche quand le dossier ouvert est
+// un numéro de revue (ausgabe.yaml) ou un livre (buch.yaml), selon lib/profil.js.
 //
-// Sans build : les require sont résolus à l'exécution, donc lib/ et media/ doivent
-// rester empaquetés (voir .vscodeignore). Ici, activate/deactivate, le câblage des
-// commandes et l'agrégat _pur exposé aux tests. Une webview ne reçoit aucune donnée dans
-// son HTML : tout arrive par postMessage, et les libellés y sont des marqueurs
-// %%SZH:cle%% résolus par T().
+// Ce fichier câble les zones de lib/ : activate/deactivate, l'enregistrement des commandes
+// et l'objet _pur exposé aux tests. Il n'y a pas de build : lib/ et media/ doivent rester
+// dans le paquet (voir .vscodeignore). Le HTML d'une webview ne contient aucune donnée :
+// tout arrive par postMessage, et les libellés %%SZH:cle%% sont résolus par T().
 'use strict';
 
 const vscode = require('vscode');
@@ -15,19 +13,17 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-// Les clés de contexte du profil — szh.estRevue, szh.estLivre — ne sont plus nommées
-// ici : elles vivent dans la table de lib/profil.js, avec le reste de ce qui
-// distingue un numéro d'un livre, et se posent toutes ensemble (voir majContexte).
-// L'état du numéro en clés de contexte : c'est ce que lisent les `when` de package.json.
+// État du numéro en clés de contexte, lues par les `when` de package.json. Les clés du
+// profil (szh.estRevue, szh.estLivre) sont dans lib/profil.js (voir majContexte).
 const CLE_VERROUILLEE = 'szh.verrouillee';
 const CLE_ARCHIVEE = 'szh.archivee';
 const ID_VUE = 'szhCockpitVue';
-// À garder identiques aux labels de vscodium-user/tasks.json, qui les nomme.
+// Identiques aux labels de vscodium-user/tasks.json.
 const NOM_TACHE_IMPORT = 'Importer les articles Word';
 const NOM_TACHE_BUILD = 'Aperçu / Export PDF';
 const NOM_TACHE_EXPORT = 'Tout exporter';
 const NOM_TACHE_DOCX = 'Galleys DOCX (OJS)';
-// Les quatre sorties du livre (pipeline/profils/livre.mk), sans équivalent côté revue.
+// Les quatre sorties propres au livre (pipeline/profils/livre.mk).
 const NOM_TACHE_LIVRE_IMPRIMEUR = 'Livre : PDF imprimeur';
 const NOM_TACHE_LIVRE_COUVERTURE = 'Livre : couverture';
 const NOM_TACHE_LIVRE_EPUB = 'Livre : EPUB';
@@ -43,8 +39,8 @@ const moteur = require('./lib/moteur');
 const servicesEnv = require('./lib/services-env');
 
 const MAKEFILE_WSL = moteur.toolkitMoteur('pipeline', 'Makefile');
-// Le réimport d'un article corrigé. Seul maillon que le cockpit appelle sans passer par
-// une tâche : il rend une ligne JSON qu'il faut lire, et une tâche n'en rapporte rien.
+// Réimport d'un article corrigé. Le cockpit l'appelle directement, sans tâche, parce qu'il
+// doit lire la ligne JSON que le script rend.
 const REIMPORTER_WSL = moteur.toolkitMoteur('pipeline', 'reimporter.py');
 
 // ---- i18n du cockpit -> lib/i18n.js ----------------------------------------------
@@ -69,38 +65,30 @@ const {
 const { trouverPlageFocus, focusDeRepli } = require('./lib/reperage-focus');
 // ---- Poste et traduction -> lib/archivage.js ; cycle de vie -> lib/cycle-vie.js --
 const {
-  // versionsDivergent n'est plus appelée ici (voir lib/cycle-vie.js) mais reste exposée
-  // par module.exports._pur, qui la veut en liaison de module — pas seulement ré-exportée.
+  // Seulement exposée par _pur.
   versionsDivergent,
-  // ecrireModeDeveloppeur n'est pas appelée ici : l'écriture se fait depuis l'onglet
-  // Paramètres de l'Accueil (lib/accueil-reglages-hote.js).
   lireModeDeveloppeur, lireConfigPoste, ecrireConfigPoste,
   configAvecLangue, CONFIG_POSTE,
-  // Vérificateur de traduction : un réglage du poste et non de l'éditeur, pour que trois
-  // panneaux le lisent et qu'il survive à la mise à jour du poste.
+  // Vérificateur de traduction et mode « Trad » : des réglages du poste, lus par plusieurs
+  // panneaux et conservés à la mise à jour du poste.
   lireVerifTraduction, ecrireVerifTraduction,
-  // Mode « Trad » : jumeau du précédent pour les textes de l'outil, dans le même fichier et
-  // pour la même raison — plusieurs panneaux le lisent, et il doit survivre à la mise à
-  // jour du poste.
   lireModeTrad, ecrireModeTrad
 } = require('./lib/archivage');
 // ---- Suggestions de traduction -> lib/suggestion-traduction.js -------------------
-// Le dossier traduction/ d'un numéro : une proposition par fichier, et rien de publié.
+// Le dossier traduction/ d'un numéro : une proposition par fichier, rien n'est publié.
 const suggestionTraduction = require('./lib/suggestion-traduction');
 // ---- Index des libellés de l'interface -> lib/index-textes.js --------------------
-// Retrouver la clé i18n d'un texte lu à l'écran. C'est ce que le mode « Trad » envoie aux
-// panneaux, et seulement quand il est allumé.
+// Retrouve la clé i18n d'un texte affiché ; le mode « Trad » l'envoie aux panneaux.
 const indexTextes = require('./lib/index-textes');
 // ---- Rapports d'erreur automatiques -> lib/rapport-erreur.js ---------------------
-// Toute la logique (résolution passive de l'ancrage, masquage, anti-inondation, file
-// d'attente, écriture) vit dans ce module, testable hors éditeur ; ici, seulement deux
-// accroches (COMPIL-ECHEC dans relireJournal(), COCKPIT-EXCEPTION ci-dessous) et le
-// vidage de la file au démarrage — voir docs/RAPPORTS-ERREUR.md.
+// La logique est dans le module. Ici, deux points d'appel (COMPIL-ECHEC dans
+// relireJournal(), COCKPIT-EXCEPTION plus bas) et le vidage de la file au démarrage.
+// Voir docs/RAPPORTS-ERREUR.md.
 const rapportErreur = require('./lib/rapport-erreur');
 // ---- Compteurs d'usage de l'import -> lib/compteurs.js ----------------------------
-// Des entiers et des noms de mesures, jamais un mot du manuscrit (docs/RAPPORTS-ERREUR.md,
-// « Les compteurs ne sont pas des rapports »). Trois accroches : la fin d'une tâche
-// (relireJournal), la fin d'un réimport réussi, et le vidage de la file au démarrage.
+// Des entiers et des noms de mesures, sans aucun mot du manuscrit (docs/RAPPORTS-ERREUR.md).
+// Trois points d'appel : la fin d'une tâche (relireJournal), la fin d'un réimport réussi
+// et le vidage de la file au démarrage.
 const compteurs = require('./lib/compteurs');
 // ---- Réglages protégés de la chaîne -> lib/reglages-proteges.js -------------------
 const proteges = require('./lib/reglages-proteges');
@@ -110,16 +98,14 @@ const exportLangue = require('./lib/export-langue');
 const { empreinteReglages, clesRefusees } = require('./lib/reglages-flotte');
 // ---- Auteur·e·s connus : OJS (OAI-PMH) et les numéros du poste --------------------
 // Deux sources, un seul cache. OJS donne les noms et l'affiliation ; la fonction et
-// l'e-mail n'existent nulle part dans son interface publique et ne viennent que des
-// fiches meta.yaml des numéros, où la rédaction les a saisis.
+// l'e-mail, absents de son interface publique, viennent des fiches meta.yaml des numéros.
 const {
   lireCache: lireCacheAuteursPublies, rafraichir: rafraichirCacheAuteursPublies
 } = require('./lib/auteurs-ojs');
 const { rafraichirCorpus: rafraichirCorpusAuteurs } = require('./lib/auteurs-corpus');
 // ---- Mots-clés connus : le vocabulaire edudoc.ch (OAI-PMH) -----------------------
-// Deuxième source moissonnée, séparée des auteur·e·s : cache différent
-// (mots-cles.json), et un rythme d'activation propre à CE cockpit — voir
-// rafraichirMotsClesEnFond — indépendant du repli mensuel interne au module.
+// Cache propre (mots-cles.json), rafraîchi à un rythme décidé par le cockpit
+// (voir rafraichirMotsClesEnFond), indépendant du repli mensuel du module.
 const {
   lireCacheMotsCles, rafraichirMotsCles
 } = require('./lib/mots-cles-edudoc');
@@ -137,25 +123,23 @@ const {
 // -> lib/relance-compilation.js
 const relanceCompilation = require('./lib/relance-compilation');
 // ---- « Quoi de neuf » -> lib/nouveautes.js ---------------------------------------
-// Les notes livrées avec le toolkit, et la décision de ce qu'il y a à montrer.
+// Les notes livrées avec le toolkit, et ce qu'il faut en montrer.
 const nouveautes = require('./lib/nouveautes');
 // ---- Ce qu'est le dossier ouvert -> lib/profil.js --------------------------------
 // Numéro de revue ou livre : la table qui le dit, et les chemins qui en découlent.
 const profils = require('./lib/profil');
 // ---- Modules impératifs -> lib/{slug,formatting}.js ------------------------------
 const { slugifier, slugifierArticle } = require('./lib/slug');
-// tige() ignore le préfixe « NN- » d'un dossier : depuis que l'import en pose un
-// (lib/import-hote.js), le slug qu'un Word laisse deviner (slugifierArticle) et le nom
-// du dossier qui le porte (« 00-inclusion ») ne sont plus la même chaîne. Comparer sans
-// cette fonction referait le doublon que « déjà converti » existe pour éviter.
+// tige() ignore le préfixe « NN- » d'un dossier : le slug tiré d'un Word (« inclusion »)
+// et le dossier importé (« 00-inclusion ») se comparent par elle, sans quoi un Word déjà
+// converti ne serait pas reconnu.
 const { tige } = require('./lib/renumerotation');
 const {
   basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
   enroberBloc, squeletteTableau, tableauVierge, blocReferenceTable, nomTableLibre,
   enregistrerCommandesMiseEnForme
 } = require('./lib/formatting');
-// ---- Liens profonds « szh:// » -> lib/liens.js (le verrou lui-même est dans -------
-// lib/cycle-vie.js, qui require lib/verrou.js directement) ------------------------
+// ---- Liens profonds « szh:// » -> lib/liens.js ------------------------------------
 const { construireLienTraduction, consommerIntention } = require('./lib/liens');
 // Les mêmes liens reçus en vscodium:// par l'éditeur -> lib/uri-hote.js.
 const uriHote = require('./lib/uri-hote');
@@ -174,9 +158,8 @@ const {
   cheminDepuisUriConflit, fichierConflitVise, resoudreBlocConflit, supprimerCopieConflit,
   copieResolueEnregistree, rafraichirConflitsScm
 } = cycleVie;
-// Les rappels vers l'hôte que lib/cycle-vie.js ne peut pas connaître par require (voir son
-// en-tête) : posés une seule fois, ici. Toutes les fonctions visées sont des déclarations de
-// fonction — hoisted — même celles définies plus bas dans ce fichier.
+// Rappels vers ce fichier, que lib/cycle-vie.js ne peut pas requérir. Les fonctions visées
+// sont des déclarations, donc utilisables même si elles sont définies plus bas.
 cycleVie.configurer({
   trouverRacineRevue: () => trouverRacineRevue(),
   ecrireClesAusgabe: (racine, modifies) => ecrireClesAusgabe(racine, modifies),
@@ -242,14 +225,14 @@ metadonneesHote.configurer({
     permuterStatutsTraduction(racine, slug, avant, apres),
   relancerCompilation: (fournisseur, slug, opts) => relancerCompilation(fournisseur, slug, opts),
   focaliserUnite: (fournisseur, slug) => focaliserUnite(fournisseur, slug),
-  // « Markdown » : le texte de l'article à droite de sa fiche. Les onglets se lisent et se
-  // ferment ici, comme pour l'aperçu — aucun module de lib/ ne touche à tabGroups.
+  // Bouton « Markdown » : le texte de l'article à droite de sa fiche. Les onglets
+  // (tabGroups) se lisent et se ferment dans ce fichier seulement.
   ongletOuvert: (predicat) => ongletOuvert(predicat),
   fermerOnglets: (predicat) => fermerOnglets(predicat),
   slugDepuisChemin: (racine, chemin) => slugDepuisChemin(racine, chemin),
   articlesSansDoi: (racine, slugs) => articlesSansDoi(racine, slugs),
-  // Le vérificateur de traduction : le réglage se lit ici, et la pastille du formulaire des
-  // fiches ouvre le panneau de suggestion, qui vit ici aussi.
+  // Vérificateur de traduction : son réglage, et le panneau de suggestion qu'ouvre la
+  // pastille du formulaire des fiches.
   lireVerifTraduction: () => lireVerifTraduction(),
   ouvrirSuggestionTraduction: (fournisseur, msg) => ouvrirSuggestionTraduction(fournisseur, msg)
 });
@@ -277,31 +260,28 @@ documentationHote.configurer({
   focaliserUnite: (fournisseur, slug) => focaliserUnite(fournisseur, slug),
   lireCouleurAccent: (racine) => lireCouleurAccent(racine),
   limitesMedias: () => limitesMedias(),
-  // Le jeton de revue du numéro ouvert, et son nom affiché — pour les libellés du
-  // réservoir (« numéro de l'autre revue »).
+  // La revue du numéro ouvert et son nom affiché, pour les libellés du réservoir
+  // (« numéro de l'autre revue »).
   revueCourante: (racine) => revueCourante(racine),
   nomRevueAffiche: (revue) => nomRevueAffiche(revue),
   convertirCmykSiBesoin: (chemins) => convertirCmykSiBesoin(chemins),
-  // Le bouton « Aperçu du PDF » de son formulaire (23.09.2026) : bascule, état, et
-  // rafraîchissement après « Enregistrer » — voir apercuOuvertPourSlug/
-  // basculerApercuDocumentation/rafraichirApercuDocumentationSiOuvert plus bas.
+  // Bouton « Aperçu du PDF » du formulaire : état, bascule, et rafraîchissement après
+  // « Enregistrer ».
   apercuOuvert: (racine, slug) => apercuOuvertPourSlug(racine, slug),
   basculerApercu: (fournisseur, slug) => basculerApercuDocumentation(fournisseur, slug),
   rafraichirApercuSiOuvert: (fournisseur, slug) => rafraichirApercuDocumentationSiOuvert(fournisseur, slug)
 });
 // ---- Co-édition d'un même numéro -> lib/coedition.js, lib/copies-conflit.js -------
-// ⚠ Rien à voir avec le verrou de lib/verrou.js juste au-dessus, qui gèle un numéro entier
-// en lecture seule. Ici : un bail de deux minutes posé sur un fichier pendant qu'un
-// formulaire le modifie, et l'avertissement quand le synchroniseur a déjà dédoublé un
-// fichier du numéro.
+// Un bail de deux minutes posé sur un fichier pendant qu'un formulaire le modifie, et
+// l'avertissement quand le synchroniseur a dédoublé un fichier du numéro. Sans rapport avec
+// le verrou de lib/verrou.js, qui gèle un numéro entier.
 const coedition = require('./lib/coedition');
-// (les autres exports de lib/copies-conflit.js sont requis directement par lib/cycle-vie.js)
 const { copieConflitPour } = require('./lib/copies-conflit');
 // ---- Garde d'interaction -> lib/interaction.js ------------------------------------
-// Un QuickPick de VS Code se ferme dès que le focus bouge ; la fin d'une compilation
-// (réassignation du HTML de l'aperçu, notification des contrôles) ne doit pas interrompre
-// le geste en cours. sousGarde enveloppe les choix, differer retient ce qui volerait le
-// focus et le rejoue à la fermeture. Instance partagée avec panneaux.js et formatting.js.
+// Un QuickPick se ferme dès que le focus bouge. Pour qu'une fin de compilation (aperçu
+// rechargé, notification des contrôles) ne le ferme pas, sousGarde enveloppe les choix et
+// differer retient ce qui volerait le focus jusqu'à leur fermeture. Instance partagée avec
+// panneaux.js et formatting.js.
 const { sousGarde, differer, confirmerAbandon } = require('./lib/interaction');
 const {
   genererExportOjs, configOjs, ecrireConfigOjs, doiCalcule, typeSansDoi,
@@ -315,10 +295,8 @@ const {
   normaliserGrilles
 } = require('./lib/references');
 // ---- Arborescence Kirby de la Documentation (fiches et rubriques) -> lib/kirby-contenu.js
-// Un seul module pour les deux familles de blocs — une fiche à champs (livre, film,
-// intervention…) et une rubrique de prose (références du dossier, tour d'horizon…) — qui
-// vivent toutes deux dans documentation.<lang>.txt et les dossiers de fiches. Remplace
-// lib/ressources.js et lib/rubriques.js.
+// Les fiches à champs (livre, film, intervention…) et les rubriques de prose (références
+// du dossier, tour d'horizon…), dans documentation.<lang>.txt et les dossiers de fiches.
 const kirbyLib = require('./lib/kirby-contenu');
 const { traiterPortraits } = require('./lib/portraits');
 // ---- Journal de compilation -> lib/journal.js ------------------------------------
@@ -361,18 +339,12 @@ const {
 const VUE_PDF = 'pdf.preview';
 const EXT_PDF = 'tomoki1207.pdf';
 
-// Premier dossier du workspace qui est une publication, ou null : la vue reste masquée.
+// Chemin du premier dossier du workspace qui est une publication, ou null (la vue reste
+// masquée). La reconnaissance est faite par lib/profil.js ; le profil trouvé est mémorisé
+// dans la session.
 //
-// La reconnaissance elle-même est dans lib/profil.js, qui sait dire ce que le dossier est
-// — un numéro de revue (ausgabe.yaml, articles/) ou un livre (buch.yaml, chapitres/) — et
-// où sont ses fichiers. Ici on n'en garde que deux choses : le chemin, que tout le reste du
-// fichier attend sous forme de chaîne, et le profil, mémorisé pour les gestes qui doivent
-// savoir de quoi ils parlent.
-//
-// ⚠ Ne pas confondre avec `session.profilRevue()` / `lireProfil` plus bas : celui-là est la clé
-//   `profil:` d'ausgabe.yaml, qui décide du mode d'aperçu d'un numéro. Deux notions, deux
-//   noms, et le voisinage est malheureux — mais renommer la seconde toucherait le contrat
-//   exporté que les tests lisent.
+// À distinguer de `session.profilRevue()` / `lireProfil` : la clé `profil:` d'ausgabe.yaml,
+// qui choisit le mode d'aperçu d'un numéro.
 
 function trouverRacineRevue() {
   const trouve = profilOuvrage_detecter();
@@ -388,86 +360,70 @@ function profilOuvrage_detecter() {
 // Le profil du dossier ouvert, revue par défaut (lib/profil.js#courant).
 function profilCourant() { return profils.courant(); }
 
-// Le dossier des unités de texte du profil actif : « articles » pour un numéro,
-// « chapitres » pour un livre. Les chemins d'une unité passent par profils.chemins().
+// Dossier des unités de texte : « articles » pour un numéro, « chapitres » pour un livre.
 function dossierUnites() { return profilCourant().unites.dossier; }
 
-// Le titre de la section, dans la langue de l'interface : « ARTICLES » ou « CHAPITRES ».
+// Clé i18n du titre de la section : « ARTICLES » ou « CHAPITRES ».
 function cleArbreUnites() { return 'arbre.' + profilCourant().unites.dossier; }
 
-// La catégorie de la section des unités : elle sert de clé d'accordéon ET de valeur de
-// contexte pour les menus de package.json. Deux profils, deux catégories, pour qu'un
-// `when` puisse les distinguer.
+// Catégorie de la section des unités : clé de l'accordéon et valeur de contexte des menus
+// de package.json, distincte par profil pour qu'un `when` les distingue.
 function categorieUnites() { return profilCourant().unites.dossier; }
 
-// ---- Cycle de vie du numéro : verrou, archive, version du logiciel -> lib/cycle-vie.js
-// etatCourant, compilationAutoCoupee, refuserSiArchivee, refuserSiVerrouille et le reste
-// du cycle de vie sont importés plus haut ; seuls restent ici les utilitaires de chemin
-// que d'autres zones lisent aussi (cheminConfig, cleOrdre, ecrireClesAusgabe).
+// ---- Utilitaires de chemin partagés par plusieurs zones ---------------------------
+// Le reste du cycle de vie (verrou, archive, version) est dans lib/cycle-vie.js.
 
-// Le fichier de configuration du dossier ouvert : ausgabe.yaml pour un numéro, buch.yaml
-// pour un livre. Tout ce qui lit ou écrit la configuration passe par ici — écrire le nom
-// en dur reviendrait, sur un livre, à créer un ausgabe.yaml parasite qui rendrait le
-// dossier ambigu pour le cockpit ET pour le Makefile.
+// Fichier de configuration du dossier ouvert : ausgabe.yaml (numéro) ou buch.yaml (livre).
+// Toute lecture ou écriture de la configuration passe par ici : un ausgabe.yaml écrit dans
+// un livre rendrait le dossier ambigu pour le cockpit et pour le Makefile.
 function cheminConfig(racine) { return path.join(racine, profilCourant().config); }
 
-// La clé qui porte l'ordre des unités : `ordre-articles` dans ausgabe.yaml,
-// `ordre-chapitres` dans buch.yaml. Même forme, même lecteur, même réparation — seul le
-// nom change, et il vient de la table des profils plutôt que d'un littéral.
+// Clé de l'ordre des unités : `ordre-articles` (ausgabe.yaml) ou `ordre-chapitres` (buch.yaml).
 function cleOrdre() { return profilCourant().unites.ordre; }
 
-// Le sérialiseur du formulaire préserve les lignes non gérées. null si tout est écrit.
+// Écrit les clés modifiées en gardant les lignes que le sérialiseur ne gère pas.
+// Rend null si tout est écrit, sinon le message d'erreur.
 function ecrireClesAusgabe(racine, modifies) {
   const chemin = cheminConfig(racine);
   try {
     let contenu = '';
     try { contenu = fs.readFileSync(chemin, 'utf8'); } catch (e) { /* absent : recréé plat */ }
     ecrireAtomique(chemin, serialiserAusgabe(contenu, modifies));
-    // Point de passage unique d'ausgabe.yaml : c'est ici que les formulaires ouverts
-    // apprennent que le fichier a bougé de notre fait — un bouton de l'arbre, une commande
-    // — et non de celui d'un autre poste. Sans ça, le prochain enregistrement d'un
-    // formulaire endormi crierait au conflit sans raison. Voir « Co-édition ».
+    // Les formulaires ouverts apprennent que ce poste a modifié le fichier : sans cela,
+    // leur prochain enregistrement signalerait un faux conflit de co-édition.
     rafraichirEmpreinteCoedition(racine, chemin);
     return null;
   } catch (e) { return String((e && e.message) || e); }
 }
 
-// appliquerEtVerifierVerrou, majEtatNumero, majBarreEtatNumero, titreVue et
-// avertirVersionSiDivergente vivent dans lib/cycle-vie.js (voir le require plus haut).
-
-// szh.replierAssetsAutres (défaut true) : au clic, les assets de l'article se déplient
-// et ceux des autres se replient.
-// Réglage szh.convertirCmyk, coché par défaut : un JPEG CMJN ne s'affiche correctement ni
-// dans un navigateur ni dans WeasyPrint, et le défaut ne se voit qu'au PDF. La conversion
-// reste débranchable, la chaîne de portraits n'étant pas disponible partout.
+// Réglage szh.convertirCmyk, coché par défaut : un JPEG CMJN s'affiche mal dans un
+// navigateur comme dans WeasyPrint, et le défaut ne se voit qu'au PDF. Il se décoche là où
+// la chaîne de portraits manque.
 function convertirCmykActif() {
   try { return vscode.workspace.getConfiguration('szh').get('convertirCmyk', true) !== false; }
   catch (e) { return true; }
 }
 
-// Réglage szh.reduireWarningsImpression, décoché par défaut : activé, le palier
-// « conseillé » des avertissements de résolution se tait — seule une image sous le
-// minimum reste signalée. Le CMJN n'est pas concerné.
+// Réglage szh.reduireWarningsImpression, décoché par défaut : coché, seule une image sous
+// la résolution minimale est signalée (le palier « conseillé » se tait). Le CMJN reste
+// signalé.
 function reduireWarningsImpressionActif() {
   try { return vscode.workspace.getConfiguration('szh').get('reduireWarningsImpression', false) === true; }
   catch (e) { return false; }
 }
 
-// Réglage szh.desactiverLiensReferences, décoché par défaut : activé, la compilation ne pose
-// plus le lien entre un appel de citation et sa référence — les liens posés à la main restent
-// tels quels, et l'action « Lier un appel à une référence » du cockpit reste disponible. Lu
-// ici pour l'affichage du panneau ; la valeur qui compte pour la compilation est celle
-// répercutée dans config.json (voir la branche « liensReferences » de traiterMessage, lib/reglages-hote.js), seul
-// pont vers pipeline/filters/szh-citations.lua, qui tourne dans WSL sans rien connaître des
-// réglages de VSCodium.
+// Réglage szh.desactiverLiensReferences, décoché par défaut : coché, la compilation ne lie
+// plus un appel de citation à sa référence (les liens posés à la main restent). Lu ici pour
+// l'affichage du panneau. La compilation, elle, lit la copie de ce réglage dans config.json
+// (écrite par lib/reglages-hote.js) : szh-citations.lua tourne dans la WSL et ne voit pas
+// les réglages de VSCodium.
 function desactiverLiensReferencesActif() {
   try { return vscode.workspace.getConfiguration('szh').get('desactiverLiensReferences', false) === true; }
   catch (e) { return false; }
 }
 
-// Convertit en RVB les JPEG CMJN de la liste. Silencieux quand il n'y a rien à faire ;
-// un échec est signalé mais ne bloque rien, le fichier restant lisible tel quel.
-// -> Promise<nombre de fichiers convertis>
+// Convertit en RVB les JPEG CMJN de la liste et rend le nombre de fichiers convertis. Un
+// échec est signalé sans bloquer : le fichier reste utilisable tel quel.
 async function convertirCmykSiBesoin(chemins) {
   if (!convertirCmykActif()) { return 0; }
   const candidats = (Array.isArray(chemins) ? chemins : []).filter((c) => c && estJpegCmyk(c));
@@ -490,57 +446,44 @@ async function convertirCmykSiBesoin(chemins) {
   return convertis.length;
 }
 
+// Réglage szh.replierAssetsAutres (défaut true) : au clic, les assets de l'article se
+// déplient et ceux des autres se replient.
 function replierAssetsAutres() {
   try { return vscode.workspace.getConfiguration('szh').get('replierAssetsAutres', true) !== false; }
   catch (e) { return true; }                       // configuration indisponible
 }
 
-// Le type d'article qui peuple la section « Actualité » plutôt que « Articles ». C'est le
-// même jeton que TYPES_HORS de lib/yaml.js et que la table des rubriques OJS de
-// lib/export-ojs.js (rubrique DC/DK) : la Documentation n'est pas un nouveau modèle de
-// données, c'est le type qui existait déjà, simplement présenté à part. Un article de
-// Documentation reste un `articles/<slug>/` ordinaire, il garde son rang dans le numéro, sa
-// fiche, ses traductions et son export — seule sa place dans l'arbre change.
+// Type d'article affiché dans la section « Actualité » plutôt que « Articles » (même valeur
+// que TYPES_HORS de lib/yaml.js et la rubrique DC/DK de lib/export-ojs.js). Un article de
+// Documentation reste un `articles/<slug>/` ordinaire, avec son rang, sa fiche, ses
+// traductions et son export : seule sa place dans l'arbre change.
 const TYPE_ACTUALITE = 'documentation';
 
-// Le nom de dossier de la page de Documentation, quand le cockpit la crée lui-même. Une
-// seule par numéro : la Documentation est une page — « Actualité et ressources » /
-// « News & Ressourcen » — et non une famille d'articles. Un numéro qui en porterait déjà
-// une sous un autre nom (page importée d'un Word, dossier créé à la main) garde le sien :
-// c'est le type de la fiche qui la désigne, jamais son nom de dossier.
+// Dossier de la page de Documentation quand le cockpit la crée. Il y en a une par numéro.
+// C'est le type de la fiche qui la désigne : une page existante garde son nom de dossier.
 const SLUG_DOCUMENTATION = 'documentation';
 
-// La vue d'ensemble de chaque section : rouverte par le clic sur l'en-tête (en plus de
-// l'accordéon) et par le dépliage au chevron — mais jamais par les dépliages programmés,
-// un clic d'article ne doit pas ramener la vue Articles par-dessus le texte (décision B).
-// « Actualité » n'y figure pas, comme « chapitres » : elle n'a pas de vue d'ensemble, le
-// clic sur son en-tête ne fait donc que jouer l'accordéon. La vue de la section des unités
-// vient de la table de profil (lib/profil.js) : « articles » pour un numéro, « chapitres »
-// pour un livre.
+// Vue d'ensemble d'une section, rouverte par le clic sur l'en-tête et par le chevron, mais
+// pas par un dépliage programmé : un clic d'article ne doit pas ramener la vue par-dessus
+// le texte. « Actualité » et « chapitres » n'ont pas de vue d'ensemble : le clic ne fait
+// que jouer l'accordéon.
 function vueDeSection(categorie) { return profils.vueDeSection(profilCourant(), categorie); }
 
-// Une couleur par en-tête de section : le TreeView natif n'offre ni gras ni taille de
-// police, ce sont donc les majuscules du libellé et la couleur de l'icône qui rendent les
-// trois sections repérables. Bleu et vert sont ceux des états de traduction
-// (COULEURS_STATUT) ; pour « Word en attente », l'ambre d'avertissement de l'éditeur
-// plutôt que « charts.orange », trop clair sur fond blanc — même choix que COULEURS_STATUT.
+// Une couleur d'icône par en-tête de section : le TreeView n'offre ni gras ni taille de
+// police. Bleu et vert reprennent les états de traduction (COULEURS_STATUT) ; « Word en
+// attente » prend l'ambre de l'éditeur, « charts.orange » étant trop clair sur fond blanc.
 const COULEURS_SECTION = {
   articles: 'charts.blue',
-  // Un livre nomme ses unités « chapitres » : sans cette entrée, la section sortirait sans
-  // couleur, seule de son espèce dans l'arbre.
   chapitres: 'charts.blue',
-  // ⚠ Une couleur par section, jamais deux fois la même sur un même arbre : test/js/hote.test.js
-  //   le vérifie. Le violet est le seul des `charts.*` encore libre après le bleu des
-  //   articles et le vert des traductions.
+  // Les sections d'un même arbre ont des couleurs distinctes (test/js/hote.test.js).
   actualite: 'charts.purple',
   traductions: 'charts.green',
   word: 'editorWarning.foreground'
 };
 
-// L'icône d'un article dans l'arbre : son avancement, en trois états lisibles d'un coup
-// d'œil. Le langage visuel est celui des états de traduction (iconeStatut) : cercle vide =
-// rien de commencé, plein et bleu = en cours, coche verte = tout est fait. Un article sans
-// tâches configurées reste au cercle vide : il n'a rien à raconter.
+// Icône d'avancement d'un article, sur le modèle des états de traduction : cercle vide =
+// rien de fait (ou aucune tâche configurée), cercle bleu plein = en cours, coche verte =
+// tout est fait.
 function iconeAvancement(avance) {
   if (avance.total > 0 && avance.faites >= avance.total) {
     return new vscode.ThemeIcon('pass-filled', new vscode.ThemeColor('charts.green'));
@@ -559,24 +502,15 @@ const {
   libererCoedition
 } = coeditionHote;
 
-// ---- Copies en conflit et leur résolution bloc à bloc -> lib/cycle-vie.js --------
-// avertirCopiesConflit, oublierCopiesSignalees, comparerConflit, resoudreBlocConflit,
-// SCHEME_CONFLIT, fournisseurDiffConflit, cheminDepuisUriConflit, rafraichirConflitsScm,
-// supprimerCopieConflit : tous importés plus haut.
-
 // ---- Ordre du numéro, nom des articles, tâches, couverture ----------------------
 //
-// L'ordre des articles vit dans ausgabe.yaml (clé `ordre-articles`, lib/articles.js) et
-// non dans les noms de dossier : déplacer un article ne renomme ni le dossier ni son .md,
-// donc out/ reste valable et les liens du numéro tiennent. Il est relu à chaque appel —
-// ausgabe.yaml fait quinze lignes — et réparé de ce que le disque dit, mais jamais réécrit
-// au passage : réécrire à chaque rafraîchissement de l'arbre réveillerait le surveillant de
-// fichiers en boucle. La clé n'est écrite que par un geste de l'utilisateur.
+// L'ordre des articles est dans le fichier de configuration (clé `ordre-articles` ou
+// `ordre-chapitres`, lib/articles.js) : déplacer un article ne renomme ni son dossier ni son
+// .md, et out/ reste valable. L'ordre est relu à chaque appel et réparé d'après le disque,
+// mais n'est écrit que par une action de l'utilisateur : l'écrire à chaque rafraîchissement
+// de l'arbre relancerait le surveillant de fichiers en boucle.
 
-// ⚠ La clé suit le profil autant que le fichier : `ordre-articles` dans ausgabe.yaml,
-//   `ordre-chapitres` dans buch.yaml. Lire la première sur un livre rendrait toujours la
-//   chaîne vide, et l'arbre retomberait sur l'ordre alphabétique des dossiers — un ordre
-//   plausible, donc un défaut qui ne se voit pas.
+// Valeur brute de la clé d'ordre du profil.
 function valeurOrdreArticles(racine) {
   try {
     const cle = profilCourant().unites.ordre;
@@ -584,9 +518,8 @@ function valeurOrdreArticles(racine) {
   } catch (e) { return ''; }
 }
 
-// Les articles que la rédaction a cochés « pas de DOI ». Ils vivent dans le fichier du
-// numéro, à côté de l'ordre, et c'est cette liste qui les range en fin de numéro : le rang
-// décide du DOI, donc l'un ne peut pas se lire sans l'autre.
+// Articles cochés « pas de DOI », lus dans le fichier du numéro à côté de l'ordre. Ils
+// sont rangés en fin de numéro, car le rang décide du DOI.
 function slugsSansDoiVoulu(racine) {
   try {
     return analyserSansDoi(
@@ -594,22 +527,16 @@ function slugsSansDoiVoulu(racine) {
   } catch (e) { return []; }
 }
 
-// Le jeu complet de ceux qui ne reçoivent pas de DOI : la case cochée, et la rubrique qui
-// n'en reçoit jamais — Documentation sur l'instance réelle. Le second se lit dans le type
-// de la fiche, d'où une lecture par article.
+// Ensemble des articles sans DOI : ceux cochés « pas de DOI » et ceux d'une rubrique qui
+// n'en reçoit pas (Documentation), lue dans le type de chaque fiche. Le compteur du DOI ne
+// compte que les autres, et reste ainsi contigu (00, 01, 02…).
 //
-// C'est ce jeu, et lui seul, qui décide du compteur du DOI : le compteur ne compte que les
-// porteurs, si bien qu'il reste contigu — 00, 01, 02… — quoi qu'on fasse des autres.
-//
-// `opts.types`  slug -> type déjà lu, pour ne pas relire les fiches que l'appelant a en main
-// `opts.voulus` la liste des cases cochées à employer, au lieu de celle du fichier : c'est
-//               ce qui permet de calculer le jeu d'après une bascule, avant de l'écrire.
+// `opts.types`  slug -> type déjà lu, pour ne pas relire les fiches
+// `opts.voulus` cases cochées à employer à la place de celles du fichier, pour calculer
+//               l'effet d'une bascule avant de l'écrire
 function articlesSansDoi(racine, slugs, opts) {
-  // ⚠ Un livre n'a pas de DOI par chapitre. Le DOI est une adresse d'article dans un
-  //   numéro : l'ouvrage en reçoit un pour lui seul, pas un par chapitre. Rendre un jeu
-  //   vide n'est donc pas une précaution, c'est la vérité du modèle — et c'est ce qui évite
-  //   que refusDeplacement() invente une « frontière DOI » au milieu d'un sommaire de
-  //   livre, refusant un déplacement avec un message qui ne voudrait rien dire.
+  // Un livre reçoit un DOI pour l'ouvrage, pas par chapitre : l'ensemble est vide, et
+  // refusDeplacement() ne voit aucune frontière DOI dans un sommaire de livre.
   if (!profilCourant().capacites.doi) { return new Set(); }
   const o = opts || {};
   const jeu = new Set(o.voulus || slugsSansDoiVoulu(racine));
@@ -632,17 +559,15 @@ function revueNumero(racine) {
   } catch (e) { return ''; }
 }
 
-// Le nom d'un article dans l'interface : « 03 · Titre », le titre venant de sa fiche. Sans
-// fiche ou sans titre, le slug reprend sa place : l'article doit rester visible et
-// repérable, jamais disparaître. Le numéro vient du dossier — c'est l'état du disque que
-// l'arbre montre, jamais un rang qui n'existe pas dessus.
+// Nom d'un article dans l'interface : « 03 · Titre ». Le numéro vient du préfixe du
+// dossier, le titre de la fiche ; sans titre, le slug le remplace.
 function nomArticle(racine, slug, langue) {
   return libelleArticle(prefixeDossier(slug), slug, titreFiche(lireMetaArticle(racine, slug), langue));
 }
 
 // ---- Tâches d'un article : le sidecar <slug>.taches.yaml ------------------------
-// Même partage que le suivi de traduction juste à côté : les intitulés sont un réglage de
-// revue (config.json), l'état coché part avec l'article et n'est ni publié ni exporté.
+// Les intitulés des tâches sont un réglage de revue (config.json) ; l'état coché est rangé
+// avec l'article et n'est ni publié ni exporté.
 function cheminTaches(racine, slug) {
   return profils.chemins(profilCourant(), racine, slug).taches;
 }
@@ -652,8 +577,7 @@ function lireTachesArticle(racine, slug) {
   catch (e) { return analyserTachesFaites(''); }
 }
 
-// Supprimé quand il ne reste rien à retenir : un article dont on décoche tout ne laisse pas
-// de résidu dans son dossier.
+// Le fichier est supprimé quand plus rien n'est coché.
 function ecrireTachesArticle(racine, slug, valeurs) {
   const chemin = cheminTaches(racine, slug);
   const contenu = serialiserTachesFaites(valeurs);
@@ -672,14 +596,13 @@ function avancementTaches(racine, slug, taches) {
   return resumeTaches(taches, lireTachesArticle(racine, slug).faites);
 }
 
-// ---- Couverture du numéro, et formulaire des métadonnées du numéro -> lib/metadonnees-hote.js
+// ---- L'arbre du cockpit -----------------------------------------------------------
 
 class FournisseurRevue {
   constructor() {
     this.racine = null;
     this.slugDeploye = null;       // article dont les assets sont dépliés
-    // ⚠ Posé à null, et non à « articles » : la catégorie dépend du profil, qui n'est
-    //   pas encore connu à la construction. definirRacine() l'ouvre ensuite.
+    // La catégorie dépend du profil, inconnu à la construction : definirRacine() la pose.
     this.sectionDeployee = null;   // l'accordéon : la seule section ouverte, ou null
     this._changement = new vscode.EventEmitter();
     this.onDidChangeTreeData = this._changement.event;
@@ -687,8 +610,7 @@ class FournisseurRevue {
 
   definirRacine(racine) {
     this.racine = racine;
-    // La section des unités s'ouvre par défaut — « Articles » ou « Chapitres » selon
-    // le profil, qui est arrêté au moment où la racine est posée.
+    // La section des unités (« Articles » ou « Chapitres ») s'ouvre par défaut.
     if (this.sectionDeployee === null && racine) { this.sectionDeployee = categorieUnites(); }
   }
   rafraichir() { this._changement.fire(); }
@@ -701,10 +623,8 @@ class FournisseurRevue {
     return true;
   }
 
-  // L'accordéon des sections : une seule dépliée à la fois. La section active ne se
-  // replie jamais par le clic sur son titre — seul le chevron replie (l'état null,
-  // tout fermé, n'existe que par lui). true si l'état a changé — même contrat que
-  // definirDeploye.
+  // Accordéon : une seule section dépliée. Le clic sur le titre de la section active ne la
+  // replie pas ; seul le chevron mène à l'état null (tout fermé). true si l'état a changé.
   definirSectionDeployee(categorie) {
     if (this.sectionDeployee === categorie) { return false; }
     this.sectionDeployee = categorie;
@@ -718,26 +638,16 @@ class FournisseurRevue {
     if (!element) {
       const n = this.compterWord();   // le badge de conteneur ne s'affiche pas ici
       const t = this.compterTraductions();
-      // L'ordre suit le travail : les articles du numéro, leurs traductions, puis ce qui
-      // attend encore d'y entrer. Une seule section dépliée à la fois (sectionDeployee) :
-      // les compteurs en description disent le reste sans déplier.
-      // ⚠ Pas de section « Traductions » pour un livre, et ce n'est pas un oubli. Une revue
-      //   paraît en deux langues et chaque article a sa version jumelle ; un livre est écrit
-      //   dans une langue, celle de son `lang:`, et sa traduction est un autre livre, avec
-      //   son ISBN.
-      // Un livre ouvre son formulaire (titre, responsables, maquette, impression) depuis
-      // l'arbre, en tête : sans cette entrée il fallait la palette. Une revue n'a pas
-      // d'équivalent, ses métadonnées de numéro vivent dans la vue ARTICLES.
+      // Les sections suivent le travail : les articles, l'actualité, les traductions, puis
+      // les Word en attente. Les compteurs en description renseignent sans déplier.
+      // Un livre n'a ni « Actualité » ni « Traductions » (sa traduction est un autre livre,
+      // avec son ISBN) ; il a en tête l'entrée de son formulaire de métadonnées. Celles d'un
+      // numéro s'ouvrent depuis la vue Articles.
       const sections = profilCourant().cle === 'livre' ? [this._itemMetaLivre()] : [];
       sections.push(this._section(categorieUnites(), T(cleArbreUnites()), 'book', undefined));
-      // ⚠ Pas de section « Actualité » pour un livre, pour la même raison que les
-      //   traductions : la Documentation est une rubrique de revue (« Actualité et
-      //   ressources » / « News & Ressourcen »), elle n'a pas d'équivalent dans un ouvrage.
       const cap = profilCourant().capacites;
       if (cap.documentation) {
-        // Le badge compte les blocs de la page de Documentation — ses fiches et ses
-        // rubriques réunies — et non les articles : il n'y en a qu'un, et il ne se liste
-        // plus dans l'arbre.
+        // Le badge compte les blocs (fiches et rubriques) de la page de Documentation.
         const a = compterBlocsDocumentation(this.racine, this.slugDocumentation());
         sections.push(this._section('actualite', T('arbre.actualite'), 'megaphone',
           a > 0 ? '(' + a + ')' : undefined));
@@ -748,8 +658,7 @@ class FournisseurRevue {
       }
       sections.push(
         this._section('word', T('arbre.word'), 'inbox', n > 0 ? '(' + n + ')' : undefined));
-      // En dernier, sous « Word en attente » : ce n'est pas une étape du travail mais son
-      // contrôle, et c'est là qu'on revient quand quelque chose cloche.
+      // Les Contrôles en dernier : ce n'est pas une étape du travail mais sa vérification.
       sections.push(this._itemControles());
       return sections;
     }
@@ -762,16 +671,12 @@ class FournisseurRevue {
     return [];
   }
 
-  // reveal() exige de savoir remonter d'un élément vers la racine. Seuls les articles sont
-  // révélés (resélection après reconstruction — voir ouvrirArticle) : leur parent est
-  // l'en-tête de leur section, tout le reste répond racine.
+  // Requis par reveal(). Seuls les articles sont révélés (voir ouvrirArticle) : leur parent
+  // est l'en-tête de leur section, tout le reste a pour parent la racine.
   //
-  // ⚠ Un article de Documentation porte le même contextValue `article` que les autres — et
-  //   c'est voulu : il garde ainsi, sans une ligne de package.json, tous les menus et tous
-  //   les boutons inline d'un article (métadonnées, médias, ressources, réimport…). Le prix
-  //   à payer est ici : le parent ne peut plus être déduit du seul contextValue, il faut
-  //   relire le type. Sans cela, reveal() déplierait ARTICLES pour un article qui vit dans
-  //   ACTUALITÉ, et l'accordéon refermerait la section sous les yeux du rédacteur.
+  // Un article de Documentation a le contextValue `article`, pour garder les menus et
+  // boutons d'un article. Sa section se déduit donc de son type : sinon reveal() déplierait
+  // « Articles » au lieu d'« Actualité ».
   getParent(element) {
     if (!element || element.categorie) { return null; }
     if (element.contextValue === 'article') {
@@ -780,9 +685,8 @@ class FournisseurRevue {
     return null;
   }
 
-  // L'en-tête de la section où vit ce slug : « Actualité » pour un article de Documentation
-  // d'une revue, la section des unités sinon. Un slug inconnu répond la section des unités,
-  // qui est le cas ordinaire.
+  // En-tête de la section du slug : « Actualité » pour un article de Documentation, la
+  // section des unités sinon (y compris pour un slug inconnu).
   sectionDeSlug(slug) {
     if (profilCourant().capacites.documentation && this.estActualite(slug)) {
       return this._section('actualite', T('arbre.actualite'), 'megaphone', undefined);
@@ -790,8 +694,7 @@ class FournisseurRevue {
     return this._section(categorieUnites(), T(cleArbreUnites()), 'book', undefined);
   }
 
-  // La catégorie d'accordéon à déplier pour ce slug — pendant de sectionDeSlug(), pour les
-  // appelants qui n'ont besoin que du nom (focaliserUnite).
+  // Catégorie d'accordéon du slug : la même décision que sectionDeSlug(), sans l'élément.
   categorieDeSlug(slug) {
     return (profilCourant().capacites.documentation && this.estActualite(slug))
       ? 'actualite' : categorieUnites();
@@ -802,12 +705,8 @@ class FournisseurRevue {
     return lireMetaArticle(this.racine, slug).type === TYPE_ACTUALITE;
   }
 
-  // Les unités du numéro réparties entre les deux sections (Documentation dans
-  // « Actualité », le reste dans « Articles »), sans toucher à leur ordre relatif — c'est
-  // déjà celui du numéro. Ne portait autrefois qu'un rang global, pour que le numéro
-  // affiché ne se remette pas à 01 dans chaque section ; ce rang a quitté l'affichage
-  // (nomArticle() lit désormais le dossier, pas ce rang), et `entree` ne porte donc plus
-  // que le slug.
+  // Répartit les unités entre « Actualité » (Documentation) et la section des unités, dans
+  // l'ordre du numéro. Chaque entrée vaut { slug }.
   _repartirUnites() {
     if (!this.racine) { return { unites: [], actualite: [] }; }
     const documentation = profilCourant().capacites.documentation;
@@ -820,18 +719,15 @@ class FournisseurRevue {
     return { unites: unites, actualite: actualite };
   }
 
-  // L'élément d'un article, reconstruit à l'état courant : reveal() le retrouve par son id.
-  // La page de Documentation n'en a pas — elle ne se liste plus dans l'arbre — et c'est
-  // sans conséquence : reselectionnerArticle() ne fait rien d'un élément absent, et rien ne
-  // reste à sélectionner puisque rien ne s'affiche.
+  // Élément d'un article à l'état courant, que reveal() retrouve par son id. null pour la
+  // page de Documentation, qui n'est pas listée dans l'arbre.
   elementArticle(slug) {
     return this._itemsArticles().find((it) => it.slug === slug) || null;
   }
 
-  // Cliquer l'en-tête déplie sa section — et replie les autres, c'est l'accordéon — et
-  // ouvre sa vue d'ensemble (szh.ouvrirSection). L'en-tête déjà déplié ne se replie pas :
-  // le clic n'ouvre alors que la vue, le repli passe par le chevron. Le clic droit est
-  // l'autre chemin vers la même vue ; l'en-tête ne porte pas de bouton pour ça.
+  // En-tête de section. Le clic déplie la section, replie les autres et ouvre sa vue
+  // d'ensemble (szh.ouvrirSection) ; sur la section déjà dépliée, il n'ouvre que la vue.
+  // Le menu contextuel mène à la même vue.
   _section(categorie, libelle, icone, description) {
     const ouverte = this.sectionDeployee === categorie;
     const it = new vscode.TreeItem(libelle, ouverte
@@ -839,8 +735,8 @@ class FournisseurRevue {
       : vscode.TreeItemCollapsibleState.Collapsed);
     it.categorie = categorie;
     // VS Code mémorise le pli d'un élément qu'il reconnaît et ignore alors le
-    // collapsibleState renvoyé : l'id porte donc l'état voulu — quand il change,
-    // l'élément est recréé et l'état s'applique. Même astuce que les articles dépliés.
+    // collapsibleState renvoyé : l'id porte donc l'état voulu, pour que l'élément soit
+    // recréé quand il change.
     it.id = 'section:' + categorie + ':' + (ouverte ? 'ouvert' : 'ferme');
     it.iconPath = new vscode.ThemeIcon(icone, COULEURS_SECTION[categorie]
       ? new vscode.ThemeColor(COULEURS_SECTION[categorie]) : undefined);
@@ -851,33 +747,24 @@ class FournisseurRevue {
   }
 
   // Article = dossier articles/<slug>/ avec le .md homonyme, comme dans le Makefile.
-  // L'ordre de l'arbre est celui du numéro (ausgabe.yaml) ; le numéro AFFICHÉ devant le
-  // titre, lui, vient du nom du dossier (prefixeDossier(), lib/articles.js) et non plus de
-  // ce rang — les deux divergent depuis que seuls les dossiers importés ou réalignés par
-  // « Changer l'ordre » en portent un. Le slug passe en description — c'est le nom du
-  // dossier, ce n'est pas le nom de l'article.
+  // L'ordre de l'arbre est celui du numéro ; le numéro affiché devant le titre vient du
+  // préfixe du dossier (prefixeDossier(), lib/articles.js), qui peut en différer.
   _itemsArticles() {
     return this._itemsUnites(this._repartirUnites().unites,
       'arbre.vide.' + profilCourant().unites.dossier);
   }
 
-  // La section « Actualité » ne liste plus la page de Documentation elle-même — les fiches
-  // vivent toutes dans la bibliothèque partagée (_NewsUndActu\Fiches\), plus dans une réserve
-  // accrochée à l'arbre du numéro — mais des raccourcis vers ses vues (Robin, 23.09.2026,
-  // révisé le même jour : toute la navigation passe désormais par l'arbre, la page n'a plus
-  // de barre d'onglets de vues ; les catégories de la Documentation du numéro sont une barre
-  // du formulaire, 24.09.2026). Ordre : « Documentation du numéro », « Traductions à faire », « Réservoir », « Archive », puis
-  // « Publier sur le site web » grisée (pas encore livré — sans commande, donc jamais
-  // cliquable). Cliquer une entrée ouvre le formulaire DIRECTEMENT sur cette vue
-  // (ouvrirPageDocumentation, qui crée la page au besoin) ; si le panneau est déjà ouvert, il
-  // se met au premier plan et bascule dessus — voir documentation-hote.js#ouvrirDocumentation.
+  // La section « Actualité » liste des raccourcis vers les vues de la Documentation (les
+  // fiches sont dans la bibliothèque partagée _NewsUndActu\Fiches\) : « Documentation du
+  // numéro », « Propositions », « Traductions à faire », « Réservoir », « Archive », puis
+  // « Publier sur le site web ». Une entrée ouvre le formulaire sur sa vue
+  // (ouvrirPageDocumentation crée la page au besoin) ; un panneau déjà ouvert passe au
+  // premier plan et bascule sur la vue.
   //
-  // Les compteurs reprennent EXACTEMENT les fonctions des badges d'onglet du formulaire
-  // (kirby-contenu.js : listerTraductionsATraire, listerReservoir + listerOrphelines) —
-  // calcul léger, sur l'arbre local. L'Archive n'a PAS de compteur tant qu'aucun panneau n'a
-  // encore lu la bibliothèque de PRODUCTION (documentation-hote.js#compteArchiveConnu) :
-  // l'arbre ne doit jamais payer cet aller-retour OneDrive lui-même, seulement reprendre le
-  // dernier chiffre connu.
+  // Les compteurs sont ceux des badges du formulaire (kirby-contenu.js), calculés sur
+  // l'arbre local. L'Archive reprend le dernier compte connu
+  // (documentation-hote.js#compteArchiveConnu) : l'arbre ne lit pas lui-même la
+  // bibliothèque de production, sur OneDrive. Sans lecture préalable, pas de compteur.
   _itemsActualite() {
     if (!this.racine) { return []; }
     const racineArbreVal = kirbyLib.racineArbre(this.racine);
@@ -887,9 +774,9 @@ class FournisseurRevue {
       + kirbyLib.listerOrphelines(racineArbreVal, langue).length;
     const nBlocs = compterBlocsDocumentation(this.racine, this.slugDocumentation());
     const nArchive = documentationHote.compteArchiveConnu();
-    // Les propositions des moissonneurs : un compte en cache (lib/propositions.js), relu
-    // seulement quand un lot, une décision ou la finesse change. Il suit ce que la personne
-    // voit : l'aperçu de ce poste, sinon le réglage de la rédaction.
+    // Propositions des moissonneurs : un compte en cache (lib/propositions.js), recalculé
+    // quand un lot, une décision ou la finesse change. Il compte ce que la personne voit :
+    // selon l'aperçu de ce poste, sinon selon le réglage de la rédaction.
     let prop = { total: 0, aVerifier: 0, masquees: 0 };
     try { prop = documentationHote.compterPropositionsVues(racineArbreVal, langue); }
     catch (e) { console.warn('propositions : compte impossible — ' + ((e && e.message) || e)); }
@@ -901,8 +788,7 @@ class FournisseurRevue {
     const entrees = [
       { cle: 'numero', libelle: T('doc.onglet.numero'), icone: 'book', compte: nBlocs,
         tip: T('arbre.actualite.numero.tip') },
-      // Juste après le numéro : c'est là qu'arrive le neuf. L'icône d'avertissement dit
-      // qu'il y a des cas à vérifier, l'infobulle combien.
+      // L'icône d'avertissement signale des cas à vérifier ; l'infobulle dit combien.
       { cle: 'propositions', libelle: T('doc.prop.vue'), icone: prop.aVerifier ? 'warning' : 'lightbulb',
         couleur: prop.aVerifier ? 'list.warningForeground' : undefined, compte: prop.total, tip: tipProp },
       { cle: 'traductions', libelle: T('doc.onglet.traductions'), icone: 'globe',
@@ -925,8 +811,8 @@ class FournisseurRevue {
         arguments: e.cle === 'numero' ? ['numero', 'rubriques'] : [e.cle] };
       return it;
     });
-    // « Publier sur le site web » : pas encore livré, elle ouvre la vue « web » de la
-    // Documentation, qui le dit.
+    // « Publier sur le site web » ouvre la vue « web » de la Documentation, qui annonce que
+    // la fonction n'est pas encore disponible.
     const publier = new vscode.TreeItem(T('arbre.actualite.publier'), vscode.TreeItemCollapsibleState.None);
     publier.id = 'actualite:publier';
     publier.contextValue = 'actualite-entree';
@@ -937,17 +823,15 @@ class FournisseurRevue {
     return items;
   }
 
-  // Le slug de la page de Documentation du numéro : la première unité de type
-  // `documentation` dans l'ordre du sommaire, ou null s'il n'y en a pas encore.
+  // Slug de la page de Documentation : la première unité de type `documentation` dans
+  // l'ordre du sommaire, ou null.
   slugDocumentation() {
     const entrees = this._repartirUnites().actualite;
     return entrees.length > 0 ? entrees[0].slug : null;
   }
 
-  // Le raccourci vers « À corriger », sous « Word en attente » : la vue vivait derrière un
-  // compteur de barre d'état que personne ne regarde et une entrée du panneau Commande.
-  // Une ligne de l'arbre, elle, est là en permanence — et son icône dit d'un coup d'oeil
-  // s'il y a un blocage (rouge), un point à vérifier (ambre), ou rien (gris).
+  // Entrée « Contrôles », sous « Word en attente ». Son icône signale un blocage (rouge),
+  // un point à vérifier (ambre) ou rien (gris).
   _itemControles() {
     // Regroupés et comptés comme la vue et la barre d'état.
     const r = resumeJournal(
@@ -971,8 +855,8 @@ class FournisseurRevue {
     return it;
   }
 
-  // L'entrée « Métadonnées du livre » : une feuille, ni section ni unité (pas de `categorie`,
-  // l'accordéon l'ignore), qui ouvre le formulaire de buch.yaml.
+  // Entrée « Métadonnées du livre », qui ouvre le formulaire de buch.yaml. Sans `categorie`,
+  // l'accordéon l'ignore.
   _itemMetaLivre() {
     const it = new vscode.TreeItem(T('arbre.metaLivre'), vscode.TreeItemCollapsibleState.None);
     it.id = 'meta-livre';
@@ -993,12 +877,8 @@ class FournisseurRevue {
     return entrees.map((entree) => {
       const slug = entree.slug;
       const md = vscode.Uri.file(path.join(base, slug, slug + '.md'));
-      // Seuls les tableaux se déplient sous l'article : les images se gèrent dans le
-      // formulaire « Médias de cet article », qui les montre avec leurs légendes, leurs
-      // crédits et leur verdict de qualité.
-      // Ce qui rend un article dépliable : ses tableaux, ou sa bibliographie. Compter les
-      // seuls tableaux laissait l'entrée de bibliographie inatteignable sur un article qui
-      // n'a pas de tableau — c'est-à-dire sur la plupart.
+      // Sous l'article se déplient ses tableaux et sa bibliographie. Les images se gèrent
+      // dans le formulaire « Médias de cet article ».
       const aDesAssets = this._tablesArticle(slug).length > 0
         || fs.existsSync(cheminBiblio(this.racine, slug, dossierUnites()));
       const deploye = auto && aDesAssets && slug === this.slugDeploye;
@@ -1007,23 +887,18 @@ class FournisseurRevue {
         ? vscode.TreeItemCollapsibleState.None
         : (deploye ? vscode.TreeItemCollapsibleState.Expanded
                    : vscode.TreeItemCollapsibleState.Collapsed));
-      // VS Code mémorise l'état plié/déplié d'un élément qu'il reconnaît et ignore alors
-      // le collapsibleState renvoyé : quand le réglage pilote le dépliage, l'`id` porte
-      // l'état voulu, il change, l'élément est recréé. Sans le réglage, id stable :
-      // l'utilisateur décide. Un id dans tous les cas — reveal() retrouve l'élément par lui.
+      // Quand le réglage pilote le dépliage, l'id porte l'état voulu (voir _section) ;
+      // sinon il est stable et l'utilisateur décide. reveal() retrouve l'élément par son id.
       it.id = auto && aDesAssets
         ? 'article:' + slug + ':' + (deploye ? 'ouvert' : 'ferme')
         : 'article:' + slug;
       it.slug = slug;                   // lu par les actions de l'arbre
       it.resourceUri = md;              // décorations du thème (git, problèmes)
-      // Le slug d'abord : c'est par lui qu'on retrouve le dossier. L'avancement des tâches
-      // se lit à côté, sans avoir à ouvrir la vue.
+      // Description : le slug (nom du dossier), puis l'avancement des tâches.
       const avance = avancementTaches(this.racine, slug, taches);
       it.description = avance.total > 0
         ? slug + ' · ' + T('art.taches.avancement', [avance.faites, avance.total])
         : slug;
-      // L'icône redit l'avancement en couleur : elle prime sur l'icône de fichier du
-      // thème, qui était la même pour tous les articles et ne distinguait rien.
       it.iconPath = iconeAvancement(avance);
       it.tooltip = T('art.arbre.tooltip', [nom, slug, md.fsPath]);
       it.contextValue = 'article';      // pilote les boutons inline (menus view/item/context)
@@ -1065,9 +940,7 @@ class FournisseurRevue {
       .sort((a, b) => a.localeCompare(b, 'fr'));
   }
 
-  // Ce que l'article porte à part de son texte : ses tableaux, et sa bibliographie. Aucune
-  // description sur ces entrées — ni poids, ni compteur : la colonne reste vide, et ce qui
-  // s'y affichera un jour aura donc du sens.
+  // Les entrées sous un article : ses tableaux, puis sa bibliographie.
   _itemsTables(slug) {
     const baseTables = profils.chemins(profilCourant(), this.racine, slug).tables;
     const tables = this._tablesArticle(slug).map((nom) => {
@@ -1089,24 +962,13 @@ class FournisseurRevue {
     return biblio ? tables.concat([biblio]) : tables;
   }
 
-  // La bibliographie, éditable comme un tableau — mais en texte : c'est de la prose, une
-  // référence par paragraphe, que le rédacteur colle depuis Zotero ou depuis un autre
-  // article. Un éditeur structuré se battrait contre ce geste-là ; le texte est la bonne
-  // surface, et c'est déjà celle de l'article.
+  // La bibliographie, une référence par paragraphe, s'édite en texte (on la colle depuis
+  // Zotero ou un autre article). Le .md s'ouvre en colonne 1 et son rendu en colonne 2, à
+  // la place de l'aperçu de l'article ; Ctrl+Alt+P bascule ce rendu (basculerApercu,
+  // lib/apercu.js).
   //
-  // Colonne 1, comme le .md, et son RENDU en colonne 2 : une référence se relit mise en
-  // forme, et rien d'autre ne la montre — la compilation du numéro entier pour vérifier une
-  // italique serait hors de proportion. L'aperçu de l'article libère donc la colonne 2 le
-  // temps qu'on est dans la bibliographie, et Ctrl+Alt+P bascule ce rendu-là
-  // (basculerApercu, lib/apercu.js).
-  //
-  // Pas de fichier : pas d'entrée. Depuis que l'import crée toujours <slug>.biblio.md —
-  // vide s'il le faut, voir szh-biblio-detacher.lua — un article importé désormais montre
-  // toujours cette entrée, prête à recevoir une bibliographie écrite après coup ; seul un
-  // article importé AVANT ce correctif, jamais rétroactivement complété, en reste privé.
-  // Le test reste sur l'existence, jamais sur le contenu : une entrée morte pour un
-  // fichier absent ferait croire à une liste vide, ce qui n'est pas la même chose — et un
-  // fichier vide n'a besoin d'aucun geste à part pour apparaître ici.
+  // L'entrée existe dès que <slug>.biblio.md existe, même vide : l'import le crée toujours
+  // (szh-biblio-detacher.lua). Sans fichier, pas d'entrée.
   _itemBiblio(slug) {
     const chemin = cheminBiblio(this.racine, slug, dossierUnites());
     if (!fs.existsSync(chemin)) { return null; }
@@ -1130,12 +992,11 @@ class FournisseurRevue {
     return noms.map((nom) => {
       const it = new vscode.TreeItem(nom, vscode.TreeItemCollapsibleState.None);
       it.contextValue = 'word';
-      // « 4_Titre.docx » -> « titre » : le numéro de tête est retiré du slug, même
-      // règle que la cible d'import du Makefile — voir lib/slug.js:slugifierArticle().
+      // « 4_Titre.docx » -> « titre », comme la cible d'import du Makefile
+      // (lib/slug.js:slugifierArticle()).
       if (this._articleExiste(slugifierArticle(nom))) {
-        // Le .md cible existe déjà : l'import l'ignorera, il n'écrase rien. C'est le
-        // redépôt d'un Word corrigé, et le clic droit doit mener au geste qui le publie —
-        // d'où un contextValue à part, et le nom du fichier porté par l'item.
+        // L'article existe déjà : l'import ignorera ce Word, qui est une version corrigée.
+        // Un contextValue à part donne au menu contextuel l'action de réimport.
         it.contextValue = 'word-deja';
         it.word = nom;
         it.iconPath = new vscode.ThemeIcon('warning');
@@ -1158,9 +1019,7 @@ class FournisseurRevue {
     return slugs.map((slug) => {
       const etat = etatTraduction(this.racine, slug, source);
       const rien = etat.lignes.length === 0;
-      // Le même nom que dans la section « Articles » : un article se reconnaît partout à
-      // son titre et à son numéro de dossier, jamais à son slug tronqué. La fiche vient
-      // d'etatTraduction, qui l'a déjà lue.
+      // Même nom que dans la section « Articles » ; la fiche vient d'etatTraduction.
       const it = new vscode.TreeItem(
         libelleArticle(prefixeDossier(slug), slug, titreFiche(etat.meta, source)), rien
         ? vscode.TreeItemCollapsibleState.None
@@ -1227,23 +1086,16 @@ class FournisseurRevue {
     return { total: total, finalises: finalises };
   }
 
-  // Les articles bilingues suivis champ par champ dans « Traductions » — jamais la page de
-  // Documentation, qui n'en fait pas partie : chaque revue l'écrit dans sa propre langue
-  // par sa propre arborescence Kirby (Pronto), il n'y a pas de champ à synchroniser entre
-  // deux `lang:`. `listerArticles()` la compte pourtant comme une unité du numéro depuis
-  // qu'elle n'a plus de <slug>.md (_estUniteValide) : il faut donc l'exclure ici à part.
+  // Articles suivis champ par champ dans « Traductions ». La page de Documentation en est
+  // exclue : chaque revue l'écrit dans sa langue, sans champ à synchroniser.
   slugsTraduisibles() {
     return this.listerArticles().filter((slug) => !this.estActualite(slug));
   }
 
-  // L'ordre du numéro, réparé de ce que le disque dit : un article ajouté à la main
-  // apparaît à la fin, un article effacé quitte l'ordre, et rien n'est réécrit au passage.
-  //
-  // Puis la règle du DOI par-dessus : les articles qui n'en reçoivent pas passent à la fin,
-  // pour que le numéro d'ordre du DOI suive l'ordre de lecture. Le tri est appliqué ici,
-  // sur l'unique source d'ordre du cockpit, et non dans la vue : l'arbre, les vues et les
-  // boutons de déplacement doivent tous voir le même sommaire, sans quoi un article
-  // porterait deux rangs selon l'endroit où on le regarde.
+  // Ordre du numéro, réparé d'après le disque sans être réécrit : un article ajouté à la main
+  // va à la fin, un article effacé disparaît. Les articles sans DOI passent ensuite à la fin,
+  // pour que le numéro du DOI suive l'ordre de lecture. C'est la seule source d'ordre du
+  // cockpit : l'arbre, les vues et les boutons de déplacement voient le même sommaire.
   listerArticles() {
     if (!this.racine) { return []; }
     const slugs = this._sousDossiersAvecMd(profils.chemins(profilCourant(), this.racine).unites);
@@ -1251,11 +1103,8 @@ class FournisseurRevue {
       articlesSansDoi(this.racine, slugs)).slugs;
   }
 
-  // Le slug donné vient d'un nom de fichier Word (slugifierArticle) : il n'a jamais de
-  // préfixe « NN- », qu'il vienne d'un article ancien ou d'un import récent (voir
-  // lib/import-hote.js, qui pose ce préfixe sur les dossiers qu'il crée). Se contenter du
-  // nom exact laisserait donc « déjà converti » aveugle dès qu'un article vit sous
-  // « 00-inclusion » — d'où la comparaison par tige(), qui ignore ce préfixe des deux côtés.
+  // Le slug vient d'un nom de fichier Word et n'a pas de préfixe « NN- », alors que l'import
+  // en pose un sur les dossiers (« 00-inclusion ») : la comparaison passe donc par tige().
   _articleExiste(slug) {
     const base = profils.chemins(profilCourant(), this.racine).unites;
     try { if (fs.statSync(path.join(base, slug, slug + '.md')).isFile()) { return true; } }
@@ -1274,11 +1123,8 @@ class FournisseurRevue {
       .sort((a, b) => a.localeCompare(b, 'fr'));
   }
 
-  // Une unité du numéro : un article ordinaire, dont le .md existe — ou la page de
-  // Documentation, qui n'en a plus (arborescence Kirby, lib/kirby-contenu.js) et se
-  // reconnaît à sa fiche de métadonnées (type: documentation). Sans ce second cas, la page
-  // disparaîtrait de listerArticles() dès sa création, et avec elle tout ce qui en dépend :
-  // le badge, slugDocumentation(), l'export, le secrétariat…
+  // Une unité du numéro : un dossier avec son .md, ou la page de Documentation, qui n'a pas
+  // de .md (arborescence Kirby, lib/kirby-contenu.js) et se reconnaît au type de sa fiche.
   _estUniteValide(base, slug) {
     try { if (fs.statSync(path.join(base, slug, slug + '.md')).isFile()) { return true; } }
     catch (e) { /* pas de .md : peut-être la Documentation */ }
@@ -1315,13 +1161,9 @@ async function ouvrirApercuPdf(uri) {
 }
 
 // ---- Aperçu du livre entier -> le PDF composé ------------------------------------
-// Un chapitre s'aperçoit comme un article, dans la colonne de droite. Le livre, lui, n'a de
-// sens qu'entier : la pagination, les ouvertures sur belle page, le sommaire et ses numéros
-// de page n'existent qu'une fois tous les chapitres assemblés. C'est donc le PDF composé
-// qu'on ouvre — le même fichier qui part chez l'imprimeur, pas une approximation.
-//
-// ⚠ Si le PDF n'a jamais été compilé, on le dit et on propose de compiler, plutôt que
-//   d'ouvrir un onglet vide : « rien ne s'est passé » est le pire des retours.
+// La pagination, les belles pages et le sommaire n'existent qu'une fois les chapitres
+// assemblés : l'aperçu du livre est donc le PDF composé, celui de l'imprimeur. S'il n'a
+// jamais été compilé, un message propose de le compiler.
 async function ouvrirApercuLivre(fournisseur) {
   const racine = fournisseur && fournisseur.racine;
   if (!racine) { return; }
@@ -1337,10 +1179,9 @@ async function ouvrirApercuLivre(fournisseur) {
   await ouvrirApercuPdf(vscode.Uri.file(pdf));
 }
 
-// Un onglet dont l'entrée satisfait le prédicat est-il ouvert ? Même parcours et même
-// typage canard que fermerOnglets juste en dessous. Sert aux interrupteurs qui commandent
-// un ONGLET et non une webview : leur état ne peut pas se tenir en mémoire, puisqu'un
-// onglet se ferme aussi à la croix, sans que rien ne nous le dise.
+// Vrai si un onglet dont l'entrée satisfait le prédicat est ouvert. Les interrupteurs qui
+// commandent un onglet s'en servent : un onglet se ferme à la croix sans prévenir, son état
+// ne peut pas se tenir en mémoire.
 function ongletOuvert(predicat) {
   for (const groupe of vscode.window.tabGroups.all) {
     for (const onglet of groupe.tabs) {
@@ -1350,8 +1191,8 @@ function ongletOuvert(predicat) {
   return false;
 }
 
-// Ferme les onglets dont l'entrée satisfait le prédicat ; les `TabInput` sont typés en
-// canard, d'où les gardes chez les appelants.
+// Ferme les onglets dont l'entrée satisfait le prédicat. Les `TabInput` n'ont pas de type
+// commun : les prédicats vérifient eux-mêmes les propriétés qu'ils lisent.
 async function fermerOnglets(predicat) {
   const aFermer = [];
   for (const groupe of vscode.window.tabGroups.all) {
@@ -1364,29 +1205,24 @@ async function fermerOnglets(predicat) {
 }
 
 // ---- Effacer un dossier que Windows tient encore ---------------------------------
-//
-// La patience et le retrait de l'attribut « lecture seule » vivent dans lib/supprimer.js,
-// qui explique le pourquoi de chacun ; il n'y a ici que le mot dit au rédacteur pendant
-// qu'on insiste.
+// Les reprises et le retrait de l'attribut « lecture seule » sont dans lib/supprimer.js ;
+// ici, seulement le message affiché pendant les reprises.
 const { supprimerArbre } = require('./lib/supprimer');
 
 function attendre(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
-// -> null quand le chemin est parti (ou n'existait déjà plus), sinon le message du
-// dernier échec, prêt à être montré.
+// Rend null quand le chemin n'existe plus, sinon le message du dernier échec.
 function supprimerAvecReprises(chemin) {
   return supprimerArbre(chemin, {
-    // Dix secondes d'attente muette passeraient pour un blocage.
+    // Sans message, dix secondes d'attente passeraient pour un blocage.
     surReprise: (nom) => vscode.window.setStatusBarMessage(
       T('statut.suppression.reprise', [nom]), 3000)
   });
 }
 
-// Dernier filet, silencieux : le verrou d'un synchroniseur tombe parfois bien après le
-// geste. On revient une minute plus tard sur ce qui a résisté, sans un mot — le message
-// d'erreur est déjà parti, et il n'y a rien à faire de cette seconde chance. Sans elle,
-// un article à moitié effacé n'a plus d'entrée dans l'arbre (il n'a plus de .md) : ni
-// son dossier ni ses documents produits ne sont plus atteignables par aucun geste.
+// Dernière tentative, silencieuse, une minute plus tard : le verrou d'un synchroniseur
+// tombe parfois bien après la suppression. Un article à moitié effacé n'a plus de .md, donc
+// plus d'entrée dans l'arbre, et ses restes ne seraient plus atteignables depuis le cockpit.
 const DELAI_DERNIERE_CHANCE = 60000;
 
 function reprendrePlusTard(chemins, rafraichirTout) {
@@ -1407,24 +1243,13 @@ function reprendrePlusTard(chemins, rafraichirTout) {
 
 // ---- Tâche de compilation : réutilise la tâche utilisateur, écoute sa fin --------
 
-// Nombre de tâches suivies (build/export/import/docx, ou tâche « szh ») actuellement en
-// vol, du point de vue des trois gestionnaires globaux posés dans activate(). Ctrl+S et
-// triggerTaskOnSave ne passent par aucune fonction du cockpit : sans ce compteur, la fin
-// d'une tâche suivie remettrait session.buildEnCours() à faux même si une autre tâche suivie tourne
-// encore. Les fonctions du cockpit qui posent session.buildEnCours() elles-mêmes autour d'un
-// lancerTache (toutExporter, exporterArticle…) restent inchangées : ce compteur ne fait
-// que rendre les trois gestionnaires globaux cohérents entre eux.
-
-// Au-delà de ce délai, une tâche lancée par le cockpit est considérée comme perdue
-// (interrompue, wsl.exe absent) : mieux vaut rendre la main que laisser session.buildEnCours()
-// bloqué jusqu'au rechargement de la fenêtre.
+// Au-delà de ce délai, une tâche lancée par le cockpit est tenue pour perdue (interrompue,
+// wsl.exe absent), pour que session.buildEnCours() ne reste pas bloqué jusqu'au
+// rechargement de la fenêtre.
 const DELAI_GARDE_TACHE = 30 * 60 * 1000;   // 30 minutes
 
-// Attend la fin d'une exécution précise (celle rendue par executeTask()) et résout avec
-// son code de sortie. Deux replis, pour ne jamais rester en attente indéfiniment :
-//   - onDidEndTask, si onDidEndTaskProcess ne vient jamais (résout null, sans code connu) ;
-//   - le délai de garde ci-dessus, qui résout null sans laisser d'autre trace.
-// Les trois abonnements sont détruits dans tous les cas de sortie.
+// Attend la fin d'une exécution rendue par executeTask() et résout avec son code de sortie,
+// ou avec null si seul onDidEndTask arrive ou si le délai de garde expire.
 function attendreFinTache(execution) {
   return new Promise((resolve) => {
     let fini = false;
@@ -1443,8 +1268,8 @@ function attendreFinTache(execution) {
       if (e.execution === execution) { terminer(null); }
     });
     const minuteur = setTimeout(() => { terminer(null); }, DELAI_GARDE_TACHE);
-    // Un garde-fou ne doit jamais retenir le processus : une tâche que personne ne termine
-    // (l'hôte factice des tests, un wsl.exe absent) garderait sinon l'hôte en vie 30 minutes.
+    // Le minuteur ne retient pas le processus : une tâche jamais terminée (hôte factice des
+    // tests, wsl.exe absent) garderait sinon l'hôte en vie 30 minutes.
     if (minuteur.unref) { minuteur.unref(); }
   });
 }
@@ -1462,14 +1287,10 @@ async function lancerTache(nomTache) {
   return await attendreFinTache(execution);
 }
 
-// Guérit un marqueur .szh-biblio périmé avant de compiler (lib/renumerotation-fs.js,
-// reparerMarqueursOrphelins) — ici, et dans toutExporter()/exporterXml() plus bas, parce
-// que ce sont les trois chemins par lesquels le cockpit déclenche une vraie compilation,
-// comme reimporter.py --reprise l'est côté pipeline (appelé à chaque `make all`, dans la
-// cible `import`, avant que szh-citations.lua ne lise le marqueur). Jamais bloquant : une
-// exception ici ne doit pas empêcher de compiler ce qui compilait déjà, et un article que
-// la fonction ne peut pas trancher (zéro ou plusieurs *.biblio.md) reste tel quel — la
-// compilation le dira, comme avant ce correctif.
+// Répare les marqueurs .szh-biblio périmés avant une compilation lancée par le cockpit
+// (lancerBuild, toutExporter, exporterXml), comme reimporter.py --reprise le fait dans la
+// cible `import` du Makefile. Non bloquant : un article ambigu (zéro ou plusieurs
+// *.biblio.md) reste tel quel, et la compilation le signalera.
 function reparerBibliosAvantCompilation(racine) {
   if (!racine) { return; }
   try { renumerotation.reparerMarqueursOrphelins(racine, { dossier: dossierUnites() }); }
@@ -1481,22 +1302,19 @@ function lancerBuild(racine) {
   return lancerTache(NOM_TACHE_BUILD);
 }
 
-// La compilation que le clic (ou l'enregistrement) d'UNE unité déclenche. Une revue
-// recompile son numéro (make all), comme avant. Un livre ne compile que le chapitre
-// (livre-chapitre-pdf CHAPITRE=<slug>, out/chapitres/<slug>.pdf) : le volume entier ne se
-// recompile que depuis la vue CHAPITRES ou l'aperçu du livre.
+// Compilation déclenchée par le clic ou l'enregistrement d'une unité. Une revue recompile
+// le numéro (make all). Un livre ne compile que le chapitre (livre-chapitre-pdf
+// CHAPITRE=<slug>) ; le volume se compile depuis la vue Chapitres ou l'aperçu du livre.
 function lancerBuildUnite(racine, slug) {
   if (profilCourant().cle !== 'livre' || !slug) { return lancerBuild(racine); }
   reparerBibliosAvantCompilation(racine);
   return lancerTacheObjet(tacheChapitrePdf(racine, slug));
 }
 
-// Même mécanisme que les tâches de vscodium-user/tasks.json : bash -c, `set -o pipefail` et
-// `tee .szh-journal.log` pour que le cockpit relise le journal à la fin (relireJournal), `-j2
-// -O` comme elles. Construite ici et non déclarée dans tasks.json, comme tacheMakeArticle :
-// une tâche utilisateur ne reçoit pas de paramètre, et la cible a besoin du slug. Le type
-// `szh` la fait suivre par les mêmes gardes que les autres (verrou de compilation, voile).
-// Le slug est contrôlé par profils.apercuUnite : il finit dans une ligne bash.
+// Tâche construite comme celles de vscodium-user/tasks.json (bash -c, `set -o pipefail`,
+// `tee .szh-journal.log` relu par relireJournal, `-j2 -O`). Elle n'est pas dans tasks.json
+// parce qu'elle a besoin du slug. Le type `szh` la fait suivre comme les autres. Le slug,
+// placé dans une ligne bash, est contrôlé par profils.apercuUnite.
 function tacheChapitrePdf(racine, slug) {
   const a = profils.apercuUnite(profilCourant(), racine, slug);
   const make = ['make', '-j2', '-O', '-f', "'" + MAKEFILE_WSL + "'", a.cible]
@@ -1514,8 +1332,8 @@ function tacheChapitrePdf(racine, slug) {
   return tache;
 }
 
-// Le mode d'aperçu d'une unité. Un chapitre s'aperçoit toujours en PDF, le sien : son
-// aperçu HTML n'existe qu'après une compilation du livre entier, ce que le clic ne fait plus.
+// Mode d'aperçu d'une unité. Un chapitre s'aperçoit toujours en PDF : son aperçu HTML
+// n'existe qu'après une compilation du livre entier, que le clic ne lance pas.
 function modeApercuUnite() { return profilCourant().cle === 'livre' ? 'pdf' : modeApercu(); }
 
 // Le PDF qu'ouvre le clic sur une unité : out/<slug>/<slug>.pdf pour un article,
@@ -1524,9 +1342,8 @@ function pdfApercuUnite(racine, slug) {
   return profils.apercuUnite(profilCourant(), racine, slug).pdf;
 }
 
-// Une tâche s'est terminée en échec. Si le journal porte un point bloquant, la vue des
-// contrôles vient de le nommer et de dire quoi faire : ce message-ci n'ajouterait rien et
-// masquerait le précis par le vague. Il ne sort donc que sur un échec muet.
+// Signale l'échec d'une tâche, seulement si le journal ne porte aucun point bloquant :
+// sinon la vue des contrôles le nomme déjà, avec ce qu'il faut faire.
 function avertirEchecCompilation(cle, args) {
   if (resumeJournal(controlesHote.constatsPoses('chaine')).bloquants > 0) { return; }
   vscode.window.showErrorMessage(T(cle, args || []));
@@ -1546,9 +1363,8 @@ async function toutExporter(fournisseur, rafraichirTout) {
   try {
     await fermerOngletsSous(path.join(racine, 'out'));
     session.poserApercuCourantUri(null);                       // tous les aperçus viennent d'être fermés
-    // La maquette lit dois-calcules.yaml pendant la compilation, et il n'est plus réécrit à
-    // chaque rafraîchissement : recompiler tout est le bon moment pour s'assurer qu'il est
-    // là et à jour. L'écriture ne se fait qu'au changement.
+    // La maquette lit dois-calcules.yaml : on s'assure qu'il est à jour (écrit seulement
+    // s'il change).
     ecrireDoisCalcules(fournisseur);
     reparerBibliosAvantCompilation(racine);
     const code = await lancerTache(NOM_TACHE_EXPORT);
@@ -1594,13 +1410,10 @@ async function exporterXml(fournisseur, rafraichirTout) {
       vscode.window.showErrorMessage(T('exportOjs.erreurDocx'));
       return;
     }
-    // Pagination continue : si le numéro a déjà été paginé, on relit l'état avant
-    // d'exporter — jamais l'ancien, potentiellement dépassé par la compilation qui vient
-    // de tourner. Un numéro jamais paginé exporte comme avant, sans option. Si l'état ne
-    // peut pas être vérifié (distro endormie, make en échec), on n'exporte PAS : on
-    // n'envoie jamais à OJS une pagination qu'on n'a pas pu vérifier — le refus pour
-    // pagination PÉRIMÉE, lui, arrive tout seul plus bas par le `catch` existant
-    // (e.szhBloquants -> poserConstatsExport), lib/export-ojs.js portant déjà cette porte.
+    // Pagination continue : pour un numéro déjà paginé, l'état est relu après la
+    // compilation qui vient de tourner. S'il ne peut pas être lu (WSL endormie, make en
+    // échec), l'export s'arrête. Une pagination périmée est refusée par lib/export-ojs.js
+    // (e.szhBloquants, traité plus bas).
     let optionsPagination = {};
     if (paginationHote.estPagine(racine)) {
       let etatPagination;
@@ -1629,9 +1442,8 @@ async function exporterXml(fournisseur, rafraichirTout) {
       vscode.window.showInformationMessage(message);
     }
   } catch (e) {
-    // Les points bloquants deviennent des cartes dans « À corriger » : la notification
-    // n'a plus à les porter tous, elle dit combien et où les lire. Ce qui ne vient pas de
-    // la collecte (une panne, un disque) garde son message en clair, faute de liste.
+    // Les points bloquants deviennent des cartes dans « À corriger » ; la notification dit
+    // combien et où les lire. Une autre erreur (panne, disque) garde son message.
     const liste = (e && e.szhBloquants) || [];
     if (liste.length > 0) {
       controlesHote.poserConstatsExport(racine, liste, (e && e.szhBloquantsConfig) || 0);
@@ -1649,9 +1461,9 @@ async function exporterXml(fournisseur, rafraichirTout) {
 }
 
 // ---- Pagination continue du numéro (lib/pagination-hote.js) ---------------------
-// On ne pagine QU'AU BOUCLAGE, par ce bouton manuel : jamais automatiquement. L'ordre
-// passé à la chaîne est TOUJOURS fournisseur.listerArticles() — voir l'en-tête de
-// pipeline/Makefile sur ORDRE, et pourquoi la chaîne ne peut pas le reconstituer seule.
+// La pagination se fait au bouclage, par ce bouton. L'ordre passé à la chaîne est celui de
+// fournisseur.listerArticles(), que la chaîne ne sait pas reconstituer seule (voir ORDRE
+// dans l'en-tête de pipeline/Makefile).
 async function rafraichirPagination(fournisseur, rafraichirTout) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
@@ -1659,7 +1471,7 @@ async function rafraichirPagination(fournisseur, rafraichirTout) {
     vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
     return;
   }
-  // Un numéro gelé garde les folios déjà publiés : son sommaire est clos, rien à recalculer.
+  // Un numéro gelé garde ses folios.
   if (session.etatNumero().verrouillee || session.etatNumero().archivee) {
     vscode.window.showWarningMessage(T('pagination.gele'));
     return;
@@ -1682,7 +1494,7 @@ async function rafraichirPagination(fournisseur, rafraichirTout) {
     return;
   }
   const bouton = T('pagination.confirmer.bouton');
-  // Modale : l'action recompile des PDF, une notification dans un coin se manque.
+  // Modale : l'action recompile des PDF.
   const choix = await vscode.window.showWarningMessage(
     T('pagination.confirmer', [etat.articles.length, etat.total, nARecompiler]),
     { modal: true }, bouton);
@@ -1691,12 +1503,11 @@ async function rafraichirPagination(fournisseur, rafraichirTout) {
   session.poserBuildEnCours(true);
   try {
     const resultat = await paginationHote.rafraichir(racine, ordre);
-    // Relecture exactement comme la fin d'une compilation ordinaire : rafraichir-pagination
-    // en est une vraie, journalisée dans .szh-journal.log comme tasks.json.
+    // rafraichir-pagination est une compilation journalisée dans .szh-journal.log : son
+    // journal se relit comme celui des tâches.
     await controlesHote.relireJournal(fournisseur, resultat.code === null ? 1 : resultat.code);
     rafraichirTout();
-    // Les constats de pagination retrouvés ici remplacent ceux que relireJournal() vient de
-    // relire en arrière-plan : normalement vides, puisqu'on sort d'un rafraîchissement.
+    // Remplace les constats de pagination relus par relireJournal() (normalement vides).
     controlesHote.poserConstats(racine, 'pagination', paginationHote.constatsPagination(resultat.etat));
     if (resultat.code === 0) {
       const total = resultat.etat ? resultat.etat.total : etat.total;
@@ -1710,9 +1521,9 @@ async function rafraichirPagination(fournisseur, rafraichirTout) {
 }
 
 // ---- Sorties du livre (imprimeur, couverture, EPUB, HTML web) --------------------
-// Quatre cibles make sans équivalent côté revue (pipeline/profils/livre.mk), chacune sa
-// propre tâche utilisateur (vscodium-user/tasks.json) : pas d'import, pas de clean, juste
-// la sortie demandée. Refusée pendant une autre compilation, comme le reste de la chaîne.
+// Quatre cibles make propres au livre (pipeline/profils/livre.mk), chacune avec sa tâche
+// dans vscodium-user/tasks.json : ni import ni clean, seulement la sortie demandée.
+// Refusée pendant une autre compilation.
 async function exporterLivre(nomTache, cles) {
   if (session.buildEnCours() || session.importEnCours()) {
     vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
@@ -1731,7 +1542,7 @@ async function exporterLivre(nomTache, cles) {
   }
 }
 
-// « Compiler le livre » (vue CHAPITRES) : la tâche par défaut, make all, qui recompose le volume.
+// « Compiler le livre » (vue Chapitres) : la tâche par défaut, make all, qui recompose le volume.
 async function compilerLivre(fournisseur) {
   if (!fournisseur.racine) { return; }
   reparerBibliosAvantCompilation(fournisseur.racine);
@@ -1745,15 +1556,12 @@ const CLES_LIVRE_EPUB = { statut: 'livre.epub.statut', fait: 'livre.epub.fait', 
 const CLES_LIVRE_WEB = { statut: 'livre.web.statut', fait: 'livre.web.fait', err: 'livre.web.err' };
 
 // ---- Export d'un seul article ----------------------------------------------------
-// Sur un numéro gelé, seul ce geste régénère un document. Sur un numéro vivant, il refait
-// un article à la demande sans attendre un enregistrement ni lancer le numéro entier — le
-// panneau Export l'offre dans les deux cas (lib/panneaux.js). La tâche vise le PDF et
-// l'aperçu HTML, sans clean ni import, qui supprimerait le Word source (.docx ou .odt).
-// `-j2 -O` comme les tâches de vscodium-user/tasks.json, et ici même sur un seul article :
-// les deux cibles ne dépendent pas l'une de l'autre — le .pdf descend du .html, l'aperçu est
-// une passe pandoc séparée. Sans `-j`, la seconde attendait la fin de la première alors que
-// le poste a deux cœurs à donner (%UserProfile%\.wslconfig, `processors=2`).
-// `-O` va avec `-j` : voir tasks.json pour ce qu'un journal entrelacé coûterait à lib/journal.js.
+// Recompile un seul article, depuis le panneau Export (lib/panneaux.js). C'est la seule
+// façon de régénérer un document sur un numéro gelé. La tâche vise le PDF et l'aperçu
+// HTML, sans clean ni import (l'import supprimerait le Word source).
+// `-j2` : les deux cibles sont indépendantes et la WSL a deux cœurs
+// (%UserProfile%\.wslconfig, `processors=2`). `-O` garde le journal lisible par
+// lib/journal.js (voir tasks.json).
 function tacheMakeArticle(racine, slug) {
   const cibles = ['out/' + slug + '/' + slug + '.pdf', 'out/' + slug + '/' + slug + '.apercu.html'];
   const ligne = moteur.ligneTache(
@@ -1803,33 +1611,15 @@ async function exporterArticle(fournisseur, rafraichirTout, cible) {
   }
   await ouvrirArticle(fournisseur, slug);   // montre le document régénéré
 
-  // Puis le dossier de sortie, PDF sélectionné. On vient de demander un document : le
-  // geste n'est fini que quand on l'a sous la main — pour le joindre à un courriel, le
-  // déposer sur OJS, l'envoyer à l'imprimeur. Le retrouver à la main dans out/<slug>/
-  // était le seul bout du chemin qui restait à la charge du rédacteur.
-  // En dernier, et à dessein : revelerDansExplorateur() donne le focus à l'Explorateur,
-  // ce qui recouvrirait l'éditeur qu'ouvrirArticle vient de mettre en place.
-  // Seulement après une compilation réussie : le `return` du code non nul plus haut sort
-  // de la fonction, un export en échec n'ouvre donc aucune fenêtre — ouvrir un dossier
-  // vide, ou pire un PDF de la veille, ferait croire que ça a marché.
+  // Puis le dossier de sortie, PDF sélectionné, pour joindre ou déposer le document.
+  // En dernier, car l'Explorateur prend le focus. Un export en échec est sorti plus haut :
+  // aucun dossier ne s'ouvre, qui montrerait un PDF ancien.
   await revelerDansExplorateur(vscode.Uri.file(path.join(racine, 'out', slug, slug + '.pdf')));
 }
 
-// ---- Archiver, verrouiller, désarchiver -> lib/cycle-vie.js ---------------------
-// poidsLisible, fermerFormulairesEcriture, verrouillerSeulement, archiverEtVerrouiller,
-// desarchiver, deverrouiller : tous importés plus haut.
+// ---- Article ouvert --------------------------------------------------------------
 
-// ---- Clic sur un article = aperçu direct -----------------------------------------
-
-
-// ---- Aperçu commutable HTML / PDF -> lib/apercu.js -----------------------------
-// fermerApercuCourant, lireProfil, modeApercu, editeurArticleCourant, le défilement
-// synchroniseur, injecterApercu, ouvrirApercuHtml, rechargerApercuHtmlSiChange,
-// basculerApercu, fermerApercuHtml, fermerTousLesApercus : tous importés plus haut.
-
-
-// Slug de l'article d'un chemin, ou null : un article est un
-// <racine>/articles/<slug>/<slug>.md. Même test que szh-apercu.
+// Slug de l'article d'un chemin <racine>/articles/<slug>/<slug>.md, ou null.
 function slugDepuisChemin(racine, chemin) {
   if (!racine || !chemin) { return null; }
   const parties = path.relative(racine, chemin).split(path.sep);
@@ -1839,18 +1629,17 @@ function slugDepuisChemin(racine, chemin) {
 
 // ---- Le marqueur de l'article ouvert ---------------------------------------------
 //
-// La sélection native de l'arbre pâlit dès que le focus retourne à l'éditeur — donc
-// immédiatement. Le point marque, lui, le .md de l'article auquel appartient le fichier
-// actif (texte, mais aussi bibliographie ou tableau) : il survit aux reconstructions de
-// l'arbre, colore la ligne (resourceUri) et l'onglet. Il s'éteint quand le fichier actif
-// sort des articles ; il reste quand le focus va à un aperçu ou à un panneau (plus
-// d'éditeur actif) : l'article, lui, est toujours là.
+// La sélection de l'arbre pâlit dès que le focus revient à l'éditeur. Un point marque donc
+// le .md de l'article auquel appartient le fichier actif (texte, bibliographie ou tableau) ;
+// il colore la ligne (resourceUri) et l'onglet, et survit aux reconstructions de l'arbre.
+// Il s'éteint quand le fichier actif sort des articles, et reste quand le focus passe à un
+// aperçu ou à un panneau.
 let vueArbre = null;                     // la TreeView, posée par activate()
 let uriArticleOuvert = null;             // le .md marqué, ou null
 const changementDecoration = new vscode.EventEmitter();
 
-// Slug du dossier d'article qui contient `chemin` — plus large que slugDepuisChemin :
-// la bibliographie et les tableaux disent aussi « on travaille sur cet article ».
+// Slug du dossier d'article qui contient `chemin`, à n'importe quelle profondeur
+// (bibliographie, tableaux), contrairement à slugDepuisChemin.
 function slugArticleContenant(racine, chemin) {
   if (!racine || !chemin) { return null; }
   const parties = path.relative(racine, chemin).split(path.sep);
@@ -1877,9 +1666,8 @@ function majArticleOuvert(fournisseur, chemin) {
 }
 
 // La reconstruction de l'arbre remplace l'élément sélectionné (son id encode l'état
-// déplié) et la sélection s'éteignait — le « premier clic qui ne tient pas ». On
-// resélectionne l'élément recréé, sans focus (le rédacteur écrit) et sans rouvrir une
-// barre latérale masquée.
+// déplié), ce qui perd la sélection. On resélectionne l'élément recréé, sans prendre le
+// focus et sans rouvrir une barre latérale masquée.
 function reselectionnerArticle(fournisseur, slug) {
   if (!vueArbre || !vueArbre.visible) { return; }
   const element = fournisseur.elementArticle(slug);
@@ -1888,42 +1676,26 @@ function reselectionnerArticle(fournisseur, slug) {
     .catch(() => { /* arbre en pleine reconstruction : la sélection suivra au prochain clic */ });
 }
 
-// Le clic sur l'édition des métadonnées ou des médias d'une unité — article ou chapitre —
-// donne le focus à l'arbre, comme le suivi de ouvrirArticle (déplie ses assets, ouvre la
-// section qui la contient, la resélectionne), mais sans ouvrir son .md ni
-// son aperçu : ces deux formulaires pleine page ferment déjà l'aperçu de leur côté, et
-// ouvrir le texte par-dessus leur webview n'aurait pas de sens. Pas de focus clavier non
-// plus : le formulaire qui vient de s'ouvrir garde la main.
-//
-// Focaliser, c'est aussi DÉSIGNER l'article : le cockpit n'a qu'une notion d'« article
-// courant », et elle vivait jusqu'ici dans le seul .md ouvert. Un formulaire pleine page
-// n'en ouvre aucun — Ctrl+Alt+P, la barre d'état et la compilation ne savaient donc plus
-// de quel article on parle, ou pire, parlaient encore du précédent. Les deux marqueurs
-// suivent donc le clic : le point de l'article ouvert (majArticleOuvert, qui tient aussi
-// le badge PDF/UA) et l'article visé en colonne 2 (apercuCourantSlug). Rien ne s'affiche
-// pour autant : ouvrirApercuHtml et ouvrirApercuPdf ne sont pas appelés, et
-// rechargerApercuHtmlSiChange s'abstient tant qu'aucun panneau d'aperçu n'existe.
+// Met une unité en avant dans l'arbre quand s'ouvre son formulaire de métadonnées ou de
+// médias : déplie ses assets et sa section, la resélectionne, sans ouvrir son .md ni son
+// aperçu (ces formulaires pleine page ferment l'aperçu) et sans prendre le focus clavier.
+// L'unité devient aussi l'article courant (voir designerUniteCourante), dont parlent
+// Ctrl+Alt+P, la barre d'état et la compilation.
 function focaliserUnite(fournisseur, slug) {
   let arbreChange = fournisseur.definirDeploye(slug);
-  // La section à déplier est celle où l'article vit : ACTUALITÉ pour une page de
-  // Documentation, la section des unités sinon. Déplier ARTICLES aurait refermé ACTUALITÉ
-  // (l'accordéon n'ouvre qu'une section) juste après un clic dedans.
+  // La section de l'article : « Actualité » pour une page de Documentation.
   arbreChange = fournisseur.definirSectionDeployee(fournisseur.categorieDeSlug(slug)) || arbreChange;
   if (arbreChange) { fournisseur.rafraichir(); }
   reselectionnerArticle(fournisseur, slug);
   designerUniteCourante(fournisseur, slug);
 }
 
-// La bibliographie d'un article : son texte en colonne 1, son rendu en colonne 2. Appelée
-// par l'entrée de l'arbre, et par la palette — sans item, c'est celle de l'article courant.
-//
-// L'article est désigné au passage : on travaille sur lui, même si son texte n'est pas à
-// l'écran. Sans ça, la compilation et la barre d'état parleraient encore du précédent.
+// Ouvre la bibliographie d'un article : son texte en colonne 1, son rendu en colonne 2.
+// L'article devient l'article courant.
 async function ouvrirBibliographie(fournisseur, item) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
-  // Même cascade que les deux formulaires : l'item de l'arbre, le .md actif, puis l'article
-  // en aperçu. Sans item, c'est la palette qui appelle, et il faut bien viser quelque chose.
+  // L'item de l'arbre, sinon (depuis la palette) le .md actif, puis l'article en aperçu.
   let slug = (item && item.slug) ? String(item.slug) : '';
   if (!slug) { slug = String(cibleTraduction(fournisseur, null).slug || ''); }
   if (!slug) { vscode.window.setStatusBarMessage(T('fiches.horsarticle'), 4000); return; }
@@ -1936,23 +1708,21 @@ async function ouvrirBibliographie(fournisseur, item) {
   await ouvrirApercuBiblio(vscode.Uri.file(chemin));
 }
 
-// L'unité dont parlent l'aperçu, la barre d'état et le badge PDF/UA — sans rien ouvrir.
-// Séparée de focaliserUnite() parce qu'elle vaut pour tout geste qui vise un article sans
-// afficher son texte : les deux formulaires, et l'aperçu de sa bibliographie.
+// Fait de l'unité l'article courant (point de l'arbre, badge PDF/UA, article visé par
+// l'aperçu) sans rien ouvrir. Sert aux actions qui visent un article sans afficher son
+// texte : les formulaires et l'aperçu de la bibliographie.
 function designerUniteCourante(fournisseur, slug) {
   if (!fournisseur.racine || !slug) { return; }
   const md = profils.chemins(profilCourant(), fournisseur.racine, slug).md;
-  // Rien à désigner sans texte : la Documentation appelle focaliserUnite() avec des pages
-  // qui n'ont pas toutes de .md, et l'aperçu se mettrait alors à viser un article qui
-  // n'existe pas — sans que rien ne s'affiche pour le dire.
+  // Sans .md (page de Documentation), rien n'est désigné.
   try { if (!fs.statSync(md).isFile()) { return; } } catch (e) { return; }
   majArticleOuvert(fournisseur, md);
   session.poserApercuCourantSlug(slug);
 }
 
-// Au démarrage, si l'éditeur actif est déjà un article, enchaîner ce que fait un clic
-// dans la barre latérale. Ici et non dans le lanceur PowerShell : un make lancé depuis
-// Windows concurrencerait `triggerTaskOnSave`, et le Makefile n'a pas de verrou.
+// Au démarrage, si l'éditeur actif est un article, fait ce que fait un clic dans l'arbre.
+// Ce n'est pas le lanceur PowerShell qui s'en charge : un make lancé depuis Windows
+// concurrencerait `triggerTaskOnSave`, et le Makefile n'a pas de verrou.
 async function ouvrirArticleActifAuDemarrage(fournisseur) {
   const editeur = vscode.window.activeTextEditor;
   if (!editeur) { return; }
@@ -1965,20 +1735,16 @@ async function ouvrirArticleActifAuDemarrage(fournisseur) {
 // Combien de temps le surlignage reste visible avant de s'effacer de lui-même.
 const DUREE_SURLIGNAGE_FOCUS = 3000;
 
-// Deux chemins pour le même fichier : la casse de la lettre de lecteur et des dossiers
-// varie selon qui a construit le chemin (Uri.fsPath la baisse, path.join la garde).
+// Compare deux chemins sans la casse : Uri.fsPath baisse la lettre de lecteur, path.join
+// la garde.
 function memeFichier(a, b) {
   return path.normalize(String(a || '')).toLowerCase() === path.normalize(String(b || '')).toLowerCase();
 }
 
-// L'éditeur de `chemin`, ouvert et au premier plan en colonne 1. showTextDocument, et non
-// visibleTextEditors : c'est la seule API qui RENDE l'éditeur. `vscode.open` rend la main
-// avant que l'hôte d'extension ait appris l'existence du nouvel éditeur — visibleTextEditors
-// et activeTextEditor décrivaient encore l'écran d'avant (la vue « À corriger » au premier
-// plan, sans aucun éditeur de texte), surlignerFocus ne trouvait rien et se taisait : c'est
-// pourquoi la flèche ouvrait l'article sans jamais rien sélectionner. Le .md déjà ouvert
-// dans un AUTRE groupe tombait dans le même trou : la sélection partait sur l'éditeur de la
-// colonne 2, celui qu'on ne regardait pas.
+// Ouvre `chemin` au premier plan en colonne 1 et rend son éditeur. showTextDocument est la
+// seule API qui rend l'éditeur : après `vscode.open`, visibleTextEditors et
+// activeTextEditor décrivent encore l'écran d'avant. Forcer la colonne 1 évite de
+// sélectionner dans une copie du .md ouverte dans un autre groupe.
 async function editeurDe(chemin) {
   try {
     const ed = await vscode.window.showTextDocument(vscode.Uri.file(chemin),
@@ -1991,14 +1757,11 @@ async function editeurDe(chemin) {
     && memeFichier(e.document.uri.fsPath, chemin)) || null;
 }
 
-// Retrouve le passage désigné par `focus` dans le .md qu'on vient d'ouvrir, le SÉLECTIONNE,
-// l'amène à l'écran et le surligne quelques secondes. La recherche (lib/reperage-focus.js)
-// absorbe la normalisation que le filtre Lua a fait subir au texte du constat, l'emphase
-// Markdown qu'il a aplatie et l'ellipse d'une troncature. Pas trouvé dans le texte, on
-// cherche dans la bibliographie détachée (<slug>.biblio.md, voisine du .md) : une
-// « référence jamais citée » n'est plus dans le texte depuis que l'import la met à part.
-// Pas trouvé du tout, rien ne se passe : jamais de faux surlignage, jamais de message
-// d'erreur pour si peu. -> true quand un passage a été sélectionné.
+// Retrouve dans le .md le passage désigné par `focus`, le sélectionne, l'amène à l'écran et
+// le surligne quelques secondes. La recherche (lib/reperage-focus.js) tolère la
+// normalisation du texte par le filtre Lua, l'emphase aplatie et l'ellipse d'une
+// troncature. À défaut, elle cherche dans <slug>.biblio.md (cas d'une référence jamais
+// citée). Introuvable, rien ne se passe. Rend true si un passage a été sélectionné.
 async function surlignerFocus(md, focus) {
   try {
     let editeur = await editeurDe(md);
@@ -2018,7 +1781,7 @@ async function surlignerFocus(md, focus) {
     const zone = new vscode.Range(debut, fin);
     editeur.selection = new vscode.Selection(debut, fin);
     editeur.revealRange(zone, vscode.TextEditorRevealType.InCenter);
-    // Couleurs du thème, jamais en dur : une teinte fixe serait illisible dans l'autre thème.
+    // Couleurs du thème : une teinte fixe serait illisible dans l'autre thème.
     const decoration = vscode.window.createTextEditorDecorationType({
       backgroundColor: new vscode.ThemeColor('editor.findMatchHighlightBackground'),
       border: '1px solid', borderColor: new vscode.ThemeColor('editor.findMatchBorder'),
@@ -2032,53 +1795,45 @@ async function surlignerFocus(md, focus) {
   } catch (e) { return false; /* un focus qui échoue n'empêche pas d'avoir ouvert l'article */ }
 }
 
-// .md en colonne 1 ; compilation incrémentale si l'aperçu du mode courant est absent ou
-// plus vieux que ses sources ; aperçu en colonne 2, à la place du précédent. Une
-// compilation en échec ne montre pas d'aperçu périmé, `opts.sansTexte` laisse la
-// colonne 1 au panneau qui l'occupe, et `opts.sansApercu` s'arrête au .md : ni aperçu,
-// ni compilation (vue d'ensemble Articles — voir le commentaire plus bas).
+// Ouvre un article : .md en colonne 1, compilation si l'aperçu du mode courant manque ou
+// est plus vieux que ses sources, aperçu en colonne 2 à la place du précédent. Une
+// compilation en échec n'affiche pas d'aperçu périmé.
+// `opts.sansTexte`  laisse la colonne 1 au panneau qui l'occupe, et l'arbre tel quel
+// `opts.sansApercu` s'arrête au .md, sans aperçu ni compilation
+// `opts.focus`      passage à sélectionner dans le .md (voir surlignerFocus)
 async function ouvrirArticle(fournisseur, slug, opts) {
   const racine = fournisseur.racine;
   if (!racine || typeof slug !== 'string' || slug === '') { return; }
   const md = profils.chemins(profilCourant(), racine, slug).md;
-  // Avant l'ouverture du .md et la compilation, pour que l'arbre suive le clic : les
-  // assets de l'article se déplient, la section « Articles » s'ouvre (accordéon), et
-  // l'élément — recréé par la reconstruction, son id encode l'état — est resélectionné.
-  // `sansTexte` (suivi de traduction en colonne 1) laisse l'arbre en paix : le rédacteur
-  // travaille dans une autre section. Le point de l'article ouvert suit dans tous les cas.
+  // L'arbre suit le clic avant l'ouverture : assets dépliés, section ouverte, élément
+  // resélectionné. Le point de l'article ouvert suit dans tous les cas.
   const suivreArbre = !(opts && opts.sansTexte);
   let arbreChange = fournisseur.definirDeploye(slug);
   if (suivreArbre) { arbreChange = fournisseur.definirSectionDeployee(categorieUnites()) || arbreChange; }
   if (arbreChange) { fournisseur.rafraichir(); }
   if (suivreArbre) { reselectionnerArticle(fournisseur, slug); }
   majArticleOuvert(fournisseur, md);
-  // Un chapitre a son PDF à lui, composé seul (lib/profil.js, apercuUnite) ; le volume
-  // entier s'ouvre par szh.apercuLivre.
+  // Un chapitre a son propre PDF (lib/profil.js, apercuUnite) ; le volume s'ouvre par
+  // szh.apercuLivre.
   const pdf = vscode.Uri.file(pdfApercuUnite(racine, slug));
   const modeCourant = modeApercuUnite();
-  // Un PDF à jour ne dit rien du HTML d'aperçu : on juge celui du mode courant.
+  // L'obsolescence se juge sur la sortie du mode courant.
   const apercuAttendu = modeCourant === 'html' ? cheminApercuHtml(racine, slug) : pdf.fsPath;
 
   if (!(opts && opts.sansTexte)) {
     await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(md), { viewColumn: vscode.ViewColumn.One });
-    // Le bouton « Vers l'article » d'un constat vise un passage précis (lib/constats.js,
-    // focusChamp) : le retrouver et le montrer, sinon le rédacteur ouvre le bon fichier sans
-    // savoir où regarder. Attendu : l'aperçu qui s'ouvre ensuite en colonne 2 ne doit pas
-    // passer devant l'éditeur avant que la sélection soit posée.
+    // Passage visé par le bouton « Vers l'article » d'un constat (lib/constats.js,
+    // focusChamp). Attendu avant d'ouvrir l'aperçu, qui sinon passerait devant l'éditeur.
     if (opts && opts.focus) { await surlignerFocus(md, opts.focus); }
   }
 
-  // Depuis la vue d'ensemble Articles, on vient lire ou corriger le texte, pas mettre en
-  // page — le .md suffit, pas d'aperçu en colonne 2.
-  // La compilation d'obsolescence est sautée aussi : compiler pour un aperçu qu'on
-  // n'affiche pas surprendrait (barre d'état « compilation de… », journal relu en fin de
-  // tâche), et rien d'autre n'en dépend ici — l'enregistrement du .md recompile de toute
-  // façon via triggerTaskOnSave. Un panneau d'aperçu déjà ouvert continue, lui, de se
-  // rafraîchir par le watcher out/** (rechargerApercuHtmlSiChange) — comportement voulu.
+  // Depuis la vue d'ensemble Articles, on vient lire ou corriger le texte : ni aperçu ni
+  // compilation (l'enregistrement du .md recompile par triggerTaskOnSave). Un aperçu déjà
+  // ouvert se rafraîchit toujours par le watcher out/**.
   if (opts && opts.sansApercu) { return; }
 
-  // Obsolète = plus ancien que le .md, un tableau extrait ou la fiche .meta.yaml ; même
-  // graphe de dépendances que la règle HTML du Makefile.
+  // Obsolète = plus ancien que le .md, un tableau extrait ou la fiche .meta.yaml, comme la
+  // règle HTML du Makefile.
   let obsolete = true;
   try {
     let mSource = fs.statSync(md).mtimeMs;
@@ -2092,8 +1847,7 @@ async function ouvrirArticle(fournisseur, slug, opts) {
     }
     try { mSource = Math.max(mSource, fs.statSync(cheminMeta(racine, slug)).mtimeMs); }
     catch (e) { /* pas de fiche */ }
-    // La bibliographie d'un chapitre entre dans son PDF : un chapitre se compile seul, rien
-    // d'autre ne la relève. Une revue garde son graphe d'avant.
+    // Pour un chapitre, compilé seul, la bibliographie compte aussi.
     if (profilCourant().cle === 'livre') {
       try { mSource = Math.max(mSource, fs.statSync(profils.chemins(profilCourant(), racine, slug).biblio).mtimeMs); }
       catch (e) { /* pas de bibliographie */ }
@@ -2154,26 +1908,21 @@ async function ouvrirArticle(fournisseur, slug, opts) {
 }
 
 // Lance compilerPuisAfficher sans l'attendre ; le catch évite un rejet non capturé.
-// `opts.sansAffichage` : la compilation part, mais son résultat ne rouvre aucun aperçu —
-// pour l'enregistrement des métadonnées, qui doit recompiler en tâche de fond sans jamais
-// rouvrir ce que focaliserUnite vient de fermer (aperçu HTML ou PDF).
+// `opts.sansAffichage` : compile sans rouvrir d'aperçu (enregistrement des métadonnées,
+// dont le formulaire a fermé l'aperçu).
 function relancerCompilation(fournisseur, slug, opts) {
   compilerPuisAfficher(fournisseur, slug, opts).catch(() => { /* signalé côté build */ });
 }
 
-// Les démarrages de la tâche qui recompile l'article (build, ou export complet), comptés
-// dans onDidStartTask — Ctrl+S et triggerTaskOnSave compris, puisqu'ils ne passent par
-// aucune fonction du cockpit. La relance différée ci-dessous s'en sert pour savoir si une
-// compilation partie depuis un enregistrement l'a déjà couvert (lib/relance-compilation.js).
+// Démarrages de la tâche de compilation (build ou export complet), comptés dans
+// onDidStartTask, y compris ceux de triggerTaskOnSave. La relance différée s'en sert pour
+// savoir si une compilation partie entre-temps l'a déjà couverte (lib/relance-compilation.js).
 let demarragesBuild = 0;
 
-// Les enregistrements du formulaire « Médias de l'article » (lib/medias-hote.js) et de
-// l'éditeur de tableaux (ouvrirEditeurTable) : ils écrivent hors de l'éditeur de texte, et
-// relancent donc eux-mêmes la compilation de l'article — même chemin, même garde et même
-// discrétion (sansAffichage) que l'enregistrement des métadonnées, mais après un anti-rebond
-// de 2,5 s : l'éditeur de tableaux enregistre à chaque modification. Numéro verrouillé ou
-// archivé : rien (compilationAutoCoupee). Un livre suit le même chemin que ses métadonnées :
-// le slug est celui du chapitre, lancerBuild compile le volume.
+// Le formulaire « Médias de l'article » (lib/medias-hote.js) et l'éditeur de tableaux
+// écrivent hors de l'éditeur de texte : ils relancent eux-mêmes la compilation, comme
+// l'enregistrement des métadonnées (sansAffichage), après un anti-rebond de 2,5 s car
+// l'éditeur de tableaux enregistre à chaque modification. Rien sur un numéro gelé.
 const relanceDifferee = relanceCompilation.creerRelanceDifferee({
   relancer: (fournisseur, slug) => relancerCompilation(fournisseur, slug, { sansAffichage: true }),
   coupee: () => compilationAutoCoupee(),
@@ -2181,18 +1930,14 @@ const relanceDifferee = relanceCompilation.creerRelanceDifferee({
   demarrages: () => demarragesBuild
 });
 
-// L'aperçu manque encore : une seule passe est relancée en tâche de fond, sans boucler.
-// Chemin unique de compilation d'un article : ouvrirArticle (aperçu périmé ou manquant) et
-// l'enregistrement des métadonnées passent tous deux par ici, sous la même garde
-// `session.buildEnCours()` — jamais deux compilations à la fois, quel que soit le déclencheur.
+// Compile un article en tâche de fond (une seule passe), puis rafraîchit son aperçu s'il
+// est toujours affiché. Les compilations implicites d'un article passent par ici, sous la
+// garde session.buildEnCours() : jamais deux à la fois.
 async function compilerPuisAfficher(fournisseur, slug, opts) {
   if (session.buildEnCours() || session.importEnCours()) {
-    // Un refus dû à l'import ne doit jamais s'escamoter en silence (enregistrer une fiche
-    // pendant un import qui ne ramène finalement rien laisserait l'aperçu et le PDF périmés
-    // sans qu'aucune compilation ne reparte) : on garde de quoi rejouer l'appel tel quel,
-    // rejoué par rejouerCompilationsDifferees() dès qu'session.importEnCours() retombe. Un refus dû à
-    // session.buildEnCours() seul n'est pas concerné : une compilation est déjà en vol pour ce numéro,
-    // celle-ci lui succédera naturellement au prochain déclenchement (ouvrirArticle, l'enregistrement des métadonnées…).
+    // Refusé pendant un import : l'appel est gardé et rejoué à la fin de l'import
+    // (rejouerCompilationsDifferees), même si l'import n'a rien ramené. Refusé pendant une
+    // compilation : celle-ci est abandonnée, la suivante la couvrira.
     if (session.importEnCours()) { compilationsDifferees.set(slug, { fournisseur: fournisseur, opts: opts }); }
     return;
   }
@@ -2201,9 +1946,9 @@ async function compilerPuisAfficher(fournisseur, slug, opts) {
   session.poserBuildEnCours(true);
   const statut = vscode.window.setStatusBarMessage(T('statut.build.de', [slug]));
   let code = null;
-  // L'article compilé, pour que le voile de « À corriger » ne couvre que sa carte : c'est
-  // le démarrage de la tâche (onDidStartTask) qui le pose. Retiré dans tous les cas — une
-  // tâche introuvable ne démarre jamais, et l'annonce ne doit pas échoir au Ctrl+S suivant.
+  // Annonce l'article compilé, pour que le voile de « À corriger » ne couvre que sa carte
+  // (posé au démarrage de la tâche). Retirée dans tous les cas, pour ne pas s'appliquer au
+  // Ctrl+S suivant si la tâche n'a pas démarré.
   controlesHote.annoncerAnalyse(slug);
   try {
     code = await lancerBuildUnite(fournisseur.racine, slug);
@@ -2214,10 +1959,7 @@ async function compilerPuisAfficher(fournisseur, slug, opts) {
   }
   if (code === null) { return; }                   // tâche introuvable, déjà signalé
   if (code !== 0) { avertirEchecCompilation('err.build'); return; }
-  // Rien à afficher : un formulaire pleine page (métadonnées) occupe l'écran et l'aperçu
-  // a été fermé exprès — le rouvrir ici volerait le focus que focaliserUnite vient de
-  // donner à l'arbre. Ni webview.html réassigné ni panneau PDF rouvert : la garde
-  // d'interaction (differer, lib/interaction.js) n'a donc rien à protéger sur ce chemin.
+  // Un formulaire pleine page occupe l'écran : l'aperçu reste fermé.
   if (opts && opts.sansAffichage) { return; }
   if (session.apercuCourantSlug() !== slug || !fournisseur.racine) { return; }   // article changé entre-temps
   if (modeApercuUnite() === 'html') {
@@ -2231,21 +1973,14 @@ async function compilerPuisAfficher(fournisseur, slug, opts) {
   session.poserApercuCourantUri(pdf);
 }
 
-// ---- Aperçu de la page de Documentation (bouton dédié « Aperçu du PDF » de son formulaire,
-// documentation-hote.js/media/documentation.js, 23.09.2026) --------------------------------
+// ---- Aperçu de la page de Documentation (bouton « Aperçu du PDF » de son formulaire) ---
 //
-// Même mécanisme que celui d'un article (ouvrirApercuHtml/ouvrirApercuPdf/compilerPuisAfficher,
-// session.apercuCourantSlug) — mais la Documentation n'a pas de .md source à comparer à un
-// aperçu existant : elle dépend de toute la bibliothèque de fiches partagée, un graphe trop
-// large à surveiller ici. Plutôt que deviner une obsolescence, ouvrir recompile TOUJOURS
-// (compilerPuisAfficher, la même garde session.buildEnCours()/importEnCours() qu'ailleurs) —
-// son slug est déjà celui de toute unité Documentation (SLUG_DOCUMENTATION, kirby-contenu.js
-// et le Makefile la compilent comme n'importe quel article, via out/<slug>/…).
+// Même mécanisme que pour un article, mais l'ouverture recompile toujours : la page dépend
+// de toute la bibliothèque de fiches partagée, et son obsolescence ne se juge pas sur un
+// .md. Le Makefile la compile comme un article, dans out/<slug>/.
 //
-// « Ouvert pour CE slug » : une question posée à l'état RÉEL (session.panneauApercuHtml()/
-// apercuCourantSlug() en HTML — déjà tenus à jour par le onDidDispose de ouvrirApercuHtml ;
-// ongletOuvert() sur le tabGroups réel en PDF) plutôt qu'une variable à soi : un aperçu se
-// ferme aussi à la croix, et documentation-hote.js n'a pas d'autre moyen de le savoir.
+// L'état « ouvert pour ce slug » se lit sur l'état réel (panneau HTML de la session, ou
+// onglets ouverts en PDF) : un aperçu se ferme aussi à la croix.
 function apercuOuvertPourSlug(racine, slug) {
   if (!racine || !slug) { return false; }
   if (modeApercu() === 'html') {
@@ -2255,10 +1990,8 @@ function apercuOuvertPourSlug(racine, slug) {
   return ongletOuvert((e) => e && e.uri && String(e.uri.fsPath || '').toLowerCase() === pdf);
 }
 
-// L'ouverture recompile elle-même (lancerBuild), comme la branche « obsolète » de
-// ouvrirArticle — PAS via compilerPuisAfficher : cette dernière n'affiche que si un panneau
-// existe DÉJÀ (elle sert à rafraîchir un aperçu déjà ouvert, jamais à en ouvrir un premier),
-// ce qui serait toujours faux ici au premier clic.
+// Ouvre ou ferme l'aperçu. L'ouverture compile elle-même (lancerBuild) : compilerPuisAfficher
+// ne fait que rafraîchir un aperçu déjà ouvert.
 async function basculerApercuDocumentation(fournisseur, slug) {
   const racine = fournisseur.racine;
   if (!racine || !slug) { return; }
@@ -2273,8 +2006,7 @@ async function basculerApercuDocumentation(fournisseur, slug) {
   }
   session.poserApercuCourantSlug(slug);
   if (session.buildEnCours() || session.importEnCours()) {
-    // Une compilation tourne déjà pour autre chose : montrer ce qui existe en attendant,
-    // comme ouvrirArticle sur ce même cas.
+    // Une compilation tourne déjà : on montre ce qui existe en attendant.
     if (modeApercu() === 'html') {
       if (session.apercuCourantUri()) { await fermerApercuCourant(null); }
       ouvrirApercuHtml(fournisseur, slug, true);
@@ -2282,7 +2014,7 @@ async function basculerApercuDocumentation(fournisseur, slug) {
     return;
   }
   if (compilationAutoCoupee()) {
-    // Numéro gelé : rien ne se compile, on montre ce qui existe déjà — comme ouvrirArticle.
+    // Numéro gelé : rien ne se compile, on montre ce qui existe.
     if (modeApercu() === 'html') { ouvrirApercuHtml(fournisseur, slug); }
     else {
       const pdf = vscode.Uri.file(path.join(racine, 'out', slug, slug + '.pdf'));
@@ -2315,31 +2047,22 @@ async function basculerApercuDocumentation(fournisseur, slug) {
   session.poserApercuCourantUri(pdf);
 }
 
-// Après « Enregistrer » sur la Documentation : si son aperçu est déjà ouvert, il se
-// rafraîchit tout seul — même chemin que ci-dessus à l'ouverture, via le garde-fou déjà posé
-// dans compilerPuisAfficher (n'affiche que si session.apercuCourantSlug() vaut encore ce slug
-// à la fin de la compilation : un aperçu fermé ou changé entre-temps ne rouvre pas tout seul).
+// Après « Enregistrer » sur la Documentation, recompile et rafraîchit son aperçu s'il est
+// ouvert. Un aperçu fermé ou changé pendant la compilation ne se rouvre pas.
 async function rafraichirApercuDocumentationSiOuvert(fournisseur, slug) {
   if (!apercuOuvertPourSlug(fournisseur.racine, slug)) { return; }
   await compilerPuisAfficher(fournisseur, slug);
 }
 
-// ---- Import guidé ----------------------------------------------------------------
+// ---- Compilations refusées pendant un import ------------------------------------
 
-
-// Slugs refusés par compilerPuisAfficher pendant qu'session.importEnCours() était posé (import guidé
-// OU réimport, executerReimport() plus bas — même drapeau, même trou) : une seule entrée par
-// slug, la dernière demande gagne — trois enregistrements pendant l'import ne doivent
-// rejouer qu'une compilation par article, comme le fait déjà session.buildEnCours() pour deux fiches
-// enregistrées d'un coup (voir le commentaire de compilerPuisAfficher).
+// Slugs refusés par compilerPuisAfficher pendant un import ou un réimport. Une entrée par
+// slug, la dernière demande l'emporte : une seule compilation rejouée par article.
 const compilationsDifferees = new Map();
 
-// Rejoue, en tâche de fond, les compilations que compilerPuisAfficher a dû décliner pendant
-// la fenêtre session.importEnCours() — à appeler juste après avoir reposé ce drapeau à false, quel
-// qu'ait été le résultat de l'import (échec, zéro article ramené, ou succès) : c'est
-// précisément le cas « zéro article » qui ne passe par aucun autre chemin de recompilation
-// (compilerApresImport() n'est appelée que si nouveaux.length > 0, plus bas). Un travail
-// refusé doit être rejoué, jamais juste tu.
+// Rejoue en tâche de fond les compilations refusées pendant l'import. À appeler dès que
+// session.importEnCours() repasse à false, quel que soit le résultat : un import qui n'a
+// ramené aucun article ne passe par aucun autre chemin de recompilation.
 function rejouerCompilationsDifferees() {
   if (compilationsDifferees.size === 0) { return; }
   const aRejouer = Array.from(compilationsDifferees.entries());
@@ -2347,38 +2070,21 @@ function rejouerCompilationsDifferees() {
   for (const [slug, args] of aRejouer) { relancerCompilation(args.fournisseur, slug, args.opts); }
 }
 
-// ---- Import guidé -> lib/import-hote.js -----------------------------------------
-// compilerApresImport, numerosOrdreEnAttente, resoudreNumeroOrdre,
-// ecrireOrdreNouveauxArticles, lancerConversion, importerFichiersWord, importerWord,
-// controleurDepotVue : tous importés plus haut.
-
-
 // ---- Réimporter un article corrigé ----------------------------------------------
 //
-// L'auteur renvoie son Word corrigé. Jusqu'ici il fallait renommer le fichier, réimporter,
-// puis recopier à la main la fiche, les portraits et les traductions du doublon vers
-// l'original — et le message de l'import promettait un bouton qui n'existait pas.
-//
-// pipeline/reimporter.py fait tout le travail, et il est le seul à le faire : rien de sa
-// logique n'est redit ici. Ce qui vit ici, et rien d'autre :
-//
-//   * la confirmation, parce que le geste remplace le travail de quelqu'un ;
-//   * la lecture de sa réponse — une ligne JSON — et le ton qui va avec ;
-//   * la recompilation de l'article, sans laquelle l'aperçu et le PDF montreraient encore
-//     l'ancien texte ;
-//   * le retour en arrière, atteignable d'un clic.
-//
-// C'est aussi le seul maillon que le cockpit lance sans passer par une tâche : une tâche
-// ne rapporte que son code de retour, et il faut ici lire la réponse.
+// L'auteur renvoie son Word corrigé. pipeline/reimporter.py fait tout le travail. Ici :
+//   * la confirmation, car le réimport remplace le texte en place ;
+//   * la lecture de sa réponse (une ligne JSON) et le ton du message ;
+//   * la recompilation de l'article ;
+//   * l'annulation, à un clic.
+// Le script est lancé directement, sans tâche, pour pouvoir lire sa réponse.
 
-// Large : le premier appel paie le réveil de la machine du pipeline, et la conversion d'un
-// Word illustré prend son temps. Au-delà, on rend la main plutôt que de laisser le
-// rédacteur devant une barre d'état qui ne bouge plus.
+// Délai large : le premier appel réveille la WSL, et la conversion d'un Word illustré
+// prend du temps. Au-delà, le cockpit rend la main.
 const REIMPORT_DELAI = 600000;
 
-// -> Promise<{ json, code, erreur }>. `json` est la ligne de résultat, ou null : un appel
-// mal formé et une machine absente n'en produisent pas, et l'appelant le dit autrement.
-// Ne rejette jamais : les cinq issues se lisent dans le retour, pas dans une exception.
+// Rend une Promise<{ json, code, erreur }>, sans jamais rejeter. `json` est la ligne de
+// résultat, ou null (appel mal formé, WSL absente, délai dépassé).
 function lancerReimporter(racine, args) {
   const argv = ['python3', REIMPORTER_WSL].concat(args || []);
   return moteur.reveiller().then(() => new Promise((resolve) => {
@@ -2405,8 +2111,8 @@ function lancerReimporter(racine, args) {
     if (proc.stdout) { proc.stdout.on('data', (d) => morceaux.push(d)); }
     proc.on('error', (e) => finir({ json: null, code: null, erreur: String((e && e.message) || e) }));
     proc.on('close', (code) => {
-      // Une seule ligne JSON, et elle est la dernière : tout le reste part sur la sortie
-      // d'erreur, que l'on ne lit pas — elle va déjà dans le journal d'import.
+      // Le script écrit une seule ligne JSON sur stdout ; le reste va sur stderr, déjà
+      // recopié dans le journal d'import.
       let json = null;
       for (const ligne of Buffer.concat(morceaux).toString('utf8').split(/\r?\n/)) {
         const nette = ligne.trim();
@@ -2421,8 +2127,8 @@ function lancerReimporter(racine, args) {
   }));
 }
 
-// L'article dont la fiche dit venir de ce document Word. '' si aucun, ou si plusieurs :
-// deviner à la place du rédacteur est exactement ce que le script refuse de faire.
+// L'article dont la fiche nomme ce document Word comme source. '' si aucun ou plusieurs :
+// le choix revient alors au rédacteur, comme dans reimporter.py.
 function articleDuWord(fournisseur, nom) {
   const cherche = String(nom || '').toLowerCase();
   const trouves = [];
@@ -2433,13 +2139,9 @@ function articleDuWord(fournisseur, nom) {
   return trouves.length === 1 ? trouves[0] : '';
 }
 
-// Le rédacteur désigne l'article. C'est la sortie des deux cas où le script refuse de
-// choisir : plusieurs articles disent venir du même Word, ou aucun ne dit d'où il vient.
-// L'article dont le nom de dossier correspond au fichier est proposé en tête — c'est le
-// plus probable, et ce n'est qu'une proposition. La comparaison se fait par tige() : le
-// nom deviné (slugifierArticle) n'a jamais de préfixe, mais le dossier peut en porter un
-// depuis que l'import en pose (lib/import-hote.js) — sans cet oubli, un article rangé sous
-// « 00-inclusion » ne se proposerait jamais en tête pour le Word « inclusion.docx ».
+// Le rédacteur désigne l'article, quand plusieurs fiches ou aucune ne nomment ce Word.
+// L'article dont le dossier correspond au nom du fichier est proposé en tête ; la
+// comparaison passe par tige(), le dossier pouvant porter un préfixe « NN- ».
 async function choisirArticleReimport(fournisseur, nom) {
   const racine = fournisseur.racine;
   const langue = langueRevue(racine);
@@ -2460,9 +2162,8 @@ async function choisirArticleReimport(fournisseur, nom) {
   return choix ? String(choix.slug) : '';
 }
 
-// Le rédacteur désigne le Word. Sortie du refus « la fiche ne dit pas d'où vient cet
-// article » et de « son document n'attend pas sous ce nom ». Rien n'attend : on dit où
-// déposer le Word, car le copier ici passerait par l'import, qui le convertirait en article.
+// Le rédacteur désigne le Word, quand la fiche n'en nomme pas ou que celui qu'elle nomme
+// n'est pas dans le dépôt. Si aucun Word n'attend, un message dit où le déposer.
 async function choisirWordReimport(fournisseur, slug) {
   const noms = fournisseur._docxEnAttente(path.join(fournisseur.racine, profilCourant().depot));
   if (noms.length === 0) {
@@ -2476,9 +2177,8 @@ async function choisirWordReimport(fournisseur, slug) {
   return choix ? String(choix) : '';
 }
 
-// La confirmation. Elle nomme ce qui est remplacé et ce qui est conservé, dans cet ordre,
-// et dit que le retour en arrière existe : c'est précisément ce que le rédacteur craint de
-// perdre, et un « Êtes-vous sûr ? » ne l'aurait pas renseigné.
+// Confirmation : elle nomme ce qui est remplacé, ce qui est conservé, et dit que
+// l'annulation est possible.
 async function confirmerReimport(slug) {
   const bouton = T('modale.reimport.bouton');
   const choix = await vscode.window.showWarningMessage(
@@ -2487,8 +2187,7 @@ async function confirmerReimport(slug) {
   return choix === bouton;
 }
 
-// Le texte de l'article a changé : son PDF et son aperçu montrent encore l'ancien. La même
-// tâche que « Exporter cet article », pour qu'il n'y ait qu'une façon de compiler un article.
+// Recompile l'article réimporté, par la même tâche que « Exporter cet article ».
 async function compilerApresReimport(racine, slug) {
   if (session.buildEnCours()) { return; }
   session.poserBuildEnCours(true);
@@ -2508,13 +2207,12 @@ function wordDeLaFicheAbsent(fournisseur, slug) {
   return !noms.some((n) => n.toLowerCase() === source);
 }
 
-// Le geste, du début à la fin. `cible` vaut { slug } depuis un article, { word } depuis la
-// vue « Word en attente », { word, slug } quand l'appariement est déjà fait.
+// Réimport complet. `cible` vaut { slug } depuis un article, { word } depuis la section
+// « Word en attente », { word, slug } quand l'appariement est déjà fait.
 async function reimporterArticle(fournisseur, rafraichirTout, cible) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
-  // Une conversion ou une compilation en cours lit articles/ et articles-word/ : les
-  // remplacer sous ses pieds laisserait un article à moitié écrit.
+  // Une conversion ou une compilation en cours lit articles/ et articles-word/.
   if (session.buildEnCours() || session.importEnCours()) {
     vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
     return;
@@ -2528,21 +2226,20 @@ async function reimporterArticle(fournisseur, rafraichirTout, cible) {
     vscode.window.showInformationMessage(T('err.article.introuvable'));
     return;
   }
-  // Le Word se choisit avant la confirmation : celle-ci porte alors sur un Word connu, et
-  // le refus de la chaîne n'oblige pas à confirmer une seconde fois.
+  // Le Word se choisit avant la confirmation, qui porte ainsi sur un Word connu.
   if (word === '' && wordDeLaFicheAbsent(fournisseur, slug)) {
     word = await choisirWordReimport(fournisseur, slug);
     if (word === '') { return; }
   }
   if (!await confirmerReimport(slug)) { return; }
-  // Les deux arguments ensemble quand le fichier est désigné : c'est l'appariement forcé,
-  // le seul moyen de corriger un article dont le nom de fichier a changé depuis l'import.
+  // --article et --word ensemble forcent l'appariement : c'est ainsi qu'on réimporte un
+  // article dont le nom de fichier a changé depuis l'import.
   const args = ['--article', slug].concat(word === '' ? [] : ['--word', word]);
   await executerReimport(fournisseur, rafraichirTout, slug, args, false);
 }
 
-// Le filet de sécurité. Il refuse proprement quand aucun état d'avant n'est gardé, et ce
-// refus est un message, pas une erreur : rien n'a été touché.
+// Annule le dernier réimport. Sans état antérieur gardé, le script refuse et rien n'est
+// touché.
 async function annulerReimport(fournisseur, rafraichirTout, cible) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
@@ -2563,8 +2260,8 @@ async function annulerReimport(fournisseur, rafraichirTout, cible) {
   await executerReimport(fournisseur, rafraichirTout, slug, ['--annuler', '--article', slug], true);
 }
 
-// Lancer, ranger la réponse là où la vue d'ensemble et la barre d'état la trouvent,
-// recompiler si le texte a changé, puis le dire une fois.
+// Lance le script, pose ses constats (vue d'ensemble, barre d'état), recompile si le texte
+// a changé, puis affiche un seul message.
 async function executerReimport(fournisseur, rafraichirTout, slug, args, annulation) {
   const racine = fournisseur.racine;
   session.poserImportEnCours(true);
@@ -2572,11 +2269,10 @@ async function executerReimport(fournisseur, rafraichirTout, slug, args, annulat
     T(annulation ? 'statut.reimport.annule' : 'statut.reimport', [slug]));
   let r;
   try { r = await lancerReimporter(racine, args); }
-  // Même drapeau, même trou que lancerConversion() : un enregistrement de fiche pendant un
-  // réimport doit aussi retrouver sa compilation à la sortie.
+  // Comme après un import, les compilations refusées pendant le réimport sont rejouées.
   finally { statut.dispose(); session.poserImportEnCours(false); rejouerCompilationsDifferees(); }
-  // Les formulaires de cet article montrent des tableaux et des images qui viennent d'être
-  // remplacés : les laisser ouverts, c'est laisser écrire par-dessus.
+  // Les formulaires de l'article montrent des tableaux et des images remplacés : ils se
+  // ferment, pour qu'aucun n'écrive par-dessus.
   const reussi = !!(r.json && r.json.resultat === 'reussi');
   if (reussi) { fermerFormulairesEcriture(racine, slug); }
   // Le réimport ne passe pas par le journal : ses codes d'avertissement sont comptés ici.
@@ -2593,18 +2289,16 @@ async function executerReimport(fournisseur, rafraichirTout, slug, args, annulat
   if (reussi) { await ouvrirArticle(fournisseur, slug); }
 }
 
-// Les cinq issues, chacune avec son ton. Le ton vient de lib/journal.js, jamais d'ici :
-// c'est là que la règle se lit, et un refus n'y est pas rouge.
+// Un message par issue du réimport, avec le ton fixé par lib/journal.js (un refus n'y est
+// pas une erreur).
 async function annoncerReimport(fournisseur, rafraichirTout, r, slug, annulation, constats) {
   if (!r.json) {
-    // Appel mal formé, machine du pipeline absente, délai dépassé : aucune ligne de
-    // réponse. Un bug d'appel ou un poste mal préparé, jamais un article abîmé.
+    // Aucune réponse (appel mal formé, WSL absente, délai dépassé) : l'article est intact.
     vscode.window.showErrorMessage(T('reimport.injoignable'));
     return;
   }
   const langue = langueCockpit();
-  // Le meme gabarit que la liste « A corriger » : deux voix pour un meme constat, c'est
-  // exactement ce que ce lot est venu supprimer.
+  // La phrase du premier constat, formulée comme dans la liste « À corriger ».
   const premiere = constats.length > 0 ? tableConstats.phrase(constats[0], langue) : '';
   const voir = T('ctl.notif.bouton');
   const revenir = T('modale.annulerReimport.bouton');
@@ -2616,14 +2310,13 @@ async function annoncerReimport(fournisseur, rafraichirTout, r, slug, annulation
       vscode.window.showInformationMessage(T('reimport.annule', [slug]));
       return;
     }
-    // Réussi sans un mot à dire : une information, et le retour en arrière sous la main.
+    // Réussi sans constat : une information, avec le bouton d'annulation.
     if (constats.length === 0) {
       const choix = await vscode.window.showInformationMessage(T('reimport.reussi', [slug]), revenir);
       if (choix === revenir) { await annulerReimport(fournisseur, rafraichirTout, { slug: slug }); }
       return;
     }
-    // Réussi, mais le remplacement a coûté quelque chose : le ton de l'avertissement, pas
-    // celui de l'échec. Le document est en place et publiable.
+    // Réussi avec des constats : un avertissement. Le document est en place et publiable.
     const choix = await vscode.window.showWarningMessage(
       T('reimport.reussi.avert', [slug, constats.length]), voir, revenir);
     if (choix === voir) { await ouvrirControles(); }
@@ -2631,15 +2324,14 @@ async function annoncerReimport(fournisseur, rafraichirTout, r, slug, annulation
     return;
   }
 
-  // « Rien à faire » : le Word n'apportait rien. Ni échec ni avertissement — un fait.
+  // « Rien à faire » : le Word n'apportait aucun changement.
   if (ton === 'info') {
     vscode.window.showInformationMessage(T('reimport.rien', [slug]));
     return;
   }
 
-  // Refusé : rien n'a été touché, et il y a un geste à faire. Le message est celui du
-  // refus lui-même, qui porte ce geste ; quand ce geste est « désignez le fichier Word »,
-  // le bouton le fait sur place.
+  // Refusé : rien n'a été touché. Le message du refus dit quoi faire ; s'il faut désigner
+  // le fichier Word, un bouton le permet sur place.
   if (ton === 'attention') {
     const codes = Array.isArray(r.json.avertissements) ? r.json.avertissements : [];
     const manqueLeWord = !annulation && (codes.indexOf('reimport-sans-word') !== -1
@@ -2651,15 +2343,14 @@ async function annoncerReimport(fournisseur, rafraichirTout, r, slug, annulation
     if (choix === T('reimport.choisirWord')) {
       const nom = await choisirWordReimport(fournisseur, slug);
       if (nom === '') { return; }
-      // Le remplacement de cet article vient d'être confirmé, et le refus n'a rien touché :
-      // le redemander ferait deux confirmations pour un seul geste.
+      // Le remplacement a déjà été confirmé : pas de seconde confirmation.
       await executerReimport(fournisseur, rafraichirTout, slug,
         ['--article', slug, '--word', nom], false);
     }
     return;
   }
 
-  // Échoué : l'article est intact, et son Word attend toujours. Celui-là est rouge.
+  // Échec : l'article est intact et son Word attend toujours.
   const choix = await vscode.window.showErrorMessage(
     premiere || T('reimport.echec', [slug]), voir);
   if (choix === voir) { await ouvrirControles(); }
@@ -2668,16 +2359,12 @@ async function annoncerReimport(fournisseur, rafraichirTout, r, slug, annulation
 // ---- Assets : dimensions sans dépendance (lib/medias.js), et « Remplacer » -------
 
 // Écrase une image de media/ en gardant son nom, pour que les liens du .md restent
-// valides. Seul chemin d'écriture d'une image : le gestionnaire des médias et la
-// vérification de l'import y passent tous les deux, avec la même confirmation modale et
-// les mêmes contrôles de format et de poids. Le fichier arrive en base64 depuis une
-// webview, jamais par une boîte de dialogue de l'hôte.
-// -> { etat: 'ok' | 'annule' | 'erreur', message }
-// `options.offrirACote` ajoute au dialogue une troisième issue : ne rien écraser et poser
-// la nouvelle image à côté de l'ancienne, dans une même figure. C'est la sortie de secours
-// du geste le plus destructeur du formulaire — on dépose un fichier sur la mauvaise carte,
-// et il ne reste rien de l'ancienne. Le gestionnaire des médias la propose ; la
-// vérification d'import, qui n'a pas de figure sous la main, ne la propose pas.
+// valides. Le gestionnaire des médias et la vérification de l'import passent tous deux par
+// ici (même confirmation, mêmes contrôles de format et de poids). Le fichier arrive en
+// base64 depuis une webview.
+// `options.offrirACote` ajoute une issue au dialogue : poser la nouvelle image à côté de
+// l'ancienne, dans la même figure, au lieu de l'écraser (utile après un dépôt sur la
+// mauvaise carte). Seul le gestionnaire des médias la propose.
 // -> { etat: 'ok' | 'annule' | 'erreur' | 'a-cote', message }
 async function remplacerFichierImage(fournisseur, rafraichirTout, slug, relatif, nomFichier, donneesBase64, options) {
   const echec = (message) => ({ etat: 'erreur', message: message });
@@ -2703,8 +2390,7 @@ async function remplacerFichierImage(fournisseur, rafraichirTout, slug, relatif,
     detail = T('modale.remplacer.detail.format', [formatImage(nomSource), formatImage(nomCible)]) + detail;
   }
   if (offrirACote) { detail += T('modale.remplacer.detail.acote'); }
-  // Deux issues offertes, plus l'« Annuler » que la boîte modale pose elle-même : le
-  // rédacteur a donc toujours les trois réponses sous les yeux.
+  // La boîte modale ajoute elle-même « Annuler ».
   const boutons = [T('modale.remplacer.bouton')];
   if (offrirACote) { boutons.push(T('modale.remplacer.bouton.acote')); }
   const reponse = await vscode.window.showWarningMessage(
@@ -2731,15 +2417,13 @@ async function remplacerFichierImage(fournisseur, rafraichirTout, slug, relatif,
   return { etat: 'ok' };
 }
 
-// Écrase tables/table-NN.html en gardant le nom, pour que la référence reste valide.
-// Supprime une image ou un tableau, référence comprise : effacer le seul fichier
-// laisserait un lien mort. Le texte passe par un WorkspaceEdit, donc annulable. Rend vrai
-// quand le fichier est parti, ce que le gestionnaire des médias attend pour retirer sa
-// carte.
+// Supprime une image ou un tableau avec sa référence dans le .md, par un WorkspaceEdit
+// (donc annulable). Rend vrai quand le fichier est parti : le gestionnaire des médias
+// retire alors sa carte.
 async function supprimerAsset(fournisseur, rafraichirTout, item, estTable) {
   const racine = fournisseur.racine;
   if (!racine || !item || !item.cheminAsset || !item.slug) { return false; }
-  // Comme « Remplacer » : pas de suppression pendant que make lit le dossier.
+  // Pas de suppression pendant que make lit le dossier.
   if (session.buildEnCours() || session.importEnCours()) {
     vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
     return false;
@@ -2759,8 +2443,8 @@ async function supprimerAsset(fournisseur, rafraichirTout, item, estTable) {
   );
   if (reponse !== T('modale.supprimer.bouton')) { return false; }   // annulé : rien n'est touché
 
-  // L'ordre compte : référence retirée du tampon, fichier effacé, puis .md enregistré —
-  // l'enregistrement compile, et pandoc lirait sinon un média en cours de suppression.
+  // Ordre : référence retirée du tampon, fichier effacé, puis .md enregistré. Enregistrer
+  // lance la compilation, qui ne doit pas lire un média en cours de suppression.
   let retirees = 0;
   let doc = null;
   const md = profils.chemins(profilCourant(), racine, slug).md;
@@ -2770,9 +2454,7 @@ async function supprimerAsset(fournisseur, rafraichirTout, item, estTable) {
       ? retirerTable(doc.getText(), relatif)
       : retirerImage(doc.getText(), relatif);
     if (resultat.n > 0) {
-      // L'image supprimée pouvait être dans une grille : le bloc reste, avec une image de
-      // moins et une disposition qui ne lui correspond plus. On le remet d'aplomb ici, seul
-      // point par lequel toutes les suppressions passent — l'arbre comme le formulaire.
+      // Si l'image était dans une grille, la disposition de la grille est recalculée.
       const propre = estTable ? resultat : normaliserGrilles(resultat.texte);
       const edition = new vscode.WorkspaceEdit();
       const fin = doc.lineAt(doc.lineCount - 1).range.end;
@@ -2784,11 +2466,10 @@ async function supprimerAsset(fournisseur, rafraichirTout, item, estTable) {
     return false;
   }
 
-  // Le laisser à l'écran ferait réécrire un tableau qui vient d'être supprimé. Le
-  // gestionnaire des médias, lui, n'est pas lié à un fichier : il retire sa carte.
+  // L'éditeur du tableau supprimé se ferme, sinon il le réécrirait.
   const ouvert = estTable ? tableHote.panneauTableOuvert(cible) : null;
-  // Sa fermeture ferait partir la recompilation encore en attente (relanceDifferee.vider)
-  // pendant que le fichier s'efface : elle tombe, l'enregistrement du .md plus bas relance.
+  // Sa fermeture lancerait la recompilation en attente pendant l'effacement : elle est
+  // abandonnée, l'enregistrement du .md plus bas en relance une.
   if (ouvert) { relanceDifferee.abandonner(slug); }
   if (ouvert) { try { ouvert.dispose(); } catch (e) { /* déjà fermé */ } }
   await fermerOngletDuFichier(cible);
@@ -2814,7 +2495,7 @@ async function supprimerAsset(fournisseur, rafraichirTout, item, estTable) {
 
 // ---- Suppression d'un article ----------------------------------------------------
 
-// Casse ignorée comme sous Windows ; un onglet sur un fichier supprimé ferait fantôme.
+// Ferme les onglets des fichiers sous `dossier`, sans tenir compte de la casse (Windows).
 async function fermerOngletsSous(dossier) {
   const prefixe = (dossier + path.sep).toLowerCase();
   await fermerOnglets((e) => e && e.uri && e.uri.fsPath &&
@@ -2826,7 +2507,7 @@ async function fermerOngletDuFichier(chemin) {
   await fermerOnglets((e) => e && e.uri && e.uri.fsPath && e.uri.fsPath.toLowerCase() === vise);
 }
 
-// Confirmation modale nommant l'article, jamais de suppression silencieuse.
+// Supprime un article après une confirmation modale qui le nomme.
 async function supprimerArticle(fournisseur, rafraichirTout, item) {
   const racine = fournisseur.racine;
   if (!racine || !item || !item.slug) { return; }
@@ -2842,22 +2523,21 @@ async function supprimerArticle(fournisseur, rafraichirTout, item) {
     T('modale.supprimer.bouton')
   );
   if (reponse !== T('modale.supprimer.bouton')) { return; }   // annulé : rien n'est touché
-  // La modale reste ouverte le temps que le rédacteur réponde : une compilation a pu
-  // démarrer entre-temps. Même refus qu'avant la modale, avant tout effet sur le disque.
+  // Une compilation a pu démarrer pendant que la modale était ouverte.
   if (session.buildEnCours() || session.importEnCours()) {
     vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
     return;
   }
   const dossierArticle = profils.chemins(profilCourant(), racine, slug).dossier;
   const dossierSortie = path.join(racine, 'out', slug);
-  // Tout ce qui tient un fichier de l'article est fermé d'abord ; ces fermetures avalent
-  // leurs propres échecs, seul l'effacement dira si elles ont suffi.
+  // Ferme d'abord tout ce qui tient un fichier de l'article ; un échec de fermeture se
+  // verra à l'effacement.
   if (session.apercuCourantSlug() === slug) { fermerApercuHtml(); session.poserApercuCourantSlug(null); }
   fermerFormulairesEcriture(racine, slug);
   await fermerOngletsSous(dossierArticle);
   await fermerOngletsSous(dossierSortie);
-  // Les deux dossiers sont effacés indépendamment : un article encore tenu ne doit pas
-  // laisser derrière lui les documents produits, qui pèsent le plus lourd.
+  // Les deux dossiers s'effacent indépendamment : out/<slug>, le plus lourd, part même si
+  // le dossier de l'article est encore tenu.
   const echecArticle = await supprimerAvecReprises(dossierArticle);
   const echecSortie = await supprimerAvecReprises(dossierSortie);
   rafraichirTout();
@@ -2868,10 +2548,8 @@ async function supprimerArticle(fournisseur, rafraichirTout, item) {
     vscode.window.showErrorMessage(T('err.suppression.article', [slug, echec]));
     return;
   }
-  // Le dossier parti laisse un trou dans la numérotation – 01, 03, 04 – et les numéros des
-  // dossiers cesseraient de suivre la liste dès la première suppression. On referme le rang
-  // tout de suite, par le même lot en deux passes que « Changer l'ordre » : l'article est
-  // déjà supprimé, un renommage qui coince ne remet donc rien en cause, il se reprend.
+  // Referme le trou dans la numérotation des dossiers (01, 03, 04), par le même renommage
+  // en deux passes que « Changer l'ordre ». Un renommage qui échoue se reprend plus tard.
   const rangs = controlesHote.alignerDossiersSurOrdre(racine, fournisseur.listerArticles());
   rafraichirTout();
   if (rangs.erreur) {
@@ -2883,12 +2561,10 @@ async function supprimerArticle(fournisseur, rafraichirTout, item) {
       : T('statut.supprime.renumerote', [slug, rangs.renommes]), 3000);
 }
 
-// ---- Formulaire des livres, et fiches de tous les articles -> lib/metadonnees-hote.js ---
-
 // ---- Suivi de traduction ---------------------------------------------------------
-// Panneau szhTraduction en colonne 1, aperçu en colonne 2. Deux fichiers, deux rôles,
-// détaillés dans l'en-tête de lib/traduction.js : les textes traduits vont dans
-// <slug>.meta.yaml, publié, l'état d'atelier dans <slug>.traduction.yaml, qui ne l'est pas.
+// Panneau szhTraduction en colonne 1, aperçu en colonne 2. Les textes traduits vont dans
+// <slug>.meta.yaml (publié), l'état d'avancement dans <slug>.traduction.yaml (non publié) ;
+// voir l'en-tête de lib/traduction.js.
 
 const ICONES_STATUT = {
   'pas-pret': 'circle-large-outline',
@@ -2896,8 +2572,8 @@ const ICONES_STATUT = {
   'pret-relecture': 'eye',
   'finalise': 'pass-filled'
 };
-// « charts.orange » est trop clair sur fond blanc : l'ambre d'avertissement de l'éditeur
-// est fait pour se voir sur les deux fonds, et c'est déjà celui des encadrés de qualité.
+// L'ambre d'avertissement de l'éditeur plutôt que « charts.orange », trop clair sur fond
+// blanc.
 const COULEURS_STATUT = {
   'pret-traduction': 'charts.blue',
   'pret-relecture': 'editorWarning.foreground',
@@ -2937,14 +2613,12 @@ function etatTraduction(racine, slug, source) {
   };
 }
 
-// Au changement de langue d'un article, le formulaire (webview) permute les contenus des
-// champs multilingues entre l'ancienne et la nouvelle langue. Les statuts du sidecar
-// <slug>.traduction.yaml sont indexés champ×langue : ils font le même échange, pour
-// continuer à désigner le texte qu'ils qualifiaient. Un statut qui atterrit sur la langue
-// source du suivi devient dormant — et revient tel quel si on re-permute.
-// Limite assumée : plusieurs changements de langue avant le même enregistrement ne
-// laissent voir à l'hôte que les deux langues extrêmes ; l'enregistrement automatique
-// (quelques secondes après le geste) rend le cas marginal.
+// Au changement de langue d'un article, le formulaire permute les champs multilingues
+// entre l'ancienne et la nouvelle langue. Les statuts de <slug>.traduction.yaml, indexés
+// par champ et langue, sont permutés de même pour suivre leur texte. Un statut placé sur la
+// langue source reste en sommeil et revient à la permutation inverse.
+// Limite : plusieurs changements de langue avant un même enregistrement ne transmettent que
+// la première et la dernière langue (l'enregistrement automatique rend le cas rare).
 function permuterStatutsTraduction(racine, slug, avant, apres) {
   if (!avant || !apres || avant === apres) { return; }
   const suivi = lireSuiviTraduction(racine, slug);
@@ -2964,8 +2638,7 @@ function permuterStatutsTraduction(racine, slug, avant, apres) {
   ecrireSuiviTraduction(racine, slug, suivi);
 }
 
-// Écrit le sidecar, ou le supprime s'il ne reste rien à retenir. Écrit par le panneau
-// « Traductions », par les campagnes de statut, et par la permutation ci-dessus.
+// Écrit <slug>.traduction.yaml, ou le supprime s'il est vide.
 function ecrireSuiviTraduction(racine, slug, suivi) {
   const chemin = cheminTraduction(racine, slug);
   const contenu = serialiserTraduction(suivi);
@@ -2976,13 +2649,9 @@ function ecrireSuiviTraduction(racine, slug, suivi) {
   ecrireAtomique(chemin, contenu);
 }
 
-// Lance la campagne : n'avance que les champs « pas prêt », pour ne pas faire reculer un
-// champ déjà en relecture ou finalisé.
-// Poser un état sur tous les blocs de tous les articles du numéro. `seulementPasPret`
-// restreint aux blocs qui n'ont pas commencé, ce que ne veut pas un bouton de la
-// vue d'ensemble : trois boutons côte à côte doivent se comporter pareil, sinon l'un d'eux
-// semble ne rien faire. L'appelant fait confirmer quand il écrit partout.
-// -> nombre de blocs touchés.
+// Pose un statut sur tous les blocs de tous les articles du numéro et rend le nombre de
+// blocs modifiés. `seulementPasPret` se limite aux blocs « pas prêt », pour ne pas faire
+// reculer un champ en relecture ou finalisé. L'appelant fait confirmer.
 function marquerToutStatutRevue(fournisseur, rafraichirTout, statut, seulementPasPret) {
   if (!fournisseur.racine) { return 0; }
   const racine = fournisseur.racine;
@@ -3042,12 +2711,11 @@ controlesHote.configurer({
   pousserAnalyseControles: (message) => vueEnsembleHote.envoyerAVueOuverte('controles', message)
 });
 
-// Le mode « Changer l'ordre » : { racine, slugs } pendant qu'on réordonne, null sinon.
-//
-// Renommer un dossier à chaque clic sur « Monter » ferait autant d'occasions de tomber sur
-// un fichier ouvert ou une synchronisation OneDrive en cours. On accumule donc l'ordre voulu
-// ici, sans rien écrire, et « Terminer » exécute le lot d'un coup. L'état vit dans l'hôte et
-// non dans la page : un rafraîchissement de la vue ne doit pas le perdre.
+// Mode « Changer l'ordre » : { racine, slugs } pendant qu'on réordonne, null sinon.
+// L'ordre voulu s'accumule ici sans rien écrire, et « Terminer » renomme les dossiers en
+// une fois : un renommage par clic risquerait chaque fois un fichier ouvert ou une
+// synchronisation OneDrive en cours. L'état est tenu par l'hôte pour survivre à un
+// rafraîchissement de la vue.
 let modeOrdre = null;
 
 function ordreEnCours(racine) {
@@ -3080,8 +2748,7 @@ vueArticlesHote.configurer({
 });
 
 // Adresses, brouillons et gabarits d'e-mail : lib/courriel.js (mail-templates/*.twig).
-// brouillonTraduction et uriMailto servent à « Envoyer pour traduction » ci-dessous ; les
-// quatre restent exposés par _pur.
+// Seulement exposés par _pur.
 const {
   adressesAuteurs, brouillonAuteur, brouillonTraduction, uriMailto
 } = require('./lib/courriel');
@@ -3096,7 +2763,7 @@ traductionHote.configurer({
   ouvrirArticle: (fournisseur, slug, opts) => ouvrirArticle(fournisseur, slug, opts),
   slugDepuisChemin: (racine, chemin) => slugDepuisChemin(racine, chemin),
   revueNumero: (racine) => revueNumero(racine),
-  // Le suivi de traduction d'un article : sa fiche, son sidecar, et l'état qu'ils donnent.
+  // Suivi de traduction d'un article : sa fiche, son .traduction.yaml et l'état qui en découle.
   etatTraduction: (racine, slug, source) => etatTraduction(racine, slug, source),
   cheminTraduction: (racine, slug) => cheminTraduction(racine, slug),
   lireMetaArticle: (racine, slug) => lireMetaArticle(racine, slug),
@@ -3104,7 +2771,6 @@ traductionHote.configurer({
   ecrireSuiviTraduction: (racine, slug, suivi) => ecrireSuiviTraduction(racine, slug, suivi)
 });
 
-// ---- Photos, auteur·e·s connus et fiches de tous les articles -> lib/metadonnees-hote.js
 // postMessage tolérant : le panneau peut être fermé pendant le traitement WSL.
 function repondrePanneau(panneau, message) {
   try { panneau.webview.postMessage(message); } catch (e) { /* panneau fermé */ }
@@ -3146,11 +2812,9 @@ function lireCouleurAccent(racine) {
   } catch (e) { return ''; }
 }
 
-// Le nombre de blocs de la page de Documentation : ses fiches rattachées (bibliothèque
-// partagée) et ses rubriques non vides réunies — ce que le badge de l'en-tête « ACTUALITÉ »
-// annonce. Lecture seule : l'id du numéro se pose à l'ouverture du numéro (majContexte,
-// poserIdNumeroEtAvertirDoublon), jamais ici — un numéro dont ausgabe.yaml serait illisible
-// compte simplement 0 fiche plutôt que de lever.
+// Nombre de blocs de la page de Documentation (fiches rattachées dans la bibliothèque
+// partagée et rubriques non vides), affiché dans le badge de « Actualité ». Lecture seule :
+// sans id de numéro, les fiches comptent 0 (l'id est posé à l'ouverture du numéro).
 function compterBlocsDocumentation(racine, slug) {
   if (!racine || !slug) { return 0; }
   const dossierArticle = profils.chemins(profilCourant(), racine, slug).dossier;
@@ -3165,10 +2829,10 @@ function compterBlocsDocumentation(racine, slug) {
 
 // ---- Revue courante, pour les libellés du réservoir de la Documentation ----------
 //
-// « Traductions à faire » / « Réservoir » (lib/documentation-hote.js) ont besoin de savoir
-// quelle revue est ouverte pour nommer l'AUTRE (kirby.autreRevue) et filtrer ses numéros.
+// « Traductions à faire » et « Réservoir » (lib/documentation-hote.js) doivent savoir
+// quelle revue est ouverte pour nommer l'autre (kirby.autreRevue) et filtrer ses numéros.
 
-// Le jeton de revue du numéro ouvert. Repli sur 'revue' plutôt que sur rien.
+// Revue du numéro ouvert, 'revue' par défaut.
 function revueCourante(racine) {
   const jeton = revueNumero(racine);
   return kirbyLib.REVUES.indexOf(jeton) !== -1 ? jeton : 'revue';
@@ -3178,12 +2842,10 @@ function nomRevueAffiche(revue) {
   return kirbyLib.dossierRevue(revue) || kirbyLib.DOSSIERS_REVUE.revue;
 }
 
-// Pose l'id du numéro (ausgabe.yaml#id) s'il n'en a pas encore, et avertit (jamais un refus)
-// si cet id se retrouve sur un autre dossier de l'arbre — un id posé une fois, jamais
-// recalculé, ne devrait normalement jamais se répéter, sauf un dossier de numéro copié à la
-// main. Appelée à l'ouverture du numéro (majContexte) : le pipeline refuse de compiler une
-// Documentation sans id, l'id doit donc exister avant le premier Ctrl+S, pas seulement à
-// l'ouverture du formulaire.
+// Pose l'id du numéro (ausgabe.yaml#id) s'il manque, et avertit si un autre dossier de
+// l'arbre porte le même id (numéro copié à la main). Appelée à l'ouverture du numéro
+// (majContexte) : la chaîne refuse de compiler une Documentation sans id, qui doit donc
+// exister avant le premier Ctrl+S.
 function poserIdNumeroEtAvertirDoublon(racine) {
   const id = assurerIdNumero(racine);
   if (!id) { return; }
@@ -3198,27 +2860,21 @@ function poserIdNumeroEtAvertirDoublon(racine) {
 
 // ---- Les réglages de la maison, posés sans écraser ceux du rédacteur -------------
 //
-// Le gabarit `vscodium-user/settings.json` est déclaré en DÉFAUTS d'extension
-// (contributes.configurationDefaults, recopie exacte du gabarit — voir
-// lib/reglages-flotte.js et test/js/reglages-flotte.test.js). Un défaut vit sous le fichier
-// du rédacteur au lieu de le remplacer : la mise à jour du poste n'a donc plus à réécrire
-// ses réglages, et ce qu'il a choisi ne disparaît plus.
+// Le gabarit `vscodium-user/settings.json` est déclaré en défauts d'extension
+// (contributes.configurationDefaults, copie exacte du gabarit : voir lib/reglages-flotte.js
+// et test/js/reglages-flotte.test.js). Un défaut s'applique sous les réglages du rédacteur
+// sans les remplacer.
 //
-// Reste ce que l'éditeur REFUSE en défaut d'extension — les réglages de portée
-// « application », qu'il retire de la contribution avec un simple avertissement. Ceux-là,
-// on les pose ici, par l'API de configuration, qui fait une retouche chirurgicale du
-// fichier. Lesquels ? On ne le devine pas, on le mesure : la portée d'un réglage peut
-// changer d'une version de l'éditeur à l'autre, et une liste écrite en dur vieillirait sans
-// prévenir.
+// L'éditeur refuse en défaut d'extension les réglages de portée « application » (avec un
+// simple avertissement). Ceux-là sont posés ici par l'API de configuration. La liste est
+// mesurée à chaque fois, car la portée d'un réglage peut changer d'une version à l'autre.
 //
-// ⚠ Une seule fois par valeur voulue, jamais à chaque démarrage : l'empreinte du gabarit est
-//   mémorisée, et tant qu'elle ne bouge pas on ne touche à rien. Sans cette garde, un
-//   rédacteur qui aurait délibérément changé un de ces réglages se le verrait réimposer à
-//   chaque ouverture — le défaut de départ sous une autre forme.
+// Ils ne sont posés qu'une fois par version du gabarit (empreinte mémorisée) : un réglage
+// que le rédacteur a changé ensuite n'est pas réimposé à chaque démarrage.
 const DEFAUTS_MAISON = (require('./package.json').contributes || {}).configurationDefaults || {};
 const CLE_EMPREINTE_REGLAGES = 'szh.reglagesMaison.empreinte';
 
-// Les surcharges par langue (« [markdown] ») ne passent pas par la sonde : le point
+// Les surcharges par langue (« [markdown] ») sont écartées de la mesure : le point
 // d'extension les accepte toujours, et inspect() ne les lit pas comme une clé ordinaire.
 function clesMesurables(table) {
   const sortie = {};
@@ -3237,50 +2893,39 @@ async function poserReglagesMaison(context) {
   for (const cle of aPoser) {
     try { await cfg.update(cle, DEFAUTS_MAISON[cle], vscode.ConfigurationTarget.Global); }
     catch (e) {
-      // Un réglage que l'éditeur refuse aussi par l'API : on le dit et on continue. Le
-      // poste vaut mieux avec cinquante réglages sur cinquante et un qu'avec aucun.
+      // Réglage refusé aussi par l'API : on le journalise et on passe au suivant.
       console.warn('réglage de la maison non posé : ' + cle + ' — ' + ((e && e.message) || e));
     }
   }
-  // L'empreinte est mémorisée même en cas d'échec partiel : réessayer à chaque démarrage ne
-  // réparerait rien et réécrirait le fichier du rédacteur sans fin.
+  // Empreinte mémorisée même après un échec partiel : réessayer à chaque démarrage ne
+  // réparerait rien et réécrirait sans fin le fichier du rédacteur.
   await context.globalState.update(CLE_EMPREINTE_REGLAGES, empreinte);
   return aPoser;
 }
 
 function activate(context) {
-  // Le contexte, pour lib/controles-hote.js : les constats fermés et les slugs retirés
-  // s'écrivent dans son globalState.
+  // Le contexte : controles-hote et documentation-hote écrivent dans son globalState.
   controlesHote.configurer({ etatPoste: () => context });
   documentationHote.configurer({ etatPoste: () => context });
-  // Rien n'attend ce travail : il ne conditionne aucune commande, et le faire attendre
-  // retarderait l'ouverture de la barre latérale.
+  // Pas attendu : aucune commande n'en dépend, et l'attendre retarderait la barre latérale.
   poserReglagesMaison(context).catch((e) => {
     console.warn('réglages de la maison : ' + ((e && e.message) || e));
   });
-  // Et les réglages protégés déployés par la mise à jour, recopiés là où la chaîne de
-  // compilation les lit — seulement s'ils ont changé depuis la dernière fois.
+  // Les réglages protégés déployés par la mise à jour sont recopiés là où la chaîne les
+  // lit, s'ils ont changé.
   reglagesHote.relayerReglagesProteges(context).catch((e) => {
     console.warn('réglages protégés : ' + ((e && e.message) || e));
   });
   const fournisseur = new FournisseurRevue();
 
-  // Rapports d'erreur automatiques (lib/rapport-erreur.js) : la file mise de côté la
-  // dernière fois que le dossier SharePoint était injoignable part maintenant que
-  // l'extension redémarre — un échec la laisse en place pour la prochaine activation
-  // (§4.4).
+  // Rapports d'erreur et compteurs restés en file (dossier SharePoint injoignable lors du
+  // dernier envoi) : envoyés maintenant ; un échec les laisse pour l'activation suivante.
   //
-  // ⚠ Pas d'écouteur global sur l'exception non rattrapée du processus ici, et ce n'est
-  // pas un oubli : ce processus est l'hôte d'extensions de VSCodium, PARTAGÉ avec toutes
-  // les autres extensions. Y poser un tel écouteur supprime le comportement par défaut de
-  // Node pour TOUT le processus (sans lui, Node journalise et termine ; avec lui, s'il ne
-  // relance rien, le processus continue dans un état potentiellement corrompu) — un
-  // changement global, hors périmètre d'un lot qui ne parle que de rapports d'erreur —, et
-  // attraperait aussi bien les exceptions des AUTRES extensions, qui se retrouveraient
-  // signalées comme des pannes SZH dans le dossier partagé. signalerExceptionCockpit()
-  // (juste en dessous) n'est donc appelée que depuis nos propres frontières : l'enveloppe
-  // posée sur cmd()/cmdEcriture(), là où toute commande szh.* est enregistrée — une
-  // exception qui en sort est certainement la nôtre, jamais celle d'une autre extension.
+  // Pas d'écouteur global d'exceptions non rattrapées : l'hôte d'extensions est partagé
+  // avec les autres extensions. Un tel écouteur changerait le comportement de Node pour
+  // tout le processus et attraperait les exceptions des autres extensions.
+  // signalerExceptionCockpit() n'est appelée que par l'enveloppe des commandes szh.*
+  // (cmd/cmdEcriture), d'où ne sortent que nos exceptions.
   rapportErreur.viderFileAttente();
   compteurs.viderFileCompteurs();
   function signalerExceptionCockpit(err, etape) {
@@ -3293,7 +2938,7 @@ function activate(context) {
         produit: rapportErreur.produitDepuisRacine(fournisseur.racine, profilCourant().cle),
         langueInterface: langueCockpit(), vscodiumVersion: vscode.version || null
       });
-    } catch (e) { /* D5 : un gestionnaire d'exception ne doit jamais lui-même en lever */ }
+    } catch (e) { /* un gestionnaire d'exception ne doit pas lui-même en lever */ }
   }
 
   const vue = vscode.window.createTreeView(ID_VUE, {
@@ -3305,13 +2950,10 @@ function activate(context) {
   context.subscriptions.push(vue);
   vueArbre = vue;                                  // reselectionnerArticle passe par elle
 
-  // Le chevron reste un geste valable : déplier un en-tête par lui replie les autres —
-  // l'accordéon tient — et ouvre la même vue d'ensemble que le clic sur le titre ; le
-  // replier libère tout, sans reconstruction (l'écran est déjà juste) et sans rien
-  // ouvrir. Seuls les en-têtes portent `categorie` : les articles dépliés sur leurs
-  // assets passent ici sans effet. Le garde-fou est le changement d'état : un dépliage
-  // programmé (clic d'article -> reveal, reconstruction d'un en-tête déjà ouvert) arrive
-  // ici avec sectionDeployee déjà posé et n'ouvre donc rien — décision B préservée.
+  // Le chevron : déplier un en-tête replie les autres et ouvre sa vue d'ensemble, comme le
+  // clic sur le titre ; le replier ferme tout, sans reconstruction. Seuls les en-têtes
+  // portent `categorie`. Un dépliage programmé (reveal, reconstruction) trouve
+  // sectionDeployee déjà posée et n'ouvre donc pas la vue.
   context.subscriptions.push(
     vue.onDidExpandElement((e) => {
       if (!e || !e.element || !e.element.categorie) { return; }
@@ -3328,9 +2970,8 @@ function activate(context) {
     })
   );
 
-  // Le point de l'article ouvert (majArticleOuvert) : posé sur le .md, il colore sa ligne
-  // de l'arbre (resourceUri) et son onglet. `list.highlightForeground` est la couleur que
-  // le thème réserve à l'élément qui compte dans une liste.
+  // Le point de l'article ouvert (majArticleOuvert), posé sur le .md : il colore sa ligne
+  // de l'arbre (resourceUri) et son onglet.
   context.subscriptions.push(vscode.window.registerFileDecorationProvider({
     onDidChangeFileDecorations: changementDecoration.event,
     provideFileDecoration: (uri) =>
@@ -3362,20 +3003,17 @@ function activate(context) {
   barreApercu.command = 'szh.basculerApercu';
   context.subscriptions.push(barreApercu);
 
-  // N'apparaît que sur un numéro gelé, et passe avant l'aperçu : c'est ce qui explique
-  // pourquoi l'éditeur ne répond plus aux frappes.
   // Le compteur des contrôles et le badge PDF/UA de l'article ouvert, à gauche de la
-  // bascule d'aperçu : masqués tant qu'il n'y a rien à dire.
+  // bascule d'aperçu, masqués quand ils n'ont rien à signaler.
   controlesHote.installerBarres(context, fournisseur);
 
+  // État du numéro gelé, affiché seulement dans ce cas et avant l'aperçu : il explique
+  // pourquoi l'éditeur ne répond plus aux frappes.
   const barreEtat = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 60);
   context.subscriptions.push(barreEtat);
 
-  // Le badge « Dossier de test » : un poste qui pointe sur l'arborescence de test le dit
-  // dans la barre d'état, en couleur — la décision test/production reste ouverte, ce badge
-  // ne fait qu'annoncer. Couleur posée une fois pour toutes : elle ne varie pas, seule la
-  // visibilité change.
-  // Un clic mène à l'onglet Paramètres de l'Accueil, où se règle le mode développeur.
+  // Badge « Dossier de test », en couleur, quand le poste pointe sur l'arborescence de
+  // test. Un clic ouvre l'onglet Paramètres de l'Accueil, où se règle le mode développeur.
   const barreModeTest = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 70);
   barreModeTest.command = 'szh.reglages';
   barreModeTest.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
@@ -3385,13 +3023,12 @@ function activate(context) {
     barreApercu.text = T(modeApercu() === 'html' ? 'apercu.barre.html' : 'apercu.barre.pdf');
     barreApercu.tooltip = T('apercu.barre.tooltip');
     if (fournisseur.racine) { barreApercu.show(); } else { barreApercu.hide(); }
-    // Point de passage unique à chaque changement d'article ou de mode : dit au Makefile
-    // quel aperçu sortir en premier du lot.
+    // Appelé à chaque changement d'article ou de mode : dit au Makefile quel aperçu
+    // produire en premier.
     noterApercuPrioritaire(fournisseur.racine);
   };
 
-  // lireModeDeveloppeur() (déjà importé de lib/archivage.js) vaut exactement
-  // lireEmplacementRevues() === EMPLACEMENT_TEST : pas de nouvel import nécessaire ici.
+  // lireModeDeveloppeur() vaut lireEmplacementRevues() === EMPLACEMENT_TEST.
   const majBarreModeTest = () => {
     if (fournisseur.racine && lireModeDeveloppeur()) {
       barreModeTest.text = '$(beaker) ' + T('etat.barre.test');
@@ -3403,14 +3040,11 @@ function activate(context) {
     }
   };
 
-  // getChildren recalcule le compte des Word, le titre suit le numéro, et l'aperçu HTML
-  // est rechargé si sa sortie a été régénérée.
-  // `opts.derive: false` : ce rafraîchissement ne vient pas d'un geste fait sur ce poste.
-  // C'est le surveillant de fichiers qui l'a déclenché, donc la livraison par OneDrive du
-  // travail d'un autre poste — et dans ce cas le fichier dérivé des DOI n'est pas réécrit.
-  // Sans cette distinction, chaque poste réécrivait dois-calcules.yaml en réaction au
-  // changement de l'autre, les deux dans la même fenêtre de synchronisation : c'est
-  // exactement ce qui fabriquait des copies en conflit sur ce fichier.
+  // Rafraîchit l'arbre, le titre de la vue, la barre d'état et l'aperçu HTML (rechargé si
+  // sa sortie a été régénérée).
+  // `opts.derive: false` : le rafraîchissement vient du surveillant de fichiers, souvent du
+  // travail d'un autre poste livré par OneDrive. dois-calcules.yaml n'est alors pas
+  // réécrit : deux postes qui le réécrivent l'un après l'autre créent des copies en conflit.
   const rafraichirTout = (opts) => {
     // Avant tout le reste : le titre de la vue et les boutons de l'arbre en dépendent.
     majEtatNumero(fournisseur, barreEtat);
@@ -3419,7 +3053,7 @@ function activate(context) {
     vue.title = fournisseur.racine ? titreVue(fournisseur.racine) : T('arbre.titre.defaut');
     majBarreApercu();
     rechargerApercuHtmlSiChange(fournisseur);
-    // Une copie en conflit déjà déposée par le synchroniseur ne doit pas rester muette.
+    // Signale les copies en conflit déposées par le synchroniseur.
     avertirCopiesConflit(fournisseur.racine);
     // Un Word retiré du dépôt emporte les messages de son import refusé : compteur et vues
     // ouvertes suivent.
@@ -3432,8 +3066,7 @@ function activate(context) {
   let minuteur = null;
   const rafraichirBientot = () => {
     if (minuteur) { clearTimeout(minuteur); }
-    // derive: false — voir rafraichirTout. Un changement arrivé par le système de fichiers
-    // n'est pas un geste de ce poste : on relit, on n'écrit rien de dérivé.
+    // derive: false, voir rafraichirTout.
     minuteur = setTimeout(() => { minuteur = null; rafraichirTout({ derive: false }); }, 300);
   };
 
@@ -3441,11 +3074,8 @@ function activate(context) {
     for (const w of watchers) { w.dispose(); }
     watchers = [];
     if (!racine) { return; }
-    // Unités de texte, Word déposés, sorties, et le fichier de configuration dont dépend le
-    // titre de la vue. Les motifs suivent le profil : sur un livre, surveiller `articles/**`
-    // et `ausgabe.yaml` revenait à surveiller trois chemins qui n'existent pas — l'arbre ne
-    // se rafraîchissait alors jamais tout seul, et il fallait rouvrir la fenêtre pour voir
-    // un chapitre importé. Le profil est posé juste avant, par trouverRacineRevue().
+    // Unités de texte (`articles/**` ou `chapitres/**`), Word déposés, sorties et fichier de
+    // configuration (titre de la vue), selon le profil posé par trouverRacineRevue().
     const p = profilCourant();
     for (const motif of [p.unites.dossier + '/**', p.depot + '/*', p.sortie + '/**', p.config]) {
       const w = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(racine, motif));
@@ -3459,47 +3089,38 @@ function activate(context) {
   const majContexte = () => {
     const racine = trouverRacineRevue();
     fournisseur.definirRacine(racine);
-    // Le point de l'article ouvert appartient à la revue : recalculé sur la nouvelle
-    // racine, il s'éteint si le fichier actif n'est plus un de ses articles.
+    // Le point de l'article ouvert est recalculé sur la nouvelle racine.
     const editeurActif = vscode.window.activeTextEditor;
     majArticleOuvert(fournisseur,
       editeurActif && editeurActif.document ? editeurActif.document.uri.fsPath : null);
     session.poserDivergenceSignalee(false);                    // un avertissement par revue ouverte
-    // Les constats appartiennent au numéro qui les a produits : changer de numéro les
-    // périme, sinon le compteur de la barre d'état parlerait du précédent et un échec de
-    // compilation ici se ferait taire par un bloquant venu d'ailleurs.
+    // Les constats appartiennent à leur numéro : changer de numéro les remplace.
     controlesHote.ouvrirNumero(racine, fournisseur);
     controlesHote.majBarreControles();
     majBarreModeTest();
     session.poserProfilRevue(lireProfil(racine));            // pilote le mode d'aperçu
-    // L'id du numéro (ausgabe.yaml#id) : posé ici, à l'ouverture du numéro — pas seulement à
-    // l'ouverture du formulaire de Documentation — parce que le pipeline refuse désormais de
-    // compiler une Documentation sans id. Un livre n'a pas de Documentation (buch.yaml n'a
-    // pas besoin de cette clé) : on ne la pose que sur une revue.
+    // L'id du numéro (ausgabe.yaml#id), requis pour compiler une Documentation. Un livre
+    // n'en a pas besoin.
     if (racine && profilCourant().capacites.documentation) { poserIdNumeroEtAvertirDoublon(racine); }
-    // Les clés de profil et de capacité (szh.peut.*) se posent toutes à chaque
-    // rafraîchissement, à vrai ou à faux. Ne poser que les vraies laisserait szh.estRevue
-    // vrai après le passage à un livre, et les deux vues latérales s'afficheraient ensemble.
+    // Toutes les clés de profil et de capacité (szh.peut.*) sont posées, à vrai ou à faux :
+    // sinon szh.estRevue resterait vrai après le passage à un livre.
     const cles = profils.contextes(session.profilOuvrage());
     for (const nom of Object.keys(cles)) {
       vscode.commands.executeCommand('setContext', nom, !!racine && cles[nom]);
     }
     reinstallerWatchers(racine);
     if (racine) { moteur.demarrerDormeur(); } else { moteur.arreterDormeur(); }
-    // Les copies en conflit du numéro précédent ne sont plus les nôtres, et les baux
-    // laissés par une session tuée finissent par partir : un ménage par revue ouverte, pas
-    // un de plus — le dossier .szh-edition ne contient qu'un fichier par (fichier, personne).
+    // À chaque ouverture de numéro : oubli des copies en conflit signalées pour le
+    // précédent, et purge des baux de co-édition laissés par une session interrompue.
     oublierCopiesSignalees();
     if (racine) { try { coedition.purger(racine); } catch (e) { /* jamais bloquant */ } }
     rafraichirTout();
   };
 
-  // `cmd` pour ce qui lit, `cmdEcriture` pour ce qui modifie le numéro et se voit refusé
-  // quand il est verrouillé : la liste montre ce que le verrou protège. Les deux passent
-  // par envelopperCommande() : toute commande szh.* qui lève, ou dont la promesse rendue
-  // se rejette, est certainement UNE DES NÔTRES (jamais celle d'une autre extension,
-  // contrairement à un écouteur global) — signalée en COCKPIT-EXCEPTION puis RELANCÉE À
-  // L'IDENTIQUE, pour ne rien changer à ce que VSCodium affiche déjà de son côté.
+  // `cmd` pour ce qui lit, `cmdEcriture` pour ce qui modifie le numéro (refusé sur un
+  // numéro verrouillé). Les deux passent par envelopperCommande() : une exception ou une
+  // promesse rejetée est signalée en COCKPIT-EXCEPTION, puis relancée telle quelle pour que
+  // VSCodium l'affiche comme d'habitude.
   const envelopperCommande = (fn) => function (...args) {
     let resultat;
     try { resultat = fn.apply(null, args); }
@@ -3517,8 +3138,7 @@ function activate(context) {
 
   context.subscriptions.push(
     cmd('szh.cockpit.rafraichir', majContexte),
-    // Le nom montré aux autres postes est retenu une fois : le changer doit valoir tout de
-    // suite, sans redémarrer l'éditeur.
+    // Le nom montré aux autres postes est mis en cache : un changement le vide.
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('szh.nomUtilisateur')) { oublierIdentiteCoedition(); }
     }),
@@ -3530,10 +3150,8 @@ function activate(context) {
     // « Prendre cette version » écrit dans le fichier du numéro : garde du numéro gelé.
     cmdEcriture('szh.conflit.prendre',
       (uri, blocs, index) => resoudreBlocConflit(uri, blocs, index, true)),
-    // « Garder la mienne » n'écrit que dans la copie, un fichier que personne ne lit et qui
-    // est destiné à disparaître : elle reste donc offerte même sur un numéro gelé, comme la
-    // suppression de la copie — retirer ce qu'un synchroniseur a laissé n'est pas modifier
-    // le numéro.
+    // « Garder la mienne » et la suppression de la copie n'écrivent que dans la copie, qui
+    // ne fait pas partie du numéro : permises même sur un numéro gelé.
     cmd('szh.conflit.garder',
       (uri, blocs, index) => resoudreBlocConflit(uri, blocs, index, false)),
     cmd('szh.conflit.supprimerCopie', (uri) => {
@@ -3542,61 +3160,48 @@ function activate(context) {
     }),
     // Le SourceControl est créé à la demande : il faut quand même le défaire à l'extinction.
     { dispose: () => cycleVie.libererScm() },
-    // `item` porte { slug, focus } quand la commande vient d'un bouton de constat (voir
-    // ouvrirCible) : le slug ne sert à rien ici (un seul numéro), mais focus nomme un champ
-    // du formulaire — lu par ouvrirMetadonnees, qui le fait suivre jusqu'à la webview.
+    // Depuis un bouton de constat, `item` vaut { slug, focus } : focus nomme le champ du
+    // formulaire à mettre en avant.
     cmdEcriture('szh.metadonnees', (item) => ouvrirMetadonnees(fournisseur, rafraichirTout, item)),
     cmdEcriture('szh.apercuMetadonnees', () => ouvrirApercuMetadonnees(fournisseur, rafraichirTout, null)),
     // Le même formulaire, filtré sur un article.
     cmdEcriture('szh.metadonneesArticle', (item) => ouvrirMetadonneesArticle(fournisseur, rafraichirTout, item)),
     cmdEcriture('szh.traduction', (item) => traductionHote.ouvrirTraduction(fournisseur, rafraichirTout, item)),
-    // Le tutoriel : neuf étapes dans la page d'accueil de l'éditeur, cochées à mesure que
-    // les commandes correspondantes sont jouées. C'est le seul « calque » qu'une extension
-    // puisse poser par-dessus l'interface — un webview vit dans son cadre et ne peut pas
-    // dessiner sur la barre latérale ni sur les onglets.
+    // Le tutoriel : un walkthrough de l'éditeur, dont les étapes se cochent quand les
+    // commandes correspondantes sont jouées.
     vscode.commands.registerCommand('szh.tutoriel', () => vscode.commands.executeCommand(
       'workbench.action.openWalkthrough', 'szh-csps.szh-cockpit#szhDemarrage', false)),
-    // « Quoi de neuf » : la fenêtre s’ouvre seule après une mise à jour qui change de
-    // medium, mais elle doit rester atteignable ensuite — sans quoi une note refusée d’un
-    // clic serait perdue pour toujours. Demandée à la main, elle montre la note du medium
-    // installé, jamais tout l’historique.
+    // « Quoi de neuf » : s'ouvre seule après une mise à jour de medium, et à la demande
+    // ici. Elle montre la note du medium installé.
     vscode.commands.registerCommand('szh.nouveautes',
       () => montrerNouveautes(nouveautes.mediumInstalle())),
     vscode.commands.registerCommand('szh.vueTraductions',
       () => ouvrirVueEnsemble(fournisseur, rafraichirTout, 'traductions')),
     cmd('szh.vueArticles', () => ouvrirVueArticles(fournisseur, rafraichirTout)),
-    // Même page que ARTICLES, en variante livre (ouvrirVueArticles décide par le profil).
+    // Même page que la vue Articles ; ouvrirVueArticles choisit la variante selon le profil.
     cmd('szh.vueChapitres', () => ouvrirVueArticles(fournisseur, rafraichirTout)),
     cmd('szh.envoyerAuteur', (item) => envoyerAuteur(fournisseur, item)),
-    // Rien n'est écrit : `cmd`, pas `cmdEcriture`, et pas de garde szh.verrouillee dans le
-    // `when` du menu (package.json) — voir voirPdfArticle ci-dessus. C'est aussi la
-    // destination de pipeline/pdf-verrouille (lieu « pdf », lib/constats.js) : `item` porte
-    // déjà { slug, focus } sans rien y changer — cibleTraduction (ci-dessous) lit cible.slug.
+    // Lecture seule, donc permis sur un numéro verrouillé. C'est aussi la destination du
+    // constat pipeline/pdf-verrouille (lieu « pdf », lib/constats.js) : `item` vaut alors
+    // { slug, focus }.
     cmd('szh.voirPdfArticle', (item) => voirPdfArticle(fournisseur, item)),
-    // `item` ({ slug, focus }) porte le contrat des boutons de constat (revue F03) : focus,
-    // un nom de fichier Word, amène désormais sa carte à l'écran et la marque quelques
-    // secondes (SZH.listeCartes.focaliser, media/_commun.js, media/vue-ensemble.js) — un
-    // [data-cle] additif, posé seulement quand une ligne en porte un, laisse « Traductions »
-    // et « Contrôles » inchangées : rien n'y appelle jamais ouvrirVueEnsemble avec un focus.
+    // `item` vaut { slug, focus } depuis un bouton de constat : focus, un nom de fichier
+    // Word, amène sa carte à l'écran et la met en évidence quelques secondes
+    // (SZH.listeCartes.focaliser, media/_commun.js).
     vscode.commands.registerCommand('szh.vueWord',
       (item) => ouvrirVueEnsemble(fournisseur, rafraichirTout, 'word', item)),
     vscode.commands.registerCommand('szh.vueControles',
       () => ouvrirVueEnsemble(fournisseur, rafraichirTout, 'controles')),
     // Fabriquer un lien ne modifie rien : disponible même sur un numéro verrouillé.
     cmd('szh.envoyerTraduction', (item) => traductionHote.envoyerPourTraduction(fournisseur, item)),
-    // Aucun constat de constats.js ne vise « reglages » avec un focus utile (vérifié dans
-    // TABLE) : `item` est accepté pour honorer le contrat, rien de plus n'est câblé.
+    // `item` est accepté (contrat des boutons de constat) mais inutilisé : aucun constat ne
+    // vise un champ des réglages.
     cmd('szh.reglages', (item) => accueilHote.ouvrirAccueil({ onglet: 'reglages' })),
-    // basculerApercu (lib/apercu.js) est un INTERRUPTEUR sur l'article actif/en aperçu, pas
-    // un « ouvrir l'aperçu de tel article », et ne prend même pas de slug — lui donner ce
-    // sens demanderait de refaire son ciblage. `item` est accepté sans y toucher.
-    // pipeline/pdf-verrouille ne vise plus « apercu » : il vise désormais « pdf »
-    // (szh.voirPdfArticle, ci-dessus), qui SAIT viser un article précis (revue F03,
-    // 22.09.2026 — voir lib/constats.js, LIEUX.pdf).
+    // basculerApercu (lib/apercu.js) agit sur l'article actif ou en aperçu ; `item` est
+    // accepté mais inutilisé.
     cmd('szh.basculerApercu', (item) => basculerApercu(fournisseur, majBarreApercu)),
-    // La bibliographie d'un article : son texte à gauche, son rendu à droite. Lecture
-    // seule du côté du cockpit — rien n'est écrit ici — donc `cmd` et non `cmdEcriture` :
-    // un numéro verrouillé se relit.
+    // La bibliographie : texte à gauche, rendu à droite. Lecture seule, donc permis sur un
+    // numéro verrouillé.
     cmd('szh.apercuBiblio', (item) => ouvrirBibliographie(fournisseur, item)),
     cmd('szh.apercuLivre', () => ouvrirApercuLivre(fournisseur)),
     cmdEcriture('szh.importerWord', () => importerWord(fournisseur, rafraichirTout)),
@@ -3606,68 +3211,55 @@ function activate(context) {
     cmd('szh.exporterXml', () => exporterXml(fournisseur, rafraichirTout)),
     cmd('szh.rafraichirPagination', () => rafraichirPagination(fournisseur, rafraichirTout)),
     cmd('szh.exporterArticle', (item) => exporterArticle(fournisseur, rafraichirTout, item)),
-    // Les quatre sorties du livre : sans objet sur une revue, la commande palette les
-    // garde hors du when szh.estLivre (package.json).
+    // Les quatre sorties du livre, visibles dans la palette sous `when` szh.estLivre
+    // (package.json).
     cmd('szh.livreImprimeur', () => exporterLivre(NOM_TACHE_LIVRE_IMPRIMEUR, CLES_LIVRE_IMPRIMEUR)),
     cmd('szh.livreCouverture', () => exporterLivre(NOM_TACHE_LIVRE_COUVERTURE, CLES_LIVRE_COUVERTURE)),
     cmd('szh.livreEpub', () => exporterLivre(NOM_TACHE_LIVRE_EPUB, CLES_LIVRE_EPUB)),
     cmd('szh.livreWeb', () => exporterLivre(NOM_TACHE_LIVRE_WEB, CLES_LIVRE_WEB)),
-    // Ces gestes posent et lèvent le verrou : ils restent hors de cmdEcriture.
+    // Ces commandes posent et lèvent le verrou : elles ne passent pas par cmdEcriture.
     cmd('szh.archiverVerrouiller', () => archiverEtVerrouiller(fournisseur, rafraichirTout)),
     cmd('szh.deverrouiller', () => deverrouiller(fournisseur, rafraichirTout)),
     cmd('szh.desarchiver', () => desarchiver(fournisseur, rafraichirTout)),
-    // Le second argument transmet les options (sansApercu depuis la vue Articles) ; les
-    // appelants historiques (arbre, Contrôles, démarrage) n'en passent pas : rien ne change.
-    // Deux formes d'appel arrivent ici, et c'est voulu : l'arbre et les vues d'ensemble
-    // passent le slug tout court, les boutons de constat passent { slug, focus } — le
-    // contrat que lib/constats.js écrit en tête de sa table des destinations. La seconde
-    // repartait sans un mot (ouvrirArticle exige `typeof slug === 'string'`), et le bouton
-    // « Vers l'article » des Contrôles ne faisait rien du tout. On normalise donc ici,
-    // au bord, plutôt que d'obliger chaque appelant à connaître l'autre — et `focus` passe
-    // maintenant avec le reste : ouvrirArticle s'en sert pour surligner le passage visé.
+    // Deux formes d'appel : le slug seul, avec des options en second argument (arbre, vues
+    // d'ensemble, sansApercu depuis la vue Articles), ou { slug, focus } depuis un bouton
+    // de constat (contrat de lib/constats.js). Les deux sont ramenées à ouvrirArticle(slug,
+    // opts), focus servant à surligner le passage visé.
     cmd('szh.ouvrirArticle', (arg, opts) => {
       const objet = arg !== null && typeof arg === 'object';
       return ouvrirArticle(fournisseur, objet ? String(arg.slug || '') : arg,
         objet ? { focus: String(arg.focus || '') } : opts);
     }),
-    // Le clic sur un en-tête de section : sa section se déplie, les autres se replient,
-    // et la vue d'ensemble correspondante s'ouvre — le geste d'avant l'accordéon,
-    // conservé. Un en-tête déjà déplié reste déplié : le clic n'ouvre alors que la vue.
+    // Clic sur un en-tête de section : la section se déplie, les autres se replient, et sa
+    // vue d'ensemble s'ouvre. Sur un en-tête déjà déplié, seule la vue s'ouvre.
     cmd('szh.ouvrirSection', (categorie) => {
       if (fournisseur.definirSectionDeployee(categorie)) { fournisseur.rafraichir(); }
-      // « ACTUALITÉ » n'a pas de vue d'ensemble : son en-tête ouvre directement le
-      // formulaire de la page de Documentation. C'est le seul en-tête de section qui ouvre
-      // un formulaire plutôt qu'une liste, et c'est voulu — il n'y a qu'une page de
-      // Documentation par numéro, une liste d'un seul élément n'aurait été qu'un détour.
-      // La promesse est rendue : sans cela, un appelant qui attend szh.ouvrirSection
-      // reprendrait la main avant que le formulaire ne soit ouvert.
+      // « Actualité » ouvre le formulaire de la page de Documentation (une seule par
+      // numéro). La promesse est rendue pour qu'un appelant puisse attendre l'ouverture.
       if (categorie === 'actualite') { return vscode.commands.executeCommand('szh.documentation'); }
       const vueSection = vueDeSection(categorie);
       if (vueSection) { vscode.commands.executeCommand(vueSection); }
     }),
     cmdEcriture('szh.supprimerArticle', (item) => supprimerArticle(fournisseur, rafraichirTout, item)),
-    // Le Word corrigé d'un article déjà publié, et le retour en arrière. Les deux
-    // remplacent le texte : refusés sur un numéro verrouillé, comme la suppression.
+    // Réimport d'un Word corrigé et son annulation : ils remplacent le texte.
     cmdEcriture('szh.reimporterArticle', (item) => reimporterArticle(fournisseur, rafraichirTout, item)),
     cmdEcriture('szh.annulerReimport', (item) => annulerReimport(fournisseur, rafraichirTout, item)),
     cmdEcriture('szh.supprimerTable', (item) => supprimerAsset(fournisseur, rafraichirTout, item, true)),
     cmdEcriture('szh.editerTable', (item) => tableHote.ouvrirEditeurTable(fournisseur, item)),
     // Le formulaire des médias de l'article : légendes, crédits, qualité, remplacement.
     cmdEcriture('szh.mediasArticle', (item) => ouvrirGestionMedias(fournisseur, rafraichirTout, item)),
-    // La page de Documentation du numéro, créée au besoin. Volontairement hors cmdEcriture :
-    // la relire sur un numéro verrouillé doit rester possible, seule sa création est refusée
-    // (voir ouvrirPageDocumentation).
-    // Comme « reglages » : aucun constat ne vise « documentation » avec un focus utile.
+    // La page de Documentation, créée au besoin. Hors cmdEcriture : elle se relit sur un
+    // numéro verrouillé, seule sa création y est refusée (voir ouvrirPageDocumentation).
+    // `item` est accepté mais inutilisé.
     cmd('szh.documentation', (item) => ouvrirPageDocumentation(fournisseur, rafraichirTout)),
-    // Les raccourcis de la section ACTUALITÉ (_itemsActualite) :
-    // même formulaire, ouvert directement sur la vue visée — jamais une commande de palette,
-    // elle ne porte pas d'entrée package.json (comme szh.ouvrirSection, dont elle est la
-    // variante ciblée). `categorie` ne compte que pour l'onglet 'numero'.
+    // Les raccourcis de la section « Actualité » (_itemsActualite) : le même formulaire,
+    // ouvert sur la vue visée. Pas dans la palette (aucune entrée dans package.json).
+    // `categorie` ne sert que pour l'onglet 'numero'.
     cmd('szh.ouvrirActualite', (onglet, categorie) => ouvrirPageDocumentation(
       fournisseur, rafraichirTout, String(onglet || ''), categorie ? String(categorie) : undefined)),
     vscode.workspace.onDidChangeWorkspaceFolders(majContexte),
-    // L'article d'un Ctrl+S, retenu pour le voile de « À corriger » : la tâche que
-    // triggerTaskOnSave lance juste après ne dit pas ce qu'elle recompile.
+    // L'article d'un Ctrl+S est retenu pour le voile de « À corriger » : la tâche que
+    // triggerTaskOnSave lance ensuite ne dit pas ce qu'elle recompile.
     vscode.workspace.onDidSaveTextDocument((doc) => {
       if (!doc || !doc.uri || !doc.uri.fsPath) { return; }
       controlesHote.retenirEnregistrement(fournisseur, doc.uri.fsPath);
@@ -3675,67 +3267,58 @@ function activate(context) {
       // Une copie en conflit résolue à la main disparaît à l'enregistrement.
       copieResolueEnregistree(doc.uri.fsPath);
     }),
-    // L'avertissement part au démarrage d'une tâche : Ctrl+S, le chemin le plus fréquent,
-    // ne passe pas par les fonctions du cockpit.
+    // Suivi des tâches au démarrage : les tâches de Ctrl+S (triggerTaskOnSave), les plus
+    // fréquentes, ne passent par aucune fonction du cockpit.
     vscode.tasks.onDidStartTask((e) => {
       if (!fournisseur.racine || !e || !e.execution || !e.execution.task) { return; }
       const tache = e.execution.task;
       if (!estTacheSuivie(tache)) { return; }
-      // Ctrl+S / triggerTaskOnSave ne passe par aucune fonction du cockpit : sans ce
-      // compteur, les gardes qui lisent session.buildEnCours() (archivage, suppression…) restent
-      // inopérantes sur ce chemin, pourtant le plus fréquent.
+      // Compteur des tâches suivies en cours : session.buildEnCours() reste vrai tant qu'il
+      // en reste une, pour que les gardes (archivage, suppression…) valent aussi sur ce chemin.
       session.poserTachesSuiviesEnVol(session.tachesSuiviesEnVol() + 1);
       session.poserBuildEnCours(true);
       // Un import fait par cette tâche finira comme l'import guidé (lib/import-hote.js).
       importHote.noterDebutTache(fournisseur, tache.name);
-      // Une compilation de tout le numéro part : elle couvre les enregistrements déjà faits
-      // (relanceDifferee). Pas l'export d'UN article (tacheMakeArticle) : il ne compile que lui.
+      // Une compilation du numéro couvre les enregistrements déjà faits (relanceDifferee) ;
+      // l'export d'un seul article (tacheMakeArticle) n'est pas compté.
       if (tache.name === NOM_TACHE_BUILD || tache.name === NOM_TACHE_EXPORT) { demarragesBuild++; }
-      // Une compilation démarre : un travail de validation PDF/UA déjà en vol juge peut-être
-      // un PDF sur le point de changer — pdfuaHote jettera son résultat à son retour.
+      // Une validation PDF/UA en cours juge peut-être un PDF qui va changer : son résultat
+      // sera ignoré.
       pdfuaHote.signalerDebutBuild();
-      // Le voile de « À corriger » : l'article annoncé par le cockpit ou tout juste
-      // enregistré — jamais toute la liste.
+      // Le voile de « À corriger » couvre l'article annoncé par le cockpit ou tout juste
+      // enregistré, pas toute la liste.
       controlesHote.debuterAnalyse(fournisseur, controlesHote.slugDeLaTache());
       avertirVersionSiDivergente();
     }),
-    // Et à la fin : ce que la chaîne a relevé. Même raison de passer par l'événement
-    // plutôt que par lancerTache() — Ctrl+S, le chemin le plus fréquent, ne passe par
-    // aucune fonction du cockpit, et c'est justement là que les avertissements naissent.
-    // Le compteur ne redescend pas ici : onDidEndTaskProcess ne se déclenche pas pour une
-    // tâche interrompue avant le spawn (wsl.exe absent), et c'est justement le cas que la
-    // garde ci-dessous doit couvrir. Seul le code de sortie vit ici.
+    // À la fin du processus : relecture du journal (ce que la chaîne a relevé), pour toutes
+    // les tâches suivies, Ctrl+S compris. Le compteur redescend dans onDidEndTask, seul
+    // émis pour une tâche interrompue avant le lancement du processus (wsl.exe absent).
     vscode.tasks.onDidEndTaskProcess((e) => {
       if (!fournisseur.racine || !e || !e.execution || !e.execution.task) { return; }
       const tache = e.execution.task;
       if (!estTacheSuivie(tache)) { return; }
       const code = e.exitCode === undefined ? 0 : e.exitCode;
       importHote.noterFinProcessus(code);
-      // Le processus a rendu son code : c'est à ce chemin-ci, et non à onDidEndTask, de
-      // lever le voile — il attend le journal, puis la validation PDF/UA.
+      // C'est ce chemin qui lève le voile, après le journal puis la validation PDF/UA.
       controlesHote.noterProcessFini();
       controlesHote.relireJournal(fournisseur, code)
-        // Seulement si la compilation a réussi : un PDF sorti d'une compilation en échec
-        // n'est pas forcément celui qu'on croit — voir pipeline/Makefile, verifier-ua n'est
-        // d'ailleurs jamais appelée par `all`.
-        // planifier() pose ses clés « en cours » avant sa première attente : le voile, levé
-        // juste après, sait donc déjà s'il doit encore attendre la validation.
+        // Validation PDF/UA seulement après une compilation réussie : le PDF d'une
+        // compilation en échec n'est pas fiable. planifier() pose ses clés « en cours »
+        // avant sa première attente : le voile sait donc s'il doit encore attendre.
         .then(() => { if (code === 0) { pdfuaHote.planifier(fournisseur.racine); } })
         .catch(() => { /* un avis raté ne casse pas la compilation */ })
         .then(() => { controlesHote.marquerJournalRelu(fournisseur); });
     }),
-    // Se déclenche pour toute fin de tâche, avec ou sans processus : c'est ici, et
-    // seulement ici, que le compteur redescend, pour couvrir aussi la tâche interrompue
-    // avant le spawn, que onDidEndTaskProcess ne voit jamais. Une tâche normale émet les
-    // deux événements ; ne décrémenter que sur celui-ci évite de compter deux fois.
+    // Émis pour toute fin de tâche, avec ou sans processus : le compteur ne redescend
+    // qu'ici, pour ne pas compter deux fois une tâche qui émet les deux événements.
     vscode.tasks.onDidEndTask((e) => {
       if (!fournisseur.racine || !e || !e.execution || !e.execution.task) { return; }
       const tache = e.execution.task;
       if (!estTacheSuivie(tache)) { return; }
       session.poserTachesSuiviesEnVol(Math.max(0, session.tachesSuiviesEnVol() - 1));
       if (session.tachesSuiviesEnVol() === 0) { session.poserBuildEnCours(false); }
-      // Une tâche finie sans processus (annulée, wsl.exe absent) : aucun journal ne sera
-      // relu, rien n'a changé sous le voile — il tombe tout de suite.
+      // Tâche finie sans processus (annulée, wsl.exe absent) : aucun journal à relire, le
+      // voile tombe tout de suite.
       if (session.tachesSuiviesEnVol() === 0 && !controlesHote.processFini()) { controlesHote.terminerAnalyse(fournisseur); }
       // Après le compteur : la suite d'un import externe attend la dernière tâche en vol.
       importHote.finirImportExterne(fournisseur, rafraichirTout).catch(() => { /* l'import a eu lieu */ });
@@ -3768,21 +3351,18 @@ function activate(context) {
     // Toute la mise en forme écrit dans le texte : refusée sur un numéro gelé.
     verrouillee: () => etatCourant().verrouillee,
     refuser: () => { refuserSiVerrouille(); },
-    // Le groupe « Livre » de la palette (en-tête FALC, code QR) ne s'ajoute que pour un
-    // livre — même source que enregistrerPanneaux ci-dessous.
+    // Le groupe « Livre » de la palette (en-tête FALC, code QR) n'existe que pour un livre.
     profil: () => profilCourant().cle
   });
 
-  // Les trois panneaux de la barre ; celui d'export s'adapte à l'état du numéro.
-  // Le profil est injecté avec l'état : les panneaux retirent d'eux-mêmes ce qu'un
-  // livre n'a pas — OJS, suivi de traduction, cycle de vie d'un numéro.
+  // Les trois panneaux de la barre ; celui d'export s'adapte à l'état du numéro. Selon le
+  // profil, les panneaux retirent ce qu'un livre n'a pas (OJS, traduction, cycle de vie).
   enregistrerPanneaux(context, {
     etat: etatCourant,
     profil: () => profilCourant().cle
   });
 
-  // Réveil de la machine WSL puis chargement de l'arbre, derrière un indicateur de
-  // progression pour ne pas laisser une fenêtre qui semble figée.
+  // Réveil de la WSL puis chargement de l'arbre, sous un indicateur de progression.
   const demarrageInitial = async () => {
     if (!trouverRacineRevue()) { majContexte(); return; }
     const barre = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -3804,15 +3384,15 @@ function activate(context) {
     proposerTutoriel(context);
     proposerNouveautes(context);
   };
-  // La liste des auteur·e·s publiés (OAI-PMH public d'ojs.szh.ch) se rafraîchit en tâche
-  // de fond, au plus une fois par semaine — sans bloquer l'activation, et sans un mot en
-  // cas d'échec réseau : hors ligne est un état normal du poste.
+  // Les auteur·e·s publiés (OAI-PMH public d'ojs.szh.ch) se rafraîchissent en tâche de
+  // fond, au plus une fois par semaine, sans bloquer l'activation. Un échec réseau est
+  // silencieux : le poste peut être hors ligne.
   rafraichirAuteursPubliesEnFond();
-  // Même politique de fond, cache distinct : voir rafraichirMotsClesConnusEnFond.
+  // De même pour les mots-clés, avec leur propre cache.
   rafraichirMotsClesConnusEnFond();
   // ---- Validation PDF/UA en arrière-plan -> lib/pdfua-hote.js ----------------------
-  // Avant demarrageInitial() : ouvrirArticleActifAuDemarrage() y marque déjà un article
-  // ouvert (majArticleOuvert), qui demande aussitôt le badge — ctx doit être prêt.
+  // Avant demarrageInitial() : ouvrirArticleActifAuDemarrage() peut marquer un article
+  // ouvert, qui demande aussitôt le badge PDF/UA.
   pdfuaHote.configurer({
     listerArticles: () => fournisseur.listerArticles(),
     profilOuvrage: () => session.profilOuvrage(),
@@ -3858,32 +3438,28 @@ module.exports = {
     deplacerLigne, deplacerColonne,
     tableauDepuisTsv, collerDans, appliquerOperationTable,
     fragmentCfHtml, nettoyerHtmlBureautique, nettoyerContenuCellule, tableauDepuisHtmlBureautique,
-    // Pas pures — elles lisent et écrivent le numéro — mais exposées pour le même
-    // contrôle : le fichier dérivé des DOI doit pouvoir s'éprouver sans hôte complet.
+    // Les suivantes ne sont pas pures (elles lisent et écrivent le numéro) : exposées pour
+    // être testées sans hôte complet.
     doisCalculesArticles, ecrireDoisCalcules, permuterStatutsTraduction,
-    // La co-édition (lib/coedition-hote.js) : ce qu'un formulaire a le droit d'écrire. Un
-    // « panneau » n'est pour elles qu'une clé, n'importe quel objet fait l'affaire.
+    // Co-édition (lib/coedition-hote.js) : ce qu'un formulaire a le droit d'écrire. Le
+    // « panneau » n'y sert que de clé : n'importe quel objet convient.
     mainCoedition, ecrireSousMain, refusCoedition, refusCoeditionNumero,
     noterLectureCoedition, rafraichirEmpreinteCoedition, libererCoedition,
     ecrireCartesArticles, messageCartes, moiCoedition,
-    // Le focus de l'arbre sur une unité, et le chemin unique de compilation —
-    // session.buildEnCours(), session.apercuCourantSlug() et session.panneauApercuHtml()
-    // restent des variables de module, donc lus sur l'hôte réellement activé, pas
-    // rejouables à froid.
+    // Focus de l'arbre et compilation d'un article. Elles lisent l'état de lib/session.js,
+    // celui de l'hôte réellement activé.
     focaliserUnite, relancerCompilation, compilerPuisAfficher, relancerCompilationCartes,
     rejouerCompilationsDifferees,
     avertirCopiesConflit, oublierCopiesSignalees, ecrireClesAusgabe,
-    // Le numéro de tête du Word migré vers ordre-articles/ordre-chapitres à l'import.
-    // Pas pures (la dernière lit et écrit le numéro), exposées pour le même contrôle.
+    // Numéro de tête du Word reporté dans ordre-articles/ordre-chapitres à l'import.
     numerosOrdreEnAttente, resoudreNumeroOrdre, ecrireOrdreNouveauxArticles,
-    // La résolution d'une copie en conflit : le fournisseur de diff rapide qui la donne pour
-    // « original », et les deux sens de résolution.
+    // Copies en conflit : le fournisseur de diff qui présente la copie comme « original »,
+    // et les deux sens de résolution.
     SCHEME_CONFLIT, fournisseurDiffConflit, cheminDepuisUriConflit,
     resoudreBlocConflit, comparerConflit, supprimerCopieConflit, rafraichirConflitsScm,
     TEXTES_COCKPIT,
-    // Pas pure (montre une modale, lit/écrit context.globalState) — exposée pour prouver
-    // que l'invitation ne s'affiche jamais sur un livre, sans rejouer une activation
-    // complète (voir son commentaire : le `when` du walkthrough ne suffit pas seul).
+    // Montre une modale et lit context.globalState : exposée pour vérifier que
+    // l'invitation ne s'affiche pas sur un livre (le `when` du walkthrough ne suffit pas).
     proposerTutoriel
   }
 };

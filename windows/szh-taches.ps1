@@ -1,13 +1,12 @@
 ﻿<#
 .SYNOPSIS
   Le rythme de la mise à jour : la tâche planifiée qui la déclenche, la cadence de la passe
-  silencieuse, et le choix du moment.
+  silencieuse et le choix du moment.
 
-  Dot-sourcé par bootstrap.ps1 (qui crée la tâche), update.ps1 (qui la remet d'aplomb) et
-  update-launcher.ps1 (la passe silencieuse, qui s'en sert pour décider quand agir).
-  Une seule vérité : trois copies de la forme voulue divergeraient sans qu'on le voie.
+  Dot-sourcé par bootstrap.ps1 (qui crée la tâche), update.ps1 (qui la corrige) et
+  update-launcher.ps1 (la passe silencieuse, qui décide quand agir).
 
-  Compatibilité : Windows PowerShell 5.1 (proscrire ?. ?? ?: && ||).
+  Compatibilité : Windows PowerShell 5.1.
 #>
 
 # La tâche vise le mardi 14 h, une fois par semaine.
@@ -16,22 +15,17 @@ $script:SzhMajJour     = 'Tuesday'
 $script:SzhMajJourNum  = 2            # [int][DayOfWeek]::Tuesday
 $script:SzhMajHeure    = 14
 
-# Suivi de la passe silencieuse. Fichier à part, et non state.json : celui-ci est réécrit
-# entièrement par update.ps1 à chaque succès, ce qui effacerait la cadence.
-#
-# Par utilisateur, et non plus sous C:\ProgramData\SZH : la cadence gouverne un travail qui
-# est par utilisateur — distribution WSL, extensions, réglages, raccourcis —, et un fichier
-# commun laissait le premier compte connecté consommer la fenêtre de la semaine pour tout le
-# monde. Le deuxième compte ressortait muet, sans rien avoir reçu, jusqu'au mardi suivant.
+# Suivi de la passe silencieuse. Fichier à part : update.ps1 réécrit state.json en entier à
+# chaque succès. Il est par compte, car le travail qu'il cadence l'est (distribution WSL,
+# extensions, réglages, raccourcis) : un fichier commun laisserait le premier compte
+# connecté prendre la fenêtre de la semaine pour tous.
 $script:SzhMajSuiviFile = Join-Path $SzhBaseUtilisateur 'maj-auto.json'
 
-# Au bout de combien de jours de renoncements une mise à jour cesse d'être polie. Quatre
-# semaines : quatre fenêtres hebdomadaires et une vingtaine d'ouvertures de session ont
-# échoué, ce n'est plus un mauvais moment, c'est un blocage. Et l'on reste sous le rythme
-# d'un numéro (≈ 13 semaines), donc le rédacteur l'apprend avant de boucler.
+# Jours de renoncement après lesquels la mise à jour passe outre l'éditeur ouvert et
+# alerte. Quatre semaines, bien en deçà du rythme d'un numéro (environ 13 semaines).
 $script:SzhMajPolitesse = 28
 
-# Les outils de la chaîne, tels qu'ils se lisent dans /proc à l'intérieur de la distro.
+# Noms des outils de la chaîne dans /proc/<pid>/comm, à l'intérieur de la distribution.
 $script:SzhMajOutils = @('make', 'pandoc', 'weasyprint', 'verapdf', 'python3')
 
 # ---- La tâche planifiée : ce qu'elle doit porter ----
@@ -46,22 +40,18 @@ function Get-SzhTacheMajVoulue {
   }
 }
 
-# Deux déclencheurs, et les deux comptent.
+# Deux déclencheurs.
 #
-# Hebdomadaire mardi 14 h : le rythme demandé.
+# Hebdomadaire, mardi 14 h : le rythme voulu.
 #
-# À l'ouverture de session : c'est lui qui fait tenir tout le reste, et le retirer rendrait
-# la question « et si le poste est éteint ? » beaucoup plus grave. Il rattrape le poste
-# éteint ou endormi le mardi après-midi, il donne au rédacteur qui rentre de vacances une
-# mise à jour immédiate plutôt qu'une attente jusqu'au mardi suivant, et surtout c'est le
-# seul instant de la journée où l'éditeur n'est pas encore ouvert : le seul, donc, où
-# remplacer l'environnement de fabrication ne coupe pas un travail en cours. La cadence
-# hebdomadaire, elle, ne vient pas des déclencheurs mais de Test-SzhFenetreMaj ci-dessous.
+# À l'ouverture de session : il rattrape un poste éteint ou endormi le mardi, et c'est le
+# moment où l'éditeur n'est pas encore ouvert, donc où remplacer l'environnement de
+# fabrication ne coupe aucun travail. La cadence hebdomadaire est tenue par
+# Test-SzhFenetreMaj, pas par les déclencheurs.
 #
-# $Utilisateur vide = à l'ouverture de session de n'importe qui, ce que veut un poste
-# partagé. Le nommer restreint le déclencheur à un compte : cela ne sert qu'à éprouver la
-# fonction hors de la racine du planificateur, un déclencheur « tout utilisateur » exigeant
-# l'élévation. Même intention que le paramètre $Menu de Set-SzhRaccourcisMenu.
+# $Utilisateur vide : ouverture de session de n'importe quel compte. Le nommer restreint le
+# déclencheur à un compte, pour les tests : un déclencheur « tout utilisateur » exige
+# l'élévation.
 function New-SzhTacheMajDeclencheurs {
   param([string]$Utilisateur = '')
   $logon = $null
@@ -77,26 +67,23 @@ function New-SzhTacheMajDeclencheurs {
   )
 }
 
-# StartWhenAvailable : le rattrapage des fenêtres manquées. Poste éteint, endormi ou
-# service occupé le mardi à 14 h, la tâche part à la première occasion ensuite, une dizaine
-# de minutes après le retour.
+# StartWhenAvailable : une fenêtre manquée (poste éteint, endormi) est rattrapée à la
+# première occasion.
 #
-# AllowStartIfOnBatteries : sans lui, la tâche ne démarre pas sur batterie — ni le mardi, ni
-# à l'ouverture de session. Un portable jamais branché ne se mettait donc jamais à jour, et
-# passer du quotidien à l'hebdomadaire aggravait le cas de sept chances par semaine à une.
-# La passe silencieuse ne coûte qu'une lecture de manifest ; les 574 Mo de l'environnement
-# passent par la fenêtre visible, que le rédacteur voit et peut fermer.
+# AllowStartIfOnBatteries : sans lui, un portable jamais branché ne se mettrait jamais à
+# jour. La passe silencieuse ne lit que le manifeste ; le gros téléchargement passe par la
+# fenêtre visible, que le rédacteur peut fermer.
 #
-# Pas de WakeToRun : voir docs/MAINTENANCE.md, § « Les quatre états du poste ».
+# Pas de WakeToRun : voir docs/MAINTENANCE.md, « Les quatre états du poste ».
 function New-SzhTacheMajReglages {
   return New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries `
     -AllowStartIfOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 2) `
     -MultipleInstances IgnoreNew
 }
 
-# Ce qui sépare la tâche du poste de la tâche voulue, dit en français, pour le journal.
-# Liste vide = tâche conforme, et rien ne sera réécrit : une tâche juste ne doit pas être
-# recréée, sinon chaque passe lui remettrait son historique à zéro.
+# Les écarts entre la tâche du poste et la tâche voulue, en français, pour le journal.
+# Liste vide : tâche conforme, qui n'est pas réécrite (on garderait sinon son historique à
+# zéro).
 function Get-SzhTacheMajEcarts {
   param($Tache, [string]$Toolkit = $SzhToolkit)
   $ecarts = New-Object System.Collections.ArrayList
@@ -118,9 +105,8 @@ function Get-SzhTacheMajEcarts {
     try { $classe = [string]$d.CimClass.CimClassName } catch { $classe = '' }
     if ($classe -eq 'MSFT_TaskLogonTrigger') { $logon++; continue }
     if ($classe -eq 'MSFT_TaskWeeklyTrigger') {
-      # L'heure se lit dans la chaîne telle qu'elle est écrite, décalage compris :
-      # [datetime] la ramènerait au fuseau du jour, et la tâche paraîtrait décalée d'une
-      # heure la moitié de l'année, donc réécrite deux fois par an pour rien.
+      # L'heure se lit en [datetimeoffset], décalage compris : [datetime] la ramènerait au
+      # fuseau du jour, et la tâche paraîtrait décalée d'une heure la moitié de l'année.
       $heure = -1
       $minute = -1
       try {
@@ -162,7 +148,7 @@ function Get-SzhTacheMajEcarts {
   }
 
   # ---- Action ----
-  # Un chemin d'action périmé rendrait la tâche muette sans jamais échouer bruyamment.
+  # Un chemin d'action périmé rendrait la tâche inopérante sans erreur visible.
   $voulu = Get-SzhTacheMajVoulue -Toolkit $Toolkit
   $actions = @($Tache.Actions)
   if ($actions.Count -ne 1) {
@@ -178,8 +164,7 @@ function Get-SzhTacheMajEcarts {
   return $ecarts
 }
 
-# Met la tâche en conformité, jamais bloquant, et rend un bilan que l'appelant journalise —
-# même patron que Set-SzhRaccourcisMenu.
+# Met la tâche en conformité sans lever, et rend un bilan que l'appelant journalise.
 #
 #   etat = 'conforme'  rien à faire, rien écrit
 #          'creee'     la tâche n'existait pas
@@ -187,11 +172,9 @@ function Get-SzhTacheMajEcarts {
 #          'refusee'   elle différait, le poste a refusé l'écriture (voir message)
 #          'illisible' le planificateur n'a pas répondu, et rien n'a été écrit
 #
-# Refus attendu : la tâche vit dans la racine du planificateur et appartient à
-# l'administrateur qui a installé le poste ; une passe de mise à jour, qui ne demande
-# jamais l'élévation, ne peut pas la réécrire. Ce n'est pas une raison d'échouer — la
-# cadence, elle, est tenue par le script (Test-SzhFenetreMaj), donc le rythme demandé
-# s'applique quand même. Le journal nomme le geste qui manque.
+# Le refus est attendu : la tâche appartient à l'administrateur qui a installé le poste, et
+# une mise à jour sans élévation ne peut pas la réécrire. La cadence reste tenue par
+# Test-SzhFenetreMaj.
 function Set-SzhTacheMaj {
   param(
     [string]$Toolkit = $SzhToolkit,
@@ -207,11 +190,9 @@ function Set-SzhTacheMaj {
   }
   $bilan = [ordered]@{ etat = 'conforme'; ecarts = @(); message = '' }
 
-  # « Absente » et « illisible » sont deux choses très différentes, et les confondre fait
-  # recréer une tâche qui existe — donc lui remettre son historique à zéro, ou se faire
-  # refuser une écriture dont personne n'avait besoin. Le planificateur est un service
-  # comme un autre : sous charge, il ne répond pas toujours. D'où la lecture du dossier
-  # entier : si elle réussit, l'absence de la tâche est une vraie absence.
+  # Distinguer « absente » de « illisible » : le planificateur ne répond pas toujours sous
+  # charge, et recréer une tâche existante effacerait son historique. On lit donc le
+  # dossier entier : si la lecture réussit, l'absence de la tâche est réelle.
   $tache = $null
   try {
     $dossier = @(Get-ScheduledTask -TaskPath $Chemin -ErrorAction Stop)
@@ -219,9 +200,8 @@ function Set-SzhTacheMaj {
       if (([string]$t.TaskName -eq $Nom) -and ([string]$t.TaskPath -eq $Chemin)) { $tache = $t }
     }
   } catch {
-    # Un dossier sans aucune tâche lève au lieu de rendre une liste vide : c'est une vraie
-    # absence, et bootstrap doit pouvoir créer la tâche sur un poste neuf. Toute autre
-    # erreur veut dire qu'on ne sait pas, et on n'écrit rien quand on ne sait pas.
+    # Un dossier sans aucune tâche lève CmdletizationQuery_NotFound : c'est une absence
+    # réelle (poste neuf). Toute autre erreur : on ne sait pas, on n'écrit rien.
     if (([string]$_.FullyQualifiedErrorId) -notlike 'CmdletizationQuery_NotFound*') {
       $bilan.etat = 'illisible'
       $bilan.message = (([string]$_.Exception.Message) -replace '\s+', ' ').Trim()
@@ -248,8 +228,7 @@ function Set-SzhTacheMaj {
     }
   } catch {
     $bilan.etat = 'refusee'
-    # Le planificateur rend ses messages avec un saut de ligne final, qui couperait la ligne
-    # de journal en deux : une ligne, un événement.
+    # Message mis sur une ligne : le planificateur y ajoute des sauts de ligne.
     $bilan.message = (([string]$_.Exception.Message) -replace '\s+', ' ').Trim()
   }
   return $bilan
@@ -257,13 +236,11 @@ function Set-SzhTacheMaj {
 
 # ---- Cadence de la passe silencieuse ----
 #
-# Les déclencheurs n'imposent pas le rythme, ils ouvrent des occasions : celui de
-# l'ouverture de session revient chaque matin, et un poste installé avant ce changement
-# garde son déclencheur quotidien de 11 h jusqu'à ce qu'un administrateur le corrige. Le
-# rythme demandé — une fois par semaine, à partir du mardi 14 h — vit donc ici, dans un
-# script que chaque poste reçoit à la mise à jour suivante, sans intervention.
+# Les déclencheurs ouvrent des occasions (chaque ouverture de session, ou un ancien
+# déclencheur quotidien qu'un administrateur n'a pas encore corrigé). Le rythme, une fois
+# par semaine à partir du mardi 14 h, est décidé ici.
 
-# Le dernier mardi 14 h révolu. Avant : la fenêtre de la semaine n'est pas encore ouverte.
+# Le dernier mardi 14 h passé.
 function Get-SzhJalonHebdo {
   param([datetime]$Maintenant = (Get-Date))
   $recul = ([int]$Maintenant.DayOfWeek - $SzhMajJourNum + 7) % 7
@@ -272,9 +249,8 @@ function Get-SzhJalonHebdo {
   return $jalon
 }
 
-# La fenêtre de la semaine est-elle encore ouverte ? Toute date illisible, absente ou dans
-# l'avenir (horloge remise à l'heure) rouvre la fenêtre : mieux vaut une vérification de
-# trop qu'un poste qui ne se met plus jamais à jour.
+# Vrai si aucune vérification n'a eu lieu depuis le dernier mardi 14 h. Une date absente,
+# illisible ou future (horloge corrigée) rend vrai : mieux vaut une vérification de trop.
 function Test-SzhFenetreMaj {
   param([datetime]$Maintenant = (Get-Date), [string]$DerniereVerif = '')
   if (-not $DerniereVerif) { return $true }
@@ -285,9 +261,8 @@ function Test-SzhFenetreMaj {
   return ($quand -lt (Get-SzhJalonHebdo $Maintenant))
 }
 
-# Le blocage dure-t-il depuis trop longtemps ? Une seule horloge pour les deux causes —
-# renoncement devant un mauvais moment, ou contrôle qui échoue : ce qui compte est le temps
-# passé sans que la mise à jour aboutisse, pas la raison.
+# Vrai si la mise à jour n'aboutit plus depuis $Jours jours (par défaut $SzhMajPolitesse),
+# quelle qu'en soit la cause : renoncement ou contrôle en échec.
 function Test-SzhPolitesseExpiree {
   param([datetime]$Maintenant = (Get-Date), [string]$Depuis = '', [int]$Jours = 0)
   if ($Jours -le 0) { $Jours = $SzhMajPolitesse }
@@ -299,9 +274,7 @@ function Test-SzhPolitesseExpiree {
   return ((($Maintenant - $quand).TotalDays) -ge $Jours)
 }
 
-# Une alerte visible par semaine au plus. Sans ce frein, un poste durablement bloqué
-# ouvrirait une fenêtre à chaque ouverture de session, et la passe muette deviendrait la
-# passe la plus bavarde de la chaîne.
+# Une alerte visible par semaine au plus, et non à chaque ouverture de session.
 function Test-SzhAlerteDue {
   param([datetime]$Maintenant = (Get-Date), [string]$AlerteLe = '', [int]$Jours = 7)
   if (-not $AlerteLe) { return $true }
@@ -327,8 +300,7 @@ function Get-SzhSuiviChamp($Suivi, [string]$Nom) {
   return ''
 }
 
-# Jamais bloquante : la passe silencieuse n'a pas à échouer parce qu'un fichier de suivi
-# n'a pas pu s'écrire.
+# Rend $false sans lever si le fichier de suivi ne peut pas s'écrire.
 function Save-SzhSuiviMaj($Suivi) {
   try {
     New-Item -ItemType Directory -Force -Path $SzhBaseUtilisateur | Out-Null
@@ -339,21 +311,16 @@ function Save-SzhSuiviMaj($Suivi) {
 
 # ---- Le bon moment ----
 #
-# Une mise à jour qui remplace l'environnement de fabrication doit le désenregistrer, et
-# elle ne peut pas le faire pendant qu'une compilation s'en sert : c'est exactement ce que
-# dit le message 'err.wsl'. Passer à un déclencheur de 14 h met cette collision en plein
-# après-midi de travail, d'où ce garde-fou.
+# Remplacer l'environnement de fabrication oblige à désenregistrer la distribution, ce qui
+# est impossible pendant une compilation (message 'err.wsl'). Une compilation en cours ou
+# l'éditeur ouvert font donc renoncer.
 #
-# `DistroEnMarche` seul n'en est plus un : le préchauffage WSL démarre la distribution à
-# chaque ouverture de session, sur le même déclencheur que la mise à jour elle-même -- la
-# distro tourne donc presque toujours au moment où la passe silencieuse se pose la
-# question, et renoncer sur ce seul signal revenait à ne plus jamais trouver de fenêtre.
-# Seules une compilation en vol ou l'éditeur ouvert font encore renoncer ; une distribution
-# en marche sans l'un ni l'autre laisse update.ps1 faire `--terminate` avant de
+# Une distribution en marche ne suffit pas à renoncer : le préchauffage WSL la démarre à
+# chaque ouverture de session, et update.ps1 l'arrête (`--terminate`) avant de la
 # désenregistrer.
 #
-# La décision est séparée de la mesure : ce qui suit est pur, donc éprouvable sur les
-# trente-deux combinaisons, et Test-SzhMomentMaj plus bas se contente de mesurer.
+# Resolve-SzhMomentMaj décide sans rien mesurer (les tests couvrent toutes les
+# combinaisons) ; Test-SzhMomentMaj mesure.
 function Resolve-SzhMomentMaj {
   param(
     [bool]$RemplaceEnvironnement,
@@ -363,12 +330,11 @@ function Resolve-SzhMomentMaj {
     [bool]$DistroEnMarche
   )
   $bilan = [ordered]@{ propice = $true; raison = ''; grave = $false }
-  # Rien à remplacer, rien à craindre : un toolkit, des extensions et des réglages
-  # s'installent sous l'éditeur ouvert. Renoncer ici retarderait les corrections pour rien.
+  # Sans environnement à remplacer, tout s'installe même éditeur ouvert.
   if (-not $RemplaceEnvironnement) { return $bilan }
 
-  # Une compilation en vol : jamais, à aucun prix. La couper détruit du travail, et c'est
-  # la seule gêne que le délai de politesse ne fait pas céder.
+  # Une compilation en cours fait toujours renoncer, même après le délai de politesse : la
+  # couper détruirait du travail.
   if ($Compilation) {
     $bilan.propice = $false
     $bilan.grave = $true
@@ -384,8 +350,7 @@ function Resolve-SzhMomentMaj {
     $bilan.raison = 'l''éditeur est ouvert'
     return $bilan
   }
-  # $DistroEnMarche n'est plus un motif de renoncement à lui seul : voir le commentaire de
-  # la fonction ci-dessus.
+  # $DistroEnMarche seul ne fait pas renoncer (voir plus haut).
   return $bilan
 }
 
@@ -393,9 +358,8 @@ function Test-SzhEditeurOuvert {
   try { return ([bool](Get-Process -Name 'VSCodium' -ErrorAction SilentlyContinue)) } catch { return $false }
 }
 
-# `wsl -l --running -q` ne rend que des noms de distributions, sans en-tête ni colonne
-# d'état : `-l -v` traduit « Running » selon la langue de WSL, et la comparaison casserait
-# sur un poste allemand.
+# `wsl -l --running -q` rend seulement des noms de distributions. `-l -v` traduirait
+# « Running » selon la langue de WSL.
 function Test-SzhDistroEnMarche {
   try {
     $wsl = Get-WslExe
@@ -407,16 +371,15 @@ function Test-SzhDistroEnMarche {
   return $false
 }
 
-# Deux mesures, parce qu'aucune ne suffit seule.
+# Deux mesures complémentaires.
 #
-# Côté Windows : la compilation part de VSCodium par `wsl.exe … make -f …/Makefile`, et ce
-# client vit tant que le build dure. Mais l'éditeur laisse aussi tourner en permanence des
-# clients `sleep infinity`, qui ne sont pas des compilations : c'est la ligne de commande
-# qui distingue, pas la présence du processus.
+# Côté Windows : une compilation est un `wsl.exe … make -f …/Makefile` lancé par VSCodium.
+# L'éditeur garde aussi des `wsl.exe` permanents (`sleep infinity`) : c'est la ligne de
+# commande qui distingue.
 #
-# Côté Linux : l'image n'embarque pas procps, donc pas de `ps` ni de `pgrep` ; /proc suffit.
-# Cette mesure attrape aussi un pandoc lancé à la main, que la première ne voit pas. Elle
-# n'est tentée que si la distro tourne déjà, pour ne pas la démarrer en la sondant.
+# Côté Linux : /proc, car l'image n'a pas procps (ni `ps` ni `pgrep`). Cette mesure voit
+# aussi un pandoc lancé à la main. Elle n'est faite que si la distribution tourne déjà, pour
+# ne pas la démarrer.
 function Test-SzhCompilationEnVol {
   param([bool]$DistroEnMarche = $true)
   try {
@@ -444,9 +407,8 @@ function Test-SzhMomentMaj {
   $enMarche = $false
   $compil = $false
   $editeur = $false
-  # Aucune mesure quand il n'y a rien à remplacer : la décision est déjà prise, et sonder
-  # la distro la réveillerait pour rien. $enMarche reste mesurée même si elle ne fait plus
-  # renoncer à elle seule : c'est elle qui arme la sonde de compilation ci-dessous.
+  # Aucune mesure s'il n'y a rien à remplacer : sonder la distribution la réveillerait.
+  # $enMarche décide si la sonde Linux de compilation est tentée.
   if ($remplace) {
     $enMarche = Test-SzhDistroEnMarche
     $compil = Test-SzhCompilationEnVol -DistroEnMarche $enMarche

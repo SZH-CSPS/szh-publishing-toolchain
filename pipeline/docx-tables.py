@@ -1,41 +1,36 @@
 #!/usr/bin/env python3
-# docx-tables.py — extrait fidèlement les tableaux d'un .docx en HTML.
+# Extrait les tableaux d'un .docx en HTML, fusions comprises.
 #
 #   python3 docx-tables.py <fichier.docx> <dossier-sortie>
 #
 # Écrit <dossier-sortie>/table-NN.html pour chaque tableau de premier niveau, dans l'ordre
-# du document. Contrairement au passage par pandoc, qui déplie les fusions, elles sont
-# préservées : w:gridSpan -> colspan, w:vMerge -> rowspan. Contenu de cellule :
-# paragraphes séparés par <br>, w:b -> <strong>, w:i -> <em>, texte échappé. Un tableau
-# imbriqué est rendu dans sa cellule et ne compte pas comme tableau séparé, comme côté Lua.
+# du document. Les fusions, que pandoc déplie, sont gardées : w:gridSpan -> colspan,
+# w:vMerge -> rowspan. Cellule : paragraphes séparés par <br>, w:b -> <strong>,
+# w:i -> <em>, texte échappé. Un tableau imbriqué est rendu dans sa cellule et ne compte
+# pas comme tableau, comme côté Lua.
 #
-# En-têtes accessibles (WCAG H43), dans le même style que l'éditeur du cockpit : les
-# rangées d'en-tête viennent de w:tblHeader ; à défaut, la 1ʳᵉ rangée sert d'en-tête si elle
-# est entièrement en gras ; sinon <table> plat. Tableau simple -> <thead> +
-# <th scope="col"> ; tableau complexe (au moins deux rangées d'en-tête, ou un en-tête
-# fusionné) -> id sur chaque en-tête, scope="col"/"colgroup" et headers="…" sur chaque
-# cellule de données.
+# En-têtes accessibles (WCAG H43), comme dans l'éditeur du cockpit : rangées w:tblHeader,
+# sinon première rangée si elle est toute en gras, sinon tableau sans en-tête. Tableau
+# simple -> <thead> et <th scope="col"> ; complexe (deux rangées d'en-tête ou plus, ou un
+# en-tête fusionné) -> id sur chaque en-tête, scope="col"/"colgroup", headers="…" sur
+# chaque cellule de données.
 #
-# Un tableau resté plat sort sans un seul <th>, donc sans /Headers dans le PDF : illisible
-# au lecteur d'écran, et invisible pour un validateur PDF/UA, qui n'a aucun TH à reprocher.
-# Cas banal : une rangée d'en-tête mise en valeur par un fond coloré plutôt que par du
-# gras. Chaque tableau plat déclenche donc un avertissement nommant l'article et le
-# tableau, sur stderr et dans articles-word/.import.log ($SZH_IMPORT_LOG) ; l'import
-# réussit quand même, à la rédaction de trancher.
+# Un tableau sans <th> n'a pas de /Headers dans le PDF, et aucun validateur PDF/UA ne le
+# signale. Cas fréquent : en-tête marqué par un fond coloré plutôt que par du gras. Chaque
+# tableau sans en-tête déclenche donc un avertissement (stderr et $SZH_IMPORT_LOG) ;
+# l'import réussit quand même.
 #
-# Les tableaux consommés par docx-meta.py (lignes « T<TAB>k » de $SZH_META : le tableau des
-# auteurs) sont sautés ici et les autres numérotés séquentiellement. La numérotation doit
-# rester alignée sur szh-tabelle-reference.lua, ce qui tient parce que szh-meta.lua retire
-# les mêmes blocs Table avant que le filtre ne compte les siens. Même saut, même raison, pour
-# un tableau de mise en page d'images (lignes « FG<TAB>k » de pronto-lire.py, 29.09.2026) :
-# szh-meta.lua le remplace par un groupe d'images, il n'a pas de table-NN.html.
+# Sont sautés, et les autres numérotés en séquence : le tableau des auteurs (lignes
+# « T<TAB>k » de $SZH_META, écrites par docx-meta.py) et les tableaux de mise en page
+# d'images (lignes « FG<TAB>k » de pronto-lire.py), que szh-meta.lua remplace par un
+# groupe d'images. szh-meta.lua retire les mêmes tableaux du corps : la numérotation reste
+# alignée sur szh-tabelle-reference.lua.
 #
-# Légendes : un paragraphe voisin est une légende s'il est tout en gras, s'il est stylé
-# « légende » (Tabelle Beschriftung, Caption… — style invisible pour pandoc, lu ici dans
-# styles.xml), ou s'il commence par « Tableau N » avec un séparateur, exigé pour ne pas
-# prendre « Tableau 3 présente… » pour une légende.
+# Légende : un paragraphe voisin tout en gras, de style « légende » (Tabelle Beschriftung,
+# Caption…, lu dans styles.xml car pandoc le perd), ou commençant par « Tableau N » suivi
+# d'un séparateur (« Tableau 3 présente… » n'est pas une légende).
 #
-# stdlib uniquement (zipfile, xml.etree). Docx sans tableau : n'écrit rien, sort 0.
+# Sans tableau : n'écrit rien, sort 0.
 
 import os
 import re
@@ -49,11 +44,9 @@ import szh_commun
 import ooxml_lecture
 from ooxml_lecture import W, A, WP, R, pstyle
 
-# Images dans les cellules, rendues en <img src="media/…"> : pandoc extrait tous les
-# médias du docx sous media/ en gardant leurs noms, et la table HTML, quoique rangée dans
-# tables/, est réinjectée depuis le dossier de l'article — le chemin relatif media/… est
-# donc le bon. Sans ce rendu, une photo placée dans un tableau disparaissait
-# silencieusement.
+# Images des cellules, rendues en <img src="media/…"> : pandoc extrait les médias sous
+# media/ avec leurs noms, et le tableau est inséré depuis le dossier de l'article, d'où ce
+# chemin relatif.
 RELS_IMAGES = {}                              # rId -> media/imageN.ext
 
 
@@ -63,9 +56,9 @@ def charger_rels(z):
 
 
 def html_du_drawing(drawing):
-    """<img> d'un w:drawing : src via les rels, alt du wp:docPr (@descr), largeur
-    wp:extent (EMU -> px, 9525 EMU/px) pour garder la mise en page. Dessin sans image
-    (formes, graphiques) : rien, pandoc les perd aussi."""
+    """<img> d'un w:drawing : src par les rels, alt de wp:docPr (@descr), largeur de
+    wp:extent (9525 EMU par px). Un dessin sans image (forme, graphique) donne '' ; pandoc
+    les perd aussi."""
     blip = drawing.find('.//' + A + 'blip')
     if blip is None:
         return ''
@@ -139,8 +132,7 @@ def html_de_cellule(tc):
             blocs.append(html_du_paragraphe(enfant))
         elif enfant.tag == W + 'tbl':
             blocs.append(html_du_tableau(enfant))
-    # Pas de <br> superflu autour d'un tableau imbriqué ; paragraphes vides
-    # de fin ignorés (Word en ajoute souvent un après un tableau imbriqué).
+    # Paragraphes vides de fin ignorés (Word en ajoute après un tableau imbriqué).
     while blocs and blocs[-1] == '':
         blocs.pop()
     return '<br>'.join(blocs)
@@ -165,8 +157,7 @@ def infos_cellule(tc):
 
 
 def _runs_directs(tc):
-    """Runs (w:r) des paragraphes DIRECTS de la cellule — sans descendre dans un
-    tableau imbriqué (dont les runs ne caractérisent pas la cellule parente)."""
+    """Runs (w:r) des paragraphes directs de la cellule, sans les tableaux imbriqués."""
     for enfant in tc:
         if enfant.tag == W + 'p':
             for run in enfant.iter(W + 'r'):
@@ -183,8 +174,8 @@ def _run_gras(run):
 
 
 def ligne_toute_gras(cellules):
-    """Vrai si tous les runs porteurs de texte de la ligne sont en gras (w:b), avec au
-    moins un run de texte. Heuristique d'en-tête quand Word n'a pas de w:tblHeader."""
+    """Vrai si la ligne a du texte et que tous ses runs de texte sont en gras (w:b).
+    Sert à deviner l'en-tête en l'absence de w:tblHeader."""
     vu_texte = False
     for c in cellules:
         for run in _runs_directs(c['tc']):
@@ -200,22 +191,22 @@ def ligne_a_tblheader(tr):
     return trpr is not None and trpr.find(W + 'tblHeader') is not None
 
 
-# ---- Légendes de tableau : un paragraphe voisin tout en gras est une légende. ----
-# Elle est bakée en <caption> dans le HTML extrait, numéro manuel retiré : c'est
-# filters/szh-numerotation.lua qui écrit « Tableau N — » à la compilation. Son texte
-# normalisé est consigné pour que szh-legendes.lua retire le paragraphe gras du .md.
+# ---- Légendes de tableau ----
+# La légende devient le <caption> du HTML, sans son numéro : szh-numerotation.lua écrit
+# « Tableau N — » à la compilation. Son texte normalisé est noté pour que szh-legendes.lua
+# retire le paragraphe du .md.
 
 RE_NUM_TABLE = re.compile(
     r'^(?:tableau|tabelle|table)\s+\d+[a-z]?\s*[:.–—‑-]?\s*', re.I)
 # Variante stricte, pour un voisin ni gras ni stylé : séparateur obligatoire après le
-# numéro — « Tabelle 1: … » est une légende, « Tableau 3 présente… » n'en est pas une.
+# numéro.
 RE_NUM_TABLE_STRICT = re.compile(
     r'^(?:tableau|tabelle|table)\s+\d+[a-z]?\s*[:.–—‑-]\s*', re.I)
 
 
 def normaliser(t):
-    """Espaces spéciaux -> espace, tirets spéciaux -> '-', compacté, rogné. À garder
-    identique à la normalisation Lua de szh-legendes.lua."""
+    """Espaces spéciales -> espace, tirets -> '-', espaces regroupées, bords rognés. À
+    garder identique à la normalisation de szh-legendes.lua."""
     for a, b in ((u' ', ' '), (u' ', ' '), (u' ', ' '),
                  (u'–', '-'), (u'—', '-'), (u'‑', '-')):
         t = t.replace(a, b)
@@ -228,15 +219,14 @@ def texte_plat(p):
 
 
 def texte_plat_cellule(tc):
-    """Texte brut d'une cellule (w:tc) : ses paragraphes directs joints par une espace.
-    Un tableau imbriqué n'y contribue pas, comme html_de_cellule() le traite à part."""
+    """Texte brut d'une cellule (w:tc) : ses paragraphes directs joints par une espace,
+    sans les tableaux imbriqués."""
     morceaux = [texte_plat(p) for p in tc if p.tag == W + 'p']
     return ' '.join(m for m in morceaux if m)
 
 
 def paragraphe_tout_gras(p):
-    """Vrai si tous les runs porteurs de texte du paragraphe (w:p) sont en gras.
-    ⚠ prend un paragraphe et ses propres runs, pas une cellule comme _runs_directs."""
+    """Vrai si tous les runs de texte du paragraphe (w:p, pas une cellule) sont en gras."""
     vu = False
     for run in p.iter(W + 'r'):
         if _run_texte(run):
@@ -246,12 +236,9 @@ def paragraphe_tout_gras(p):
     return vu
 
 
-# Préfixe unique des avertissements remontés au rédacteur. Une ligne, des champs séparés
-# par « | », le deuxième étant un code stable : l'interface du cockpit peut la reconnaître
-# sans lire le français. Écrite sur stderr et dans articles-word/.import.log (chemin absolu
-# passé par la cible `import` du Makefile dans $SZH_IMPORT_LOG) — l'import, lui, réussit.
-# Mécanisme dans szh_commun.avertir(), partagé avec docx-meta.py, livre-scinder.py et
-# reimporter.py.
+# Avertissements pour la rédaction : une ligne, champs séparés par « | », le deuxième étant
+# un code stable que le cockpit reconnaît. Écrits sur stderr et dans $SZH_IMPORT_LOG par
+# szh_commun.avertir() ; l'import réussit quand même.
 PREFIXE_AVERT = '[import-avertissement]'
 
 
@@ -259,34 +246,28 @@ def avertir(code, champs, fr, de):
     szh_commun.avertir(PREFIXE_AVERT, code, champs, fr, de)
 
 
-# « | » sépare les champs (szh_commun.formater_avertissement) : un texte de cellule qui en
-# porterait un couperait la ligne en deux. Même précaution que sans_barre() de
-# szh-citations.lua, appliquée ici à ce qui vient du texte du docx plutôt que d'un nom de
-# fichier ou d'un slug, qui n'en portent jamais.
+# « | » sépare les champs d'un avertissement : un texte de cellule ne doit pas en contenir.
 def sans_barre(t):
     return str(t).replace('|', '/')
 
 
 def nom_article():
-    """Slug de l'article en cours. import-docx.sh travaille dans articles/<slug>/ ;
-    $SZH_SLUG le dit explicitement, le nom du dossier courant sert de repli."""
+    """Slug de l'article : $SZH_SLUG, sinon le nom du dossier courant."""
     return os.getenv('SZH_SLUG') or os.path.basename(os.getcwd()) or '?'
 
 
 def html_du_tableau(tbl, caption=None, info=None, attributs_table=None):
     """Rend un w:tbl en <table>, fusions préservées et en-têtes accessibles.
 
-    `info`, si fourni, reçoit ce que l'appelant ne peut pas redeviner sans refaire le
-    calcul : `lignes_entete`, le nombre de rangées d'en-tête retenues (0 = tableau plat).
+    `info`, si fourni, reçoit `lignes_entete` (nombre de rangées d'en-tête, 0 = sans
+    en-tête) et `premiere_cellule` (texte de la première cellule, absent si vide).
 
-    `attributs_table`, si fourni, est un dict d'attributs à poser sur la balise <table>
-    elle-même : c'est par là que les champs d'un bloc du gabarit Pronto (texte alternatif,
-    crédit, source) arrivent sous la forme que szh-numerotation.lua attend — data-alt,
-    data-copyright, data-source, data-note."""
+    `attributs_table`, si fourni, donne les attributs de la balise <table> : les champs
+    d'un bloc du gabarit Pronto, sous les noms qu'attend szh-numerotation.lua (data-alt,
+    data-copyright, data-source, data-note)."""
     lignes = [tr for tr in tbl if tr.tag == W + 'tr']
-    # Pré-analyse : pour chaque ligne, les cellules avec (colonne de départ, colspan,
-    # vmerge, élément). Les cellules « continue » occupent leur colonne — elles sont bien
-    # présentes dans le XML — ce qui rend le calcul de colonne direct.
+    # Pour chaque ligne, ses cellules (colonne de départ, colspan, vmerge, élément). Les
+    # cellules « continue » sont présentes dans le XML et occupent leur colonne.
     grille = []
     for tr in lignes:
         colonne = 0
@@ -312,7 +293,7 @@ def html_du_tableau(tbl, caption=None, info=None, attributs_table=None):
         return n
 
     # ---- Rangées d'en-tête : w:tblHeader (rangées de tête contiguës), sinon 1ʳᵉ rangée
-    #      toute en gras. Zéro -> tableau plat, aucun en-tête, et principal() avertit.
+    #      toute en gras. Zéro : tableau sans en-tête, et principal() avertit.
     if any(ligne_a_tblheader(tr) for tr in lignes):
         lignes_entete = 0
         for tr in lignes:
@@ -325,13 +306,10 @@ def html_du_tableau(tbl, caption=None, info=None, attributs_table=None):
     else:
         lignes_entete = 0
 
-    # ---- Invariant de grille : aucune fusion de l'en-tête ne doit dépasser dans le corps.
-    #      Un rowspan ne franchit pas la frontière <thead>/<tbody>, navigateurs et
-    #      WeasyPrint le bornant à la section : un en-tête d'une rangée sur un tableau dont
-    #      la rangée 0 porte un rowspan=2 donnerait une grille fausse. On réduit le compte
-    #      jusqu'à ce qu'aucune fusion ne dépasse, quitte à tomber à 0 — un tableau sans
-    #      <thead> reste juste, un <thead> tronqué est faux, et l'en-tête se repose d'un
-    #      clic dans l'éditeur. Même invariant que normaliserModele() côté extension.
+    # ---- Aucune fusion de l'en-tête ne doit déborder dans le corps : navigateurs et
+    #      WeasyPrint arrêtent un rowspan à la fin du <thead>, et la grille serait fausse.
+    #      On réduit le nombre de rangées d'en-tête, jusqu'à 0 s'il le faut (l'en-tête se
+    #      redéclare dans l'éditeur). Même règle que normaliserModele() du cockpit.
     def fusion_franchit_entete(n):
         for r in range(min(n, len(grille))):
             for cel in grille[r]:
@@ -415,10 +393,7 @@ def html_du_tableau(tbl, caption=None, info=None, attributs_table=None):
 
     if info is not None:
         info['lignes_entete'] = lignes_entete
-        # Le texte de la première cellule : lu ici parce que la grille est déjà montée pour
-        # le rendu (grille[0][0]['tc']), et rendu au même endroit que 'lignes_entete' pour
-        # que l'appelant n'ait pas à refaire l'analyse. Une première cellule vide (ou un
-        # tableau sans aucune rangée) laisse la clé absente plutôt que vide.
+        # Texte de la première cellule ; clé absente si elle est vide.
         if grille and grille[0]:
             debut_cellule = normaliser(texte_plat_cellule(grille[0][0]['tc']))
             if debut_cellule:
@@ -440,7 +415,7 @@ def html_du_tableau(tbl, caption=None, info=None, attributs_table=None):
             sortie += rendre_ligne(i, grille[i], False)
         sortie.append('</tbody>')
     else:
-        # Aucun en-tête déduit : structure plate, cellules de données (statu quo).
+        # Sans en-tête : rien que des cellules de données.
         for i in range(nb_lignes):
             sortie += rendre_ligne(i, grille[i], False)
     sortie.append('</table>')
@@ -448,9 +423,8 @@ def html_du_tableau(tbl, caption=None, info=None, attributs_table=None):
 
 
 def tableaux_de_premier_niveau(racine):
-    """Tous les w:tbl du document SAUF ceux imbriqués dans un autre w:tbl, dans
-    l'ordre du document, chacun avec son PARENT (pour repérer la légende voisine).
-    Le parcours ne descend pas dans les tableaux (les imbriqués sont rendus dedans)."""
+    """[(w:tbl, parent)] des tableaux non imbriqués, dans l'ordre du document. Le parent
+    sert à trouver la légende voisine."""
     resultats = []
 
     def parcourir(element):
@@ -484,9 +458,9 @@ def est_legende_candidate(e, styles_legende):
 
 
 def legende_de_table(parent, tbl, consommes, styles_legende):
-    """Cherche un paragraphe VOISIN (avant, puis après) légende (gras, style ou
-    motif strict). Retourne (element_paragraphe, texte_pour_caption_nettoye) ou
-    (None, None). `consommes` = ids déjà pris (jamais 2 tableaux pour 1 légende)."""
+    """Cherche une légende dans le paragraphe voisin, avant puis après. Rend (paragraphe,
+    texte du <caption>) ou (None, None). `consommes` : légendes déjà prises (une légende
+    ne sert qu'à un tableau)."""
     enfants = list(parent)
     try:
         i = enfants.index(tbl)
@@ -505,8 +479,8 @@ def legende_de_table(parent, tbl, consommes, styles_legende):
 
 
 def tables_consommees_par_meta():
-    """Ordinaux (1-based) des tableaux consommés par docx-meta.py (lignes T de
-    $SZH_META) : le tableau des auteurs ne devient jamais tables/table-NN.html."""
+    """Rangs (à partir de 1) des tableaux consommés par docx-meta.py (lignes T de
+    $SZH_META), comme le tableau des auteurs."""
     chemin = os.getenv('SZH_META')
     if not chemin:
         return set()
@@ -514,12 +488,9 @@ def tables_consommees_par_meta():
 
 
 def tables_grilles_par_meta():
-    """Ordinaux (1-based, même numérotation que les lignes T) des tableaux de MISE EN PAGE
-    d'images que pronto-lire.py a reconnus comme un groupe d'images (lignes
-    « FG<TAB>k<TAB>… ») : ce ne sont plus des tableaux, szh-meta.lua les remplace dans le
-    corps par un bloc `::: {.szh-grille}` qui porte leurs images. Sautés ici exactement comme
-    un tableau consommé, sans quoi tables/table-NN.html et szh-tabelle-reference.lua ne
-    compteraient plus les mêmes tableaux."""
+    """Rangs (comme les lignes T) des tableaux de mise en page d'images reconnus par
+    pronto-lire.py (lignes « FG<TAB>k<TAB>… »). szh-meta.lua les remplace par un bloc
+    `::: {.szh-grille}` ; ils sont sautés comme un tableau consommé."""
     return _ordinaux_par_lettre(os.getenv('SZH_META'), 'FG\t')
 
 
@@ -541,16 +512,15 @@ def _ordinaux_par_lettre(chemin, prefixe):
 
 
 def blocs_pronto_par_meta():
-    """Ordinal (1-based, celui des lignes T) -> {'legende', 'alt', 'credit', 'source', 'note'} pour
-    chaque tableau qui est le CONTENU d'un bloc du gabarit « Pronto » (lignes FT de
-    $SZH_META, écrites par pronto-lire.py) :
+    """Rang (comme les lignes T) -> {'legende', 'alt', 'credit', 'source', 'note'} pour
+    chaque tableau contenu dans un bloc du gabarit Pronto (lignes FT de $SZH_META,
+    écrites par pronto-lire.py) :
 
         FT<TAB>k<TAB>légende<TAB>texte alternatif<TAB>copyright<TAB>source<TAB>note
 
-    Les cinq valeurs sont celles que l'autrice ou l'auteur a tapées sous « Légende : »,
-    « Texte alternatif : », « Copyright : », « Source : » et « Note : » ; les paragraphes qui les portaient
-    quittent le corps par les lignes P. Sans cette reprise, ils s'imprimeraient tels quels et
-    la légende du tableau serait perdue. Le pendant figure vit dans szh-legendes.lua (FI)."""
+    Ce sont les valeurs saisies sous « Légende : », « Texte alternatif : »,
+    « Copyright : », « Source : » et « Note : » ; leurs paragraphes quittent le corps par
+    les lignes P. Pour les figures, voir szh-legendes.lua (lignes FI)."""
     chemin = os.getenv('SZH_META')
     if not chemin:
         return {}
@@ -575,7 +545,7 @@ def blocs_pronto_par_meta():
 
 
 def principal(argv):
-    try:  # console Windows en cp1252 : un accent combinant (nom venu du partage) y plante.
+    try:  # console Windows en cp1252 : un accent combinant y ferait planter print().
         sys.stdout.reconfigure(encoding='utf-8')
         sys.stderr.reconfigure(encoding='utf-8')
     except Exception:
@@ -594,16 +564,16 @@ def principal(argv):
         return 1
     tableaux = tableaux_de_premier_niveau(racine)
     if not tableaux:
-        return 0                              # rien à faire, rien d'écrit
-    # Tableau des auteurs : sauté ici et retiré du corps par szh-meta.lua, les tableaux
-    # restants étant renumérotés en séquence des deux côtés.
+        return 0
+    # Tableaux sautés ici et retirés du corps par szh-meta.lua : la numérotation reste
+    # la même des deux côtés.
     sautes = tables_consommees_par_meta()
     grilles = tables_grilles_par_meta() - sautes
     sautes = sautes | grilles
     blocs_pronto = blocs_pronto_par_meta()
     consommes = set()
     legendes = []                             # textes normalisés des légendes prises
-    plats = []                                # tableaux rendus sans aucune rangée d'en-tête
+    plats = []                                # tableaux sans rangée d'en-tête
     n = 0
     for ordinal, (tbl, parent) in enumerate(tableaux, start=1):
         if ordinal in sautes:
@@ -612,8 +582,8 @@ def principal(argv):
         bloc = blocs_pronto.get(ordinal)
         attributs = None
         if bloc:
-            # Bloc du gabarit : la légende est ÉCRITE, on ne cherche donc aucun voisin —
-            # un paragraphe tout en gras au-dessus du tableau lui volerait la sienne.
+            # Bloc du gabarit : la légende est donnée, on ne cherche pas de voisin (un
+            # paragraphe gras au-dessus la remplacerait).
             caption = bloc['legende'] or None
             attributs = {'data-alt': bloc['alt'], 'data-copyright': bloc['credit'],
                          'data-source': bloc['source'], 'data-note': bloc['note']}
@@ -630,30 +600,19 @@ def principal(argv):
         if not info.get('lignes_entete'):
             plats.append((n, chemin, info.get('premiere_cellule', '')))
     if n == 0:
-        return 0                              # tous consommés : pas de tables/ vide
-    # Sidecar : légendes consommées -> szh-legendes.lua retire les paragraphes gras
-    # correspondants du .md (le <caption> est déjà baké ci-dessus).
+        return 0                              # tous sautés
+    # Légendes prises : szh-legendes.lua retire leurs paragraphes du .md.
     chemin_leg = os.getenv('SZH_LEGENDES_TABLES')
     if chemin_leg and legendes:
         with open(chemin_leg, 'w', encoding='utf-8', newline='\n') as f:
             for t in legendes:
                 f.write(t + '\n')
-    # Le convertisseur n'a pas su reconnaître d'en-tête : ni `w:tblHeader`, ni première
-    # rangée entièrement en gras. C'est une devinette qui a échoué, pas un défaut constaté.
-    # Ni le RGAA ni les WCAG n'exigent qu'un tableau ait un en-tête : ils exigent que
-    # l'en-tête qui existe soit déclaré. Un tableau qui n'en a pas est légitime. Le message
-    # pose donc une question au lieu d'accuser — dire « désignez la première rangée »
-    # ferait poser une relation fausse sur un tableau correct. Cas fréquent qui justifie la
-    # question : un en-tête mis en valeur par un fond coloré plutôt que par du gras.
+    # Aucun en-tête reconnu. Un tableau sans en-tête est permis (WCAG et RGAA exigent
+    # seulement de déclarer celui qui existe) : le message pose une question plutôt que de
+    # demander de désigner la première rangée.
     slug = nom_article()
-    # Le champ `tableau` reste un numéro nu : la recherche littérale du cockpit le prend
-    # pour n'importe quel autre nombre de l'article (une date, une page) avant le bon
-    # tableau. `debut` lui donne un texte à chercher à la place. 40 caractères : assez pour
-    # dépasser un seul mot répété ailleurs dans l'article (un intitulé de colonne isolé ne
-    # suffirait pas à distinguer), assez court pour rester une ligne de constat lisible —
-    # la même longueur que cle_comparaison() de docx-meta.py et de pronto_modele.py, qui
-    # tronquent déjà un extrait de texte à cette borne pour rester discriminants sans être
-    # des pavés (là pour apparier un paragraphe, ici pour le retrouver dans l'éditeur).
+    # `debut` donne au cockpit un texte à chercher : le numéro seul se confondrait avec
+    # d'autres nombres de l'article. 40 caractères, comme cle_comparaison() de docx-meta.py.
     LONGUEUR_EXTRAIT_DEBUT = 40
     for numero, chemin, debut_txt in plats:
         champs = ['article « %s »' % slug, 'tableau %d' % numero]

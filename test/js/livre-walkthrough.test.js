@@ -4,14 +4,10 @@
 //
 //   node --test test/js/livre-walkthrough.test.js
 //
-// Deux contrôles distincts, parce que le `when` du walkthrough ne suffit pas seul (voir le
-// commentaire de proposerTutoriel(), extension.js) : confirmé dans le workbench VSCodium
-// installé sur ce poste (resources/app/out/vs/workbench/workbench.desktop.main.js), la
-// commande `workbench.action.openWalkthrough` ouvre l'éditeur par son id sans lire aucun
-// contexte — le `when` ne filtre que ce qui apparaît dans la page d'accueil « Get
-// Started ». L'invitation automatique (proposerTutoriel) porte donc sa propre garde,
-// éprouvée dans test/js/hote-livre.test.js et test/js/hote.test.js (un seul activerHote()
-// par processus interdit de le faire ici).
+// Le `when` du walkthrough ne filtre que la page d'accueil « Get Started » :
+// `workbench.action.openWalkthrough` ouvre l'éditeur par son id sans lire de contexte
+// (voir proposerTutoriel(), extension.js). L'invitation automatique porte donc sa propre
+// garde, vérifiée dans test/js/hote-livre.test.js et test/js/hote.test.js.
 'use strict';
 
 const test = require('node:test');
@@ -30,8 +26,7 @@ test('package.json : le walkthrough de démarrage porte when: !szh.estLivre', ()
 });
 
 test('le workbench VSCodium installé accepte bien when au niveau du walkthrough', () => {
-  // Preuve, pas affirmation : le point d'extension `walkthroughs` de CE poste (pas la
-  // documentation en ligne, qui peut dater d'une autre version) déclare `when` à côté de
+  // Le point d'extension `walkthroughs` du VSCodium installé déclare `when` à côté de
   // id/title/description/steps dans son schéma JSON.
   const bin = path.join(
     process.env.LOCALAPPDATA || '', 'Programs', 'VSCodium', 'resources', 'app', 'out',

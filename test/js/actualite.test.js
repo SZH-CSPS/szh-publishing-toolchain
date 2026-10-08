@@ -1,29 +1,22 @@
-// La section « Actualité » de l'arbre, et la page de Documentation du numéro : rubriques
+// La section « Actualité » de l'arbre et la page de Documentation du numéro : rubriques
 // (documentation.<lang>.txt, propres au numéro) et fiches (bibliothèque partagée
 // _NewsUndActu\Fiches\, lib/kirby-contenu.js) dans un seul formulaire.
 //
-// Ce que ce fichier fixe :
-//   - la page de Documentation ne se liste PLUS dans l'arbre. Cliquer l'en-tête
-//     « ACTUALITÉ » ouvre son formulaire, et la crée si le numéro n'en a pas encore ;
-//   - la section a cinq enfants FIXES (23.09.2026, révisé le même jour — toute la navigation
-//     passe par l'arbre, la page n'a plus de barre d'onglets) : « Documentation du numéro »
-//     (elle-même dépliable), « Traductions à faire », « Réservoir », « Archive », puis
-//     « Publier sur le site web » grisée (pas de commande, jamais cliquable) ;
+// Ce que ce fichier vérifie :
+//   - la page de Documentation n'apparaît pas dans l'arbre. Cliquer l'en-tête « ACTUALITÉ »
+//     ouvre son formulaire, et la crée si le numéro n'en a pas ;
+//   - la section a des entrées fixes, aucune dépliable : « Documentation du numéro »,
+//     « Traductions à faire », « Réservoir », « Archive », « Publier sur le site web » ;
 //   - le badge de l'en-tête compte les fiches rattachées au numéro et les rubriques non
-//     vides ; les compteurs de Documentation du numéro/Traductions/Réservoir reprennent les
-//     mêmes fonctions que les anciens badges d'onglet du formulaire, l'Archive reprend le
-//     dernier compte connu d'un panneau qui a chargé cet onglet (rien tant qu'aucun ne l'a
-//     fait — jamais une lecture de la bibliothèque de PRODUCTION depuis l'arbre) ;
-//   - « Documentation du numéro » se déplie sur « Rubriques » (les 4 champs de texte long)
-//     puis une entrée par type de fiche du contrat, avec son compte ;
-//   - cliquer une entrée ouvre le formulaire de Documentation DIRECTEMENT sur cette vue
-//     (szh.ouvrirActualite), et bascule un panneau déjà ouvert plutôt que d'en rouvrir un ;
+//     vides. L'Archive affiche le dernier compte connu d'un panneau qui a chargé cet onglet :
+//     l'arbre ne lit pas la bibliothèque partagée ;
+//   - cliquer une entrée ouvre le formulaire sur cette vue (szh.ouvrirActualite), ou fait
+//     basculer un panneau déjà ouvert ;
 //   - un seul formulaire porte rubriques, fiches, traductions à faire, réservoir et
-//     orphelines (media/documentation.js), une seule catégorie affichée à la fois.
+//     orphelines (media/documentation.js).
 //
-// kirby-contenu.js écrit par fs direct, sans passer par vscode.workspace/WorkspaceEdit (faux
-// sans effet dans ce harnais, voir hote-factice.js) — les mutations d'« enregistrer » sont
-// donc RÉELLES ici.
+// kirby-contenu.js écrit directement sur le disque, sans WorkspaceEdit (sans effet dans ce
+// harnais, voir hote-factice.js) : ce qu'« enregistrer » écrit se contrôle sur le disque.
 //
 //   node --test test/js/actualite.test.js
 'use strict';
@@ -47,9 +40,9 @@ const HOTE = activerHote(REVUE);
 const SLUG_DOC = 'documentation';
 const DOSSIER_DOC = path.join(REVUE, 'articles', SLUG_DOC);
 const TXT_DOC = path.join(DOSSIER_DOC, 'documentation.fr.txt');
-// La bibliothèque des fiches vit à la racine de l'arbre — ici le parent du dossier factice,
-// qui ne porte aucun des noms reconnus (Revue, Zeitschrift…) : racineArbre() dégrade sur ce
-// parent, exactement comme documentation-hote.js le calcule pour ce même numéro.
+// La bibliothèque des fiches vit à la racine de l'arbre. Ici, le parent du dossier factice ne
+// porte aucun nom reconnu (Revue, Zeitschrift…) : racineArbre() se rabat sur ce parent,
+// comme documentation-hote.js pour ce même numéro.
 const RACINE_ARBRE = kirby.racineArbre(REVUE);
 function ausgabeId() { return yaml.idNumero(REVUE); }
 
@@ -66,9 +59,6 @@ async function entete() {
   assert.ok(e, 'en-tête ACTUALITÉ absent');
   return e;
 }
-// Un seul panneau de Documentation possible désormais (les fiches et les rubriques
-// n'existent plus que sur cette page) : plus besoin de le distinguer d'un panneau ouvert
-// sur un article ordinaire, qui n'existe plus.
 function dernierPanneauDoc() {
   const p = HOTE.panneaux.filter((x) => x.type === 'szhDocumentation').pop();
   assert.ok(p, 'panneau de Documentation absent');
@@ -94,21 +84,18 @@ test('les commandes du lot sont enregistrées, la réserve a disparu', () => {
     'szh.ressourcesArticle devrait avoir disparu : les fiches ne vivent plus que sur la Documentation');
 });
 
-// L'id du numéro (ausgabe.yaml#id) doit être posé à l'OUVERTURE DU NUMÉRO — l'activation du
-// cockpit sur ce dossier (extension.js#majContexte, poserIdNumeroEtAvertirDoublon) — jamais
-// seulement à l'ouverture du formulaire de Documentation : le pipeline refuse désormais de
-// compiler une Documentation sans id, et un numéro dont on n'ouvre jamais la Documentation à
-// la main doit quand même pouvoir compiler. demarrageSeTait() laisse le démarrage asynchrone
-// (demarrageInitial -> majContexte, jamais attendu par activate()) aller à son terme.
+// L'id du numéro (ausgabe.yaml#id) se pose à l'activation du cockpit sur le numéro
+// (extension.js#majContexte, poserIdNumeroEtAvertirDoublon) : le pipeline refuse de compiler
+// une Documentation sans id, même si personne n'a ouvert son formulaire. demarrageSeTait()
+// attend la fin du démarrage asynchrone, qu'activate() n'attend pas.
 test('id du numéro : posé à l’ouverture du numéro, sans jamais ouvrir la Documentation', async () => {
   await demarrageSeTait(HOTE);
   assert.match(yaml.idNumero(REVUE), /^[A-Za-z0-9]{16}$/,
     'l’id doit exister dès l’activation du cockpit sur ce numéro');
 });
 
-// Avant toute création de la page de Documentation : l'en-tête n'a pas de badge (l'id posé
-// au test précédent n'y change rien : aucune fiche n'est encore rattachée à ce numéro), mais
-// ses cinq entrées sont déjà là — elles ne dépendent pas de l'existence de la page.
+// Avant la création de la page de Documentation : aucune fiche n'est rattachée au numéro,
+// donc pas de badge, mais les entrées existent déjà.
 test('sans page de Documentation, l’en-tête ACTUALITÉ n’a pas de badge, ses cinq entrées oui', async () => {
   const e = await entete();
   assert.strictEqual(e.description, undefined, 'aucun bloc à compter : pas de badge — ' + e.description);
@@ -167,13 +154,12 @@ test('le badge de l’en-tête compte les fiches et les rubriques non vides', as
     'le badge devrait compter la rubrique ET la fiche');
 });
 
-// ---- Les cinq entrées de ACTUALITÉ (23.09.2026, révisé le même jour) -------------------
+// ---- Les entrées de ACTUALITÉ ---------------------------------------------------------
 test('arbre : les cinq entrées de ACTUALITÉ, dans l’ordre voulu par Robin, avec leurs commandes et leurs compteurs', async () => {
-  // Rien n'a encore été écrit côté traductions/réservoir à ce point du fichier : leurs
-  // compteurs sont donc à 0 — recalculés ici plutôt qu'écrits en dur, pour ne pas dépendre de
-  // l'ordre des tests. « Documentation du numéro » reprend l'état posé par le test précédent
-  // (une rubrique, une fiche). L'Archive n'a encore jamais été lue par aucun panneau : pas de
-  // badge du tout (compteArchiveConnu() rend undefined).
+  // Les compteurs se recalculent ici plutôt que de s'écrire en dur, pour ne pas dépendre de
+  // l'ordre des tests. À ce point du fichier : traductions et réservoir vides, une rubrique et
+  // une fiche posées par le test précédent. Aucun panneau n'a lu l'Archive :
+  // compteArchiveConnu() rend undefined, pas de badge.
   const nTraductions = kirby.listerTraductionsATraire(RACINE_ARBRE, 'fr').length;
   const nReservoir = kirby.listerReservoir(RACINE_ARBRE, 'fr', { avecIgnorees: false }).length
     + kirby.listerOrphelines(RACINE_ARBRE, 'fr').length;
@@ -185,7 +171,7 @@ test('arbre : les cinq entrées de ACTUALITÉ, dans l’ordre voulu par Robin, a
   assert.strictEqual(nReservoir, 0);
   assert.strictEqual(nBlocs, 2, 'fixture attendue à ce point du fichier : une rubrique et une fiche');
 
-  // Recherche par id, jamais par rang : une entrée ajoutée ailleurs ne décale rien.
+  // Recherche par id plutôt que par rang : une entrée ajoutée ailleurs ne décale rien.
   const entrees = await enfantsDe('section-actualite');
   const IDS = ['numero', 'traductions', 'reservoir', 'archive', 'publier'].map((c) => 'actualite:' + c);
   const parId = (id) => entrees.find((it) => it.id === id);
@@ -219,9 +205,9 @@ test('arbre : les cinq entrées de ACTUALITÉ, dans l’ordre voulu par Robin, a
   for (const it of entrees) { assert.strictEqual(it.collapsibleState, 0, it.label + ' ne doit pas être dépliable'); }
 });
 
-// ---- « Documentation du numéro » ne se déplie plus (24.09.2026) ------------------------
-// Les catégories vivent dans la barre du formulaire (media/documentation.js) ; l'arbre n'en
-// garde qu'un raccourci. Le libellé court du cockpit reste celui du contrat.
+// ---- Libellés et catégories --------------------------------------------------------------
+// Les catégories vivent dans la barre du formulaire (media/documentation.js). Le libellé
+// court du cockpit vient du contrat.
 test('libellé court du cockpit : « Agenda », distinct du titre imprimé', () => {
   assert.strictEqual(kirby.libelleCockpitType('agenda', 'fr'), 'Agenda');
   assert.notStrictEqual(kirby.libelleCockpitType('agenda', 'fr'), kirby.libelleType('agenda', 'fr'));
@@ -241,7 +227,7 @@ test('elementArticle ignore la page de Documentation sans lever', () => {
   assert.strictEqual(arbre.elementArticle('jamais-vu'), null);
 });
 
-// ---- Le formulaire fusionné -----------------------------------------------------------
+// ---- Le formulaire ----------------------------------------------------------------------
 
 test('le formulaire porte les quatre rubriques ET les sept types de fiches du contrat', async () => {
   const p = await panneau();
@@ -293,7 +279,7 @@ test('le canton et les instruments sont des listes fermées du contrat, l’agen
   for (const o of evenement.options) {
     assert.ok(o.libelle && o.libelle !== o.valeur, 'le jeton ' + o.valeur + ' doit être traduit pour la saisie');
   }
-  // Une date_partielle (recherche) n'est PAS une date ISO stricte : le mode de saisie suit
+  // Une date_partielle (recherche) n'est pas une date ISO stricte : le mode de saisie suit
   // le contrat, pas le nom du champ.
   assert.strictEqual(parType.recherche.champs.find((c) => c.cle === 'debut').saisie, 'date_partielle');
 });
@@ -303,9 +289,7 @@ test('la rubrique « ressources » n’est proposée qu’à la Revue', async ()
   assert.ok(m.typesRubrique.some((t) => t.valeur === 'ressources'));
 });
 
-// Les mutations passent maintenant par kirby-contenu.js, en fs direct : contrairement à
-// l'ancien harnais bloc-dans-un-.md (WorkspaceEdit, faux sans effet ici), le résultat sur
-// le disque est réel et peut être contrôlé directement.
+// kirby-contenu.js écrit directement sur le disque : le résultat s'y contrôle.
 test('enregistrer : une rubrique remplie et une fiche incomplète comptent toutes deux, et s’écrivent réellement', async () => {
   const p = await panneau();
   p.messages.length = 0;
@@ -349,10 +333,10 @@ test('enregistrer : une carte de fiche jamais remplie ne s’écrit pas', async 
     'un clic sur « Ajouter » suivi de rien ne doit rien écrire');
 });
 
-// ---- supprimerFicheNumero : effacement définitif depuis une carte du numéro (23.09.2026) --
+// ---- supprimerFicheNumero : effacement définitif depuis une carte du numéro ------------
 //
-// Geste DISTINCT de RETIRER (qui ne fait que détacher) : confirmation modale native, puis
-// effacement réel. Si l'autre langue existe, elle survit ; sinon le dossier entier part.
+// À distinguer de « Retirer », qui détache seulement. Confirmation modale, puis effacement.
+// Si l'autre langue existe, elle reste ; sinon le dossier entier part.
 test('supprimerFicheNumero : sans réponse la fiche reste ; confirmé, seule la langue du numéro part si l’autre existe', async () => {
   const { uuid, slug } = kirby.creerFiche(RACINE_ARBRE, 'fr', 'film',
     { title: 'Fiche bilingue', realisateur: 'X', annee: '2026', descriptif: 'D' }, ausgabeId());
@@ -360,7 +344,7 @@ test('supprimerFicheNumero : sans réponse la fiche reste ; confirmé, seule la 
   const p = await panneau();
   const avant = kirby.listerFichesNumero(RACINE_ARBRE, 'fr', ausgabeId()).length;
 
-  // Aucune réponse en file -> Annuler (hote-factice.js) : rien ne doit disparaître.
+  // Aucune réponse en file vaut Annuler (hote-factice.js) : rien ne doit disparaître.
   await p._recepteur({ type: 'supprimerFicheNumero', id: uuid });
   assert.ok(kirby.lireFicheSlugLangue(RACINE_ARBRE, slug, 'fr'), 'annulé : la fiche doit rester');
 
@@ -383,8 +367,8 @@ test('supprimerFicheNumero : sans version dans l’autre langue, le dossier enti
   assert.strictEqual(kirby.lireFicheSlugLangue(RACINE_ARBRE, slug, 'fr'), null);
   assert.ok(!fs.existsSync(kirby.cheminFiche(RACINE_ARBRE, 'film', slug)), 'le dossier entier doit disparaître');
   // reordonnerNumero() a été rejoué : la fiche restante a un rang, la fiche effacée n'y
-  // figure plus (ce numéro porte déjà d'autres fiches, posées par les tests précédents —
-  // pas d'hypothèse sur le rang absolu, seulement sur la présence/absence).
+  // figure plus. Le numéro porte d'autres fiches des tests précédents : on vérifie la
+  // présence, pas le rang absolu.
   const restantes = kirby.listerFichesNumero(RACINE_ARBRE, 'fr', ausgabeId());
   const restante = restantes.filter((f) => f.valeurs.title === 'Une autre fiche');
   assert.strictEqual(restante.length, 1);
@@ -409,9 +393,8 @@ test('retour : la page de Documentation se referme et libère son slug', async (
     'rouvrir après un retour n’a pas créé un panneau neuf : la table des panneaux n’a pas été libérée à la fermeture');
 });
 
-// Le pendant du test suivant : quand la fiche EST enregistrée, l'image déposée doit
-// rejoindre le dossier de la fiche et quitter le dépôt provisoire (hors bibliothèque,
-// os.tmpdir() — lib/kirby-contenu.js), pas y traîner à côté.
+// Fiche enregistrée : l'image déposée rejoint le dossier de la fiche et quitte le dépôt
+// provisoire (dans os.tmpdir(), voir lib/kirby-contenu.js).
 test('le dépôt provisoire d’image est vidé pour une carte dont la fiche vient d’être enregistrée', async () => {
   const p = await panneau();
   await p._recepteur({
@@ -432,10 +415,9 @@ test('le dépôt provisoire d’image est vidé pour une carte dont la fiche vie
   assert.strictEqual(fiche.valeurs.couverture, 'couverture.png');
 });
 
-// Une image déposée pour une fiche encore neuve (jamais enregistrée) se met de côté dans le
-// dépôt provisoire — voir lib/kirby-contenu.js. Si la carte est retirée avant sauvegarde, ou
-// si le formulaire se ferme sans enregistrer, ce dépôt doit être vidé : un fichier orphelin
-// ne doit pas s'accumuler indéfiniment sur le poste.
+// Une image déposée pour une fiche pas encore enregistrée attend dans le dépôt provisoire.
+// Si la carte est retirée ou le formulaire fermé sans enregistrer, ce dépôt se vide, pour ne
+// pas accumuler de fichiers orphelins sur le poste.
 test('le dépôt provisoire d’image est vidé quand le formulaire se ferme sans avoir enregistré la fiche', async () => {
   const p = await panneau();
   await p._recepteur({
@@ -445,16 +427,16 @@ test('le dépôt provisoire d’image est vidé quand le formulaire se ferme san
   const depotAvantFermeture = kirby.imageProvisoire('carte-jamais-enregistree');
   assert.ok(depotAvantFermeture, 'l’image n’a pas été mise de côté : rien à vider ne prouverait rien');
 
-  // Fermeture sans enregistrer : la fiche jamais sauvegardée n'a donc jamais réclamé son image.
+  // Fermeture sans enregistrer : la fiche n'a jamais réclamé son image.
   await p._recepteur({ type: 'retourArticle', modifie: false, ressources: [], rubriques: [] });
 
   assert.strictEqual(kirby.imageProvisoire('carte-jamais-enregistree'), null,
     'le dépôt provisoire aurait dû être vidé à la fermeture du formulaire');
 });
 
-// Le test des fabriques plus bas leur passe la langue lui-même : celui-ci prend ce que l'hôte
-// envoie vraiment. Interface allemande sur un numéro de la Revue (fr) : les noms de champs,
-// de types et de rubriques suivent l'interface, comme les boutons.
+// Le test des fabriques, plus bas, passe la langue lui-même ; celui-ci prend ce que l'hôte
+// envoie. Interface allemande sur un numéro de la Revue (fr) : les noms de champs, de types
+// et de rubriques suivent l'interface, comme les boutons.
 test('ACTUALITÉ : interface allemande sur un numéro français, le formulaire servi est en allemand', async () => {
   process.env.SZH_LANGUE = 'de';
   try {
@@ -475,12 +457,12 @@ test('ACTUALITÉ : interface allemande sur un numéro français, le formulaire s
 
 // ---- szh.ouvrirActualite : ouverture sur un onglet, bascule d'un panneau déjà ouvert ----
 //
-// Le panneau est fermé à ce point du fichier (le test précédent l'a refermé par
-// retourArticle) : un terrain propre pour vérifier l'ouverture initiale, PUIS la bascule
-// d'un panneau qui reste ouvert d'un test à l'autre.
+// Le panneau est fermé à ce point du fichier (refermé par retourArticle au test précédent) :
+// on vérifie l'ouverture initiale, puis la bascule d'un panneau qui reste ouvert d'un test à
+// l'autre.
 test('szh.ouvrirActualite : ouvre le formulaire directement sur l’onglet demandé', async () => {
-  // panneaux n'oublie jamais un panneau (même disposé) : ce que prouve « un panneau neuf »,
-  // c'est que la longueur grandit — exactement le contrat du test « retour » plus haut.
+  // HOTE.panneaux garde aussi les panneaux fermés : un panneau neuf se voit à la longueur qui
+  // grandit, comme dans le test « retour » plus haut.
   const avant = HOTE.panneaux.length;
 
   await HOTE.executer('szh.ouvrirActualite', 'reservoir');
@@ -521,7 +503,7 @@ test('szh.documentation (en-tête « ACTUALITÉ ») n’impose aucune vue : pas 
 // ---- Aucun libellé français ne traîne dans le formulaire allemand ----
 const IDENTIQUES_ADMISES = new Set([
   'https://…', '–', 'DOI', 'Genre', 'Liste',
-  // Termes fédéraux et sigles, identiques dans les deux langues par nature — le contrat
+  // Termes fédéraux et sigles, identiques dans les deux langues ; le contrat
   // (pipeline/kirby/champs-documentation.json) les porte tels quels.
   'International', 'National', 'Varia', 'Motion', 'Postulat', 'Interpellation', 'Anzug',
   'Curia Vista', 'IDES', 'OpenParlData',
@@ -532,17 +514,14 @@ const CANTONS_IDENTIQUES = new Set();
 for (const c of kirby.valeursListe('canton')) {
   if (c.fr === c.de) { CANTONS_IDENTIQUES.add(c.fr); }
 }
-// Le contrat écrit « Neuenburg » côté allemand (JSON.listes.canton) là où lib/cantons.js
-// portait « Neuchâtel » des deux côtés : les deux tables ne sont plus tenues à jour
-// ensemble, et c'est le contrat qui fait foi ici — NE n'est donc plus de la liste.
+// Les cantons viennent du contrat (listes.canton), qui écrit « Neuenburg » en allemand.
 assert.deepStrictEqual([...CANTONS_IDENTIQUES].sort(),
   ['Jura', 'Tessin', 'Uri'].sort(),
   'la liste des cantons au nom identique dans les deux langues a changé : ' + [...CANTONS_IDENTIQUES].sort().join(', '));
 for (const libelle of CANTONS_IDENTIQUES) { IDENTIQUES_ADMISES.add(libelle); }
-// Idem pour les pays (liste_multiple `pays` d'un film, ISO 3166-1, 250 jetons, 23.09.2026) :
-// beaucoup de noms sont identiques en français et en allemand (« Monaco », « Pakistan »…),
-// un fait linguistique et non une traduction manquante — pas de liste figée ici (250 entrées,
-// contrairement aux 26 cantons) : on l'accepte pour toute la liste, robuste à son évolution.
+// Pays (liste_multiple `pays` d'un film, ISO 3166-1) : beaucoup de noms sont identiques en
+// français et en allemand (« Monaco », « Pakistan »…). Avec 250 entrées, on les admet tous
+// plutôt que de figer une liste.
 for (const p of kirby.valeursListe('pays')) { if (p.fr === p.de) { IDENTIQUES_ADMISES.add(p.fr); } }
 
 function libellesActualite(langue) {
@@ -601,8 +580,8 @@ test('ACTUALITÉ : les libellés suivent la langue du cockpit, pas celle du num�
 
 // ---- Traductions à faire / Réservoir / Mes orphelines : le protocole de bout en bout ----
 //
-// Ce numéro (REVUE) est en français. Une fiche écrite directement en allemand, hors de ce
-// numéro, joue le rôle d'une fiche reçue de la Zeitschrift.
+// Ce numéro (REVUE) est en français. Une fiche écrite en allemand, hors de ce numéro, joue le
+// rôle d'une fiche reçue de la Zeitschrift.
 
 test('traduire dans ce numéro : crée le fichier français, pré-rempli, rattaché à ce numéro', async () => {
   const { uuid, slug } = kirby.creerFiche(RACINE_ARBRE, 'de', 'livre',
@@ -706,21 +685,19 @@ test('charger() porte les traductions à faire, le réservoir et mes orphelines'
   assert.ok(m.reservoir.some((r) => r.titre === 'Au réservoir'), 'l’entrée du réservoir est absente de charger()');
   assert.ok(!m.reservoir.some((r) => r.titre === 'À traduire'), 'une fiche à traduire ne doit plus être dans le réservoir');
   assert.ok(m.orphelines.some((o) => o.titre === 'Mon orpheline'), 'l’orpheline est absente de charger()');
-  // reservoirNumeros liste les numéros de l'AUTRE revue en scannant l'arbre réel
-  // (kirby.listerNumeros) : ce fixture n'a pas de dossier Zeitschrift\ à côté de REVUE, donc
-  // la liste est vide ici — son contenu sur un arbre complet est éprouvé par
+  // reservoirNumeros liste les numéros de l'autre revue (kirby.listerNumeros). Ce montage n'a
+  // pas de dossier Zeitschrift\ : la liste est vide. Le cas complet est dans
   // test/js/kirby-contenu.test.js (« listerNumeros »).
   assert.ok(Array.isArray(m.reservoirNumeros));
   void uuidReservoir;
 });
 
-// ---- Bouton « Aperçu du PDF » (23.09.2026) ---------------------------------------------
+// ---- Bouton « Aperçu du PDF » ------------------------------------------------------------
 //
-// Même mécanisme que l'aperçu d'un article (extension.js#compilerPuisAfficher, lancerBuild,
-// la tâche « Aperçu / Export PDF ») — mais la Documentation n'a pas de .md source à comparer
-// à un aperçu existant : un clic recompile TOUJOURS avant d'afficher (jamais une supposition
-// d'obsolescence). L'état du bouton n'est jamais tenu par la page : il vient de l'hôte, qui
-// le lit sur l'état RÉEL (session.panneauApercuHtml()/apercuCourantSlug()) à chaque geste.
+// Même mécanisme que l'aperçu d'un article (extension.js#compilerPuisAfficher, la tâche
+// « Aperçu / Export PDF »). La Documentation n'a pas de .md à comparer à l'aperçu : un clic
+// recompile toujours avant d'afficher. L'état du bouton vient de l'hôte, qui le relit à
+// chaque action (session.panneauApercuHtml(), apercuCourantSlug()).
 const NOM_BUILD_APERCU = 'Aperçu / Export PDF';
 const tickApercu = () => new Promise((r) => setImmediate(r));
 
@@ -780,8 +757,8 @@ test('Aperçu du PDF : « Enregistrer » relance une compilation quand l’aper�
   HOTE.stub.tasks.executeTask = (t) => { appels++; return origExecute(t); };
   try {
     const p = dernierPanneauDoc();
-    // L'aperçu est déjà ouvert (test précédent) : enregistrer quelque chose doit relancer
-    // une compilation, sans qu'on l'attende (fire-and-forget côté hôte).
+    // L'aperçu est ouvert (test précédent) : enregistrer relance une compilation, que l'hôte
+    // n'attend pas.
     p.messages.length = 0;
     await p._recepteur({
       type: 'enregistrer', auto: false,
@@ -818,8 +795,8 @@ test('Aperçu du PDF : fermé « à la croix », le panneau redevenu actif redit
     await promesse;
     assert.strictEqual(p.messages.filter((m) => m.type === 'apercuEtat').pop().ouvert, true);
 
-    // L'utilisateur ferme l'aperçu lui-même (la croix de SON panneau) : rien ne le dit à
-    // la Documentation tant que son propre panneau ne redevient pas actif.
+    // L'utilisateur ferme l'aperçu par la croix de son panneau : la Documentation ne
+    // l'apprend que lorsque son propre panneau redevient actif.
     const panneauApercu = HOTE.panneauDeType('szhApercuHtml');
     assert.ok(panneauApercu, 'témoin manquant : le panneau d’aperçu aurait dû être ouvert');
     panneauApercu.dispose();

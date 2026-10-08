@@ -1,59 +1,27 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# manuscrit_regles.py — le catalogue de règles STRUCTURELLES et le moteur d'alertes du
-# nettoyeur de manuscrit (article). Contrat : docs/ARCHITECTURE-nettoyeur-manuscrit.md,
-# §7.
+# Catalogue des règles structurelles et moteur d'alertes du nettoyeur de manuscrit (voir
+# docs/ARCHITECTURE-nettoyeur-manuscrit.md).
 #
-# Les familles LEXICALES et ÉDITORIALES (langage épicène, vocabulaire du handicap, casse
-# maison, liaison et/&, citation directe, nom des éditions) vivent dans Vale — pipeline/vale/
-# (règles YAML) et pipeline/manuscrit_vale.py (le pont). Ce module ne garde que le
-# STRUCTUREL, ce qu'un motif lexical ne peut pas voir : longueurs (article, résumé, titres),
-# niveaux de titre, cohérence d'une bibliographie déjà extraite (ordre, troncature, année
-# dupliquée), accessibilité, style nominal allemand — chaque couche de règles, un seul
-# propriétaire (§7 du contrat). Voir pipeline/vale/LISEZMOI.md pour le détail.
+# Règles structurelles : ce qu'un motif lexical ne voit pas. Longueurs (article, résumé,
+# titres), niveaux de titre, forme de la bibliographie extraite, accessibilité, ordre
+# prénom-nom. Ailleurs :
+#  - règles lexicales et éditoriales (épicène, vocabulaire du handicap, casse maison, et/&,
+#    citation directe, nom des éditions) : Vale, dans pipeline/vale/ (voir
+#    pipeline/vale/LISEZMOI.md) et pipeline/manuscrit_vale.py ;
+#  - typographie : pipeline/filters/szh-typographie.lua. Ses avertissements C1 (ß) et C2
+#    (guillemets droits non appariés) sont repris tels quels par
+#    _reprendre_avertissements_typo() ;
+#  - ordre alphabétique de la bibliographie : manuscrit_biblio.verifier_ordre().
+# Media.ResolutionImage et Media.TaillePortrait ne sont pas mécanisés : le modèle riche ne
+# donne qu'une aire d'image, dont on ne peut pas tirer une résolution. Ce qui demande un
+# jugement (style, accord, contraste d'une image) ne l'est pas non plus.
 #
-# APA.OrdreAlphabetiqueBiblio n'est PAS dans ce catalogue : `manuscrit_biblio.verifier_ordre()`
-# la recouvre entièrement et fait strictement plus (nom, année ET suffixe a/b/c, sur une
-# bibliographie réellement extraite). APA.NombreAuteursListes.{Revue,Zeitschrift} (troncature
-# à 20 auteurs), APA.TroisAuteursPlus (point final de « et al. ») et APA.MemeAuteurMemeAnnee
-# (espace parasite entre l'année et sa lettre) RESTENT ici : ce sont des questions de FORME,
-# jamais une comparaison entre référence et citation, qu'aucune règle de manuscrit_biblio.py
-# ne couvre.
+# Le module ne connaît ni Word ni OpenDocument. Il reçoit un Contexte (dict JSON) et ne
+# devine pas quel paragraphe est le titre ou le résumé : l'appelant le dit.
+# Bibliothèque standard seule.
 #
-# Ce module ne connaît NI Word NI OpenDocument (§3 : « Ne sait rien de : les formats »). Il
-# reçoit un Contexte — un dict JSON simple, jamais les classes de manuscrit_modele.py — et ne
-# regarde que des chaînes et des nombres déjà extraits par l'appelant. C'est délibéré : ce
-# module ne devine JAMAIS quel paragraphe est le titre, le sous-titre ou le résumé de
-# l'article — voir le schéma du Contexte plus bas.
-#
-# stdlib seule : re, json, collections.namedtuple. Aucune dépendance nouvelle.
-#
-# ── Ce que ce module NE fait PAS, et pourquoi (§7 et §10 du contrat) ───────────────────────
-#
-# 1. AUCUNE règle de typographie (espace insécable, apostrophe, guillemets, chevrons,
-#    nombres, tiret/cadratin, statistiques APA, raccourcis clavier). C'est le travail de
-#    pipeline/filters/szh-typographie.lua, déjà écrit, déjà éprouvé. Les avertissements C1
-#    (le ß) et C2 (guillemets droits non appariés) que ce filtre émet déjà sur stderr sont
-#    REPRIS tels quels comme alertes par _reprendre_avertissements_typo() plus bas — jamais
-#    réimplémentés.
-#
-# 2. AUCUNE règle LEXICALE ou ÉDITORIALE (langage épicène, vocabulaire du handicap, casse,
-#    liaison et/&, citation directe, nom des éditions) : voir pipeline/vale/ ci-dessus.
-#
-# 3. Media.ResolutionImage et Media.TaillePortrait sont INMÉCANISABLES avec le modèle actuel :
-#    la classe Image du §4 du contrat ne porte qu'une `surface` (EMU², une AIRE) et jamais une
-#    largeur/hauteur séparées ni le nombre de pixels du fichier — impossible de calculer une
-#    résolution (px / pouce) à partir d'une aire seule sans supposer un rapport largeur/
-#    hauteur qu'on ne connaît pas. C'est un trou du modèle riche, pas de ce module.
-#
-# 4. Ce qui exige un jugement sémantique plutôt qu'un motif (accord grammatical de proximité,
-#    style passif/actif, choix d'un terme neutre vs un terme genré, contraste WCAG d'une
-#    image, cohérence argumentative...) n'est PAS mécanisé : le classer « indice » puis
-#    inventer une règle bruyante casserait le principe même du §7 (« le volume d'alertes est
-#    un défaut »). Chaque renoncement de ce genre est listé dans le rapport de chantier, avec
-#    sa raison précise — jamais juste tu.
-#
-# ── Le schéma du Contexte (JSON reçu par --diagnostiquer, sur stdin) ───────────────────────
+# ── Contexte (JSON reçu par --diagnostiquer, sur stdin) ────────────────────────────────────
 #
 #   {
 #     "produit": "revue" | "zeitschrift",
@@ -76,45 +44,31 @@
 #     ]
 #   }
 #
-# `langue` : la CLI passera des codes courts (fr/de) après le lot en cours, mais ce module
-# reste robuste à une sous-étiquette longue (fr-CH, de-CH) — voir _langue_courte() plus bas.
-# `regle.langue`, lui, est TOUJOURS court ('fr', 'de', '') : c'est la comparaison qui
-# normalise le côté Contexte, jamais le côté Regle.
+# `langue` : seule la sous-étiquette primaire compte (fr-CH → fr), voir _langue_courte().
+# `regle.langue` est toujours court ('fr', 'de' ou '').
 #
-# `role` sur un paragraphe : '' (corps, valeur par défaut), 'titre', 'sous_titre', 'resume',
-# 'auteurs', 'mots_cles', 'bibliographie'. AUCUNE règle de ce module ne déduit ce rôle depuis
-# le texte ou le style — c'est à l'appelant de le fournir. Un rôle absent équivaut à '' : le
-# paragraphe compte comme corps, jamais comme titre/sous-titre/résumé/auteurs/mots-clés par
-# défaut.
+# `role` d'un paragraphe : '' (corps, par défaut), 'titre', 'sous_titre', 'resume',
+# 'auteurs', 'mots_cles', 'bibliographie'. Fourni par l'appelant ; absent, il vaut ''.
 #
-# `niveau_retenu` reprend tel quel le champ de même nom rempli par
-# manuscrit_modele.classer_titres() (0 = corps, 1..3 = titre). `bibliographie[i].texte` sert
-# UNIQUEMENT à repérer une troncature déjà posée (« … » ou « ... ») — jamais à autre chose.
+# `niveau_retenu` : celui de manuscrit_modele.classer_titres() (0 = corps, 1 à 3 = titre).
+# `bibliographie[i].texte` ne sert qu'à repérer une troncature déjà posée (« … » ou « ... »).
 #
-# `auteurs` (§6.2 du contrat de lot D, CONTRAT-noms.md — §4.4 étendu par le superviseur le
-# 22.09.2026) : une fiche par auteur·e reconnu·e par manuscrit_entete.py — en cas B
-# seulement ; cas A (aucune en-tête reconnue) : liste vide, jamais devinée. `ordre_confiance`
-# reprend telle quelle une valeur de manuscrit_noms.CONFIANCE
-# ('certaine'|'probable'|'propagee'|'defaut') ; `ordre_motif`, la phrase française du motif
-# produit par manuscrit_noms.trancher() — JAMAIS réécrite, jamais analysée non plus (voir
-# `ordre_conflit` ci-dessous) ; `ordre_conflit`, un booléen qui reprend TEL QUEL le `conflit`
-# de manuscrit_noms.trancher() : True seulement quand deux signaux de même poids se
-# contredisent, toujours False sinon (y compris quand `ordre_confiance == 'defaut'` faute
-# d'indice — les deux cas ne se confondent QUE via ce champ, jamais via le texte du motif) ;
-# `texte_source`, le segment de byline tel que tapé (« Guilley Edith »), déjà présent sur
-# toute fiche d'auteur depuis l'origine du module en-tête. Ce champ voyage comme une DONNÉE,
-# jamais reconstruit en inspectant `ordre_motif` (une reformulation du motif, fréquente dans
-# ce dépôt, romprait alors la distinction en silence, sans qu'aucun test ne rougisse) — voir
-# _auteur_en_conflit() plus bas.
+# `auteurs` : une fiche par autrice ou auteur reconnu par manuscrit_entete.py, en cas B
+# seulement (liste vide en cas A).
+#  - `ordre_confiance` : une valeur de manuscrit_noms.CONFIANCE ;
+#  - `ordre_motif` : la phrase de manuscrit_noms.trancher(), reprise sans modification ;
+#  - `ordre_conflit` : le `conflit` de manuscrit_noms.trancher(), vrai quand deux signaux de
+#    même poids se contredisent. C'est ce booléen, et non le texte du motif, qui distingue
+#    un conflit d'une absence d'indice ;
+#  - `texte_source` : le segment tel que tapé (« Guilley Edith »).
 #
-# ── La sortie d'une alerte (§7 du contrat, champs INCHANGÉS) ───────────────────────────────
+# ── Sortie : une alerte ────────────────────────────────────────────────────────────────────
 #
 #   {"rule": str, "severity": "error"|"warning"|"suggestion", "action": "fix"|"track"|
 #    "comment"|"report", "para": int|None, "span": [int,int]|None, "found": str|None,
 #    "suggested": str|None, "message": str}
 #
-# `chapitre` et `famille` ne sont PAS des champs d'alerte (le brief liste exactement 8 champs) —
-# ils se retrouvent en cherchant la règle par `rule` dans CATALOGUE.
+# `chapitre` et `famille` se retrouvent en cherchant `rule` dans CATALOGUE.
 
 import json
 import re
@@ -122,62 +76,50 @@ import sys
 from collections import namedtuple
 
 # ---------------------------------------------------------------------------------
-# Seuils — TOUT nombre magique vit ici, avec sa provenance dans le fichier d'extraction
-# (colonne « Seuils chiffrés »). La phase 2 de validation les fera bouger ; ils doivent
-# bouger en un seul endroit (§11 du contrat).
+# Seuils, tirés des consignes de rédaction de la Revue et de la Zeitschrift. Tous vivent ici.
 
-# Forme.LongueurArticle : identique dans les deux documents, mais le PÉRIMÈTRE diffère —
-# voir _signes_article_revue()/_signes_article_zeitschrift() : l'allemand inclut le résumé
-# dans ce total, le français le traite à part (sa propre fourchette, ci-dessous). Les rôles
-# 'titre', 'sous_titre', 'auteurs' et 'mots_cles' sont TOUJOURS hors du compte, des deux
-# côtés — c'est l'effet du filtre par ALLOWLIST de _signes_par_role() : seuls les rôles
-# explicitement nommés dans le tuple entrent dans le total, tout le reste (y compris un rôle
-# qui n'existe pas encore) en est exclu par construction, jamais par un oubli à maintenir ici.
+# Forme.LongueurArticle : même plafond, périmètre différent. La Zeitschrift compte le résumé,
+# la Revue non. Seuls les rôles nommés dans l'appel à _signes_par_role() entrent dans le
+# total : titre, sous-titre, auteurs et mots-clés en sont exclus.
 LONGUEUR_ARTICLE_MAX = 18000
 
-# Forme.LongueurResume : fourchette AVEC minimum en français, plafond SEUL en allemand.
+# Forme.LongueurResume : minimum et maximum en français, maximum seul en allemand.
 RESUME_MIN_REVUE = 400
 RESUME_MAX_REVUE = 600
 RESUME_MAX_ZEITSCHRIFT = 700
 
-# Forme.LongueurTitre / LongueurSousTitre / LongueurTitreChapitre : chiffrés UNIQUEMENT côté
-# allemand (Checkliste) — le français reste qualitatif (« court et représentatif »), donc
-# humain, jamais mécanisé ici pour la Revue.
+# Forme.LongueurTitre, LongueurSousTitre, LongueurTitreChapitre : chiffrées seulement par la
+# Checkliste allemande. La Revue demande un titre « court et représentatif », sans chiffre.
 TITRE_MAX_ZEITSCHRIFT = 100
 SOUS_TITRE_MAX_ZEITSCHRIFT = 120
 TITRE_CHAPITRE_MAX_ZEITSCHRIFT = 80
 
-# APA.NombreAuteursListes : identique (jusqu'à 20 nommés) ; au-delà, seul le français précise
-# la procédure de troncature (19 premiers + « … » + dernier) — l'allemand ne dit rien, d'où
-# la règle « signal » côté zeitschrift, qui ne peut que renvoyer à une décision humaine.
+# APA.NombreAuteursListes : 20 auteurs nommés au plus. Au-delà, la Revue prescrit la
+# troncature (19 premiers, « … », dernier) ; la Zeitschrift ne dit rien, d'où une simple
+# suggestion à trancher à la main.
 NB_AUTEURS_TRONCATURE = 20
 
-# Forme.StyleNominal.Zeitschrift (nominalisations -ung/-heit/-keit par paragraphe) : RETIRÉE
-# le 29.09.2026, sur décision de Robin — un indice de style jugé inutile par la rédaction, qui
-# commentait presque chaque paragraphe allemand. Ne pas la réintroduire sans sa demande.
+# Pas de règle de style nominal allemand (-ung/-heit/-keit) : elle commentait presque chaque
+# paragraphe sans aider la rédaction.
 
 
 # ---------------------------------------------------------------------------------
-# Une règle est une DONNÉE, pas une fonction (§7, forme imposée) : `detecter` est le seul
-# champ appelable, et il porte la signature UNIQUE `detecter(contexte) -> [constat, ...]`,
-# quelle que soit la nature de la règle (motif dans un paragraphe, seuil sur tout le
-# document, cohérence d'une bibliographie...) — c'est ce qui permet à evaluer() de traiter
-# tout le catalogue par une seule boucle, sans distinguer les familles.
+# Une règle est une donnée. Son seul champ appelable, `detecter(contexte) -> [constat, ...]`,
+# a la même signature pour toutes les règles : evaluer() parcourt le catalogue en une boucle.
 Regle = namedtuple('Regle', ['id', 'famille', 'langue', 'produit', 'severite', 'action',
                               'chapitre', 'detecter', 'message_fr', 'message_de'])
 
 
 # ---------------------------------------------------------------------------------
-# Langue — la sous-étiquette PRIMAIRE seule compte (fr de fr-CH, de de de-CH). `regle.langue`
-# est toujours courte ; c'est le côté Contexte qu'on normalise, jamais l'inverse.
+# Langue : seule la sous-étiquette primaire compte (fr-CH → fr).
 
 def _langue_courte(langue):
     return (langue or '').split('-')[0].strip().lower()
 
 
 # ---------------------------------------------------------------------------------
-# Accès au Contexte — jamais direct : un champ manquant rend toujours '' / [] / 0, jamais
-# une exception. Un Contexte incomplet doit produire MOINS d'alertes, jamais planter.
+# Accès au Contexte : un champ manquant rend '' ou [], sans exception. Un Contexte incomplet
+# produit moins d'alertes.
 
 def _paragraphes(contexte):
     return contexte.get('paragraphes') or []
@@ -208,12 +150,11 @@ def _signes_par_role(contexte, roles):
 
 
 # ---------------------------------------------------------------------------------
-# Forme — longueurs. Chaque seuil est comparé à un périmètre de rôles explicite ; voir la
-# note en tête de fichier sur la divergence FR/DE du périmètre de l'article.
+# Forme : longueurs. Chaque seuil porte sur une liste de rôles explicite.
 
 def _detecter_longueur_article_revue(contexte):
-    # Revue (Essentiel en bref / 1 Aspects formels) : « 18 000 signes, références
-    # bibliographiques et espaces compris » — le résumé n'est PAS mentionné, donc exclu.
+    # Revue : « 18 000 signes, références bibliographiques et espaces compris », sans le
+    # résumé.
     total = _signes_par_role(contexte, ('', 'corps', 'bibliographie'))
     if total > LONGUEUR_ARTICLE_MAX:
         return [{'para': None, 'span': None, 'found': '%d signes' % total,
@@ -223,8 +164,7 @@ def _detecter_longueur_article_revue(contexte):
 
 
 def _detecter_longueur_article_zeitschrift(contexte):
-    # Zeitschrift (Checkliste) : « max. 18 000 signes, espaces, résumé et bibliographie
-    # compris » — le résumé entre explicitement dans ce total, à la différence du français.
+    # Zeitschrift : 18 000 signes au plus, espaces, résumé et bibliographie compris.
     total = _signes_par_role(contexte, ('', 'corps', 'bibliographie', 'resume'))
     if total > LONGUEUR_ARTICLE_MAX:
         return [{'para': None, 'span': None, 'found': '%d Zeichen' % total,
@@ -236,7 +176,7 @@ def _detecter_longueur_article_zeitschrift(contexte):
 def _detecter_longueur_resume_revue(contexte):
     total = _signes_par_role(contexte, ('resume',))
     if total == 0:
-        return []  # aucun paragraphe étiqueté 'resume' : rien à juger, jamais deviné
+        return []  # aucun paragraphe de rôle 'resume'
     if total < RESUME_MIN_REVUE or total > RESUME_MAX_REVUE:
         return [{'para': None, 'span': None, 'found': '%d signes' % total,
                  'suggested': 'entre %d et %d signes' % (RESUME_MIN_REVUE, RESUME_MAX_REVUE)}]
@@ -274,8 +214,8 @@ def _detecter_longueur_sous_titre_zeitschrift(contexte):
 
 
 def _detecter_longueur_titre_chapitre_zeitschrift(contexte):
-    # UNE alerte par document (un manuscrit en comptait jusqu'à 44) : le nombre d'intertitres
-    # trop longs, la limite, et le premier, sur lequel l'alerte est ancrée.
+    # Une seule alerte par document : le nombre d'intertitres trop longs, la limite, et le
+    # premier, sur lequel l'alerte est ancrée.
     trop_longs = [p for p in _paragraphes(contexte)
                   if (p.get('niveau_retenu') or 0) in (1, 2, 3)
                   and len(p.get('texte') or '') > TITRE_CHAPITRE_MAX_ZEITSCHRIFT]
@@ -292,15 +232,8 @@ def _detecter_longueur_titre_chapitre_zeitschrift(contexte):
 
 
 # ---------------------------------------------------------------------------------
-# Structure — un saut de niveau de titre (identique FR/DE, 1.1 Mise en page / Checkliste).
-#
-# ⚠ Révision du 19.09.2026 : l'ancienne version signalait un `niveau_retenu > 3`, un cas
-# QUI NE PEUT PAS ARRIVER — manuscrit_modele.classer_titres() borne déjà `niveau_retenu` à
-# 0..3 par construction (§4 du contrat). Ce contrôle était donc du code mort, qui ne pouvait
-# jamais s'allumer. Ce qui EST un vrai problème structurel, et que celui-ci ne voyait pas :
-# un document qui passe directement d'un titre de niveau 1 à un titre de niveau 3, sans
-# jamais poser de niveau 2 entre les deux — la table des matières en devient trompeuse même
-# si chaque niveau prIs isolément est valide.
+# Structure : un saut de niveau de titre, par exemple un niveau 3 directement sous un niveau 1
+# (même règle en fr et en de).
 
 def _detecter_saut_niveau_titre(contexte):
     constats = []
@@ -309,8 +242,7 @@ def _detecter_saut_niveau_titre(contexte):
         niveau = p.get('niveau_retenu') or 0
         if niveau == 0:
             continue
-        # Le tout premier titre du document fixe son propre niveau de départ : commencer à
-        # H2 (jamais de H1) n'est pas un saut, c'est un choix éditorial valide.
+        # Le premier titre fixe le niveau de départ : commencer au niveau 2 n'est pas un saut.
         if niveau_max_vu > 0 and niveau > niveau_max_vu + 1:
             constats.append({'para': p.get('source'), 'span': None,
                               'found': 'niveau %d après %d (aucun niveau %d)'
@@ -323,14 +255,12 @@ def _detecter_saut_niveau_titre(contexte):
 
 
 # ---------------------------------------------------------------------------------
-# APA — références bibliographiques et cohérence de la liste, ce qui ne relève pas d'un
-# motif lexical mais d'une COMPARAISON entre entrées (ordre, troncature, doublon d'année).
+# APA : forme des citations et des références.
 
 RE_ANNEE = re.compile(r'(?:19|20)\d{2}')
 
-# APA.TroisAuteursPlus, restreint à ce qui est mécanisable SANS connaître le nombre réel
-# d'auteurs (donnée absente du texte courant) : la FORME de « et al. », qui doit porter son
-# point final dans les deux documents.
+# APA.TroisAuteursPlus : le nombre réel d'auteurs n'est pas dans le texte ; on vérifie
+# seulement que « et al. » porte son point.
 RE_ET_AL_INCOMPLET = re.compile(r'\bet\s*al(?!\.)\b', re.IGNORECASE)
 
 
@@ -344,7 +274,7 @@ def _detecter_et_al(contexte):
     return constats
 
 
-# APA.MemeAuteurMemeAnnee : la lettre a/b/c colle à l'année, jamais d'espace intercalée.
+# APA.MemeAuteurMemeAnnee : la lettre a, b, c colle à l'année, sans espace.
 RE_ANNEE_LETTRE_ESPACEE = re.compile(
     r'\(([A-ZÀ-Ý][\wÀ-ÿ\'-]*),\s*((?:19|20)\d{2})\s+([a-z])\)')
 
@@ -360,10 +290,8 @@ def _detecter_annee_lettre_espacee(contexte):
     return constats
 
 
-# APA.NombreAuteursListes : nécessite une bibliographie déjà extraite (nom, année, nombre
-# d'auteurs) — donnée que ce module ne devine jamais, fournie par l'appelant dans
-# contexte['bibliographie']. (APA.OrdreAlphabetiqueBiblio, qui vivait ici, est retirée depuis
-# le 21.09.2026 : pipeline/manuscrit_biblio.py la recouvre, voir l'en-tête de ce fichier.)
+# APA.NombreAuteursListes : lit la bibliographie extraite par l'appelant
+# (contexte['bibliographie']).
 
 def _detecter_nb_auteurs_revue(contexte):
     constats = []
@@ -391,24 +319,15 @@ def _detecter_nb_auteurs_zeitschrift(contexte):
 
 
 # ---------------------------------------------------------------------------------
-# Accessibilité — chapitre SANS équivalent allemand (§7 du brief). Actif en Revue, hérité en
-# `suggestion` pour la Zeitschrift : deux entrées de catalogue par prescription, jamais une
-# seule règle qui prétendrait tenir sa source des deux documents à la fois.
+# Accessibilité : prescrite par la Revue seule. La Zeitschrift en hérite en `suggestion`,
+# par une entrée de catalogue distincte qui dit d'où vient la règle.
 
 def _detecter_alt_manquant(contexte):
     constats = []
     for img in _images(contexte):
         if not (img.get('alt') or '').strip():
-            # `found` reste None (audit du 22.09.2026, coordinateur) : un texte alternatif
-            # ABSENT n'a, par définition, aucun passage réel à citer — l'ancien placeholder
-            # « texte alternatif absent » n'apparaît jamais dans le texte écrit et ne fait
-            # QUE simuler une recherche vouée à l'échec (mesuré sur le corpus réel : 30/30
-            # occurrences finissaient en repli, certaines sur un paragraphe SANS AUCUN
-            # rapport avec l'image, faute d'un `para` ancrable — un bloc figure/tableau n'a
-            # pas de correspondance dédiée, §3 du contrat). `manuscrit_annoter.py` pose alors
-            # honnêtement un commentaire sur le paragraphe voisin (ou le rapport si même
-            # celui-là n'est pas ancrable), au lieu de chercher une phrase qui n'existera
-            # jamais.
+            # `found` reste None : il n'y a aucun texte à citer. manuscrit_annoter.py commente
+            # alors le paragraphe voisin, ou renvoie l'alerte au rapport.
             constats.append({'para': img.get('source'), 'span': None,
                               'found': None, 'suggested': None})
     return constats
@@ -425,37 +344,23 @@ def _detecter_tableau_fusionne(contexte):
 
 
 # ---------------------------------------------------------------------------------
-# Entête — ordre prénom/nom (§6.3 du contrat de lot D, CONTRAT-noms.md). Aucune des deux
-# règles ci-dessous ne vient d'un chapitre des deux Redaktionsrichtlinien (c'est un contrôle
-# TECHNIQUE sur l'attribution automatique, pas éditorial) — voir le `chapitre` posé au
-# catalogue, au même principe que A11y.TexteAlternatif.ZeitschriftHeritee.
-#
-# Volume d'alertes (§7 du contrat d'architecture, « le volume d'alertes est un défaut ») :
-# une fiche `certaine`/`probable`/`propagee` ne lève RIEN — seule `defaut` (l'ordre a été
-# posé par pure convention, faute de mieux) est concernée, scindée en DEUX cas :
-#   - `defaut` PAR CONFLIT (deux signaux contraires de même poids) -> Entete.OrdreNomIncertain,
-#     UNE alerte PAR FICHE : un vrai doute mérite d'être vu individuellement ;
-#   - `defaut` FAUTE D'INDICE (rien à trancher) -> Entete.OrdreNomParDefaut, UNE SEULE alerte
-#     pour tout le document (§7 : cent alertes identiques rendraient l'outil détestable,
-#     alors qu'une phrase qui nomme les N fiches concernées suffit à la rédaction).
+# En-tête : ordre prénom-nom. Contrôle technique de l'attribution automatique, sans source
+# dans les consignes de rédaction. Seules les fiches de confiance `defaut` sont signalées :
+#   - par conflit (deux signaux contraires de même poids) : Entete.OrdreNomIncertain, une
+#     alerte par fiche ;
+#   - faute d'indice : Entete.OrdreNomParDefaut, une seule alerte pour le document, qui nomme
+#     les fiches concernées.
 
 def _auteur_en_conflit(auteur):
-    """Un ordre `defaut` PAR CONFLIT se lit sur le champ `ordre_conflit` — une DONNÉE que
-    manuscrit_entete.py recopie telle quelle depuis le `conflit` de manuscrit_noms.
-    trancher() (voir la note sur `auteurs` en tête de fichier), jamais une inspection du
-    texte de `ordre_motif` : un motif reformulé ne doit jamais faire taire cette règle en
-    silence. `ordre_confiance == 'defaut'` reste vérifié en plus, par prudence défensive
-    (un Contexte mal formé qui poserait `ordre_conflit: true` sur une fiche par ailleurs
-    tranchée ne doit jamais lever cette alerte — §2 de la maison : « en cas de doute,
-    rien »)."""
+    """Vrai pour un ordre `defaut` dû à un conflit. Se lit sur `ordre_conflit`, et non dans
+    le texte de `ordre_motif`, qu'une reformulation changerait. `ordre_confiance` est vérifié
+    aussi, au cas où une fiche tranchée porterait `ordre_conflit`."""
     return auteur.get('ordre_confiance') == 'defaut' and bool(auteur.get('ordre_conflit'))
 
 
 def _nom_lisible_auteur(auteur):
-    """`texte_source` (le segment tel que tapé, « Guilley Edith ») quand il est fourni —
-    c'est lui que la rédaction reconnaît dans son manuscrit, pas la fiche déjà découpée.
-    Repli sur prénom+nom si `texte_source` manque (Contexte incomplet, jamais une
-    exception)."""
+    """Le segment tel que tapé (`texte_source`, « Guilley Edith »), que la rédaction
+    reconnaît dans son manuscrit ; à défaut, prénom et nom."""
     texte_source = (auteur.get('texte_source') or '').strip()
     if texte_source:
         return texte_source
@@ -472,7 +377,7 @@ def _detecter_ordre_nom_incertain(contexte):
 
 
 def _detecter_ordre_nom_par_defaut(contexte):
-    # Agrégée (voir la note plus haut) : une seule entrée de `found`, jamais une par fiche.
+    # Une seule alerte pour toutes les fiches.
     noms = [_nom_lisible_auteur(a) for a in _auteurs(contexte)
             if a.get('ordre_confiance') == 'defaut' and not _auteur_en_conflit(a)]
     noms = [n for n in noms if n]
@@ -483,10 +388,8 @@ def _detecter_ordre_nom_par_defaut(contexte):
 
 
 # ---------------------------------------------------------------------------------
-# LE CATALOGUE. Chaque `chapitre` recopie la colonne du fichier d'extraction (elle-même
-# recopiée des PDF) — c'est la référence qui permet à la rédaction de contester une alerte.
-# Les familles lexicales (Epicene, Vocabulaire, Casse, la liaison et/& et la citation
-# directe) vivent maintenant dans pipeline/vale/ — voir l'en-tête de ce fichier.
+# Catalogue. `chapitre` renvoie au passage des consignes de rédaction qui fonde la règle,
+# pour que la rédaction puisse contester une alerte.
 
 CATALOGUE = [
     Regle('Forme.LongueurArticle.Revue', 'Forme', 'fr', 'revue', 'error', 'report',
@@ -573,8 +476,7 @@ CATALOGUE_PAR_ID = {r.id: r for r in CATALOGUE}
 
 
 # ---------------------------------------------------------------------------------
-# Reprise des avertissements du filtre typographique — JAMAIS réimplémentés (§6/§7 du
-# contrat), seulement redécoupés depuis la ligne stderr que szh-typographie.lua émet déjà :
+# Reprise des avertissements de szh-typographie.lua, lus sur sa sortie d'erreur :
 #   [typo-avertissement] <code> | article « <slug> » | <phrase fr> | [de] <phrase de>
 
 RE_TYPO_AVERTISSEMENT = re.compile(
@@ -596,11 +498,9 @@ def _reprendre_avertissements_typo(contexte, langue_courte):
 
 
 # ---------------------------------------------------------------------------------
-# Le moteur. Une règle ne s'exécute que si son `produit`/sa `langue` correspond au Contexte
-# (chaîne vide = les deux) — c'est LE mécanisme qui rend le sens d'une règle réversible entre
-# les deux revues sans jamais faire tourner un motif hors de son produit. La comparaison de
-# langue se fait sur la SOUS-ÉTIQUETTE PRIMAIRE du Contexte (fr-CH -> fr) : `regle.langue`
-# est toujours court, c'est le seul côté qui a besoin d'être normalisé.
+# Moteur. Une règle ne s'exécute que si son `produit` et sa `langue` correspondent au
+# Contexte (chaîne vide : les deux). C'est ce qui permet à une règle de valoir pour une revue
+# et pas pour l'autre.
 
 def evaluer(contexte):
     produit = contexte.get('produit') or ''
@@ -614,13 +514,8 @@ def evaluer(contexte):
         for constat in (regle.detecter(contexte) or []):
             gabarit_message = regle.message_de if (langue_courte == 'de' and regle.message_de) \
                 else regle.message_fr
-            # dict(constat) plutôt que les deux seules clés found/suggested (comme avant ce
-            # lot) : toutes les règles existantes ne posent QUE para/span/found/suggested
-            # dans leur constat (inchangé, donc aucune régression), mais
-            # Entete.OrdreNomParDefaut a besoin d'un %(n_fiches)d en plus de %(found)s pour
-            # dire COMBIEN de fiches sans jamais lever une alerte par fiche (§7 : « le volume
-            # d'alertes est un défaut ») — une clé de gabarit non utilisée par une autre
-            # règle ne la gêne jamais, le % de Python ignore les clés surnuméraires du dict.
+            # Tout le constat est passé au gabarit du message : certaines règles y ajoutent
+            # des clés (%(n_fiches)d, %(limite)d…). L'opérateur % ignore les clés en trop.
             champs = dict(constat)
             try:
                 message = gabarit_message % champs
@@ -641,9 +536,8 @@ def evaluer(contexte):
 
 
 # ---------------------------------------------------------------------------------
-# Groupement par famille et compte par règle — §7/§10 du contrat : « le volume d'alertes est
-# un défaut ». Au-delà de dix occurrences d'une même règle, on garde les dix premières et le
-# total, jamais la liste complète.
+# Groupement par famille et compte par règle. Pour chaque règle, on garde le total et les
+# dix premières alertes.
 
 MAX_EXEMPLES_PAR_REGLE = 10
 
@@ -667,10 +561,9 @@ def grouper(alertes):
 
 
 # ---------------------------------------------------------------------------------
-# CLI de diagnostic — même patron que manuscrit_modele.py --diagnostic : JSON sur stdin,
-# JSON ASCII pur sur stdout (ensure_ascii=True, console Windows non garantie en UTF-8).
-# `--catalogue` sert aux tests qui vérifient le catalogue lui-même (référence de chapitre,
-# comptage par famille/produit) sans avoir à fabriquer un Contexte.
+# CLI de diagnostic, comme manuscrit_modele.py : JSON sur stdin, JSON ASCII sur stdout (la
+# console Windows n'est pas forcément en UTF-8). `--catalogue` liste le catalogue, pour les
+# tests qui le vérifient sans fabriquer de Contexte.
 
 def principal(argv):
     args = argv[1:]
@@ -695,8 +588,7 @@ def principal(argv):
     try:
         sys.stdin.reconfigure(encoding='utf-8')
         sys.stdout.reconfigure(encoding='utf-8')
-        # stderr aussi : le message d'erreur JSON ci-dessous porte un accent, et la
-        # console Windows (cp1252) plante sur un accent combinant venu du partage.
+        # stderr aussi : la console Windows (cp1252) plante sur un accent combinant.
         sys.stderr.reconfigure(encoding='utf-8')
     except Exception:
         pass

@@ -1,69 +1,53 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# manuscrit_gabarit.py — l'ÉCRIVAIN du nettoyeur de manuscrit (article) : rend un Document du
-# modèle riche (manuscrit_modele.py, §4 du contrat) en un .docx au gabarit « Pronto — modèle
-# d'article ». Contrat : docs/ARCHITECTURE-nettoyeur-manuscrit.md, §4, §5.3, §5.4, §10, §11.
+# Écrivain du nettoyeur de manuscrit : écrit un Document du modèle riche (manuscrit_modele.py)
+# dans un .docx au gabarit « Pronto — modèle d'article ». Voir
+# docs/ARCHITECTURE-nettoyeur-manuscrit.md.
 #
-# Principe non négociable du §5.3 : on part d'une COPIE du gabarit livré et on la remplit —
-# jamais un .docx fabriqué de zéro. Ce module NE TOUCHE PAS aux styles.xml, numbering.xml,
-# settings.xml, theme, en-têtes ni pieds de page du gabarit : ils sont recopiés OCTET POUR
-# OCTET dans le fichier de sortie (settings.xml, theme, en-têtes/pieds de page, seulement lus
-# pour styles.xml/numbering.xml/footnotes.xml, jamais réécrits sans raison). Seuls quelques
-# membres de l'archive sont réécrits (word/document.xml, word/_rels/document.xml.rels,
-# [Content_Types].xml, et désormais word/numbering.xml, word/footnotes.xml,
-# word/_rels/footnotes.xml.rels QUAND le document en a besoin) et de nouveaux fichiers
-# word/media/imageN.ext sont ajoutés — jamais retirés ni renommés.
+# On part d'une copie du gabarit livré, qu'on remplit. Les autres parties du gabarit
+# (styles.xml, settings.xml, thème, en-têtes et pieds de page) sont recopiées octet pour octet.
+# Sont réécrits : word/document.xml, word/_rels/document.xml.rels, [Content_Types].xml, et au
+# besoin word/numbering.xml, word/footnotes.xml et word/_rels/footnotes.xml.rels. Les images
+# s'ajoutent sous word/media/imageN.ext ; rien n'est retiré ni renommé.
 #
-# AUCUNE décision de classement ici (§3 du contrat : « manuscrit_gabarit.py ne sait rien des
-# décisions ») : `document.niveau_retenu` et `document...forme` arrivent déjà TRANCHÉS par
-# manuscrit_modele.classer_titres()/nettoyer_mise_en_forme(). Ce module ne fait que les
-# TRADUIRE en styles Word (Titre1/2/3, Corps de texte) et en runs (w:b, w:i, w:u,
-# w:vertAlign) — jamais les recalculer.
+# Le module ne décide rien : `niveau_retenu` et la mise en forme arrivent tranchés par
+# manuscrit_modele.classer_titres() et nettoyer_mise_en_forme(). Il les traduit en styles Word
+# (titres, corps de texte) et en runs (w:b, w:i, w:u, w:vertAlign).
 #
-# Repris depuis manuscrit_docx.py, PAR COPIE et non par import (ce module ne lit pas de
-# .docx, il en écrit). RE_LEGENDE vient de heritage_meta.py, comme pour docx-titres.py.
+# Certaines fonctions sont copiées de manuscrit_docx.py plutôt qu'importées (ce module écrit,
+# il ne lit pas). RE_LEGENDE vient de heritage_meta.py. Bibliothèque standard seule, sans
+# python-docx ni lxml.
 #
-# stdlib uniquement : zipfile, re, os — pas de python-docx, pas de lxml (§2 du contrat).
+# `Fragment.note` (int ou None) : identifiant de la note appelée. `Document.notes`
+# (dict[int, list[Paragraphe|Tableau]]) : contenu de chaque note. On les lit par getattr et en
+# vérifiant que `document.notes` est un dict : un objet sans ces champs passe sans note.
 #
-# `Fragment.note : int | None` — identifiant de la note appelée par ce fragment. `Document.
-# notes : dict[int, list[Paragraphe|Tableau]]` — contenu de chaque note, par identifiant. Lus
-# par `getattr(fragment, 'note', None)` et en vérifiant que `document.notes` est bien un dict
-# (jamais en dur) : un Fragment ou un Document plus ancien, sans ces champs, traverse alors
-# sans aucune note écrite plutôt que de lever une AttributeError.
+# Points à connaître :
 #
-# Pièges et décisions qui ne sont pas dans le contrat, à ne pas repayer :
-#
-# - Les deux tableaux fixes du gabarit (métadonnées, autrices et auteurs) sont recopiés
-#   VERBATIM, vides, tels que livrés : ce module ne produit que ce qui SUIT ces deux tableaux.
-# - « Toujours un paragraphe vide entre deux blocs » (§5.3/§10) ne s'applique qu'entre un bloc
-#   figure/tableau et SON VOISIN, jamais entre deux paragraphes de corps ordinaires (le risque
-#   mesuré est spécifiquement DEUX TABLEAUX qui se touchent, fondus en un seul par
-#   LibreOffice). Des paragraphes vides déjà présents dans le manuscrit, collés à un bloc, ne
-#   s'ajoutent pas au séparateur injecté — ils s'y substituent (`_separateur_requis()`, jamais
-#   deux vides consécutifs autour d'un bloc, jamais zéro).
-# - Une image DANS UNE CELLULE de tableau reste en ligne dans son paragraphe, jamais extraite
-#   en bloc figure séparé (imbriquer un tableau dans une cellule est une complexité que le
-#   corpus ne justifie pas — aucun cas mesuré).
-# - §5.4, les listes : la numérotation est reportée PAR CORRESPONDANCE, jamais par recopie du
-#   numId d'origine (qui désigne une entrée d'un numbering.xml qui n'est pas celui qu'on
-#   écrit). Une définition du gabarit est réutilisée si elle convient (`_RegistreListes`),
-#   sinon injectée, tracé ('liste_reportee') ; un format non déterminé par le lecteur reçoit
-#   le repli — puce — et la trace distingue « lu » de « deviné par défaut ».
-# - Une image d'extension non reconnue reçoit quand même un [Content_Types].xml valide
-#   (Default générique) plutôt que d'échouer ; tracé ('image-extension-inconnue').
-# - `document.notes` : chaque note appelée par un fragment du corps devient un `w:footnote`,
-#   renuméroté à partir de 1 (ou après le plus grand id déjà présent). Style de renvoi et de
-#   paragraphe de note pris dans le GABARIT s'il en définit (nom canonique anglais du style,
-#   jamais un nom localisé) ; à défaut, simple exposant + Corpsdetexte — le gabarit livré n'a
-#   ni l'un ni l'autre, ce repli est la voie normale. Une note appelée mais absente de
-#   `document.notes` reçoit un contenu vide, tracé ; une note jamais appelée n'est pas écrite.
-# - Table de correspondance : `ecrire()` rend `correspondance`, une liste de {'source':
-#   Paragraphe.source du bloc d'origine, 'sortie': indice, parmi les <w:p> enfants DIRECTS de
-#   w:body, du <w:p> qui le porte} — un couple par paragraphe de CORPS écrit comme <w:p> de
-#   premier niveau (jamais pour un bloc figure/tableau, une cellule, une note, une légende
-#   consommée ou un vide surnuméraire). `_convertir_niveau_racine()` calcule un indice RELATIF
-#   au corps qu'elle écrit ; `ecrire()` y ajoute le nombre de <w:p> qui la précèdent (les deux
-#   paragraphes vides après les tableaux fixes) pour obtenir l'indice ABSOLU.
+# - Les deux tableaux fixes du gabarit (métadonnées, autrices et auteurs) sont recopiés tels
+#   quels ; ce module écrit ce qui les suit.
+# - Un paragraphe vide sépare un bloc figure ou tableau de son voisin, pas deux paragraphes de
+#   corps : deux tableaux qui se touchent sont fusionnés par LibreOffice. Un vide déjà présent
+#   dans le manuscrit tient lieu de séparateur (`_separateur_requis()`) : jamais deux vides
+#   autour d'un bloc, jamais aucun.
+# - Une image dans une cellule de tableau reste dans son paragraphe ; elle ne devient pas un
+#   bloc figure.
+# - Listes : la numérotation est reportée par correspondance, pas en recopiant le numId
+#   d'origine, qui désigne une entrée d'un autre numbering.xml. Une définition du gabarit est
+#   réutilisée si elle convient (`_RegistreListes`), sinon ajoutée ('liste_reportee'). Un
+#   format inconnu reçoit la puce, et la trace distingue « lu » de « par défaut ».
+# - Une image d'extension inconnue reçoit un type générique dans [Content_Types].xml, tracé
+#   ('image-extension-inconnue').
+# - Chaque note appelée dans le corps devient un `w:footnote`, numéroté à partir de 1 (ou
+#   après le plus grand id existant). Les styles de renvoi et de note viennent du gabarit
+#   (par nom canonique anglais) ; le gabarit livré n'en a pas, d'où l'exposant simple et le
+#   corps de texte. Une note appelée mais absente de `document.notes` reçoit un contenu vide,
+#   tracé ; une note jamais appelée n'est pas écrite.
+# - `ecrire()` rend `correspondance` : une liste de {'source': Paragraphe.source d'origine,
+#   'sortie': indice du <w:p> parmi les enfants directs de w:body}, pour chaque paragraphe de
+#   corps écrit au premier niveau (pas pour un bloc, une cellule, une note, une légende
+#   consommée ni un vide en trop). `_convertir_niveau_racine()` calcule un indice relatif au
+#   corps ; `ecrire()` ajoute les <w:p> qui précèdent (les deux vides après les tableaux fixes).
 
 import os
 import re
@@ -77,37 +61,27 @@ import pronto_modele
 from heritage_meta import RE_LEGENDE
 
 # ---------------------------------------------------------------------------------
-# Styles du gabarit — JAMAIS un styleId codé en dur : résolus depuis word/styles.xml DU
-# GABARIT COURANT, par w:name, au début d'ecrire() (voir _StylesResolus plus bas). Depuis les
-# gabarits V4 (29.09.2026, deux fichiers FR/DE), les styleId réels ne sont PLUS Titre1/2/3,
-# Corpsdetexte : les deux gabarits ont été enregistrés par un Word allemand et portent
-# berschrift1/2/3/4 (w:name "heading 1/2/3/4"), Textkrper (w:name "Body Text") — alors que les
-# w:name, eux, restent les mêmes noms canoniques anglais des deux côtés. Coder un styleId en
-# dur romprait donc silencieusement le gabarit DE (styles introuvables -> repli permanent).
+# Styles du gabarit, résolus par w:name dans word/styles.xml du gabarit courant au début
+# d'ecrire() (voir _StylesResolus). Les styleId varient selon la langue du Word qui a
+# enregistré le gabarit (berschrift1, Textkrper…) ; les w:name restent les noms canoniques
+# anglais (« heading 1 », « Body Text »). Un styleId écrit en dur casserait donc un gabarit.
 #
-# Les constantes ci-dessous restent : elles ne sont plus QUE le REPLI documenté (mesuré sur le
-# gabarit FR tel que livré le 18.09.2026, avant la réédition en Word allemand) employé quand la
-# résolution par nom échoue — jamais une exception, toujours tracé (_StylesResolus.trace).
+# Les constantes ci-dessous ne sont qu'un repli, utilisé et tracé quand la résolution par nom
+# échoue (_StylesResolus.trace).
 _REPLI_STYLE_TITRE = {1: 'Titre1', 2: 'Titre2', 3: 'Titre3', 4: 'Titre4'}
 _REPLI_STYLE_CORPS = 'Corpsdetexte'
 _REPLI_STYLE_CLE = 'SZHCle'
-# Révision du 21.09.2026 (décision de Robin) : les métadonnées d'un bloc figure/tableau ne
-# vont plus dans un tableau enveloppe, mais dans des paragraphes de CE style, juste avant
-# l'image ou le tableau — clone de SZHCle avec une bordure ouverte (haut/gauche/droite, pas en
-# bas), ajoutée à word/styles.xml du gabarit. Les paragraphes consécutifs de ce style dessinent
-# un seul cadre : Word fusionne les bordures de paragraphes adjacents identiques — c'est cette
-# propriété du format qui rend inutile toute table enveloppe ici.
+# Les métadonnées d'un bloc figure ou tableau vont dans des paragraphes de ce style, juste
+# avant l'image ou le tableau. C'est SZHCle avec une bordure ouverte en bas. Word fusionne
+# les bordures de paragraphes voisins identiques : les paragraphes consécutifs dessinent un
+# seul cadre, sans tableau enveloppe.
 _REPLI_STYLE_CLE_ABB_TAB = 'SZHCleAbbTab'
 
-# Les styles MAISON du gabarit : (nom w:name, styleId de repli), par nom normalisé
-# (pronto_modele.normaliser_nom_style) — les deux gabarits V4 gardent ces styleId identiques à
-# eux-mêmes (mesuré : SZHCle, SZHCleAbbTab... n'ont pas bougé avec la réédition allemande), mais
-# résolus par nom quand même, comme tout le reste (jamais deux façons de faire dans ce module).
-# Un paragraphe qui porte déjà l'un d'eux — document déjà au gabarit (cas A), ou manuscrit écrit
-# dans une copie du gabarit — le GARDE : réécrit en Corps de texte, un encadré « SZH Important »
-# perdait son cadre, et un bloc « SZH Cle Abb/Tab » ses étiquettes de figure (mesuré : un
-# document déjà au gabarit sortait du nettoyeur avec ses clés en Corpsdetexte, suivies d'un
-# second jeu de clés vides).
+# Styles maison du gabarit : nom normalisé (pronto_modele.normaliser_nom_style) → (w:name,
+# styleId de repli). Résolus par nom, comme les autres. Un paragraphe qui porte déjà l'un
+# d'eux (document déjà au gabarit, ou écrit dans une copie du gabarit) le garde : en corps de
+# texte, un encadré « SZH Important » perdrait son cadre et un bloc « SZH Cle Abb/Tab » ses
+# étiquettes.
 _REPLI_STYLES_MAISON = {
     pronto_modele.normaliser_nom_style(nom): (nom, style_id) for nom, style_id in (
         ('SZH Important', 'SZHImportant'), ('SZH Hervorhebung', 'SZHHervorhebung'),
@@ -117,11 +91,9 @@ _REPLI_STYLES_MAISON = {
 
 
 class _StylesResolus:
-    """StyleId réels du gabarit COURANT, résolus UNE FOIS par ecrire() (voir son en-tête)
-    depuis word/styles.xml, par w:name — via `_styleid_par_nom()`, la même résolution déjà
-    employée pour les styles de note (_resoudre_styles_note). Une résolution manquante tombe
-    sur le repli historique (_REPLI_*) et c'est tracé dans `self.trace`, jamais une exception :
-    un style introuvable ne doit jamais interrompre l'écriture (§ en-tête du module)."""
+    """StyleId du gabarit courant, résolus une fois par ecrire() depuis word/styles.xml, par
+    w:name (_styleid_par_nom(), comme pour les styles de note). Un style introuvable prend
+    son repli (_REPLI_*), tracé dans `self.trace`, sans interrompre l'écriture."""
 
     def __init__(self, styles_xml):
         self.trace = []
@@ -137,8 +109,8 @@ class _StylesResolus:
             cle: self._resoudre(styles_xml, (nom,), repli, 'style maison « %s »' % nom)
             for cle, (nom, repli) in _REPLI_STYLES_MAISON.items()
         }
-        # Citation : le style « Quote » du gabarit (styleId Zitat dans les V4), que pandoc
-        # relit en bloc de citation à l'import. Sans lui, repli sur le corps de texte.
+        # Citation : le style « Quote » du gabarit, que pandoc relit en bloc de citation à
+        # l'import. Sans lui, repli sur le corps de texte.
         self.citation = self._resoudre(styles_xml, ('Quote',), self.corps, 'citation')
 
     def _resoudre(self, styles_xml, noms, repli, motif):
@@ -153,16 +125,10 @@ class _StylesResolus:
         return repli
 
 
-# Étiquettes des blocs figure/tableau, PAR LANGUE — mêmes libellés que chaque gabarit lui-même
-# (FR « Légende / Texte alternatif / Copyright / Source / Note », DE « Beschriftung /
-# Alternativtext / Copyright / Quelle / Notiz » ; le FR écrivait « Crédit » avant le
-# 30.09.2026, forme qui reste reconnue à la lecture), dans l'ORDRE où le gabarit les pose
-# — CANON_FIGURE de pronto_modele.py n'impose aucun ordre à la LECTURE (identifier_cle()
-# compare chaque étiquette indépendamment), mais reproduire l'ordre du gabarit rend une sortie
-# que Robin reconnaît à l'œil. `ecrire(..., langue=...)` choisit le jeu à écrire ; la
-# RECONNAISSANCE d'une clé déjà tapée par l'autrice ou l'auteur (_lire_cle plus bas), elle,
-# reste indépendante de la langue : identifier_cle() contre CANON_FIGURE reconnaît déjà les
-# deux jeux d'étiquettes à la fois.
+# Étiquettes des blocs figure et tableau, par langue, avec les libellés et dans l'ordre de
+# chaque gabarit. La lecture n'impose pas d'ordre et reconnaît les deux langues
+# (identifier_cle() contre CANON_FIGURE de pronto_modele.py), ainsi que l'ancienne étiquette
+# « Crédit ». `ecrire(..., langue=...)` choisit le jeu à écrire.
 _ORDRE_CHAMPS_BLOC = ('legende', 'alt', 'credit', 'source', 'note')
 CHAMPS_BLOC = {
     'fr': tuple(zip(_ORDRE_CHAMPS_BLOC,
@@ -171,28 +137,22 @@ CHAMPS_BLOC = {
                     ('Beschriftung', 'Alternativtext', 'Copyright', 'Quelle', 'Notiz'))),
 }
 
-# Séparateur entre l'étiquette et sa valeur, PAR LANGUE — celui que chaque gabarit écrit
-# lui-même dans ses paragraphes SZH Cle Abb/Tab (mesuré dans document.xml le 30.09.2026) : le
-# FR met l'insécable U+00A0 devant le deux-points (« Légende : », E2), le DE le colle à
-# l'étiquette (« Beschriftung: »). La lecture reconnaît les deux formes et l'espace ordinaire.
+# Séparateur entre étiquette et valeur, comme dans chaque gabarit : espace insécable U+00A0
+# avant le deux-points en français, rien en allemand (« Beschriftung: »). La lecture
+# reconnaît les deux, et l'espace ordinaire.
 _SEPARATEUR_CLE = {'fr': '\u00a0: ', 'de': ': '}
 
-# Position de la clé « Texte alternatif : » parmi les paragraphes de clé d'un bloc
-# (ajout du 22.09.2026, ancrage de A11y.TexteAlternatif.* dans `correspondance`, voir
-# _convertir_niveau_racine) — calculée depuis _ORDRE_CHAMPS_BLOC (le même pour les deux
-# langues, seuls les LIBELLÉS changent), jamais un « 1 » écrit en dur : un futur
-# réordonnancement ne peut alors pas désaccorder les deux silencieusement.
+# Position de la clé « Texte alternatif : » parmi les clés d'un bloc, où s'ancrent les
+# alertes A11y.TexteAlternatif.* (voir _convertir_niveau_racine). Calculée depuis
+# _ORDRE_CHAMPS_BLOC pour suivre un éventuel réordonnancement.
 _INDICE_CLE_ALT = _ORDRE_CHAMPS_BLOC.index('alt')
 
-# Largeur par défaut d'un tableau de contenu d'un bloc tableau (le tableau du manuscrit
-# lui-même — depuis le 21.09.2026, posé directement au premier niveau, plus jamais imbriqué
-# dans une cellule d'enveloppe) ou d'un tableau imbriqué ailleurs (note, cellule) — mesurée sur
-# le bloc figure d'exemple du gabarit livré (l'ancienne largeur de l'enveloppe, w:tblW
-# w:w="8220", moins une marge raisonnable).
+# Largeur par défaut du tableau d'un bloc tableau, ou d'un tableau dans une note ou une
+# cellule : la largeur du bloc d'exemple du gabarit (w:tblW 8220) moins une marge.
 LARGEUR_TABLEAU_INTERNE_DXA = 8000
 
-# Bordures/marges du bloc figure/tableau — copiées telles quelles depuis le bloc figure
-# d'exemple du gabarit (mesuré 18.09.2026) : gris clair BFBFBF, 4/8 pt, marges 57/85 dxa.
+# Bordures et marges de tableau, reprises du bloc figure d'exemple du gabarit : gris clair
+# BFBFBF, 4/8 pt, marges 57/85 dxa.
 _BLOC_TBLPR = (
     '<w:tblPr><w:tblW w:w="%d" w:type="dxa"/>'
     '<w:tblBorders>'
@@ -213,17 +173,16 @@ _BLOC_TBLPR = (
 
 PARAGRAPHE_VIDE = '<w:p/>'
 
-# Extension -> type MIME reconnu par pandoc/Word pour un [Content_Types].xml valide. Une
-# extension absente de cette table reçoit tout de même une entrée (décision n°5 de l'en-tête)
-# mais avec un type générique, et le défaut est tracé.
+# Extension → type MIME pour [Content_Types].xml. Une extension absente reçoit un type
+# générique, tracé (voir l'en-tête).
 CONTENU_TYPES_IMAGE = {
     'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'gif': 'image/gif',
     'bmp': 'image/bmp', 'tif': 'image/tiff', 'tiff': 'image/tiff', 'emf': 'image/x-emf',
     'wmf': 'image/x-wmf', 'svg': 'image/svg+xml',
 }
 
-# Extent (wp:extent) par défaut quand une image n'a jamais déclaré ni cx/cy ni pixels ni
-# surface (0 partout) — une image raisonnable, ~8x6cm en EMU (914400 EMU/pouce).
+# wp:extent par défaut d'une image sans cx/cy, pixels ni surface : environ 8 × 6 cm, en EMU
+# (914400 EMU par pouce).
 _EXTENT_DEFAUT = (2880000, 2160000)
 
 REL_IMAGE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image'
@@ -233,36 +192,27 @@ REL_FOOTNOTES = 'http://schemas.openxmlformats.org/officeDocument/2006/relations
 
 
 def _echapper(t):
-    """Échappement XML minimal pour du contenu texte (jamais un attribut) : & < > seuls, les
-    guillemets n'ont pas besoin d'être échappés hors attribut."""
+    """Échappement XML d'un contenu texte (pas d'un attribut) : & < > seulement."""
     return (t or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
 
 def _echapper_attribut(t):
-    """Échappement XML pour une valeur D'ATTRIBUT : & < > ET le guillemet double, qui termine
-    l'attribut prématurément sinon. Défaut mesuré : un lien portant un '&' non échappé
-    ('https://doi.org/10.1000/x?q=a&r=b') ou un texte alternatif portant un guillemet droit
-    ('Schéma "A"') produisaient un word/document.xml ou un word/_rels/document.xml.rels
-    malformé — Word refuse le fichier, mais rien dans la chaîne d'écriture ne le détectait
-    (code de sortie 0 malgré tout). `_echapper` seul ne suffit PAS ici : il ne touche pas au
-    guillemet, qui est le caractère qui compte dans un attribut."""
+    """Échappement XML d'une valeur d'attribut : & < > et le guillemet double, qui sinon
+    fermerait l'attribut. Un lien avec '&' ou un texte alternatif avec '"' donnerait un XML
+    que Word refuse."""
     return _echapper(t).replace('"', '&quot;')
 
 
 def _extent_depuis_surface(image, largeur_max_dxa=None):
-    """(cx, cy) en EMU pour wp:extent — dans l'ordre de préférence du §4/§10 du contrat :
-    1. `image.cx`/`image.cy` (la boîte d'affichage RÉELLE, ajoutée au modèle riche le
-       18.09.2026) quand les deux sont renseignés ;
-    2. à défaut, le rapport largeur/hauteur du FICHIER lui-même (`largeur_px`/`hauteur_px`),
-       appliqué à une largeur d'affichage par défaut raisonnable — jamais un ratio 4:3
-       arbitraire quand le vrai rapport est connu (défaut mesuré : 38 images du corpus,
-       ratios d'entrée 0,66 à 20,4, toutes écrasées à 1,33 par l'ancienne version) ;
-    3. à défaut, la seule SURFACE connue (EMU², cx*cy) sur un ratio 4:3 arbitraire, faute de
-       mieux — la moins mauvaise information disponible ;
-    4. à défaut de tout, `_EXTENT_DEFAUT`.
-    Puis plafonné à `largeur_max_dxa` (converti en EMU, 1 dxa = 635 EMU) en conservant le
-    rapport, si fourni — jamais None : `ecrire()` ne le pose que s'il a pu le lire dans le
-    sectPr du gabarit (§10 : jamais deviner une mesure de page)."""
+    """(cx, cy) en EMU pour wp:extent, par ordre de préférence :
+    1. `image.cx` et `image.cy`, la boîte d'affichage du manuscrit ;
+    2. le rapport largeur/hauteur du fichier (`largeur_px`, `hauteur_px`) appliqué à une
+       largeur par défaut ;
+    3. la surface seule (EMU²) sur un rapport 4:3 ;
+    4. `_EXTENT_DEFAUT`.
+    Puis, si `largeur_max_dxa` est fourni (1 dxa = 635 EMU), l'image est réduite à cette
+    largeur en gardant ses proportions. ecrire() ne le fournit que s'il l'a lu dans le
+    sectPr du gabarit."""
     if image.cx and image.cy:
         cx, cy = image.cx, image.cy
     elif image.largeur_px and image.hauteur_px:
@@ -282,17 +232,15 @@ def _extent_depuis_surface(image, largeur_max_dxa=None):
 
 
 def _attributs(balise_xml):
-    """{nom: valeur} des attributs d'UNE balise XML donnée déjà isolée (ex: '<w:pgSz .../>')
-    — plus robuste qu'un regex par attribut nommé, insensible à leur ORDRE (Word ne le
-    garantit pas d'une version à l'autre)."""
+    """{nom: valeur} des attributs d'une balise isolée (ex. '<w:pgSz .../>'), quel que soit
+    leur ordre, que Word ne garantit pas."""
     return dict(re.findall(r'([\w:]+)="([^"]*)"', balise_xml))
 
 
 def _largeur_utile_page_dxa(sect_xml):
-    """Largeur utile de page (dxa) depuis le sectPr du gabarit : w:pgSz w:w moins les marges
-    gauche et droite de w:pgMar (§10 : jamais estimer une mesure de page, mais LIRE celle du
-    gabarit est la mesure elle-même, pas une estimation). None si l'un des deux est absent ou
-    mal formé — l'appelant ne plafonne alors aucune image plutôt que d'inventer une largeur."""
+    """Largeur utile de page (dxa) lue dans le sectPr du gabarit : w:pgSz w:w moins les
+    marges gauche et droite de w:pgMar. None si l'un manque ou est mal formé : l'appelant ne
+    réduit alors aucune image."""
     m_pgsz = re.search(r'<w:pgSz\b[^>]*/>', sect_xml)
     m_pgmar = re.search(r'<w:pgMar\b[^>]*/>', sect_xml)
     if not m_pgsz or not m_pgmar:
@@ -308,19 +256,14 @@ def _largeur_utile_page_dxa(sect_xml):
 
 
 class _Registre:
-    """Accumule, pendant la traversée du Document, tout ce qu'il faudra ajouter à l'archive :
-    les images à écrire sous word/media/ (avec leur relation), les hyperliens (une relation
-    par URL distincte, jamais deux fois la même), les identifiants uniques de wp:docPr, et la
-    liste des identifiants de note (voir `notes`, posé par ecrire()). `prochain_rid` doit
-    démarrer au-delà du plus grand rId déjà présent dans le gabarit CÔTÉ document.xml.rels
-    (mesuré : jusqu'à rId14 sur le gabarit livré) — calculé par l'appelant, jamais deviné ici.
+    """Accumule, pendant le parcours du Document, ce qu'il faudra ajouter à l'archive : les
+    images de word/media/ avec leur relation, les liens (une relation par URL), les
+    identifiants de wp:docPr et ceux des notes (`notes`, posé par ecrire()). `prochain_rid`
+    commence après le plus grand rId de document.xml.rels du gabarit ; l'appelant le calcule.
 
-    Deux ESPACES de relations, JAMAIS confondus : 'document' (word/_rels/document.xml.rels,
-    où vivent les images/liens du CORPS) et 'notes' (word/_rels/footnotes.xml.rels, une
-    partie DIFFÉRENTE de l'archive, avec son PROPRE espace de rId — un rId n'a de sens que
-    DANS la partie qui le déclare). Un lien ou une image posé dans une note doit donc résoudre
-    sa relation dans le second espace, jamais dans le premier : les confondre produirait un
-    r:id qui ne correspond à rien dans les relations de la bonne partie."""
+    Deux espaces de relations distincts : 'document' (word/_rels/document.xml.rels, pour le
+    corps) et 'notes' (word/_rels/footnotes.xml.rels). Un rId n'a de sens que dans la partie
+    qui le déclare : un lien ou une image dans une note prend sa relation dans le second."""
 
     def __init__(self, prochain_rid, numbering_xml=None):
         self._rid_document = prochain_rid
@@ -346,10 +289,8 @@ class _Registre:
         return rid
 
     def nouveau_docpr_id(self):
-        """Identifiant croissant, unique dans TOUT le document — défaut mesuré :
-        wp:docPr id="0" partout, ce que Word répare en silence à l'ouverture (identifiants
-        dupliqués), un défaut qu'aucun contrôle de ce chantier ne voyait puisque le fichier
-        s'ouvrait quand même."""
+        """Identifiant croissant, unique dans tout le document. Avec des wp:docPr en double,
+        Word répare le fichier en silence à l'ouverture."""
         self._docpr_id += 1
         return self._docpr_id
 
@@ -377,28 +318,22 @@ class _Registre:
 
 
 # ---------------------------------------------------------------------------------
-# Listes (§5.4 du contrat) — report PAR CORRESPONDANCE, jamais par recopie : une liste à
-# puces du manuscrit vise la définition à puces de la sortie, une numérotée la définition
-# numérotée, `ilvl` conservé. Le `numId` d'origine ne traverse JAMAIS — il désigne une entrée
-# d'un numbering.xml qui n'est pas celui qu'on écrit.
+# Listes, reportées par correspondance : une liste à puces du manuscrit vise la définition à
+# puces de la sortie, une liste numérotée la définition numérotée, `ilvl` conservé. Le numId
+# d'origine n'est pas repris : il désigne une entrée d'un autre numbering.xml.
 #
-# Ce qu'on écrit sur le paragraphe : LES DEUX FORMES à la fois — le style ET le w:numPr natif
-# — parce que c'est ce que Word produit lui-même quand une autrice clique sur le bouton
-# « puces » (§5.4). Le gabarit livré ne définit AUCUN style de liste : c'est donc Corpsdetexte
-# qui porte le style, le w:numPr faisant tout le travail de numérotation.
+# Le paragraphe reçoit le style et le w:numPr, comme quand on clique sur le bouton « puces »
+# de Word. Le gabarit livré n'a pas de style de liste : le style est le corps de texte, et le
+# w:numPr fait la numérotation.
 
-# Niveaux 0..8 : la profondeur par défaut d'une liste multi-niveaux Word — largement au-delà
-# de ce que le corpus mesuré emploie (ilvl 0 et 1 seulement), mais c'est la même borne que
-# Word pose lui-même, jamais une estimation locale à ce module.
+# Niveaux 0 à 8 : la profondeur d'une liste multi-niveaux de Word.
 NIVEAUX_LISTE_INJECTEE = 9
 
 
 def _niveau_puce_xml(ilvl):
-    """w:lvlText porte U+F0B7 (zone d'usage privé), PAS U+2022 (« • ») : c'est ce que Word
-    écrit lui-même pour une liste à puces en police Symbol, où U+F0B7 est mappé sur le glyphe
-    rond plein. Symbol ne connaît PAS U+2022 : une puce U+2022 en police Symbol s'affiche en
-    case vide (☐) dans Word — défaut mesuré, invisible tant qu'on ne l'ouvre pas dans Word
-    lui-même (pandoc, lui, résout le numFmt sans jamais regarder le glyphe)."""
+    """w:lvlText porte U+F0B7 (zone d'usage privé), pas U+2022 (« • »), comme Word pour une
+    puce en police Symbol. Symbol n'a pas U+2022 : Word afficherait une case vide. pandoc ne
+    regarde pas le glyphe, d'où un défaut visible seulement dans Word."""
     indent = 720 * (ilvl + 1)
     return ('<w:lvl w:ilvl="' + str(ilvl) + '"><w:start w:val="1"/><w:numFmt w:val="bullet"/>'
             '<w:lvlText w:val="&#xF0B7;"/><w:lvlJc w:val="left"/>'
@@ -421,18 +356,15 @@ def _abstractnum_xml(aid, constructeur_niveau):
             '<w:multiLevelType w:val="hybridMultilevel"/>' + niveaux + '</w:abstractNum>')
 
 
-# Squelette minimal si le gabarit ne porte AUCUN word/numbering.xml — n'arrive jamais sur le
-# gabarit livré (mesuré : il en a un, avec la numérotation de Titre1/2/3), gardé pour qu'un
-# gabarit futur qui n'en aurait pas ne fasse pas planter l'écrivain.
+# Squelette pour un gabarit sans word/numbering.xml (le gabarit livré en a un).
 _NUMBERING_XML_VIDE = (
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
     '</w:numbering>')
 
-# Squelettes minimaux pour word/footnotes.xml et footnotes.xml.rels — n'arrivent jamais sur le
-# gabarit livré (mesuré : il a déjà un footnotes.xml avec ses deux notes techniques, mais
-# aucun footnotes.xml.rels, cette partie n'étant nécessaire QUE si une note porte un lien ou
-# une image), gardés pour qu'un gabarit futur différent ne fasse pas planter l'écrivain.
+# Squelettes de word/footnotes.xml et de footnotes.xml.rels. Le gabarit livré a un
+# footnotes.xml (avec ses deux notes techniques) mais pas de footnotes.xml.rels, qui ne sert
+# que si une note porte un lien ou une image.
 _FOOTNOTES_XML_VIDE = (
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     '<w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
@@ -444,13 +376,11 @@ _RELS_VIDE = (
 
 
 class _RegistreListes:
-    """Résout, au plus une fois par TYPE de liste ('puce'/'numero') et par document, le numId
-    à employer en sortie : réutilise une définition ADÉQUATE du gabarit si elle en porte une,
-    en injecte une sinon — et le dit dans `trace`, jamais en silence (§5.4). Une définition du
-    gabarit est jugée adéquate quand AUCUN de ses niveaux n'est lié à un style de titre (un
-    w:lvl qui porte w:pStyle) : mesuré sur le gabarit livré, son unique num (numId=1) est celui
-    de la numérotation de Titre1/2/3 — s'en servir pour une liste de corps mélangerait les
-    deux numérotations, un défaut que ce garde-fou empêche."""
+    """Choisit, une fois par type de liste ('puce' ou 'numero') et par document, le numId de
+    sortie : une définition du gabarit si elle convient, sinon une définition ajoutée ; le
+    choix est noté dans `trace`. Une définition convient si aucun de ses niveaux n'est lié à
+    un style de titre (w:pStyle dans le w:lvl). Le seul num du gabarit livré numérote les
+    titres : l'utiliser pour une liste mélangerait les deux numérotations."""
 
     def __init__(self, numbering_xml):
         self._existant = numbering_xml
@@ -492,8 +422,8 @@ class _RegistreListes:
         return None
 
     def numid_pour(self, type_liste):
-        """`type_liste` : 'puce' ou 'numero' (jamais '' — c'est l'appelant qui choisit le
-        repli, voir manuscrit_gabarit.ecrire())."""
+        """`type_liste` : 'puce' ou 'numero'. Pour un type inconnu, l'appelant choisit le
+        repli (voir ecrire())."""
         if type_liste in self._resolus:
             return self._resolus[type_liste]
         if type_liste == 'numero':
@@ -520,15 +450,14 @@ class _RegistreListes:
         return bool(self._injections)
 
     def xml_final(self):
-        """word/numbering.xml définitif à écrire, ou None si rien n'a dû être ajouté (aucune
-        liste dans le document, ou le gabarit portait déjà tout ce qu'il fallait)."""
+        """word/numbering.xml à écrire, ou None si rien n'a été ajouté."""
         if not self._injections:
             return None
         base = self._existant or _NUMBERING_XML_VIDE
         abstracts = ''.join(a for a, _n in self._injections)
         nums = ''.join(n for _a, n in self._injections)
-        # w:abstractNum doit précéder tout w:num dans le schéma OOXML — inséré juste avant le
-        # premier w:num existant, ou avant la fermeture si le document n'en avait aucun.
+        # Le schéma OOXML veut les w:abstractNum avant tout w:num : insertion avant le premier
+        # w:num, ou avant la fermeture s'il n'y en a pas.
         i_premier_num = base.find('<w:num ')
         if i_premier_num == -1:
             return base.replace('</w:numbering>', abstracts + nums + '</w:numbering>')
@@ -536,24 +465,19 @@ class _RegistreListes:
 
 
 # ---------------------------------------------------------------------------------
-# Notes de bas de page (contrat partagé du 19.09.2026) — voir l'en-tête. Une note appelée
-# reçoit un numéro de SORTIE (jamais l'id d'origine, qui vise une entrée de footnotes.xml OU
-# endnotes.xml du manuscrit — voir Document.notes — qui n'est pas la partie qu'on écrit),
-# assigné dans l'ORDRE DE PREMIÈRE RENCONTRE pendant l'écriture du corps (donc l'ordre naturel
-# de lecture, cellules de tableau comprises) : c'est `numero_pour`/`_resoudre`, appelé depuis
-# `_run_xml`, qui assigne — jamais un pré-calcul séparé qui pourrait diverger de l'ordre réel
-# d'écriture.
+# Notes de bas de page (voir l'en-tête). Une note appelée reçoit un numéro de sortie, et non
+# son id d'origine, qui vise footnotes.xml ou endnotes.xml du manuscrit. Le numéro est donné
+# dans l'ordre de première rencontre pendant l'écriture du corps, cellules comprises, par
+# `_resoudre` appelé depuis `_run_xml` : il suit ainsi l'ordre réel d'écriture.
 
 _NOMS_STYLE_APPEL_NOTE = ('footnote reference', 'endnote reference')
 _NOMS_STYLE_TEXTE_NOTE = ('footnote text', 'endnote text')
 
 
 def _styleid_par_nom(styles_xml, noms):
-    """Le premier styleId dont le w:name RÉSOLU correspond (insensible à la casse) à l'un de
-    `noms` — même convention que 'heading 1'/'Body Text' ailleurs dans ce module : le w:name
-    reste en anglais canonique même dans un gabarit francophone, c'est lui qu'on compare,
-    jamais un nom localisé qui varierait selon la langue de Word. None si aucun ne correspond
-    (mesuré : le gabarit livré n'en a aucun) — c'est l'appelant qui pose alors le repli."""
+    """Le premier styleId dont le w:name correspond, sans égard à la casse, à l'un de
+    `noms`. Le w:name reste en anglais canonique quelle que soit la langue de Word. None si
+    aucun ne correspond ; l'appelant pose alors le repli."""
     if not styles_xml:
         return None
     noms_lower = {n.lower() for n in noms}
@@ -567,31 +491,24 @@ def _styleid_par_nom(styles_xml, noms):
 
 
 def _resoudre_styles_note(styles_xml, style_corps_resolu):
-    """(style_car, style_para) : styleId de caractère pour l'appel de note (None si le
-    gabarit n'en définit aucun — repli : vertAlign exposant posé directement sur le run) et
-    styleId de paragraphe pour le corps de la note (`style_corps_resolu` — le corps DÉJÀ
-    résolu par _StylesResolus pour CE gabarit, jamais le repli FR en dur : sur le gabarit DE,
-    le style de corps s'appelle Textkrper, pas Corpsdetexte, et écrire ce dernier produirait
-    une référence à un styleId qui n'existe pas dans le gabarit DE)."""
+    """(style_car, style_para). style_car : styleId de caractère de l'appel de note, ou None
+    (le run reçoit alors un exposant direct). style_para : styleId de paragraphe de la note,
+    à défaut `style_corps_resolu`, le corps de texte résolu pour ce gabarit (son styleId
+    change selon la langue du gabarit)."""
     style_car = _styleid_par_nom(styles_xml, _NOMS_STYLE_APPEL_NOTE)
     style_para = _styleid_par_nom(styles_xml, _NOMS_STYLE_TEXTE_NOTE) or style_corps_resolu
     return style_car, style_para
 
 
 class _RegistreNotes:
-    """Résout le numéro de SORTIE de chaque note appelée, construit le XML de son contenu
-    (réutilisant `_runs_xml`/`_tableau_xml` du corps — italique, liens, exposants conservés,
-    §11) au moment de sa PREMIÈRE résolution, et rend le word/footnotes.xml final. Une note
-    listée dans `document.notes` mais jamais appelée par aucun fragment n'est PAS écrite
-    (elle serait sans ancre dans le corps) ; un appel dont l'id ne correspond à aucun contenu
-    connu reçoit un contenu vide — les deux cas sont tracés, jamais en silence (§5 : « aucune
-    décision silencieuse, jamais »)."""
+    """Donne son numéro de sortie à chaque note appelée, construit le XML de son contenu à la
+    première rencontre (avec `_runs_xml` et `_tableau_xml`, comme le corps) et rend le
+    word/footnotes.xml final. Une note de `document.notes` jamais appelée n'est pas écrite ;
+    un appel sans contenu connu reçoit une note vide. Les deux cas sont tracés."""
 
     def __init__(self, document_notes, styles_xml_gabarit, footnotes_xml_gabarit,
                  style_corps_resolu):
-        # Contrat partagé pas encore livré (Document.notes toujours une liste, ou absent) :
-        # ce registre se comporte alors comme s'il n'y avait aucune note connue — jamais une
-        # exception, voir l'en-tête du module.
+        # Document.notes absent ou d'une autre forme qu'un dict : aucune note connue.
         self._contenus = document_notes if isinstance(document_notes, dict) else {}
         self._style_car, self._style_para = _resoudre_styles_note(styles_xml_gabarit,
                                                                     style_corps_resolu)
@@ -615,9 +532,8 @@ class _RegistreNotes:
         return '<w:rPr><w:vertAlign w:val="superscript"/></w:rPr>'
 
     def run_appel_xml(self, id_origine, registre):
-        """Le run à poser dans le CORPS à l'endroit où le fragment appelle la note —
-        w:footnoteReference, jamais w:footnoteRef (réservé au premier paragraphe DE la note,
-        voir _contenu_note_xml)."""
+        """Le run d'appel à poser dans le corps : w:footnoteReference. w:footnoteRef est
+        réservé au premier paragraphe de la note (voir _contenu_note_xml)."""
         id_sortie = self._resoudre(id_origine, registre)
         return '<w:r>%s<w:footnoteReference w:id="%d"/></w:r>' % (self._rpr_appel(), id_sortie)
 
@@ -646,10 +562,8 @@ class _RegistreNotes:
             tete = prefixe if i == 0 else ''
             if isinstance(bloc, mm.Tableau):
                 if tete:
-                    # Le repère de note ne peut pas se poser DANS un tableau : un paragraphe
-                    # dédié, qui le porte seul, précède le tableau — seule façon de rester un
-                    # document valide (Word exige un w:p, jamais un w:tbl, en premier enfant
-                    # d'un w:footnote).
+                    # Word exige un w:p en premier enfant d'un w:footnote : le repère de note
+                    # va dans un paragraphe à lui, avant le tableau.
                     morceaux.append('<w:p><w:pPr><w:pStyle w:val="%s"/></w:pPr>%s</w:p>'
                                      % (self._style_para, tete))
                     tete = ''
@@ -664,8 +578,7 @@ class _RegistreNotes:
         return ''.join(morceaux)
 
     def orphelines(self):
-        """Ids d'origine présents dans document.notes mais jamais appelés par un fragment du
-        corps — non écrits (voir la docstring de la classe), mais signalés."""
+        """Ids de document.notes jamais appelés dans le corps : non écrits, mais signalés."""
         return sorted(set(self._contenus) - set(self._resolus))
 
     def footnotes_xml_final(self, footnotes_xml_gabarit):
@@ -678,12 +591,9 @@ class _RegistreNotes:
 
 
 # ---------------------------------------------------------------------------------
-# Runs — traduction de Fragment.forme (§4 du contrat) en w:rPr. Seules les valeurs À VRAI sont
-# émises : par construction (manuscrit_modele.nettoyer_mise_en_forme() déjà passé), ce qui
-# reste ici est soit True (déclaré actif, à rendre), soit None/False (rien à écrire) — ce
-# module ne réécrit jamais un "off" explicite, il n'a aucune raison d'exister dans une sortie
-# neuve. w:vertAlign est exclusif (§4) : exposant a priorité si les deux étaient vrais (ne
-# devrait jamais arriver, _lire_vertalign côté lecteur les rend déjà exclusifs).
+# Runs : Fragment.forme traduit en w:rPr. Seules les valeurs vraies sont écrites ; après
+# nettoyer_mise_en_forme(), un « off » explicite n'a pas lieu d'être dans une sortie neuve.
+# w:vertAlign est exclusif : l'exposant passe avant l'indice.
 
 def _rpr_xml(forme):
     parties = []
@@ -703,13 +613,10 @@ def _rpr_xml(forme):
 
 
 def _drawing_xml(rid, image, docpr_id, largeur_max_dxa=None):
-    """<w:drawing> minimal (wp:inline) référençant la relation `rid`. Les espaces de noms
-    'a' (drawingml/main) et 'pic' (drawingml/picture) ne sont PAS déclarés sur la racine du
-    gabarit livré (mesuré : aucune image dans ce gabarit avant ce module, Word ne les avait
-    donc jamais ajoutés) — déclarés ici localement sur w:drawing plutôt que de toucher au
-    préambule du document, qui doit rester un recopiage verbatim (voir l'en-tête).
-    `docpr_id` : identifiant UNIQUE dans tout le document (défaut mesuré : wp:docPr id="0"
-    partout, que Word répare en silence à l'ouverture — voir _Registre.nouveau_docpr_id)."""
+    """<w:drawing> minimal (wp:inline) qui référence la relation `rid`. Les espaces de noms
+    'a' et 'pic' ne sont pas déclarés sur la racine du gabarit (qui n'a pas d'image) : on les
+    déclare sur w:drawing, pour ne pas toucher au préambule recopié du document.
+    `docpr_id` : identifiant unique dans le document (voir _Registre.nouveau_docpr_id)."""
     cx, cy = _extent_depuis_surface(image, largeur_max_dxa)
     alt = _echapper_attribut(image.alt)
     return (

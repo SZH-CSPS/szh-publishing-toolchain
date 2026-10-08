@@ -1,43 +1,31 @@
 #!/usr/bin/env python3
-# apca-check.py — vérifie le contraste APCA de toute la palette.
+# Vérifie le contraste APCA de toute la palette.
 #
-#   python3 test/apca-check.py    -> tableau lisible ; sortie 0 si tout passe, 1 sinon.
+#   python3 test/apca-check.py    -> tableau ; sortie 0 si tout passe, 1 sinon.
 #
-# À relancer après toute retouche de pipeline/styles/couleurs.css, de
-# pipeline/styles/socle.css ou print.css, ou de pipeline/accent-css.py. Le script ne
-# recalcule rien : il lit les hex réellement écrits dans couleurs.css et dans les règles de
-# print.css (renvois var() suivis), les tailles réellement écrites dans le :root de
-# socle.css, et les jetons réellement émis par accent-css.py, puis il mesure.
+# À relancer après une retouche de pipeline/styles/couleurs.css, socle.css, print.css ou
+# de pipeline/accent-css.py. Le script lit les couleurs et les tailles dans ces fichiers
+# (renvois var() suivis) et les jetons émis par accent-css.py, puis mesure.
 #
-# Un seuil APCA dépend de la taille du texte : 90 dès 14 px, 75 seulement à partir de
-# 18 px, 60 en gros texte (>= 24 px, ou >= 19 px en gras), 30 pour le non textuel. Presque
-# tout ici est sous 18 px — corps à 14 px, texte de tableau à 13,6 px, étiquettes du hero
-# et de l'en-tête courant à 9 et 9,5 px —, donc tout texte de lecture se juge à 90 ; seul
-# le titre de couverture, seul texte au-delà du seuil des 24 px, relève du gros titre.
-# ⚠ Aucun nombre de seuil n'est écrit en dur dans ce fichier : chaque paire déclare sa
-# taille et apca.seuil_pour en déduit le niveau (voir TAILLE_* plus bas).
+# Le seuil APCA dépend de la taille du texte : 90 dès 14 px, 75 dès 18 px, 60 pour un gros
+# texte (24 px, ou 19 px en gras), 30 pour un élément non textuel. Chaque paire déclare sa
+# taille et apca.seuil_pour en déduit le seuil ; aucun seuil n'est écrit en dur.
 #
-# Deux règles d'affichage communes à toute la chaîne, tenues par pipeline/apca.py : les Lc
-# s'affichent arrondis à l'entier (apca.lc_affiche), et une tolérance de 0,5 joue sur toute
-# comparaison mesure/seuil (apca.tient). Seules les lignes de diagnostic qui suivent le
-# tableau gardent une décimale, parce qu'elles servent à juger des marges du dixième.
+# pipeline/apca.py fixe l'affichage : Lc arrondis à l'entier (apca.lc_affiche), tolérance
+# de 0,5 sur toute comparaison (apca.tient). Les lignes de diagnostic sous le tableau
+# gardent une décimale pour juger des marges fines.
 #
-# Paire volontairement exclue : un filet contre un aplat de la même teinte. Un séparateur
-# n'a besoin de se détacher que d'un de ses deux voisins — papier ou zébrage, tous deux
-# testés — et sur un en-tête rempli c'est le remplissage qui marque la limite.
+# Un filet sur un aplat de sa propre teinte n'est pas mesuré : il suffit qu'il se
+# détache du papier ou du zébrage, tous deux mesurés.
 #
-# stdlib uniquement.
+# Bibliothèque standard seulement.
 
 import importlib.util
 import os
 import re
 import sys
 
-# Sortie en UTF-8 même dans une console Windows : le tableau contient des accents.
-# stderr aussi (09.09.2026) : jusqu'ici ce script n'y écrivait jamais, mais l'échec FRANC
-# d'une lecture de jeton (voir taille_depuis_jeton plus bas) y écrit un message accentué —
-# sans ce reconfigure, une console Windows le rend illisible juste au moment où il compte
-# le plus.
+# Sorties en UTF-8, pour que les accents restent lisibles dans une console Windows.
 try:
     sys.stdout.reconfigure(encoding='utf-8')
     sys.stderr.reconfigure(encoding='utf-8')
@@ -52,8 +40,7 @@ import apca  # noqa: E402  (après l'insertion du chemin)
 
 
 def _charger(nom_module, chemin):
-    """Importe un fichier .py dont le nom n'est pas un identifiant Python : accent-css.py
-    porte un tiret, donc aucun import classique ne le charge."""
+    """Importe un fichier .py dont le nom contient un tiret (accent-css.py)."""
     spec = importlib.util.spec_from_file_location(nom_module, chemin)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -64,36 +51,27 @@ accent = _charger('accent_css', os.path.join(PIPELINE, 'accent-css.py'))
 
 NOIR, BLANC = '#000000', '#FFFFFF'
 
-# ---- socle.css + print.css : lus comme une seule feuille ----
-# Le hero de couverture, l'en-tête courant et le pied ne passent pas par la palette
-# annuelle : leurs encres sont écrites en jeton :root dans socle.css, ou en hex dans la
-# règle qui les utilise, dans print.css. On les lit donc dans les fichiers, sélecteur par
-# sélecteur, plutôt que de les recopier ici : une règle éclaircie ou supprimée doit faire
-# réagir le test, pas le laisser mesurer une couleur qui n'est plus à l'écran.
+# ---- socle.css + print.css, lus comme une seule feuille ----
+# Les encres du hero, de l'en-tête et du pied courants ne viennent pas de la palette
+# annuelle : elles sont écrites dans socle.css (jetons :root) ou dans print.css. On les lit
+# sélecteur par sélecteur, pour qu'une règle modifiée ou supprimée fasse réagir le test.
 #
-# Les deux feuilles sont lues COMME UNE SEULE, dans l'ordre où le Makefile les empile : la
-# résolution d'un var() traverse la frontière — une règle de print.css renvoie à un jeton du
-# socle — et rien ici n'a besoin de savoir de quel fichier vient quoi.
-#
-# ⚠ Ce bloc vivait plus bas jusqu'au 09.09.2026, juste avant couleur_de(). Il est remonté
-# ici parce que les neuf tailles de la maquette (TAILLE_*, plus bas) en ont désormais besoin
-# elles aussi, et qu'elles doivent être prêtes avant la toute première mesure : _declaration
-# sert donc maintenant deux publics, les couleurs et les tailles, avec le même contrat de
-# lecture — jamais de valeur recopiée à la main.
+# Les deux feuilles sont concaténées dans l'ordre du Makefile, car une règle de print.css
+# renvoie souvent à un jeton de socle.css. Les tailles TAILLE_* sont lues de la même façon.
 CHEMINS_CSS = [os.path.join(PIPELINE, 'styles', n) for n in ('socle.css', 'print.css')]
 morceaux = []
 for chemin in CHEMINS_CSS:
     try:
         with open(chemin, encoding='utf-8') as f:
-            # Commentaires retirés, comme pour couleurs.css : ceux de ces feuilles citent
-            # des hex et des noms de jetons, qui seraient pris pour des déclarations.
+            # Commentaires retirés : ils citent des hex et des jetons qui seraient pris
+            # pour des déclarations.
             morceaux.append(re.sub(r'/\*.*?\*/', '', f.read(), flags=re.S))
     except OSError:
         pass
 PRINT = '\n'.join(morceaux)
 
 # (liste de sélecteurs, corps) pour chaque bloc de règles. Les blocs imbriqués de @page et
-# de @media ressortent en vrac : sans effet ici, on ne cherche que des sélecteurs nommés.
+# de @media ressortent mal découpés, ce qui est sans effet sur les sélecteurs cherchés.
 BLOCS = [(m.group(1), m.group(2)) for m in re.finditer(r'([^{}]+)\{([^{}]*)\}', PRINT)]
 
 
@@ -102,14 +80,11 @@ def _un_seul_espace(texte):
 
 
 def _declaration(selecteur, propriete):
-    """Valeur brute que print.css donne à `propriete` pour `selecteur`, ou None.
+    """Valeur brute que la feuille donne à `propriete` pour `selecteur`, ou None.
 
-    Le dernier bloc l'emporte, comme la cascade à spécificité égale, et un sélecteur groupé
-    (« a, b { … } ») compte pour chacun de ses membres. Le lookbehind empêche `color` d'être
-    trouvé dans `background-color` et `background` dans `background-image`.
-
-    Sert aussi bien aux couleurs qu'aux tailles : un jeton --nom vit dans un bloc :root,
-    qui est un « sélecteur » comme un autre pour ce lecteur — voir taille_depuis_jeton()."""
+    Le dernier bloc l'emporte, comme dans la cascade à spécificité égale ; un sélecteur
+    groupé (« a, b { … } ») compte pour chacun de ses membres. Le lookbehind empêche de
+    trouver `color` dans `background-color`. Pour un jeton, le sélecteur est :root."""
     motif = re.compile(r'(?<![-\w])' + re.escape(propriete) + r'\s*:\s*([^;}]+)')
     cible = _un_seul_espace(selecteur)
     trouve = None
@@ -121,22 +96,14 @@ def _declaration(selecteur, propriete):
     return trouve
 
 
-# ---- Lecteur des jetons de taille (09.09.2026) ----
-# Avant ce jour, les neuf constantes TAILLE_* ci-dessous recopiaient à la main les valeurs
-# écrites dans socle.css §2 (groupe « Échelle typographique partagée »). _declaration(),
-# juste au-dessus, sait déjà retrouver la valeur brute d'un nom dans un bloc CSS — un jeton
-# --nom déclaré dans :root n'est qu'un cas particulier de ce que couleur_de() lui fait déjà
-# faire pour les couleurs. Il ne manquait qu'une conversion d'unité vers le px, ajoutée ici,
-# explicite plutôt que devinée : ce chantier existe pour supprimer des copies, pas pour en
-# réintroduire une sous une autre forme.
-REM_EN_PX = 16   # html { font-size: 100% } (print.css §4) : 1 rem = 16 px
+# ---- Jetons de taille ----
+REM_EN_PX = 16   # html { font-size: 100% } dans print.css : 1 rem = 16 px
 
 
 def taille_depuis_jeton(jeton):
-    """Convertit en px (ou en facteur pour % et em) le jeton `--jeton` lu dans le :root de
-    socle.css/print.css via _declaration(). Quatre unités seulement, celles que la maquette
-    emploie réellement ; toute autre situation — jeton absent, nombre illisible, unité
-    inconnue — lève RuntimeError plutôt que de deviner une taille."""
+    """Valeur du jeton `--jeton` du :root, en px (ou en facteur pour % et em).
+
+    Jeton absent, nombre illisible ou autre unité : RuntimeError."""
     brut = _declaration(':root', jeton)
     if brut is None:
         raise RuntimeError('%s introuvable dans le :root de socle.css/print.css' % jeton)
@@ -151,60 +118,44 @@ def taille_depuis_jeton(jeton):
         return nombre * REM_EN_PX
     if unite == '%':
         return nombre / 100
-    return nombre   # em : facteur brut, l'appelant multiplie par la taille qui l'accompagne
+    return nombre   # em : facteur, à multiplier par la taille de référence
 
 
-# ---- Tailles réelles de la maquette : la seule source des seuils ----
-# On déclare la taille du texte d'une paire, apca.seuil_pour en déduit le niveau. Une
-# constante « TEXTE = 75 » se recopierait sans qu'on se demande à quelle taille elle
-# s'applique ; une taille, non.
-#
-# ⚠ Ici l'échec est FRANC, à la différence de pipeline/filters/szh-titre-lignes.lua : un
-# contrôle de contraste qui mesurerait une taille devinée est pire que pas de contrôle du
-# tout, puisqu'il donnerait un feu vert sans valeur. Le filtre Lua, lui, peut s'abstenir
-# sans dommage — un titre replié sans escalier reste un titre juste, replié par WeasyPrint
-# comme n'importe quel autre. Cette différence de traitement est délibérée.
+# ---- Tailles de la maquette, d'où viennent les seuils ----
+# Une taille introuvable arrête le script : mesurer un contraste sur une taille devinée
+# donnerait un résultat sans valeur.
 try:
-    TAILLE_TABLEAU = taille_depuis_jeton('--corps-tableau')       # socle.css : --corps-tableau (table)
-    TAILLE_CORPS = taille_depuis_jeton('--body-size')             # socle.css : --body-size (corps de texte)
-    TAILLE_KW = taille_depuis_jeton('--corps-mots-cles')          # socle.css : --corps-mots-cles (.szh-kw, puces de mots-clés)
+    TAILLE_TABLEAU = taille_depuis_jeton('--corps-tableau')       # texte de tableau
+    TAILLE_CORPS = taille_depuis_jeton('--body-size')             # corps de texte
+    TAILLE_KW = taille_depuis_jeton('--corps-mots-cles')          # puces .szh-kw
     TAILLE_GROS_TITRE = 24.0
-    # Hero de couverture et pages courantes (print.css §3 et §5, jetons de socle.css §2).
-    # Aucune de ces tailles ne tombe dans la bande 19-24 px, la seule où la graisse change
-    # le niveau APCA : `gras` est donc inutile ici, et il faudra le passer le jour où un
-    # texte s'y installera.
+    # Hero de couverture et pages courantes. Aucune de ces tailles n'est entre 19 et 24 px,
+    # seule plage où la graisse change le seuil : `gras` n'est donc pas passé.
     TAILLE_HERO_ETIQUETTE = taille_depuis_jeton('--corps-etiquette-hero')  # .szh-hero-eyebrow / -dossier / -vol (700, capitales)
     TAILLE_HERO_TITRE = taille_depuis_jeton('--corps-titre-hero')          # .szh-title
-    # 15.0 et non 16.0 (09.09.2026) : le sous-titre est passé à 15 px dans print.css (rapport
-    # 25/15, la sixte majeure — voir la note de .szh-title dans print.css §5). Le contrôle
-    # passait déjà avec l'ancienne constante à 16 : ce n'était pas un faux positif, le seuil
-    # APCA est une fonction en escalier (apca.seuil_pour) et 15 comme 16 px tombent tous deux
-    # sous 18 px, donc seuil 90 dans les deux cas — seule la couleur décide de la mesure
-    # (Lc −95). Mais la constante mentait sur la taille réelle du texte mesuré.
     TAILLE_HERO_SOUSTITRE = taille_depuis_jeton('--corps-soustitre-hero')  # .szh-subtitle
     TAILLE_HERO_META = taille_depuis_jeton('--corps-meta-hero')            # ul.szh-authors et .szh-doi
-    TAILLE_HERO_LICENCE = taille_depuis_jeton('--corps-licence-hero')      # .szh-licence — le plus petit texte du hero avec l'étiquette
+    TAILLE_HERO_LICENCE = taille_depuis_jeton('--corps-licence-hero')      # .szh-licence
     TAILLE_COURANTE = taille_depuis_jeton('--corps-courante')              # .szh-entete-courante et .szh-pied-courant
 except RuntimeError as exc:
     print('[apca-check] %s : contrôle abandonné plutôt que de mesurer un contraste sur '
           'une taille devinée.' % exc, file=sys.stderr)
     sys.exit(1)
 
-# Seuil de référence du script : les aplats d'accent sont d'abord des fonds de tableau.
+# Les aplats d'accent sont d'abord des fonds de tableau.
 SEUIL_TABLEAU = apca.seuil_pour(TAILLE_TABLEAU)      # 90
 GROS_TITRE = apca.seuil_pour(TAILLE_GROS_TITRE)      # 60
-NON_TEXTE = apca.LC_NON_TEXTUEL                      # 30 — un filet n'a pas de taille
+NON_TEXTE = apca.LC_NON_TEXTUEL                      # 30, pour un filet ou un aplat
 
-# Les 6 couleurs de marque (COULEURS_NUMERO de l'extension / PALETTE d'accent-css.py).
+# Les 6 couleurs de marque (COULEURS_NUMERO du cockpit, PALETTE d'accent-css.py).
 COULEURS = [('rouge', '#D31932'), ('capucine', '#EB5E51'), ('moutarde', '#C7CF1C'),
             ('poireau', '#51A66D'), ('bleuacier', '#5F9FBC'), ('mountbatten', '#A98899')]
 
-# Crans du plus clair au plus sombre ; le contrat de chacun est dans
-# apca.CONTRAT[cran] = (couleur de texte admise ou None, |Lc| garanti, libellé d'usage).
+# Crans du plus clair au plus sombre. apca.CONTRAT[cran] = (couleur de texte admise ou
+# None, |Lc| garanti, libellé d'usage).
 CRANS = [cran for cran, _ in apca.CLARTES]
 
-# Relais lisible vers la tolérance unique de la chaîne : apca.tient l'applique aussi bien
-# au |Lc| garanti qu'au seuil d'usage, le même arrondi hexadécimal pesant sur les deux.
+# Tolérance de la chaîne, appliquée au |Lc| garanti comme au seuil d'usage.
 MARGE_GARANTI = apca.TOLERANCE_SEUIL
 
 CSS = accent.couleurs_css()
@@ -216,11 +167,9 @@ alias_faux = []  # (nom, cran, hex de charte, hex lu) si -marque n'est plus l'al
 dispersions = [] # (cran, min, max, dispersion, tolérance, ok) — une ligne par cran
 arbitrages = []  # (libelle, lc mesuré, seuil, raison) — voir HORS_PERIMETRE
 
-# ---- Paires mesurées hors périmètre ----
-# Une seule entrée aujourd'hui, --c-kw-bg. Elle est mesurée et affichée au bon seuil comme
-# les autres, mais son échec ne fait pas tomber le script : il est reporté dans la section
-# « à arbitrer », avec sa raison écrite, parce que le corriger demande une décision de
-# maquette. Toute autre paire qui échoue fait tomber le script.
+# ---- Paires hors périmètre ----
+# Mesurées au bon seuil, mais un échec n'arrête pas le script : il est listé « à arbitrer »
+# avec sa raison, car le corriger demande une décision de maquette.
 HORS_PERIMETRE = {
     '--c-kw-bg': "puces .szh-kw à 10 px (print.css) : plus petit que tout ce que les "
                  "quatre niveaux d'APCA couvrent. Corriger = grossir la puce (print.css) "
@@ -236,15 +185,13 @@ def var(nom):
     return hexa
 
 
-regles_absentes = []   # (sélecteur, propriété) que print.css ne déclare pas / plus
+regles_absentes = []   # (sélecteur, propriété) introuvables dans la feuille
 
 
 def couleur_de(selecteur, propriete='color'):
-    """Hex écrit dans print.css pour `propriete` de `selecteur`, renvois var() résolus
-    d'abord dans print.css, ensuite dans couleurs.css. La recherche du hex n'est pas ancrée
-    en fin de valeur, pour lire aussi un raccourci (`border-top: 1px solid var(--c-rule)`).
-    None si la règle ou la propriété manque : la paire compte alors pour un échec, jamais
-    pour un oubli silencieux."""
+    """Hex de `propriete` pour `selecteur`, renvois var() résolus dans la feuille puis dans
+    couleurs.css. Lit aussi un raccourci (`border-top: 1px solid var(--c-rule)`).
+    None si la règle ou la propriété manque : la paire compte alors pour un échec."""
     valeur = _declaration(selecteur, propriete)
     hexa = None
     if valeur is not None:
@@ -261,8 +208,7 @@ def couleur_de(selecteur, propriete='color'):
 
 
 def opacite(selecteur):
-    """`opacity` déclarée par print.css pour `selecteur`. Elle fait partie de la couleur
-    réellement vue : une marque blanche à 50 % ne contraste pas comme du blanc."""
+    """`opacity` de `selecteur` : elle change la couleur vue."""
     valeur = _declaration(selecteur, 'opacity')
     try:
         return float(valeur)
@@ -272,8 +218,7 @@ def opacite(selecteur):
 
 
 def melange(avant, fond, alpha):
-    """Couleur effectivement vue d'un avant-plan translucide sur `fond` : interpolation par
-    canal en sRGB, comme la composition d'un moteur de rendu."""
+    """Couleur vue d'un avant-plan translucide sur `fond` (mélange par canal en sRGB)."""
     if avant is None or fond is None:
         return None
     return apca.vers_hex([alpha * a + (1.0 - alpha) * b
@@ -281,13 +226,10 @@ def melange(avant, fond, alpha):
 
 
 def mesure(libelle, texte, fond, seuil, hors_perimetre=None):
-    """Ajoute une paire au tableau. `texte`/`fond` à None (variable absente de
-    couleurs.css) compte pour un échec.
+    """Ajoute une paire au tableau. `texte` ou `fond` à None compte pour un échec.
 
-    Seul point du script où mesure et seuil se rencontrent, et il ne doit pas y en avoir
-    d'autre : la comparaison passe par apca.tient, donc avec la tolérance de la chaîne.
-    `hors_perimetre` est la clé du jeton dans HORS_PERIMETRE ; un échec est alors dérouté
-    vers la section « à arbitrer » au lieu de faire tomber le script."""
+    Toutes les comparaisons passent par ici, donc par apca.tient et sa tolérance.
+    `hors_perimetre` est une clé de HORS_PERIMETRE : un échec va alors « à arbitrer »."""
     if texte is None or fond is None:
         lignes.append((libelle, texte or '?', fond or '?', None, seuil, False))
         return
@@ -304,32 +246,25 @@ def titre(libelle):
 
 
 def _nb(x, decimales=1):
-    """Nombre à la française, zéros de queue retirés : 13.6 -> « 13,6 », 14.0 -> « 14 ».
-    Sert aux tailles et aux marges de diagnostic ; les Lc du tableau, eux, passent par
-    apca.lc_affiche, qui n'a pas de décimale."""
+    """Nombre à la française, sans zéros finaux : 13.6 -> « 13,6 », 14.0 -> « 14 »."""
     texte = ('%.*f' % (decimales, x)).rstrip('0').rstrip('.')
     return texte.replace('.', ',')
 
 
-# ---- 1. La grille à clarté fixe, telle qu'écrite dans couleurs.css ----
-# 11 crans x 6 teintes, deux contrôles par paire : le seuil de l'usage annoncé par le cran
-# (apca.SEUIL_USAGE, puisque l'usage porte la taille), et le |Lc| garanti écrit en tête de
-# couleurs.css. Le second est le vrai filet : sans lui, on pourrait éclaircir une teinte
-# jusqu'à ras du seuil sans que rien ne proteste et l'en-tête du CSS mentirait.
+# ---- 1. La grille à clarté fixe de couleurs.css ----
+# 11 crans x 6 teintes, deux contrôles par paire : le seuil de l'usage du cran
+# (apca.SEUIL_USAGE) et le |Lc| garanti annoncé en tête de couleurs.css.
 titre("Grille à clarté fixe : 11 crans x 6 couleurs (pipeline/styles/couleurs.css)")
 for nom, marque in COULEURS:
     for cran in CRANS:
         texte, garanti, usage = apca.CONTRAT[cran]
         fond = var('--c-%s-%s' % (nom, cran))
         if texte is None:
-            # Cran décoratif (400) : point de croisement de l'échelle, où ni le noir ni le
-            # blanc n'atteint le seuil du gros titre. On n'exige donc que le seuil non
-            # textuel contre le papier — l'aplat doit se distinguer de la page.
+            # Cran décoratif (400) : ni le noir ni le blanc n'y atteint le seuil du gros
+            # titre. On exige seulement que l'aplat se distingue du papier.
             mesure('%s -%s (aplat décoratif / papier — aucun texte)' % (nom, cran),
                    fond, BLANC, NON_TEXTE)
-            # La meilleure polarité est affichée sans seuil à tenir : c'est le chiffre qui
-            # justifie l'interdiction écrite dans couleurs.css. Une teinte peut y frôler
-            # les 60 du gros titre sans que cela l'autorise — la garantie d'un cran est le
+            # Meilleure polarité affichée pour information : la garantie du cran est la
             # pire de ses six teintes, et elle reste sous 60.
             if fond is not None:
                 gagnant, valeur = apca.meilleure_polarite(fond)
@@ -337,45 +272,38 @@ for nom, marque in COULEURS:
                                % (nom, cran, 'noir' if gagnant == apca.NOIR else 'blanc',
                                   apca.lc_affiche(garanti)),
                                gagnant, fond, valeur, None, 'info'))
-                # Contrôle réel du cran décoratif : le |Lc| annoncé doit être le plancher
-                # des six teintes, sinon couleurs.css et la planche mentent.
+                # Le |Lc| annoncé doit être le plancher des six teintes.
                 if not apca.tient(valeur, garanti):
                     ecarts.append(('%s -%s (meilleure polarité)' % (nom, cran),
                                    abs(valeur), garanti))
             continue
-        # Le seuil se déduit de l'usage annoncé par le contrat, l'usage portant la taille
-        # (« dès 14 px » -> 90, « à partir de 18 px » -> 75, « gros titre » -> 60).
+        # Seuil selon l'usage : « dès 14 px » -> 90, « à partir de 18 px » -> 75,
+        # « gros titre » -> 60.
         seuil = apca.SEUIL_USAGE[usage]
         mesure('%s -%s (fond, texte %s — %s)'
                % (nom, cran, 'noir' if texte == NOIR else 'blanc', usage),
                texte, fond, seuil)
-        # Second contrôle : la paire tient-elle le |Lc| garanti annoncé en tête de
-        # couleurs.css ? Sinon le CSS promet plus qu'il ne tient.
+        # Second contrôle : le |Lc| garanti annoncé en tête de couleurs.css.
         if fond is not None:
             valeur = abs(apca.lc(texte, fond))
             if not apca.tient(valeur, garanti):
                 ecarts.append(('%s -%s' % (nom, cran), valeur, garanti))
 
-    # La charte prise comme « marque » : aucune des six n'atteint le seuil du texte
-    # courant, dans aucune polarité. On mesure donc sa meilleure polarité au seuil du gros
-    # titre, son seul usage textuel légitime (titres de couverture). Son cran, lui, reste
-    # soumis au contrat de la grille comme tous les autres.
+    # La couleur de charte (-marque) n'atteint le seuil du texte courant dans aucune
+    # polarité : on la mesure au seuil du gros titre, son seul usage textuel.
     fond = var('--c-%s-marque' % nom)
     if fond is not None:
         gagnant, valeur = apca.meilleure_polarite(fond)
         mesure('%s -marque (= cran de charte, gros titre — %s gagne)'
                % (nom, 'noir' if gagnant == apca.NOIR else 'blanc'),
                gagnant, fond, GROS_TITRE)
-    # La charte brute sert aussi de bordure épaisse sur le papier (--c-annual en filet de
-    # couverture, --c-abstract-border) : seuil non textuel.
+    # Elle sert aussi de bordure épaisse sur le papier : seuil non textuel.
     mesure('%s -marque (bordure épaisse sur papier)' % nom, fond, BLANC, NON_TEXTE)
 
-    # ---- 1bis. Le cran de charte porte-t-il bien le hex de la charte ? ----
-    # Le cran est calculé (apca.cran_de_charte) et non récité : si une charte change, le
-    # test ira chercher le hex au nouvel endroit tout seul. Deux échecs distincts parce
-    # qu'ils se réparent différemment : le cran ne porte pas la charte (une valeur du
-    # graphiste a été recalculée) ou -marque n'aboutit pas au cran (retour de la dualité
-    # « charte à côté du cran », alors qu'on veut un seul hex par teinte et par cran).
+    # ---- 1bis. Le cran de charte porte-t-il le hex de la charte ? ----
+    # Le cran est calculé par apca.cran_de_charte. Deux échecs distincts, qui se réparent
+    # différemment : le cran ne porte pas le hex de la charte, ou -marque ne renvoie pas à
+    # ce cran (il faut un seul hex par teinte).
     cran_charte = apca.cran_de_charte(marque)
     lu = var('--c-%s-%s' % (nom, cran_charte))
     if lu is None or lu.upper() != marque.upper():
@@ -383,14 +311,11 @@ for nom, marque in COULEURS:
     if fond is None or fond.upper() != marque.upper():
         alias_faux.append((nom, cran_charte, marque, fond))
 
-# ---- 1ter. Dispersion de clarté : ce que coûte le cran de charte ----
-# Un cran est censé être une clarté unique, la même pour les six teintes ; celui qui
-# accueille une charte adopte la clarté de cette charte et s'écarte du barreau. On mesure
-# l'écart au lieu de le supposer, et on le plafonne : apca.DISPERSION_CLARTE couvre
-# l'arrondi hexadécimal et les remplacements serrés, apca.DISPERSION_CLARTE_EXCEPTION
-# nomme le seul cas large (le cran 700, où la charte rouge tombe entre deux crans). Une
-# exception nommée vaut mieux qu'une tolérance élargie qui masquerait les dix autres.
-# Les hex sont lus dans le CSS et non recalculés : c'est le fichier édité qui est jugé.
+# ---- 1ter. Dispersion de clarté d'un cran ----
+# Un cran a en principe la même clarté pour les six teintes ; celui qui porte une charte
+# prend la clarté de la charte. L'écart est mesuré sur les hex du CSS et plafonné :
+# apca.DISPERSION_CLARTE en général, apca.DISPERSION_CLARTE_EXCEPTION pour le cran 700,
+# où la charte rouge tombe entre deux crans.
 for cran in CRANS:
     clartes = []
     for nom, _ in COULEURS:
@@ -406,22 +331,17 @@ for cran in CRANS:
 
 
 # ---- 2. Alias lus par accent-css.py pour les tableaux ----
-# Noms figés, cibles données par apca.ALIAS : -normal = -marque, donc le cran de charte ;
-# -clair = cran 100 ; -fonce = cran 800. Ces deux derniers sont les fonds des tableaux,
-# dont le texte est à 13,6 px : les crans 200 et 700, qui plafonnent à 80, ne conviennent
-# pas. Conséquence pour le rouge : -fonce est le cran 800 (#9F001F) et non la charte.
-# On remesure ici en suivant les renvois var() plutôt que de faire confiance au §1 : un
-# alias repointé vers un cran valide « à partir de 18 px » laisserait le §1 vert, et c'est
-# cette section-là qui doit alerter.
+# Cibles données par apca.ALIAS : -normal = -marque (cran de charte), -clair = cran 100,
+# -fonce = cran 800. -clair et -fonce sont des fonds de tableau, au texte de 13,6 px : les
+# crans 200 et 700, qui plafonnent à 80, ne conviennent pas. On remesure en suivant les
+# renvois var(), car un alias renvoyé vers un cran valable seulement dès 18 px passerait
+# la section 1.
 titre("Alias des tableaux : --szh-accent-clair et --szh-accent-fonce")
 cran_clair, cran_fonce = dict(apca.ALIAS)['clair'], dict(apca.ALIAS)['fonce']
 
 
 def cran_vise(nom, hexa):
-    """Sur quel cran de la teinte `nom` l'alias aboutit-il réellement ?
-
-    Le cran est retrouvé par son hex plutôt que déduit de l'intention, pour qu'un échec
-    puisse nommer le cran fautif au lieu de ne donner que la mesure."""
+    """Cran de la teinte `nom` qui porte le hex `hexa`, pour nommer le cran fautif."""
     if hexa is None:
         return '?'
     for cran in CRANS:
@@ -431,14 +351,12 @@ def cran_vise(nom, hexa):
 
 
 for nom, marque in COULEURS:
-    # Seuil du texte de tableau, et non celui du cran visé : un alias mal repointé doit
-    # échouer même si le cran, pris en lui-même, est conforme à sa propre étiquette.
+    # Seuil du texte de tableau, pas celui du cran atteint.
     for alias, attendu, encre, role in (('clair', cran_clair, NOIR, 'couleur'),
                                         ('fonce', cran_fonce, BLANC, 'negatif')):
         hexa = var('--c-%s-%s' % (nom, alias))
         atteint = cran_vise(nom, hexa)
-        # Le libellé porte le cran atteint et signale l'écart : c'est là que se lit la
-        # régression, pas dans le Lc.
+        # Le libellé nomme le cran atteint et signale l'écart au cran attendu.
         ecart = '' if atteint == attendu else ' — ATTENDU le cran %s' % attendu
         mesure('%s -%s (fond « %s », texte %s de %s px) -> cran %s%s'
                % (nom, alias, role, 'noir' if encre == NOIR else 'blanc',
@@ -448,13 +366,13 @@ for nom, marque in COULEURS:
            var('--c-%s-normal' % nom), BLANC, NON_TEXTE)
 
 # ---- 3. Teintes neutres et replis gris ----
-# Tous ces fonds portent du texte de tableau, donc se jugent au seuil de 13,6 px.
+# Fonds de texte de tableau : seuil du texte de tableau.
 titre("Teintes neutres des tableaux + replis gris de print.css")
 mesure('--szh-gris-clair (en-têtes/total gris)', NOIR, var('--szh-gris-clair'), SEUIL_TABLEAU)
 mesure('--szh-zebre (zébrage, texte de corps)', NOIR, var('--szh-zebre'), SEUIL_TABLEAU)
 mesure('repli --szh-accent-fonce #4a4a4a', BLANC, '#4a4a4a', SEUIL_TABLEAU)
 mesure('repli --szh-accent-clair #ededed', NOIR, '#ededed', SEUIL_TABLEAU)
-# Numéro sans couleur annuelle : les filets de tableau tombent sur ce gris (print.css).
+# Numéro sans couleur annuelle : les filets de tableau prennent ce gris (print.css).
 mesure('repli --c-annual-ui #8f8f95 (filet sur papier)', '#8f8f95', BLANC, NON_TEXTE)
 mesure('repli --c-annual-ui #8f8f95 (filet sur zébrage)', '#8f8f95', var('--szh-zebre'), NON_TEXTE)
 
@@ -462,34 +380,27 @@ mesure('repli --c-annual-ui #8f8f95 (filet sur zébrage)', '#8f8f95', var('--szh
 titre("Jetons de la maquette (accent-css.py / jetons_annuels)")
 for nom, marque in COULEURS:
     j = dict(accent.jetons_annuels(marque))
-    # Seul jeton hors périmètre (voir HORS_PERIMETRE) : mesuré au bon seuil, mais son
-    # échec est reporté « à arbitrer » et ne fait pas tomber le script.
+    # Hors périmètre : voir HORS_PERIMETRE.
     mesure('%s --c-kw-bg (puce .szh-kw, texte noir de %s px)' % (nom, _nb(TAILLE_KW)),
            NOIR, j['--c-kw-bg'], apca.seuil_pour(TAILLE_KW),
            hors_perimetre='--c-kw-bg')
-    # Encadré et bande portent du corps de texte : seuil de 14 px.
+    # Encadré et bande portent du corps de texte.
     mesure('%s --annual-soft (encadré, texte noir de %s px)' % (nom, _nb(TAILLE_CORPS)),
            NOIR, j['--annual-soft'], apca.seuil_pour(TAILLE_CORPS))
     mesure('%s --annual-tint (bande, texte noir de %s px)' % (nom, _nb(TAILLE_CORPS)),
            NOIR, j['--annual-tint'], apca.seuil_pour(TAILLE_CORPS))
     mesure('%s --c-annual-ui (filet sur papier)' % nom, j['--c-annual-ui'], BLANC, NON_TEXTE)
-    # Les filets de tableau (print.css, section Bordures) portent --c-annual-ui et tombent
-    # souvent sur une rangée zébrée : c'est la paire réellement utilisée, pas la couleur de
-    # marque brute.
+    # Les filets de tableau, en --c-annual-ui, passent souvent sur une rangée zébrée.
     mesure('%s --c-annual-ui (filet de tableau sur zébrage)' % nom,
            j['--c-annual-ui'], var('--szh-zebre'), NON_TEXTE)
     mesure('%s --c-abstract-border (bordure/papier)' % nom,
            j['--c-abstract-border'], BLANC, NON_TEXTE)
 
 # ---- 5. Hero de couverture, en-tête courant, pied courant ----
-# Ces encres-là ne viennent pas de la palette annuelle et n'étaient mesurées par personne :
-# elles sont écrites en clair dans print.css. Le fond est lu comme le texte — le hero sur
-# son bleu nuit, l'en-tête et le pied sur le papier, qui n'a aucun fond déclaré et reste
-# donc le blanc de la page.
-# Deux marques du hero portent une `opacity` : elle est lue et composée sur le fond, sinon
-# on mesurerait une couleur que personne ne voit.
-# Exclusion volontaire : le filigrane .szh-book, blanc à 7 % d'opacité. C'est une texture
-# qui ne porte aucune information — la mesurer reviendrait à exiger qu'on la voie.
+# Encres écrites dans print.css, hors palette annuelle. Le hero est sur son bleu nuit,
+# l'en-tête et le pied sur le papier blanc. L'`opacity` de deux marques du hero est
+# composée sur le fond. Le filigrane .szh-book (blanc à 7 %) n'est pas mesuré : c'est une
+# texture sans information.
 titre("Couverture : encres du hero sur le bleu nuit (print.css §5)")
 NUIT = couleur_de('.szh-hero', 'background')
 SEUIL_HERO_ETIQUETTE = apca.seuil_pour(TAILLE_HERO_ETIQUETTE)
@@ -509,13 +420,11 @@ mesure('DOI .szh-doi (%s px)' % _nb(TAILLE_HERO_META),
        couleur_de('.szh-doi'), NUIT, apca.seuil_pour(TAILLE_HERO_META))
 mesure('mention de licence .szh-licence (%s px)' % _nb(TAILLE_HERO_LICENCE),
        couleur_de('.szh-licence'), NUIT, apca.seuil_pour(TAILLE_HERO_LICENCE))
-# DOI et licence sont des liens : `.szh-hero a[href]` est plus spécifique que
-# `.szh-doi, .szh-licence` et c'est lui qui décide de la couleur à l'écran. Les deux règles
-# sont mesurées, sinon éclaircir l'une des deux seulement passerait inaperçu.
+# DOI et licence sont des liens : `.szh-hero a[href]`, plus spécifique, décide de leur
+# couleur. Les deux règles sont mesurées.
 mesure('lien du hero .szh-hero a[href] (couleur effective du DOI et de la licence)',
        couleur_de('.szh-hero a[href]'), NUIT, apca.seuil_pour(TAILLE_HERO_LICENCE))
-# Les deux marques décoratives du hero, séparateur et icône : leur `opacity` entre dans la
-# couleur vue, donc dans le libellé — la baisser revient à éclaircir la marque.
+# Séparateur et icône du hero, opacité composée sur le fond.
 for selecteur, quoi in (('.szh-authors li + li::before', 'point médian entre auteur·e·s'),
                         ('.szh-hero .szh-arrow', 'flèche « lien » du DOI et de la licence')):
     alpha = opacite(selecteur)
@@ -523,9 +432,8 @@ for selecteur, quoi in (('.szh-authors li + li::before', 'point médian entre au
            melange(couleur_de(selecteur), NUIT, alpha), NUIT, NON_TEXTE)
 
 # ---- 6. Appel de note ----
-# ::footnote-call appartient à la note (GCPM) et en héritait le gris --c-ink2 : Lc 87 sur le
-# fond d'un encadré, sous le seuil (mesuré dans le PDF le 30.09.2026). Il s'imprime partout
-# où le texte peut aller : papier, rangée zébrée, encadré et bande de chaque couleur.
+# ::footnote-call appartient à la note (GCPM) et hériterait de son gris --c-ink2 sans
+# couleur propre. Il peut tomber sur le papier, une rangée zébrée, un encadré ou une bande.
 titre("Appel de note (::footnote-call, print.css §4)")
 TAILLE_APPEL = 0.54 * REM_EN_PX     # print.css : font-size: 0.54rem
 SEUIL_APPEL = apca.seuil_pour(TAILLE_APPEL, gras=True)
@@ -553,9 +461,9 @@ mesure('filet au-dessus du pied courant (1 px sur papier)',
        couleur_de('.szh-pied-courant', 'border-top'), BLANC, NON_TEXTE)
 
 # ---- 7. Livre FALC : pastilles d'étapes du falc-header ----
-# Un chiffre blanc à 0,8 em du corps FALC, sur le cran foncé de chaque couleur de chapitre
-# (PALETTE_CHAPITRE_FONCE, profils/livre.mk) ; la pastille elle-même sur le gris de
-# l'encadré. Les hex et le corps sont lus dans livre.mk et falc.css, jamais recopiés ici.
+# Chiffre blanc à 0,8 em du corps FALC, sur le cran foncé de chaque couleur de chapitre
+# (PALETTE_CHAPITRE_FONCE, profils/livre.mk) ; la pastille sur le gris de l'encadré. Hex
+# et corps lus dans livre.mk et falc.css.
 titre("Livre FALC : pastilles d'étapes du falc-header (livre/base.css §9)")
 with open(os.path.join(PIPELINE, 'profils', 'livre.mk'), encoding='utf-8') as f:
     _mk = f.read()
@@ -573,23 +481,20 @@ for hexa in _fonce.group(1).split():
     mesure('pastille #%s sur le gris de l\'encadré' % hexa, '#' + hexa, _fond_encadre.group(1), NON_TEXTE)
 
 
-# ---- 6. Sortie ----
+# ---- 8. Sortie ----
 
 def afficher():
     largeur = max(len(l[0]) for l in lignes)
     entete = '%-*s  %-7s  %-7s  %6s  %6s  %s' % (
         largeur, 'PAIRE', 'TEXTE', 'FOND', 'Lc', 'SEUIL', 'VERDICT')
     print(entete)
-    # Filets en ASCII pur : la sortie doit rester lisible dans une console Windows
-    # (cp1252) comme dans le terminal WSL.
+    # Filets en ASCII, lisibles dans une console Windows (cp1252).
     print('-' * len(entete))
     for libelle, texte, fond, valeur, seuil, ok in lignes:
         if ok is None:                       # ligne de section
             print()
             print('-- %s ' % libelle + '-' * max(0, len(entete) - len(libelle) - 4))
             continue
-        # Lc arrondi à l'entier, signe conservé : la règle d'affichage de toute la chaîne
-        # (apca.lc_affiche).
         affiche = apca.lc_affiche(valeur, signe=True) if valeur is not None else '0'
         if ok == 'info':                     # mesure affichée, aucun seuil à tenir
             print('%-*s  %-7s  %-7s  %6s  %6s  %s' % (
@@ -623,24 +528,19 @@ def afficher():
             libelle, texte.upper(), fond.upper(), valeur or 0.0, seuil,
             apca.TOLERANCE_SEUIL))
 
-    # Les paires hors périmètre qui ne tiennent pas leur seuil : elles ne font pas tomber
-    # le script mais s'affichent avec leur raison, pour être tranchées et non oubliées.
     if arbitrages:
         print()
         print('%d paire(s) à arbitrer — mesurées au bon seuil, laissées en suspens :'
               % len(arbitrages))
         for libelle, valeur, seuil, raison in arbitrages:
             print('  ARBITRER  %s : Lc %+.1f pour un seuil de %d' % (libelle, valeur, seuil))
-        # La raison est imprimée une fois par jeton et non par teinte : six lignes
-        # identiques noieraient l'information.
+        # La raison est imprimée une fois par jeton, pas pour chaque teinte.
         for cle, raison in sorted(HORS_PERIMETRE.items()):
             if any(cle in l for l, _, _, _ in arbitrages):
                 print('    %s -> %s' % (cle, raison))
 
-    # Quatre familles d'échec qui ne sont pas des paires : le |Lc| garanti annoncé par
-    # couleurs.css, l'intégrité des six hex de charte sur leur cran, l'alias -marque et la
-    # dispersion de clarté d'un cran. Toutes font échouer le script au même titre qu'un
-    # seuil manqué : un fichier qui promet plus qu'il ne tient est aussi faux qu'illisible.
+    # Quatre autres sortes d'échec, qui font aussi échouer le script : |Lc| garanti non
+    # tenu, hex de charte absent de son cran, alias -marque faux, dispersion de clarté.
     if ecarts:
         print('%d cran(s) EN DEÇÀ du |Lc| garanti annoncé dans couleurs.css :' % len(ecarts))
         for libelle, mesure_lc, garanti in ecarts:
@@ -648,8 +548,7 @@ def afficher():
     else:
         print('Contrat des |Lc| garantis : tenu par les %d paires de la grille.'
               % (len(CRANS) * len(COULEURS)))
-        # Marge de chaque cran au seuil de son usage, avec une décimale, imprimée même
-        # quand tout passe : un contrat tenu de justesse est une information.
+        # Marge de chaque cran, imprimée même quand tout passe.
         print('Marge de chaque cran au seuil de son usage (|Lc| garanti - seuil) :')
         for cran in CRANS:
             encre, garanti, usage = apca.CONTRAT[cran]
@@ -677,8 +576,7 @@ def afficher():
         print('Alias -marque : les %d pointent bien sur leur cran de charte '
               '(un seul hex par couleur).' % len(COULEURS))
 
-    # Dispersion de clarté par cran, affichée et plafonnée. Le cran de charte est nommé sur
-    # la ligne pour qu'elle se lise sans aller-retour avec le CSS.
+    # Dispersion de clarté par cran, avec le nom des chartes qu'il porte.
     ratees = [d for d in dispersions if not d[5]]
     porteur = {}
     for nom, m in COULEURS:
@@ -695,10 +593,8 @@ def afficher():
             print('  CLARTÉ  cran %s : écart %.3f > %.3f toléré (de %.3f à %.3f)'
                   % (cran, disp, tolerance, mini, maxi))
 
-    # Recomptage des crans porteurs de texte à partir du contrat réel. Deux comptes, parce
-    # que n'en montrer qu'un tromperait : « texte courant » toutes tailles confondues, qui
-    # répond à l'exigence du cahier des charges (au moins trois crans par polarité) ; et
-    # les crans utilisables en fond de tableau, plus rares puisqu'ils se jugent à 90.
+    # Crans porteurs de texte, comptés deux fois : toutes tailles (il en faut au moins
+    # trois par polarité) et à la taille du texte de tableau (seuil 90).
     def crans_pour(encre, usages):
         return [c for c in CRANS if apca.CONTRAT[c][0] == encre
                 and apca.CONTRAT[c][2] in usages]
@@ -719,9 +615,8 @@ def afficher():
     print('  (les crans %s portent du texte dès 18 px seulement : ni corps, ni tableau.)'
           % '/'.join(c for c in CRANS if apca.CONTRAT[c][2] == apca.USAGE_TEXTE_18))
     print('Cran(s) décoratif(s), aucun texte autorisé : %s.' % '/'.join(decoratifs))
-    # Exigence structurelle : les alias -clair et -fonce ont besoin d'au moins un cran de
-    # chaque polarité utilisable à la taille du texte de tableau, sinon aucun fond de
-    # tableau coloré n'est possible.
+    # -clair et -fonce ont besoin d'au moins un cran de chaque polarité utilisable pour
+    # du texte de tableau.
     if not noirs_14 or not blancs_14:
         print('AUCUN cran utilisable pour un fond de tableau dans une polarité : '
               'les alias -clair / -fonce n\'ont plus de cible valide.')

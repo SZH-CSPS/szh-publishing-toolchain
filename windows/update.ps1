@@ -1,17 +1,16 @@
 ﻿<#
 .SYNOPSIS
-  Met à jour l'outil Pronto dans une fenêtre visible. Lancée d'ordinaire par
-  update-launcher.ps1, ou par l'entrée « Pronto (Updater) » du menu Démarrer,
-  qui ne passe plus de langue : la fenêtre prend celle du réglage du compte, comme le
-  lanceur.
+  Met à jour l'outil Pronto dans une fenêtre visible. Lancé par update-launcher.ps1 ou par
+  l'entrée « Pronto (Updater) » du menu Démarrer. La fenêtre prend la langue réglée pour le
+  compte.
 
     powershell -ExecutionPolicy Bypass -File update.ps1                  # dernière version
     powershell -ExecutionPolicy Bypass -File update.ps1 -Version X.Y.Z  # version précise
     powershell -ExecutionPolicy Bypass -File update.ps1 -Langue de       # essai manuel, en allemand
 
-  Ne demande jamais les droits administrateur : import WSL, extensions et réglages de
-  l'éditeur sont au niveau utilisateur. Idempotente, composant par composant d'après
-  state.json.
+  Sans droits administrateur : l'import WSL, les extensions et les réglages de l'éditeur
+  sont propres au compte. Chaque composant n'est installé que s'il n'est pas déjà à la
+  bonne version.
 
   Compatibilité : Windows PowerShell 5.1.
 #>
@@ -19,9 +18,8 @@
 param(
   [string]$Version,     # vide = dernière release ; sinon le tag sans son « v »
   [string]$Langue,      # vide = langue du poste ; 'fr', 'de' ou 'en' pour cette fenêtre
-  [switch]$Silencieux   # posé par update-launcher.ps1 (Start-SzhFenetreMaj) quand
-                        # Get-SzhMajSilencieuse est actif : aucune fenêtre n'existe pour
-                        # personne. Show-SzhErreur ne bloque alors plus sur une touche.
+  [switch]$Silencieux   # posé par update-launcher.ps1 en mode « mise à jour silencieuse » :
+                        # la fenêtre est cachée, et Show-SzhErreur n'attend pas de touche.
 )
 
 . "$PSScriptRoot\szh-common.ps1"
@@ -29,25 +27,16 @@ param(
 
 if ($Silencieux) { $script:SzhSansInteraction = $true }
 
-# -Langue reste un paramètre de ligne de commande, pour un essai manuel : le raccourci
-# unique du menu Démarrer n'en passe plus — il n'y a plus qu'une entrée « Mise à jour », et
-# la fenêtre prend la langue du réglage du compte, comme le lanceur. Pour cette session
-# seulement — la préférence du poste, écrite par le lanceur, n'est pas touchée : la mise à
-# jour n'est pas un produit et n'a pas à choisir pour lui. Valeur inconnue : on l'ignore et
-# le poste garde sa langue, plutôt que d'échouer sur un détail d'affichage. $env:SZH_LANGUE
-# garde le dernier mot, comme partout ailleurs.
+# -Langue sert aux essais manuels et ne vaut que pour cette fenêtre : la préférence du
+# poste n'est pas modifiée. Une valeur inconnue est ignorée. $env:SZH_LANGUE prime.
 $envLangue = ($env:SZH_LANGUE -and (@('fr', 'de', 'en') -contains $env:SZH_LANGUE.ToLower()))
 if ($Langue -and (-not $envLangue) -and (@('fr', 'de', 'en') -contains $Langue.ToLower())) {
   $script:SzhLangue = $Langue.ToLower()
 }
 
-# Cette fenêtre se présente sous sa propre identité : sans elle, la barre des tâches range
-# son bouton avec les autres consoles PowerShell du poste et en prend l'icône. Sans effet
-# quand la console est hébergée par Windows Terminal, dont la fenêtre ne nous appartient
-# pas ; l'entrée du menu Démarrer, elle, garde son icône dans tous les cas. Une seule
-# identité — 'maj' —, et non plus une par langue : il n'y a plus qu'un raccourci de mise à
-# jour, sans argument -Langue, et son identité ne dépend donc plus de la langue de la
-# fenêtre.
+# Identité de barre des tâches propre ('maj') : sinon le bouton se range avec les autres
+# consoles PowerShell et en prend l'icône. Sans effet sous Windows Terminal, dont la
+# fenêtre ne nous appartient pas.
 $idMaj = Get-SzhAppId 'maj'
 [void](Set-SzhAppUserModelId $idMaj)
 
@@ -55,11 +44,10 @@ try { $Host.UI.RawUI.WindowTitle = (T 'maj.fenetre') } catch { }
 
 # ---- Association « Ouvrir avec » des .md ----
 # Pose le ProgId SZH.Markdown dans HKCU, sans administrateur, et l'inscrit dans « Ouvrir
-# avec » pour les .md. On ne force pas l'application par défaut : la clé UserChoice est
-# scellée par un hachage Microsoft, et l'écraser casserait la garantie que le choix vient
-# de l'utilisateur ; le « Toujours utiliser cette application » reste un geste à faire une
-# fois par personne (voir userdoc.md). OpenWithProgids est de type REG_NONE sans donnée,
-# la forme qu'attend le shell. $Racine est paramétrable pour tester hors de la vraie ruche.
+# avec » pour les .md. L'application par défaut n'est pas forcée : la clé UserChoice est
+# protégée par un hachage Microsoft. Chacun coche une fois « Toujours utiliser cette
+# application » (voir userdoc.md). OpenWithProgids attend une valeur REG_NONE sans donnée.
+# $Racine permet de tester hors de la vraie ruche.
 function Set-SzhProgIdMarkdown {
   param(
     [string]$Racine  = 'HKCU:\Software\Classes',
@@ -67,8 +55,8 @@ function Set-SzhProgIdMarkdown {
   )
   $vbs = Join-Path $Toolkit 'windows\hidden.vbs'
   $ps1 = Join-Path $Toolkit 'windows\open-md.ps1'
-  # Même construction qu'au raccourci du menu Démarrer. hidden.vbs requote chacun de ses
-  # arguments, donc le « %1 » arrive intact à open-md.ps1, espaces compris.
+  # hidden.vbs remet chaque argument entre guillemets : « %1 » arrive intact à open-md.ps1,
+  # espaces compris.
   $commande = ('"{0}\System32\wscript.exe" //B "{1}" "{2}" "%1"' -f $env:WINDIR, $vbs, $ps1)
 
   $icone = Join-Path $Toolkit 'windows\pronto.ico'
@@ -80,10 +68,9 @@ function Set-SzhProgIdMarkdown {
     if (-not (Test-Path $c)) { New-Item -Path $c -Force | Out-Null }
   }
 
-  # Le nom affiché dans « Ouvrir avec » se lit dans <ProgId>\Application : sur Windows 11,
-  # un FriendlyAppName posé à la racine est ignoré et la boîte annonce « Microsoft ®
-  # Windows Based Script Host ». La racine nomme le type de fichier, rôle de
-  # FriendlyTypeName ci-dessous.
+  # Windows 11 lit le nom affiché dans « Ouvrir avec » sous <ProgId>\Application ; posé à
+  # la racine, il est ignoré et la boîte affiche « Microsoft ® Windows Based Script Host ».
+  # La racine nomme le type de fichier.
   Set-ItemProperty -Path $cleProg -Name '(default)'        -Value 'Article de revue SZH'
   Set-ItemProperty -Path $cleProg -Name 'FriendlyTypeName' -Value 'Article de revue SZH'
   Set-ItemProperty -Path $cleApp  -Name 'ApplicationName'  -Value 'Pronto'
@@ -91,10 +78,9 @@ function Set-SzhProgIdMarkdown {
   Set-ItemProperty -Path $cleApp  -Name 'ApplicationCompany' -Value 'SZH / CSPS'
   Set-ItemProperty -Path (Join-Path $cleProg 'shell\open\command') -Name '(default)' -Value $commande
 
-  # Notre icône, pas celle de VSCodium : les deux entrées se suivent dans « Ouvrir avec »,
-  # et l'utilisateur doit reconnaître celle qu'il coche une fois pour toutes. Repli sur
-  # VSCodium si szh-revue.ico manque ; si VSCodium manque aussi, on ne pose rien, une clé
-  # d'icône vide donnant un carré blanc là où l'absence laisse une icône générique.
+  # pronto.ico, pour distinguer l'entrée de celle de VSCodium dans « Ouvrir avec ». Repli
+  # sur l'icône de VSCodium ; si elle manque aussi, rien n'est posé (une clé vide donnerait
+  # un carré blanc).
   $refIcone = ''
   if (Test-Path $icone) {
     $refIcone = ('"{0}",0' -f $icone)
@@ -116,11 +102,10 @@ function Set-SzhProgIdMarkdown {
 }
 
 # ---- Protocole « szh: » ----
-# Enregistre le gestionnaire du schéma szh:// dans HKCU, sans administrateur : c'est ce qui
-# rend cliquable, depuis un e-mail ou Teams, le lien d'« Envoyer pour traduction ». Il
-# arrive au lanceur en premier argument positionnel, via hidden.vbs pour qu'aucune console
-# n'apparaisse, et le lanceur revalide la grammaire. Windows demandera une fois la
-# permission d'ouvrir ce type de lien : c'est voulu.
+# Enregistre le schéma szh:// dans HKCU, sans administrateur, pour rendre cliquables les
+# liens d'« Envoyer pour traduction » dans un courriel ou Teams. Le lien arrive à
+# open-revue.ps1 par hidden.vbs (sans console), qui en revérifie la forme. Windows demande
+# une fois la permission d'ouvrir ce type de lien.
 function Set-SzhProtocoleSzh {
   param(
     [string]$Racine  = 'HKCU:\Software\Classes',
@@ -136,13 +121,12 @@ function Set-SzhProtocoleSzh {
     if (-not (Test-Path $c)) { New-Item -Path $c -Force | Out-Null }
   }
 
-  # Office ne suit pas un schéma inconnu : Outlook avertit que « cet emplacement peut ne
-  # pas être sûr » puis, selon la configuration, ne lance rien. D'où cette déclaration de
-  # confiance, clé vide dans HKCU, dont le nom porte le deux-points comme Office l'attend.
+  # Office refuse ou met en garde devant un schéma inconnu : on le déclare de confiance par
+  # une clé vide dans HKCU, dont le nom porte le deux-points comme Office l'attend.
   $confiance = 'HKCU:\Software\Microsoft\Office\Common\Security\Trusted Protocols\All Applications\szh:'
   if (-not (Test-Path $confiance)) { New-Item -Path $confiance -Force | Out-Null }
   Set-ItemProperty -Path $cle -Name '(default)' -Value 'URL:Pronto'
-  # « URL Protocol », valeur vide, est ce qui fait d'une clé de classe un schéma d'URI.
+  # La valeur vide « URL Protocol » fait d'une clé de classe un schéma d'URI.
   Set-ItemProperty -Path $cle -Name 'URL Protocol' -Value ''
   Set-ItemProperty -Path (Join-Path $cle 'shell\open\command') -Name '(default)' -Value $commande
   if (Test-Path $icone) {
@@ -150,21 +134,15 @@ function Set-SzhProtocoleSzh {
   }
 }
 
-# Remove-SzhToolkitOrphelins vit dans szh-common.ps1, appelée par Install-SzhToolkitDepuisArchive
-# (elle aussi dans szh-common.ps1) : une seule définition, pour que bootstrap.ps1 et
-# update-launcher.ps1 ne puissent pas en garder une copie qui diverge de celle-ci.
-
 # ---- Une seule mise à jour à la fois (mutex nommé, portée poste) ----
-# Deux update.ps1 concurrents écrivent la même archive de staging et détendent deux
-# Expand-Archive sur le même toolkit, qui finit à moitié écrit. On sort proprement :
-# l'autre passe finira le travail. Portée poste et non session : deux comptes connectés en
-# même temps sur le même poste écrivent le même C:\ProgramData\SZH\toolkit.
+# Deux mises à jour simultanées écriraient la même archive et le même toolkit. La seconde
+# sort : la première finira le travail. Portée poste, car deux comptes connectés partagent
+# C:\ProgramData\SZH\toolkit.
 $script:SzhMutex = New-SzhMutexPoste
 $aLaMain = $false
-# Un processus mort en tenant ce mutex nommé le laisse abandonné : le suivant qui l'acquiert
-# reçoit AbandonedMutexException en plus de la propriété. Un catch générique le confondrait
-# avec « déjà pris » et sortirait sans ReleaseMutex, abandonnant le mutex à son tour -- plus
-# aucune mise à jour ne passerait jamais sur ce poste.
+# AbandonedMutexException (processus mort en tenant le mutex) vaut prise du mutex : la
+# traiter comme « déjà pris » le laisserait abandonné, et plus aucune mise à jour ne
+# passerait.
 try { $aLaMain = $SzhMutex.WaitOne(0) }
 catch [System.Threading.AbandonedMutexException] { $aLaMain = $true; Write-SzhLog 'update : mutex abandonné par une passe précédente, repris' }
 catch { $aLaMain = $false }
@@ -189,25 +167,20 @@ try {
   Write-SzhInfo (T 'maj.intro2')
   Write-Host ''
 
-  # Le compte qui exécute, dans le journal, avant tout le reste. Une mise à jour pose
-  # l'essentiel par utilisateur — distribution WSL, extensions, réglages, raccourcis,
-  # associations de fichiers — et une ligne « raccourcis posés » qui ne nomme pas le compte
-  # ne dit rien d'un compte de support élevé depuis la session d'une rédactrice, qui n'aura
-  # donc rien reçu.
+  # Le compte qui exécute, au journal : l'essentiel s'installe par compte, et une
+  # installation lancée avec un autre compte (support) ne profite pas à la session ouverte.
   $moi = Get-SzhIdentite
   Write-SzhLog ('update : compte {0} (admin : {1})' -f $moi.nom, $moi.admin)
 
-  # Ce qui a échoué sans emporter le reste. Une étape qui tombe ne doit plus priver le
-  # rédacteur des quatre autres : l'ennui est retenu ici, la passe continue, et l'écran de
-  # fin le dit.
+  # Les étapes qui ont échoué sans arrêter les autres ; l'écran de fin les signale.
   $ennuis = New-Object System.Collections.ArrayList
 
   # ---- Quoi de neuf ? ----
   $etape = (T 'etape.manifest')
   Write-SzhEtape (T 'maj.verif')
   $manifest = Get-SzhManifest $Version
-  # Champs du manifest utilisés comme noms de fichiers, rejoints tels quels à $SzhStaging :
-  # un manifest corrompu ou détourné ne doit jamais pouvoir écrire ni lire hors de ce dossier.
+  # Ces champs du manifeste deviennent des noms de fichiers sous $SzhStaging : on vérifie
+  # leur forme pour qu'un manifeste corrompu ne fasse rien lire ni écrire ailleurs.
   if (-not (Test-SzhVersionTag $manifest.version)) {
     throw ('Version de manifest invalide : ' + [string]$manifest.version)
   }
@@ -225,8 +198,7 @@ try {
   $etat = Get-SzhState
   $etatUtil = Get-SzhEtatUtilisateur
   Write-SzhOk (T 'maj.cible' @($manifest.version))
-  # Manifest mis en cache : c'est ce qui rend une réinstallation hors ligne possible.
-  # Jamais bloquant.
+  # Manifeste mis en cache, pour pouvoir réinstaller hors ligne. Un échec est ignoré.
   try { Set-SzhJson (Get-SzhManifestCache $manifest.version) $manifest } catch { }
 
   # ---- 1/5 Maquette, réglages et scripts (toolkit) ----
@@ -243,11 +215,9 @@ try {
         throw (T 'err.empreinte' @($manifest.toolkit.file))
       }
     }
-    # Remplacement atomique : construit le nouveau toolkit à part (copie de l'actuel,
-    # complétée par l'archive, nettoyée de ses orphelins), puis bascule par un renommage —
-    # jamais un Expand-Archive -Force fichier par fichier sur l'arbre vivant, qui laissait
-    # une fenêtre où le toolkit était amputé. Voir Install-SzhToolkitDepuisArchive
-    # (szh-common.ps1) pour le détail et le mode d'échec.
+    # Remplacement atomique : le nouveau toolkit est construit à part (copie de l'actuel,
+    # complétée par l'archive, orphelins retirés), puis mis en place par un renommage. Voir
+    # Install-SzhToolkitDepuisArchive (szh-common.ps1).
     $bilanOrphelins = Install-SzhToolkitDepuisArchive -Zip $zip -Toolkit $SzhToolkit -DossierTravail $SzhStaging
     foreach ($o in $bilanOrphelins.retires) {
       Write-SzhLog ('update : orphelin retiré du toolkit -> ' + $o)
@@ -266,29 +236,21 @@ try {
 
   # ---- 2/5 Environnement de fabrication (distro WSL) ----
   #
-  # Jamais fatale. C'est l'étape la plus lourde — 574 Mo, un import, des verrous de
-  # fichiers — et son échec emportait autrefois les étapes 3, 4 et 5 : une panne qui ne
-  # concerne que l'environnement de fabrication privait le rédacteur de ses raccourcis, de
-  # ses extensions et de ses réglages. L'ennui est retenu, la passe continue, l'écran de fin
-  # le dit.
+  # L'étape la plus lourde (un gros téléchargement, un import). Son échec est retenu dans
+  # $ennuis et n'empêche pas les étapes 3 à 5.
   #
-  # La version posée se lit dans l'état par utilisateur : l'enregistrement d'une
-  # distribution WSL est par compte, et l'état commun du poste affirmait « installé » à un
-  # compte qui n'avait rien.
+  # La version installée se lit dans l'état du compte : une distribution WSL est
+  # enregistrée par compte.
   $etape = (T 'etape.env')
   Write-SzhEtape (T 'maj.e2')
   $rootfsPose = Get-SzhEtatUtilisateurChamp $etatUtil 'rootfs'
   $distroPresente = ((Get-SzhDistrosEnregistrees) -contains $SzhDistro)
-  # Reprise des postes d'avant l'état par utilisateur : la version n'y était retenue que
-  # dans l'état commun. On l'accepte une fois, et seulement si la distribution est bien
-  # enregistrée pour ce compte — sinon les postes déjà installés réimporteraient 3 Go pour
-  # rien. Un compte qui n'a rien enregistré, lui, ne reçoit pas cette confiance : c'est
-  # précisément le mensonge qu'on retire.
+  # Repli sur l'état commun du poste, seulement si la distribution est enregistrée pour ce
+  # compte : cela évite de réimporter l'environnement sur un poste déjà installé.
   if ((-not $rootfsPose) -and $distroPresente -and $etat -and $etat.rootfs) {
     $rootfsPose = [string]$etat.rootfs
   }
-  # Version retenue mais aucune distribution enregistrée pour ce compte : c'est la
-  # distribution qui dit vrai, pas le fichier.
+  # Sans distribution enregistrée pour ce compte, la version notée ne compte pas.
   if (-not $distroPresente) { $rootfsPose = '' }
 
   try {
@@ -305,22 +267,17 @@ try {
         }
       }
 
-      # La place se vérifie avant de désenregistrer quoi que ce soit : un import à moitié
-      # fait laisse un dossier pris et aucune distribution, et c'est cet état-là qui bloque
-      # ensuite toutes les mises à jour. 5 Go : l'archive (0,6) et le disque qu'elle déplie
-      # (≈ 2,4), avec la marge de l'ancien environnement pas encore effacé.
+      # Place vérifiée avant de désenregistrer : un import à moitié fait laisse un dossier
+      # pris et aucune distribution. 5 Go : l'archive (0,6), le disque qu'elle déplie
+      # (environ 2,4) et une marge.
       $libre = Get-SzhEspaceLibreGo
       if (($libre -ge 0) -and ($libre -lt 5)) { throw (T 'err.espace' @($libre, 5)) }
 
-      # Cette fenêtre est celle du menu Démarrer : rien, avant elle, n'a vérifié que le
-      # moment se prête à désenregistrer l'environnement. Mêmes commutateurs que la passe
-      # silencieuse (update-launcher.ps1) -- on remplace l'environnement, donc
-      # -RemplaceEnvironnement -- sans quoi une mise à jour manuelle pouvait couper une
-      # compilation en vol.
+      # Lancée depuis le menu Démarrer, cette fenêtre n'a pas encore vérifié le moment :
+      # même test que la passe silencieuse, pour ne pas couper une compilation.
       $moment = Test-SzhMomentMaj -RemplaceEnvironnement
       if (-not $moment.propice) {
-        # La raison au journal : le message à l'écran couvre l'éditeur ouvert ET la
-        # compilation en vol, et sans elle on ne savait plus, après coup, lequel avait joué.
+        # Le message à l'écran couvre les deux cas ; le journal précise lequel.
         Write-SzhLog ('update : environnement non remplacé, moment défavorable -> ' + $moment.raison)
         throw (T 'err.wsl')
       }
@@ -331,9 +288,8 @@ try {
         Invoke-SzhNatif { & $wsl --unregister $SzhDistro 2>$null | Out-Null }
       }
       $dirDistro = Get-SzhDossierDistro
-      # Un reste : installation interrompue, disque plein, ou dossier commun d'avant cette
-      # version. `wsl --import` refuse d'écrire dans un dossier déjà pris, et rien ne le
-      # nettoyait jamais : le poste répétait le même message à chaque essai, pour toujours.
+      # Reste d'une installation interrompue : `wsl --import` refuse un dossier déjà pris,
+      # on le vide d'abord.
       try {
         if (Clear-SzhDossierDistro -Dossier $dirDistro) { Write-SzhInfo (T 'maj.env.repare') }
       } catch {
@@ -342,16 +298,14 @@ try {
       New-Item -ItemType Directory -Force -Path $dirDistro | Out-Null
       & $wsl --import $SzhDistro $dirDistro $tar --version 2
       if ($LASTEXITCODE -ne 0) {
-        # Deux pannes derrière un même code de retour, et deux gestes opposés : un dossier
-        # déjà pris ne se règle pas en fermant l'éditeur.
+        # Deux pannes pour un même code de retour, qui demandent des actions différentes.
         if (Test-Path (Join-Path $dirDistro 'ext4.vhdx')) { throw (T 'err.wsl.dossier') }
         throw (T 'err.wsl')
       }
       Invoke-SzhNatif { & $wsl --terminate $SzhDistro 2>$null | Out-Null }   # force la relecture de /etc/wsl.conf
 
-      # Un import réussi ne prouve pas qu'une distribution démarre : sans virtualisation,
-      # l'import passe et le premier `--exec` échoue. Sans ce contrôle, la panne
-      # n'apparaissait qu'à la première tentative de PDF, loin de sa cause.
+      # Un import réussi ne prouve pas que la distribution démarre (virtualisation
+      # désactivée) : on l'essaie tout de suite plutôt qu'au premier PDF.
       Write-SzhInfo (T 'maj.env.essai')
       if (-not (Test-SzhDistroRepond)) { throw (T 'err.wsl.moteur') }
 
@@ -371,11 +325,8 @@ try {
   # ---- 3/5 Extensions de l'éditeur ----
   $etape = (T 'etape.ext')
   Write-SzhEtape (T 'maj.e3')
-  # Ce qui est réellement posé pour ce compte : l'éditeur en est la seule preuve. L'état
-  # retenu ne sert que si son CLI ne répond pas. Un état commun au poste affirmait « dix
-  # extensions posées » à un compte qui n'en avait aucune, et la mise à jour les sautait
-  # comme « déjà à jour » : le rédacteur se retrouvait sans cockpit, sans rien qui échoue.
-  # L'état commun est lu en dernier recours, pour les postes d'avant l'état par utilisateur.
+  # Les extensions installées pour ce compte se lisent par la CLI de l'éditeur. L'état du
+  # compte, puis celui du poste, ne servent que si la CLI ne répond pas.
   $etatVsix = @{}
   $vsixRetenu = $null
   if ($etatUtil -and $etatUtil.vsix) { $vsixRetenu = $etatUtil.vsix }
@@ -399,20 +350,17 @@ try {
         if (-not (Test-SzhSha256 -Fichier $vf -Attendu $ext.sha256)) {
           throw (T 'err.empreinte' @($ext.file))
         }
-        # Le code de retour est lu, et l'etat n'enregistre la version que si
-        # l'installation a reussi. Sans cela un echec passager -- editeur a redemarrer,
-        # fichier verrouille -- faisait croire l'extension posee, et la mise a jour
-        # suivante la sautait comme « deja a jour » : l'extension ne revenait jamais.
-        # Invoke-SzhNatif : le CLI de VSCodium (Node 22) ecrit des DeprecationWarning sur
-        # stderr, et sous ErrorActionPreference = 'Stop' le 2>&1 de PowerShell 5.1 en
-        # faisait une erreur fatale (DEP0169 url.parse, mise a jour 2026.08.47 coupee).
+        # La version n'est notée que si l'installation a réussi : sinon la mise à jour
+        # suivante sauterait l'extension. Invoke-SzhNatif : la CLI de VSCodium écrit des
+        # DeprecationWarning sur stderr, que le 2>&1 de PowerShell 5.1 transformerait en
+        # erreur fatale sous ErrorActionPreference = 'Stop'.
         $sortie = Invoke-SzhNatif { & $cli --install-extension $vf --force 2>&1 }
         if ($LASTEXITCODE -eq 0) {
           $etatVsix[$ext.id] = $ext.version
           $changement = $true
         } else {
-          # Une extension qui echoue n'arrete pas les autres, ni le reste de la mise
-          # a jour : elle se signale, et l'etat la laisse a reprendre.
+          # Une extension en échec n'arrête pas les autres : elle est signalée et sera
+          # reprise au prochain passage.
           $detail = ($sortie | Where-Object { $_ -match 'Error|Failed' } | Select-Object -First 1)
           if (-not $detail) { $detail = ($sortie | Select-Object -Last 1) }
           $extRatees += $ext.id
@@ -438,20 +386,12 @@ try {
   if (Test-Path $src) {
     $dst = Join-Path $env:APPDATA 'VSCodium\User'
     New-Item -ItemType Directory -Force -Path $dst, (Join-Path $dst 'snippets') | Out-Null
-    # ⚠ settings.json n'est PLUS écrasé, et c'est le correctif d'un défaut qui a duré : ce
-    #   fichier appartient au rédacteur. Le recopier en entier effaçait à chaque mise à jour
-    #   tout ce qu'il avait choisi dans « Réglages SZH » — thème, zoom, taille de police,
-    #   langue de l'interface, mode d'aperçu. Les valeurs de la maison ne passent plus par
-    #   lui : le cockpit les déclare en défauts d'extension (contributes.configurationDefaults
-    #   de son package.json, recopie du gabarit) et pose lui-même les quelques réglages que
-    #   l'éditeur refuse en défaut. Voir vscodium-extension/szh-cockpit/lib/reglages-flotte.js.
+    # settings.json appartient au rédacteur (« Réglages SZH ») : il n'est copié que s'il
+    # n'existe pas, pour qu'un poste neuf soit configuré dès la première ouverture. Les
+    # valeurs maison passent par le cockpit (contributes.configurationDefaults et
+    # vscodium-extension/szh-cockpit/lib/reglages-flotte.js).
     #
-    #   Il est encore POSÉ sur un poste qui n'en a pas : le cockpit ne tourne pas avant le
-    #   premier démarrage de l'éditeur, et un poste neuf doit être configuré dès la première
-    #   ouverture, même si l'extension venait à ne pas s'activer.
-    #
-    #   Les deux autres fichiers restent écrasés : personne ne les édite, ils décrivent les
-    #   raccourcis et les tâches de compilation de la maison.
+    # keybindings.json et tasks.json, que personne n'édite, sont toujours remplacés.
     $reglagesRedacteur = Join-Path $dst 'settings.json'
     $srcReglages = Join-Path $src 'settings.json'
     if ((Test-Path $srcReglages) -and (-not (Test-Path $reglagesRedacteur))) {
@@ -466,20 +406,17 @@ try {
   }
 
   # ---- Réglages protégés de la chaîne de publication ----
-  # La configuration de l'export OJS et les titres de bibliographie : ils valent pour TOUS
-  # les postes, et se décident dans le dépôt. Écrasés à chaque mise à jour — c'est le sens
-  # même du fichier : la version déployée fait foi, et remplace ce qu'un poste aurait
-  # modifié localement. Le cockpit les recopie ensuite dans config.json, seul fichier que la
-  # chaîne de compilation sache lire depuis la machine virtuelle.
+  # Export OJS et titres de bibliographie, communs à tous les postes et décidés dans le
+  # dépôt : remplacés à chaque mise à jour. Le cockpit les recopie dans config.json, que la
+  # chaîne de compilation lit depuis la machine virtuelle.
   $protegesSrc = Join-Path $SzhToolkit 'windows\settings-protected.json'
   if (Test-Path $protegesSrc) {
     Copy-Item $protegesSrc (Join-Path $SzhBase 'settings-protected.json') -Force
   }
 
-  # Le pack de langue allemand est épinglé dans vsix.lock, mais VSCodium ne bascule ses
-  # menus natifs que si %APPDATA%\VSCodium\argv.json porte « locale ». Allemand seulement,
-  # aucun pack français n'étant épinglé. argv.json est du JSON avec commentaires, d'où une
-  # retouche textuelle et non un ConvertFrom-Json.
+  # VSCodium n'affiche ses menus en allemand que si argv.json porte « locale ». Seul le pack
+  # allemand est livré (vsix.lock). argv.json admet des commentaires : retouche textuelle
+  # plutôt que ConvertFrom-Json.
   if ($SzhLangue -eq 'de') {
     $argv = Join-Path $env:APPDATA 'VSCodium\argv.json'
     if (Test-Path $argv) {
@@ -487,8 +424,8 @@ try {
       if ($contenu -match '"locale"\s*:\s*"([^"]*)"') {
         if ($Matches[1] -ne 'de') {
           $rx = New-Object System.Text.RegularExpressions.Regex '"locale"\s*:\s*"[^"]*"'
-          # Sans BOM, comme Set-SzhJson : Set-Content -Encoding UTF8 en poserait un sous
-          # PowerShell 5.1, qu'Electron peut refuser de lire.
+          # Sans BOM : Electron peut refuser le BOM que pose Set-Content -Encoding UTF8 sous
+          # PowerShell 5.1.
           [System.IO.File]::WriteAllText($argv, $rx.Replace($contenu, '"locale": "de"', 1), (New-Object System.Text.UTF8Encoding($false)))
         }
       } else {
@@ -501,12 +438,9 @@ try {
     }
   }
 
-  # Réglages WSL du poste : plafond de mémoire et extinction automatique de la machine.
-  # Écrasé seulement s'il diffère : sans cette garde, un réglage que le rédacteur avait
-  # corrigé à la main (plus de mémoire allouée, par exemple) revenait à la valeur du gabarit
-  # à chaque mise à jour, sans qu'aucun message ne le dise. L'original est sauvegardé une
-  # seule fois, avant la première bascule -- jamais réécrit ensuite, sinon la sauvegarde
-  # finirait par n'être qu'une copie de ce que nous avons nous-mêmes posé.
+  # .wslconfig du compte : plafond de mémoire et extinction automatique de la machine. Remplacé
+  # s'il diffère du gabarit. L'original est sauvegardé une seule fois (.wslconfig.szh-avant),
+  # pour que la sauvegarde reste celle du rédacteur.
   $wslCfg = Join-Path $SzhToolkit 'windows\user.wslconfig'
   $wslCfgUtilisateur = Join-Path $env:USERPROFILE '.wslconfig'
   if (Test-Path $wslCfg) {
@@ -522,15 +456,9 @@ try {
     }
   }
 
-  # Raccourcis du menu Démarrer, au niveau utilisateur : le lanceur (une fenêtre à onglets)
-  # et la mise à jour, deux entrées et non plus cinq. La liste et les libellés vivent dans
-  # le socle commun, que bootstrap.ps1 et update-launcher.ps1 appellent aussi — un poste
-  # neuf comme un poste déjà à jour reçoit ainsi les mêmes entrées, sans intervention.
-  #
-  # Jamais bloquant, pour la même raison que la ruche de classes plus bas : un menu
-  # Démarrer verrouillé par une stratégie de groupe ne doit pas faire échouer une mise à
-  # jour par ailleurs réussie. Mais le journal le dit, sinon un raccourci qui manque reste
-  # introuvable.
+  # Raccourcis du menu Démarrer du compte : Pronto et sa mise à jour, posés aussi par
+  # bootstrap.ps1 et update-launcher.ps1. Un échec (menu verrouillé par stratégie de
+  # groupe) est journalisé sans faire échouer la mise à jour.
   try {
     $bilanMenu = Set-SzhRaccourcisMenu
     if ($bilanMenu.poses.Count -gt 0) {
@@ -546,15 +474,9 @@ try {
     Write-SzhLog ('update : raccourcis du menu Démarrer non posés : ' + $_.Exception.Message)
   }
 
-  # La tâche planifiée qui déclenche les mises à jour, même leçon que les raccourcis :
-  # bootstrap.ps1 ne tourne qu'à l'installation, donc un poste installé avant que le rythme
-  # change garderait son déclencheur quotidien de 11 h pour toujours. Réécrite seulement si
-  # elle diffère, jamais recréée quand elle est déjà juste.
-  #
-  # Jamais bloquant, et le refus est ici le cas courant plutôt que l'exception : la tâche vit
-  # dans la racine du planificateur, qui appartient à l'administrateur, et cette fenêtre ne
-  # demande pas l'élévation. Elle réussit quand bootstrap.ps1 l'a lancée — l'installation —
-  # ou quand un administrateur ouvre le raccourci « Mise à jour » en tant qu'administrateur.
+  # La tâche planifiée est réécrite si elle diffère. Sans élévation, le refus est le cas
+  # courant : elle appartient à l'administrateur. La correction réussit quand bootstrap.ps1
+  # lance ce script, ou quand la mise à jour est ouverte en administrateur.
   try {
     $bilanTache = Set-SzhTacheMaj
     if ($bilanTache.etat -ne 'conforme') {
@@ -567,8 +489,7 @@ try {
     Write-SzhLog ('update : tâche planifiée non vérifiée : ' + $_.Exception.Message)
   }
 
-  # Jamais bloquante : une ruche de classes verrouillée par une stratégie de groupe ne
-  # doit pas faire échouer une mise à jour par ailleurs réussie.
+  # Un registre verrouillé par stratégie de groupe ne fait pas échouer la mise à jour.
   try {
     Set-SzhProgIdMarkdown
     Write-SzhLog ('update : ProgId SZH.Markdown posé pour {0} (HKCU, Ouvrir avec)' -f $moi.nom)
@@ -576,7 +497,7 @@ try {
     Write-SzhLog ('update : ProgId SZH.Markdown non posé : ' + $_.Exception.Message)
   }
 
-  # Protocole des liens « Envoyer pour traduction ». Même posture : jamais bloquant.
+  # Protocole des liens « Envoyer pour traduction », même traitement des erreurs.
   try {
     Set-SzhProtocoleSzh
     Write-SzhLog ('update : protocole szh: posé pour {0} (HKCU)' -f $moi.nom)
@@ -592,45 +513,35 @@ try {
   # Rootfs : on garde l'archive courante et la précédente.
   $archives = @(Get-ChildItem (Join-Path $SzhStaging 'szh-publishing-rootfs-*.tar.gz') -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
   if ($archives.Count -gt 2) { $archives | Select-Object -Skip 2 | Remove-Item -Force }
-  # Deux archives de toolkit, comme pour le rootfs : sans la précédente, « réinstaller une
-  # version antérieure » n'aurait rien à réinstaller.
+  # Deux archives de toolkit aussi, pour pouvoir réinstaller la version précédente.
   $zips = @(Get-ChildItem (Join-Path $SzhStaging 'toolkit-*.zip') -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
   if ($zips.Count -gt 2) { $zips | Select-Object -Skip 2 | Remove-Item -Force }
-  # Les manifests en cache sont minuscules : cinq couvrent les archives conservées.
+  # Cinq manifestes en cache, qui couvrent les archives conservées.
   $manifests = @(Get-ChildItem (Join-Path $SzhStaging 'manifest-*.json') -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
   if ($manifests.Count -gt 5) { $manifests | Select-Object -Skip 5 | Remove-Item -Force }
   Get-ChildItem (Join-Path $SzhStaging '*.vsix') -ErrorAction SilentlyContinue | Remove-Item -Force
-  # Reste d'un nettoyage d'orphelins interrompu (coupure de courant, disque plein) : cette
-  # extraction à part n'a plus lieu d'être une fois l'étape 1/5 passée.
+  # Restes d'une extraction de contrôle interrompue (coupure de courant, disque plein).
   Get-ChildItem (Join-Path $SzhStaging 'toolkit-extrait-*') -Directory -ErrorAction SilentlyContinue |
     Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-  # La cadence de la passe silencieuse a déménagé chez l'utilisateur. Le fichier commun
-  # d'avant ne dit plus rien de personne, et le laisser ferait mal lire un poste au
-  # prochain diagnostic.
+  # L'ancien fichier commun de cadence ; elle est désormais par compte (szh-taches.ps1).
   $ancienneCadence = Join-Path $SzhBase 'maj-auto.json'
   if (Test-Path $ancienneCadence) {
     Remove-Item -LiteralPath $ancienneCadence -Force -ErrorAction SilentlyContinue
   }
   Write-SzhOk (T 'maj.e5.ok')
 
-  # ---- Migration de l'arborescence (dossier de TEST seulement) ----
-  # Automatique et idempotente (windows/szh-migration.ps1) : si l'ancienne arborescence
-  # (52_Revue\RV02_Redaction…) traîne encore dans le dossier de test, elle est déplacée vers
-  # la nouvelle -- jamais sur SharePoint/production, où l'arborescence est celle de la
-  # bibliothèque partagée. Ne fait jamais échouer la mise à jour : un problème ici se
-  # journalise et attend le prochain passage, sur le modèle du check-in (szh-checkin.ps1).
+  # ---- Migration de l'arborescence (dossier de test seulement) ----
+  # Voir szh-migration.ps1. Un problème est journalisé et attend le prochain passage.
   try { Invoke-SzhMigrationArborescence } catch {
     try { Write-SzhLog ('update : migration arborescence impossible -> ' + $_.Exception.Message) } catch { }
   }
 
   # ---- État final ----
-  # Deux états, parce qu'il y a deux vérités. Le poste : la version du toolkit, commune à
-  # tous les comptes. Le compte : l'environnement de fabrication et les extensions, qui sont
-  # les siens et ceux de personne d'autre. Les confondre faisait croire à un compte neuf que
-  # tout était déjà posé, et la mise à jour ne lui posait rien.
+  # Deux états : celui du poste (version du toolkit, commune à tous les comptes) et celui
+  # du compte (environnement de fabrication et extensions).
   #
-  # Set-SzhStateCles et non Save-SzhState : state.json porte aussi la langue choisie par le
-  # dernier lanceur ouvert, qu'une réécriture complète effaçait à chaque mise à jour.
+  # Set-SzhStateCles écrit clé par clé : state.json porte aussi la langue du dernier
+  # lanceur ouvert, qu'une réécriture complète effacerait.
   Set-SzhStateCles ([ordered]@{
     version    = $manifest.version
     toolkit    = $manifest.version
@@ -643,10 +554,8 @@ try {
     misAJourLe = (Get-Date -Format 's')
   }) | Out-Null
 
-  # Un ennui retenu : tout le reste est en place, et c'est ce que l'écran doit dire — ni
-  # « terminé », qui serait faux, ni un écran d'erreur nu qui laisserait croire que rien
-  # n'a été fait. Le code de sortie reste 1, pour que la passe silencieuse compte un
-  # blocage et finisse par rouvrir cette fenêtre si la panne dure.
+  # Une étape en échec : l'écran dit que le reste est en place et nomme l'étape. Code de
+  # sortie 1, pour que la passe silencieuse compte un blocage.
   if ($ennuis.Count -gt 0) {
     $premier = $ennuis[0]
     Write-SzhLog ('update PARTIEL -> {0} ; reste en panne : {1}' -f $manifest.version, $premier.etape)

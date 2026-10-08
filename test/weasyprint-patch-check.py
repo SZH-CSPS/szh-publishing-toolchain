@@ -1,15 +1,16 @@
-# Les correctifs SZH de WeasyPrint (image/patches/weasyprint-<version>/) tiennent-ils ?
-# Contrôle sur le RÉSULTAT : chaque cas est rendu en PDF/UA-1 par le WeasyPrint qui fait
-# tourner ce script, puis jugé par veraPDF et relu dans l'arbre de structure et le flux.
+# Vérifie que les patchs SZH de WeasyPrint (image/patches/weasyprint-<version>/) font leur
+# travail. Chaque cas est rendu en PDF/UA-1 par le WeasyPrint qui exécute ce script, puis
+# jugé par veraPDF et relu dans l'arbre de structure et le flux de contenu.
 #
 #   /opt/weasyprint/bin/python3 test/weasyprint-patch-check.py
-#   (depuis WSL, distro SZH-Publishing ; en CI : "$RUNNER_TEMP/weasyprint/bin/python")
+#   (dans la WSL SZH-Publishing ; en CI : "$RUNNER_TEMP/weasyprint/bin/python")
 #
 # VERAPDF et VERAPDF_JAVA : mêmes variables et mêmes valeurs par défaut que le Makefile.
-# Aucun cas ne s'abstient en silence : veraPDF absent, c'est un échec, pas un vert.
+# veraPDF absent est un échec.
 #
-# Seuls les cas des patchs POSÉS sont jugés : image/patch-weasyprint.sh en écrit la liste
-# dans weasyprint/szh-patchs.txt. Témoin absent, ou patch posé sans cas ici : échec.
+# Seuls les cas des patchs appliqués sont jugés : image/patch-weasyprint.sh en écrit la
+# liste dans weasyprint/szh-patchs.txt. Liste absente, ou patch appliqué sans cas ici :
+# échec.
 #
 # Ce que chaque patch doit garantir (voir son en-tête) :
 #   10-tableaux-entetes : un th colspan/rowspan est inscrit sur toutes les colonnes/lignes
@@ -30,11 +31,10 @@
 #      seconde fois quand un target-counter fait repaginer ;
 #   55-notes-reportees : une note reste sur la page de son appel quand c'est un paragraphe
 #      suivant qui manque de lignes pour orphans ; c'est ce paragraphe qui part.
-# Et ce qu'ils ne doivent PAS changer : alt="" seul reste une /Figure sans /Alt, signalée —
-# l'import écrit alt="" pour toute image sans description, ce n'est pas une décision de
-# la rédaction. Le cas f ci-dessous DOIT donc échouer en 7.3 : s'il passait, le contrôle
-# serait mort, ou le patch déciderait à la place de la rédaction. De même, le trait d'un
-# composé coupé à son trait reste un trait, et ni un <br> ni une fin de paragraphe ne
+# Ce qu'ils ne changent pas : alt="" seul reste une /Figure sans /Alt, signalée, car
+# l'import écrit alt="" pour toute image sans description. Le cas f doit donc échouer en
+# 7.3 ; s'il passe, le contrôle ne détecte plus rien ou le patch va trop loin. Le trait
+# d'un composé coupé à son trait reste un trait, et ni un <br> ni une fin de paragraphe ne
 # reçoivent d'espace.
 import os
 import subprocess
@@ -77,7 +77,7 @@ FIN = ('<p class="saut">d1 <a class="ref" href="#fin">Verweis</a></p>'
 
 # nom : (patch, corps HTML, clauses veraPDF en échec attendues)
 CAS = {
-    # Le tableau massie 2025-02 (table-01.html), réduit : « Punkte » colspan=2.
+    # Tableau d'un article réel, réduit : « Punkte » colspan=2.
     'a-colspan': (ENTETES,
                   '<table><caption>C</caption><thead><tr><th scope="col">X</th>'
                   '<th scope="col">Beschreibung</th><th scope="colgroup" colspan="2">Punkte'
@@ -95,7 +95,7 @@ CAS = {
                   '<th id="h1" scope="col">B</th><th id="h2" scope="col">C</th></tr></thead>'
                   '<tbody><tr><td headers="h0">1</td><td headers="h2">2</td>'
                   '<td headers="h1 h2">3</td></tr></tbody></table>', set()),
-    # Portrait décoratif dans un tableau (bloc auteur, table-02.html) + image décrite.
+    # Portrait décoratif dans un tableau (bloc auteur) et image décrite.
     'e-decor': (DECOR,
                 '<table><caption>C</caption><tr><td><img src="img.png" alt="" '
                 'role="presentation" width="80"></td><td><img src="img.png" '
@@ -104,7 +104,7 @@ CAS = {
     'e-decor-seul': (DECOR,
                      '<table><caption>C</caption><tr><td><img src="img.png" alt="" '
                      'role="presentation" width="80"></td><td>Name</td></tr></table>', set()),
-    # alt="" seul : pas une décision, reste signalé (7.3-1).
+    # alt="" seul reste signalé (7.3-1).
     'f-alt-vide-seul': (DECOR,
                         '<table><caption>C</caption><tr><td><img src="img.png" alt="" '
                         'width="80"></td><td>x</td></tr></table>', {'7.3-1'}),

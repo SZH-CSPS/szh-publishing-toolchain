@@ -1,19 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# pronto_docx.py — le lecteur .docx du gabarit « Pronto — modèle d'article » : lit le zip et
-# rend le modèle neutre de pronto_modele.py (Par, Cellule, Tableau). RIEN D'AUTRE — aucune
-# règle du gabarit ne vit ici (tableau des métadonnées, tableau des auteurs, blocs
-# figure/tableau, bibliographie…) : tout ça vit dans pronto_modele.py, qui ne sait rien de
-# `w:` et peut donc appliquer ses règles sans connaître le format.
+# Lecteur .docx du gabarit « Pronto — modèle d'article » : lit le zip et rend le modèle
+# neutre de pronto_modele.py (Par, Cellule, Tableau). Les règles du gabarit sont dans
+# pronto_modele.py, qui ignore tout du format OOXML.
 #
-# Reconnaissance des styles par NOM (w:name de styles.xml), jamais par styleId : un document
-# réenregistré par un autre Word peut changer les id, jamais les noms affichés — voir
-# pronto_modele.py pour ce que devient ce nom une fois résolu. Un style dont le nom est
-# introuvable (styles.xml absent ou id inconnu) résout sur le styleId brut lui-même : c'est
-# la seule façon de garder la reconnaissance de repli par identifiant que famille() attend
-# encore (voir le point 1 de l'en-tête de pronto_modele.py).
+# Les styles se reconnaissent par leur nom (w:name), car un autre Word peut changer les
+# styleId en réenregistrant. Si le nom est introuvable, le styleId brut sert de repli (voir
+# famille() dans pronto_modele.py).
 #
-# stdlib uniquement : pas de PyYAML dans la WSL de la flotte.
+# Bibliothèque standard seule : la WSL n'a pas PyYAML.
 
 import os
 import sys
@@ -23,31 +18,26 @@ import xml.etree.ElementTree as ET
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pronto_modele as pm
 import ooxml_lecture
-# La lecture bas niveau vit dans ooxml_lecture ; ses noms restent lisibles ici, où
-# manuscrit_docx.py, les tests et les outils les cherchent.
+# Réexportés : manuscrit_docx.py, les tests et les outils les importent depuis ce module.
 from ooxml_lecture import (W, A, R, ASVG, blocs_du_corps, charger_rels_images,
                            charger_styles, compter_marqueurs_page, images_de_paragraphe,
                            pstyle, resoudre_style, texte_paragraphe)
 
 
 def variantes_images(chemin_docx):
-    """{nom de l'aperçu -> [noms des variantes]} — les AUTRES noms de fichier sous lesquels une
-    même image peut apparaître dans le .md.
+    """{nom de l'aperçu -> [noms des variantes]} : les autres noms sous lesquels une même
+    image peut apparaître dans le .md.
 
-    Word range une image vectorielle DEUX fois : le SVG lui-même, et un aperçu bitmap pour les
-    lecteurs qui ne savent pas l'afficher. Le a:blip pointe l'APERÇU (rId7 -> media/image1.png
-    sur le gabarit réel) et le vrai SVG se cache dans son extension asvg:svgBlip (rId8 ->
-    media/image2.svg). Or pandoc, lui, extrait et cite le SVG : un bloc figure du gabarit
-    nommerait image1.png là où le .md porte image2.svg, et l'instruction FI (légende, texte
-    alternatif, crédit, source) ne retrouverait jamais son image.
+    Word range une image vectorielle deux fois : un aperçu bitmap, que pointe le a:blip
+    (media/image1.png), et le SVG, dans son extension asvg:svgBlip (media/image2.svg).
+    pandoc cite le SVG : sans cette table, l'instruction FI d'un bloc figure ne retrouverait
+    pas son image.
 
-    ⚠ Cette table vit À CÔTÉ du modèle neutre, jamais dedans : `Par.images` doit continuer de
-      dire « les images de ce paragraphe », une par image réelle. Y ajouter la variante ferait
-      croire à deux images là où il n'y en a qu'une — et ferait diverger ce lecteur de
-      manuscrit_docx.projeter_pronto(), dont un contrôle exige l'égalité stricte sur le gabarit
-      livré (test/js/manuscrit-docx.test.js).
+    La table reste hors du modèle neutre : `Par.images` compte une entrée par image réelle,
+    et doit rester égal à ce que rend manuscrit_docx.projeter_pronto()
+    (test/js/manuscrit-docx.test.js).
 
-    Toute erreur de lecture rend {} : l'appariement se fera alors sur le seul nom principal.
+    Toute erreur de lecture rend {}.
     """
     variantes = {}
     try:
@@ -68,25 +58,17 @@ def variantes_images(chemin_docx):
 
 
 # ---------------------------------------------------------------------------------
-# Reconnaissance du gabarit — c'est elle qui décide, dans pipeline/import-docx.sh, si un
-# document déposé part à ce lecteur ou à docx-meta.py (le lecteur des Word hérités).
+# Reconnaissance du gabarit : pipeline/import-docx.sh envoie un document au gabarit à ce
+# lecteur, les autres à docx-meta.py.
 #
-# Le premier critère est la clé cachée SZH-Gabarit (docProps/custom.xml, voir
-# pm.CLE_GABARIT_NOM) : elle survit aux enregistrements Word et LibreOffice, et à la
-# conversion .odt -> .docx de l'import. À défaut, ce qui suit vaut pour les documents partis
-# d'un gabarit antérieur à la clé.
+# Premier critère : la propriété cachée SZH-Gabarit (docProps/custom.xml), qui survit aux
+# enregistrements Word et LibreOffice et à la conversion .odt -> .docx.
 #
-# Le critère de repli est la DÉCLARATION des deux styles maison dans styles.xml, pas leur
-# emploi dans le corps : un document parti du gabarit les porte même si l'autrice ou l'auteur
-# a effacé toutes les lignes d'aide, et un Word hérité ne peut pas les porter par accident. Un réglage
-# de poste aurait été un pis-aller — la rédaction reçoit les deux sortes de documents, souvent
-# le même jour.
-#
-# Les DEUX sont exigés, et non l'un ou l'autre : « SZH Cle » seul se retrouve dans un document
-# fabriqué par manuscrit_gabarit.py à partir d'un gabarit ancien, « SZH Aide » seul n'existe
-# nulle part. Exiger les deux, c'est exiger le gabarit entier. La règle elle-même vit dans
-# pronto_modele.est_gabarit(), que le nettoyeur appelle aussi : les noms s'y comparent par
-# forme normalisée (« SZH-Cle » vaut « SZH Cle »).
+# Repli, pour les documents issus d'un gabarit plus ancien : la déclaration dans styles.xml
+# des deux styles « SZH Cle » et « SZH Aide ». Leur déclaration, et non leur emploi : elle
+# reste même si les lignes d'aide ont été effacées. Les deux sont exigés : « SZH Cle » seul
+# se trouve dans des documents produits par manuscrit_gabarit.py depuis un ancien gabarit.
+# La règle est dans pronto_modele.est_gabarit(), que le nettoyeur appelle aussi.
 
 
 def lire_cle_gabarit(z):
@@ -96,9 +78,7 @@ def lire_cle_gabarit(z):
 
 def est_pronto(chemin_docx):
     """Vrai si ce .docx porte la clé cachée du gabarit, ou à défaut en déclare les styles.
-    Toute erreur de lecture (zip invalide, styles.xml absent) rend Faux : un document qu'on ne
-    sait pas ouvrir n'est pas un document Pronto, et l'ancienne chaîne dira mieux que nous ce
-    qui ne va pas."""
+    Toute erreur de lecture rend Faux : docx-meta.py signalera mieux le problème."""
     try:
         with zipfile.ZipFile(chemin_docx) as z:
             return pm.est_gabarit(charger_styles(z).values(), cle=lire_cle_gabarit(z))
@@ -137,9 +117,8 @@ def _cellule_depuis(tc, styles, rels_images):
 
 
 def _tableau_depuis(tbl, styles, rels_images, page=None):
-    """`page` : le numéro de page de CE tableau s'il est de premier niveau et connaissable
-    (voir lire() ci-dessous) — toujours None pour un tableau imbriqué (contenu d'un bloc
-    tableau), qui n'en a jamais eu besoin."""
+    """`page` : numéro de page d'un tableau de premier niveau s'il est connu (voir lire()) ;
+    None pour un tableau imbriqué."""
     rangees = []
     for tr in tbl:
         if tr.tag != W + 'tr':
@@ -150,17 +129,13 @@ def _tableau_depuis(tbl, styles, rels_images, page=None):
 
 
 def lire(chemin_docx):
-    """Rend un list[Par | Tableau] : les blocs de premier niveau du document, dans l'ordre.
-    Toute erreur de lecture (zip invalide, document.xml absent ou mal formé) se propage —
-    c'est à l'appelant (pronto-lire.py) de décider du repli, le même quel que soit le
-    format déposé.
+    """Rend list[Par | Tableau] : les blocs de premier niveau du document, dans l'ordre. Les
+    erreurs de lecture se propagent ; pronto-lire.py décide du repli.
 
-    Le Tableau.page de chaque tableau de PREMIER NIVEAU est calculé ici : 1 + le nombre de
-    w:lastRenderedPageBreak qui le précèdent dans le corps — mais SEULEMENT si le document en
-    porte au moins un. Sans aucun marqueur nulle part (document jamais ouvert par Word), la
-    page n'est pas devinée : elle reste None sur tous les tableaux. Une page fausse serait
-    pire que pas de page — voir pronto_modele.py, Tableau.page et le garde-fou
-    ressemble_a_un_bloc()/_avertir_bloc_mal_forme() qui la consomme."""
+    Tableau.page d'un tableau de premier niveau vaut 1 + le nombre de
+    w:lastRenderedPageBreak qui le précèdent, si le document en porte au moins un. Sinon
+    (document jamais ouvert par Word), elle reste None : une page fausse serait pire que pas
+    de page (voir _avertir_bloc_mal_forme() dans pronto_modele.py)."""
     with zipfile.ZipFile(chemin_docx) as z:
         racine = ET.fromstring(z.read('word/document.xml'))
         styles = charger_styles(z)

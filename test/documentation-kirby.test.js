@@ -1,15 +1,14 @@
-// Ce que le convertisseur Kirby (pipeline/documentation-kirby.py) écrit, et ce que
-// szh-ressource.lua / szh-rubrique.lua en composent une fois passés par pandoc — le même
-// harnais que test/filtres-pandoc.test.js (pandoc réel, jamais un AST écrit à la main), plus
-// un appel à l'interprète Python pour le convertisseur.
+// Teste ce qu'écrit le convertisseur Kirby (pipeline/documentation-kirby.py), puis ce
+// qu'en font szh-ressource.lua et szh-rubrique.lua avec pandoc. Même harnais que
+// test/filtres-pandoc.test.js (pandoc réel), plus Python pour le convertisseur.
 //
 //   node --test test/documentation-kirby.test.js
 //
-// ⚠ Hors du glob test/js/*.test.js, comme test/filtres-pandoc.test.js et pour la même
-//   raison : ces contrôles demandent pandoc (job `pdf-ua` de la CI), pas le job `contrats`.
+// Hors du glob test/js/*.test.js, comme test/filtres-pandoc.test.js : ces tests demandent
+// pandoc (job `pdf-ua` de la CI).
 //
-// Aucun de ces contrôles ne s'abstient silencieusement : pandoc ou python absents -> saut
-// explicite via gardes.js (sansPandoc / sansPython), jamais un test qui réussit pour rien.
+// Sans pandoc ou sans Python, les tests sont sautés avec un motif (sansPandoc, sansPython
+// de gardes.js).
 'use strict';
 
 const test = require('node:test');
@@ -25,10 +24,9 @@ const FILTRES = path.join(RACINE, 'pipeline', 'filters');
 const CONVERTISSEUR = path.join(RACINE, 'pipeline', 'documentation-kirby.py');
 const CHAMPS_JSON = path.join(RACINE, 'pipeline', 'kirby', 'champs-documentation.json');
 const BANC = path.join(RACINE, 'test', 'articles', 'documentation');
-// Bibliothèque partagée du banc (test/README.md, §La bibliothèque de fiches) : test/ n'est
-// pas sous Revue\ ni Zeitschrift\, sa racine ne se découvre donc pas seule — passée
-// explicitement à chaque appel, jamais via SZH_NEWS_RACINE (déterministe, indépendant de
-// l'environnement du poste qui lance les tests).
+// Bibliothèque de fiches du banc (voir test/README.md). test/ n'est pas sous Revue\ ni
+// Zeitschrift\ : la racine est passée à chaque appel, plutôt que par SZH_NEWS_RACINE, pour
+// ne pas dépendre de l'environnement du poste.
 const BANC_RACINE = path.join(RACINE, 'test', 'news-racine');
 const ID_BANC = 'wj7f0dcw97qk3p2s'; // test/ausgabe.yaml : id
 const CHAMPS = JSON.parse(fs.readFileSync(CHAMPS_JSON, 'utf8'));
@@ -39,15 +37,10 @@ function dossierJetable(prefixe) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefixe));
 }
 
-// Lance le convertisseur sur un dossier d'article Documentation, TOUJOURS via --sortie
-// (jamais stdout, même quand l'appelant ne fournit pas de chemin) : c'est ce que fait
-// pipeline/Makefile en production, et c'est nécessaire ici — Python choisit l'encodage de
-// stdout sur la locale du système quand il n'écrit pas dans un vrai terminal (cp1252 sur un
-// poste Windows francophone/germanophone), alors que le fichier est ouvert par le script
-// avec `encoding='utf-8'` explicite (documentation-kirby.py, main()). Sans ce détour, les
-// caractères accentués du stdout capturé par spawnSync ressortaient en mojibake — mesuré.
-// stderr n'a pas ce problème : jamais lu ici pour son CONTENU accentué, seulement grep-é
-// sur des motifs ASCII.
+// Lance le convertisseur sur un dossier d'article Documentation, toujours avec --sortie,
+// comme pipeline/Makefile. Hors terminal, Python encode stdout selon la locale du système
+// (cp1252 sous Windows), alors que le fichier de sortie est écrit en UTF-8. stderr n'est
+// comparé qu'à des motifs ASCII.
 function convertir(dossierArticle, sortieDemandee, racineNews) {
   const dossierTmp = sortieDemandee ? null : fs.mkdtempSync(path.join(os.tmpdir(), 'szh-doc-conv-'));
   const sortie = sortieDemandee || path.join(dossierTmp, 'sortie.md');
@@ -56,7 +49,7 @@ function convertir(dossierArticle, sortieDemandee, racineNews) {
     if (racineNews !== null) { args.push('--racine-news', racineNews === undefined ? BANC_RACINE : racineNews); }
     const r = python(args, { encoding: 'utf8' });
     if (r.error) { throw new Error('python introuvable : ' + r.error.message); }
-    // Les images citées le sont par le chemin que Python a vu : le pandoc du poste les relit.
+    // Les chemins d'image sont ceux vus par Python : on les traduit pour le pandoc du poste.
     const stdout = (r.status === 0 && fs.existsSync(sortie))
       ? fs.readFileSync(sortie, 'utf8').replace(/\/mnt\/[a-z]\/[^\s)"'}]*/g, cheminDepuisPython) : '';
     return { stdout, stderr: r.stderr, status: r.status };
@@ -65,10 +58,8 @@ function convertir(dossierArticle, sortieDemandee, racineNews) {
   }
 }
 
-// pandoc, du markdown déjà en mémoire vers du HTML, avec la chaîne de filtres donnée.
-// Reprend l'idiome de test/filtres-pandoc.test.js (pandoc()), copié plutôt qu'importé :
-// deux harnais indépendants, l'un pour les filtres seuls, l'autre pour le convertisseur +
-// les filtres — voir l'en-tête de ce fichier.
+// pandoc : markdown en mémoire vers HTML, avec la chaîne de filtres donnée. Copie de
+// pandoc() de test/filtres-pandoc.test.js, pour garder les deux harnais indépendants.
 function pandoc(entree, options) {
   const o = options || {};
   const args = ['--from=markdown', '--to=html5', '--wrap=none'];
@@ -81,18 +72,16 @@ function pandoc(entree, options) {
   return r.stdout.replace(/\r\n/g, '\n');
 }
 
-// La chaîne réelle du Makefile, réduite aux filtres qui touchent une Documentation (voir
-// l'en-tête de pipeline/Makefile pour l'ordre complet et pourquoi) : assez pour composer le
-// rendu final d'une fiche ou d'une rubrique, jamais assez pour prouver l'ordre ENTIER — ce
-// n'est pas le rôle de ce fichier.
+// La chaîne du Makefile, réduite aux filtres qui touchent une Documentation : de quoi
+// composer une fiche ou une rubrique. L'ordre complet est dans pipeline/filtres.mk.
 const CHAINE_DOCUMENTATION = [
   'szh-niveaux.lua', 'szh-listes-serrees.lua', 'szh-typographie.lua', 'szh-grille.lua',
   'szh-ressource.lua', 'szh-figure.lua', 'szh-numerotation.lua', 'szh-sections.lua',
   'szh-citations.lua', 'szh-rubrique.lua',
 ];
 
-// Convertit puis rend le banc réel (test/articles/documentation) : un seul appel, mémoïsé,
-// partagé par tous les tests qui l'interrogent — le banc ne change pas d'un test à l'autre.
+// Convertit puis rend le banc (test/articles/documentation) une seule fois, pour tous les
+// tests.
 let _rendu;
 function rendreLeBanc() {
   if (_rendu) { return _rendu; }
@@ -158,12 +147,9 @@ test('rendu : rubrique sans intertitre (dossier_liens) sort une liste ordinaire'
   assert.match(html, /<li><a href="https:\/\/www\.szh\.ch\/">szh\.ch<\/a><\/li>/);
 });
 
-// Régression du 23.09.2026 : les sections de FICHES (horizon, recherche, intervention…)
-// n'avaient aucun titre imprimé — seules les rubriques en portaient un — et les fiches se
-// rangeaient visuellement sous le titre de la dernière rubrique. Un titre par section NON
-// VIDE, jamais numéroté : c'est ce que compte ce test, sur le compte réel de sections du
-// banc (deux rubriques + sept sections de fiches — le banc n'a pas de section de fiches
-// vide, voir « une rubrique sans contenu » plus haut pour ce cas côté rubriques).
+// Chaque section non vide, rubrique ou groupe de fiches d'un type, porte un titre non
+// numéroté ; sans lui, les fiches sembleraient rangées sous la rubrique précédente. Le
+// banc a deux rubriques et sept sections de fiches, aucune vide.
 test('rendu : chaque section non vide (rubrique ou groupe de fiches d’un type) porte un titre imprimé, jamais numéroté', SAUT, () => {
   const { html } = rendreLeBanc();
   const titres = html.match(
@@ -246,9 +232,9 @@ test('rendu : film — pastille de catégorie traduite', SAUT, () => {
   assert.match(bloc, /<div class="szh-ressource-pastille">\s*<p>Dokumentarfilm<\/p>/);
 });
 
-// Genre et pays (saisie liste_multiple) : chaque jeton traduit dans la langue de l'article
-// (allemand, banc réel) puis joints par « , », intercalés entre année et distributeur —
-// ordre réalisateur · année · genre · pays · distributeur (justifié dans szh-ressource.lua).
+// Genre et pays (liste_multiple) : chaque jeton est traduit dans la langue de l'article
+// (allemand pour le banc), puis joint par « , ». Ordre : réalisateur · année · genre ·
+// pays · distributeur (voir szh-ressource.lua).
 test('rendu : film — genre et pays (liste_multiple) traduits en allemand, dans l’ordre réalisateur · année · genre · pays · distributeur', SAUT, () => {
   const { html } = rendreLeBanc();
   const bloc = html.slice(html.indexOf('id="film0008zaertl00"'), html.indexOf('id="reprise09revue00"'));
@@ -285,13 +271,11 @@ test('rendu : curia et source ne s’impriment jamais, nulle part dans le docume
 });
 
 // ── Un numéro et sa bibliothèque, jetables ──────────────────────────────────────────────
-// Pour les cas qui doivent exercer une VRAIE bibliothèque de fiches (Ordre, Ausgabe,
-// orpheline, statut…) sans dépendre du banc réel : un dossier de numéro (ausgabe.yaml +
-// article Documentation minimal) et un dossier de racine _NewsUndActu, jetables l'un et
-// l'autre, jamais confondus avec le banc (BANC_RACINE), qu'aucun de ces tests ne modifie.
+// Pour tester une bibliothèque de fiches (Ordre, Ausgabe, orpheline, statut…) sans
+// toucher au banc (BANC_RACINE) : un numéro (ausgabe.yaml et article Documentation
+// minimal) et une racine _NewsUndActu, tous deux jetables.
 
-// Numéro jetable seul (ausgabe.yaml + article Documentation minimal), sans bibliothèque —
-// pour les cas qui pointent --racine-news sur une bibliothèque existante (BANC_RACINE).
+// Numéro jetable seul, pour les cas qui pointent --racine-news sur BANC_RACINE.
 function numeroJetable(id, lang) {
   const dossierNumero = dossierJetable('szh-doc-numero-');
   fs.writeFileSync(path.join(dossierNumero, 'ausgabe.yaml'), `id: ${id}\n`);
@@ -302,8 +286,7 @@ function numeroJetable(id, lang) {
   return { article, nettoyer: () => fs.rmSync(dossierNumero, { recursive: true, force: true }) };
 }
 
-// Numéro + bibliothèque, jetables l'un et l'autre — pour les cas qui doivent ÉCRIRE des
-// fiches (Ordre, Ausgabe…) sans toucher à BANC_RACINE (partagée, jamais modifiée ici).
+// Numéro et bibliothèque jetables, pour les cas qui écrivent des fiches.
 function numeroEtRacineJetables(id, lang) {
   const { article, nettoyer: nettoyerNumero } = numeroJetable(id, lang);
   const racineFiches = dossierJetable('szh-doc-racine-');
@@ -316,11 +299,10 @@ function numeroEtRacineJetables(id, lang) {
   };
 }
 
-// Fiches\<dossier du type>\<slug>\<fichier> (types[].dossier du contrat, docs/FORMAT-
-// DOCUMENTATION-KIRBY.md, §Une fiche, 23.09.2026) : le dossier de type se déduit du type
-// porté par le nom du fichier (« livre.de.txt » -> type livre -> dossier buecher), sauf
-// `dossierSurcharge` — utilisé par les tests qui rangent volontairement un fichier sous le
-// mauvais dossier ou sous un sous-dossier inconnu du contrat.
+// Fiches\<dossier du type>\<slug>\<fichier> (types[].dossier, voir
+// docs/FORMAT-DOCUMENTATION-KIRBY.md). Le dossier vient du type lu dans le nom du fichier
+// (« livre.de.txt » -> livre -> buecher) ; `dossierSurcharge` sert à ranger exprès un
+// fichier dans un mauvais dossier ou un dossier inconnu.
 function ecrireFiche(racineFiches, slug, fichier, contenu, dossierSurcharge) {
   const type = fichier.split('.', 1)[0];
   const dossierType = dossierSurcharge || (CHAMPS.types[type] && CHAMPS.types[type].dossier);
@@ -332,21 +314,17 @@ function ecrireFiche(racineFiches, slug, fichier, contenu, dossierSurcharge) {
 
 // ── Film : genre et pays (liste_multiple) — l'autre langue, et un jeton inconnu ─────────
 //
-// Le banc réel (rendreLeBanc, plus haut) n'existe qu'en allemand : ces deux tests exercent
-// le français, hors du banc, avec un numéro et une bibliothèque jetables (comme la section
-// suivante) — et le cas d'un jeton hors de la liste genre_film/pays du contrat, qui ne doit
-// jamais disparaître ni faire échouer la compilation (documentation-kirby.py transporte la
-// valeur brute sans la valider ; szh-ressource.lua imprime tel quel ce qu'il ne reconnaît
-// pas — même principe que le repli d'un jeton de liste simple inconnu).
+// Le banc n'existe qu'en allemand : ces deux tests couvrent le français, avec un numéro et
+// une bibliothèque jetables, et un jeton absent de la liste genre_film/pays. Ce jeton est
+// imprimé tel quel par szh-ressource.lua, sans faire échouer la compilation.
 function ficheFilm(id, genre, pays) {
   return `Title: Film de test\n\n----\n\nAusgabe: ${id}\n\n----\n\nOrdre: 1\n\n` +
     `----\n\nCategorie: documentaire\n\n----\n\nGenre: ${genre}\n\n----\n\nPays: ${pays}\n\n` +
     `----\n\nRealisateur: X\n\n----\n\nAnnee: 2026\n\n----\n\nDescriptif: Z\n`;
 }
 
-// pandoc() (plus bas dans ce fichier) prend un metadataFile ; pour ces deux tests, un bloc
-// front-matter YAML directement dans le markdown suffit (pandoc le lit tout aussi bien) et
-// évite d'écrire un fichier .yaml jetable de plus.
+// Ces deux tests passent les métadonnées en front-matter YAML dans le markdown, plutôt
+// que par le metadataFile de pandoc().
 function pandocAvecLang(md, lang) {
   return pandoc(`---\nlang: ${lang}\n---\n\n${md}`, { filtres: CHAINE_DOCUMENTATION });
 }
@@ -390,8 +368,8 @@ test('convertisseur : un Ordre qui contredit le tri du contrat avertit sur stder
   const id = 'szhdocordretest1';
   const { article, racineFiches, nettoyer } = numeroEtRacineJetables(id, 'de');
   try {
-    // livre (ordreTypes : après intervention) posé en Ordre 1, une intervention en Ordre 2 :
-    // contredit ordreTypes (intervention doit précéder livre).
+    // Un livre en Ordre 1 et une intervention en Ordre 2 : contredit ordreTypes, où
+    // intervention précède livre.
     ecrireFiche(racineFiches, 'un-livre', 'livre.de.txt',
       `Title: Un livre\n\n----\n\nAusgabe: ${id}\n\n----\n\nOrdre: 1\n\n----\n\nAuteurs: X\n\n----\n\nAnnee: 2026\n\n----\n\nEditeur: Y\n\n----\n\nDescriptif: Z\n`);
     ecrireFiche(racineFiches, 'une-intervention', 'intervention.de.txt',
@@ -527,10 +505,8 @@ test('convertisseur : une fiche bilingue est vue dans sa seule langue, par le se
 });
 
 test('convertisseur : un fichier sous _Statuts n’est jamais lu comme une fiche', SAUT, () => {
-  // _Statuts est un voisin de Fiches, jamais scruté : le confirmer en pointant --racine-news
-  // sur le banc réel (qui porte les deux) et en vérifiant que le contenu du statut
-  // (« a-traduire ») ne fuite nulle part dans un document qui n'a pourtant aucune raison de
-  // le lire.
+  // _Statuts est à côté de Fiches dans le banc : son contenu (« a-traduire ») ne doit
+  // apparaître nulle part.
   const c = convertir(BANC);
   assert.strictEqual(c.status, 0, c.stderr);
   assert.ok(!/a-traduire/.test(c.stdout), 'le contenu d’un fichier de statut apparaît dans le markdown : ' + c.stdout);
@@ -550,8 +526,8 @@ test('racine _NewsUndActu : découverte automatique sous Revue\\<num> et sous _A
       fs.mkdirSync(article, { recursive: true });
       fs.writeFileSync(path.join(article, 'essai.meta.yaml'), 'type: documentation\nlang: fr\n');
       fs.writeFileSync(path.join(article, 'documentation.fr.txt'), 'Title: X\n');
-      // Sans --racine-news ni SZH_NEWS_RACINE : la découverte par les noms de dossiers
-      // doit suffire, dans les deux cas (numéro en cours et archivé).
+      // Sans --racine-news ni SZH_NEWS_RACINE : la racine se trouve par les noms de
+      // dossiers.
       const c = convertir(article, null, null);
       assert.strictEqual(c.status, 0, `${dossierNumero} : ${c.stderr}`);
     }

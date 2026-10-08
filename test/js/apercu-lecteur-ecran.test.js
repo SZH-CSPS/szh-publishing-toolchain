@@ -1,27 +1,21 @@
 // Les encadrés « ce qu'un lecteur d'écran reçoit » de l'aperçu HTML.
 //
-//   node --test "test/js/*.test.js"
+//   node --test test/js/apercu-lecteur-ecran.test.js
 //
-// Ce que ces contrôles gardent, et pourquoi chacun :
+// Ce que ces contrôles vérifient :
 //
-//   * Le PDF publié ne doit porter AUCUNE trace de ces encadrés. La garantie n'est pas
-//     une relecture attentive, c'est que le fichier qui les fabrique n'est pas même OUVERT
-//     hors de l'aperçu : szh-numerotation.lua ne le charge que sous SZH_APERCU=1. Un
-//     `dofile` sorti de cette garde, ou une règle de ces encadrés glissée dans print.css —
-//     que l'aperçu PARTAGE avec le PDF —, et la promesse tombe. C'est ce que le premier
-//     bloc de tests refuse.
-//   * Aucune couleur nouvelle n'entre par cette porte. test/apca-check.py mesure les hex
-//     de couleurs.css et de print.css, pas ceux d'une feuille écrite dans un filtre : la
-//     seule discipline qui tienne est de n'employer ici que des couleurs déjà déclarées et
-//     déjà argumentées dans print.css. Le test le vérifie hex par hex.
-//   * Un seul cas est signalé en rouge, et c'est le même que celui que l'export OJS
-//     refuse : image sans texte alternatif, sans légende de repli et sans déclaration
-//     « décorative ». Tout le reste — un tableau sans en-tête, une description longue non
-//     renseignée, une image déclarée décorative — est une absence LÉGITIME, montrée sans
-//     couleur d'alerte. Un jour où quelqu'un ajouterait un second encadré rouge, ce test
-//     l'arrête et lui fait relire cette phrase.
-//   * Tout ce que lit un rédacteur existe en français ET en allemand (orthographe suisse :
-//     « ss », jamais « ß »), plus l'italien et l'anglais, comme les libellés de figure.
+//   * Le PDF ne porte aucune trace de ces encadrés : le fichier qui les fabrique n'est
+//     chargé par szh-numerotation.lua que sous SZH_APERCU=1, et aucune de leurs règles
+//     n'est dans print.css, que l'aperçu partage avec le PDF.
+//   * Aucune couleur nouvelle : test/apca-check.py mesure les hex de couleurs.css et de
+//     print.css, pas ceux d'une feuille écrite dans un filtre. Les encadrés n'emploient
+//     donc que des couleurs déjà déclarées dans print.css.
+//   * Un seul cas est signalé en rouge, celui que l'export OJS refuse : image sans texte
+//     alternatif, sans légende de repli et sans déclaration « décorative ». Un tableau sans
+//     en-tête, une description longue vide ou une image décorative sont des absences
+//     légitimes, montrées sans couleur d'alerte.
+//   * Tout ce que lit un rédacteur existe en français et en allemand (orthographe suisse :
+//     « ss », pas « ß »), plus l'italien et l'anglais, comme les libellés de figure.
 'use strict';
 
 const test = require('node:test');
@@ -36,21 +30,17 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const FILTRES = path.join(RACINE, 'pipeline', 'filters');
 const MODULE = path.join(FILTRES, 'szh-apercu-lecteur-ecran.lua');
 const NUMEROTATION = path.join(FILTRES, 'szh-numerotation.lua');
-// La feuille du PDF est en trois fichiers : socle.css porte les polices et les jetons,
-// partage-filtres.css le balisage des filtres communs au livre, print.css la mise en page
-// propre à la revue. Les contrôles ci-dessous les lisent COMME UNE SEULE, dans l'ordre où
-// le Makefile les empile — une règle de print.css renvoie à un jeton du socle, et savoir de
-// quel fichier vient quoi n'apprendrait rien de plus ici.
+// La feuille du PDF tient en trois fichiers : socle.css (polices et variables),
+// partage-filtres.css (balisage des filtres communs au livre), print.css (mise en page de la
+// revue). Les contrôles les lisent comme une seule feuille, dans l'ordre du Makefile.
 const FEUILLES_PDF = ['socle.css', 'partage-filtres.css', 'print.css']
   .map((n) => path.join(RACINE, 'pipeline', 'styles', n));
 
 const lire = (p) => fs.readFileSync(p, 'utf8');
 
-// Lignes de commentaire retirées : ces filtres sont très commentés, et les commentaires
-// CITENT le code (« chargé par dofile », « aucune balise en <table »). Compter dedans, ce
-// serait compter deux fois et voir des fautes dans les phrases qui les interdisent.
-// Seules les lignes ENTIÈREMENT en commentaire partent : un « -- » de fin de ligne
-// couperait « var(--c-rule) » dans la feuille de style.
+// Retire les lignes de commentaire, qui citent le code (« chargé par dofile ») et
+// fausseraient les comptes. Seules les lignes entièrement en commentaire partent : couper
+// à « -- » casserait « var(--c-rule) » dans la feuille de style.
 const sansCommentaires = (lua) => lua.split('\n')
   .filter((ligne) => !/^\s*--/.test(ligne)).join('\n');
 
@@ -58,7 +48,7 @@ const source = sansCommentaires(lire(MODULE));
 const numerotation = sansCommentaires(lire(NUMEROTATION));
 const printCss = FEUILLES_PDF.map(lire).join('\n');
 
-// Les marques que ces encadrés posent dans le HTML. Aucune ne doit exister ailleurs.
+// Les marques que ces encadrés posent dans le HTML, propres à eux.
 const CLASSES = ['szh-lecteur-ecran', 'szh-le-entete', 'szh-le-ligne', 'szh-le-tag',
                  'szh-le-note', 'szh-le-absent', 'szh-le-vide', 'szh-le-manque'];
 
@@ -67,14 +57,13 @@ const CLASSES = ['szh-lecteur-ecran', 'szh-le-entete', 'szh-le-ligne', 'szh-le-t
 test('le module des encadrés n’est chargé que sous SZH_APERCU, le module commun toujours', () => {
   assert.match(numerotation, /local APERCU = \(os\.getenv\('SZH_APERCU'\) or ''\) ~= ''/,
     'szh-numerotation.lua doit lire SZH_APERCU comme szh-citations.lua');
-  // Le dofile de l'aperçu vit dans le `if APERCU then`, et nulle part ailleurs.
+  // Le dofile de l'aperçu est dans le `if APERCU then`.
   const garde = numerotation.match(/if APERCU then[\s\S]*?\nend\n/);
   assert.ok(garde, 'aucun bloc « if APERCU then » dans szh-numerotation.lua');
   assert.match(garde[0], /dofile/, 'le chargement du module doit être dans la garde');
   assert.match(garde[0], /szh-apercu-lecteur-ecran\.lua/);
-  // Deux dofile en tout, chacun nommé : celui de l'aperçu ci-dessus (sous garde) et celui
-  // du module commun de langue/slug (szh-commun.lua), chargé pour toute compilation — un
-  // troisième signalerait un chargement non maîtrisé.
+  // Deux dofile en tout : celui de l'aperçu ci-dessus et celui de szh-commun.lua, chargé
+  // pour toute compilation.
   const dofiles = numerotation.match(/dofile/g) || [];
   assert.strictEqual(dofiles.length, 2,
     'deux dofile attendus : celui de l’aperçu (sous garde) et celui de szh-commun.lua');
@@ -116,7 +105,7 @@ test('aucun autre filtre ne produit ni ne style ces encadrés', () => {
 
 test('aucune balise du module ne commence par « <table »', () => {
   // szh-numerotation.lua reconnaît un tableau réinjecté au motif « <table…> » : une balise
-  // de l’encadré qui commencerait par ces lettres (<tableau…>) lui repasserait sous le nez.
+  // de l’encadré qui commencerait ainsi (<tableau…>) serait prise pour un tableau.
   const balises = source.match(/<[a-zA-Z][a-zA-Z0-9-]*/g) || [];
   for (const b of balises) {
     assert.ok(!/^<table/i.test(b), 'balise interdite : ' + b);
@@ -126,9 +115,8 @@ test('aucune balise du module ne commence par « <table »', () => {
 // ---- Aucune couleur nouvelle ----
 
 test('les couleurs de l’encadré sont toutes déjà déclarées dans la feuille du PDF', () => {
-  // socle.css et print.css sont lus par test/apca-check.py ; une feuille écrite dans un
-  // filtre ne l’est pas. On n’emploie donc ici que des hex qui existent déjà là-bas, avec
-  // leur mesure.
+  // test/apca-check.py lit socle.css et print.css, pas une feuille écrite dans un filtre :
+  // seuls des hex déjà mesurés là-bas sont admis.
   const hex = [...new Set((source.match(/#[0-9A-Fa-f]{3,6}/g) || [])
     .map((h) => h.toLowerCase()))];
   assert.ok(hex.length > 0, 'aucune couleur trouvée : le test ne contrôle plus rien');
@@ -146,9 +134,9 @@ test('les couleurs de l’encadré sont toutes déjà déclarées dans la feuill
 });
 
 test('le texte de l’encadré d’alerte est à l’encre, jamais au rouge', () => {
-  // Mesuré avec pipeline/apca.py : #b3261e sur #fdecea ne vaut que Lc 71,7 — sous le
-  // seuil de 90 de tout texte de cette maquette. L’encre y vaut 95,6. Le rouge ne porte
-  // donc que le filet et l’aplat, qui ne sont pas du texte (seuil 30).
+  // Selon pipeline/apca.py, #b3261e sur #fdecea vaut Lc 71,7, sous le seuil de 90 du texte
+  // de cette maquette ; l’encre y vaut 95,6. Le rouge ne porte donc que le filet et l’aplat,
+  // qui ne sont pas du texte (seuil 30).
   const regle = source.match(/\.szh-le-manque\{([^}]*)\}/);
   assert.ok(regle, 'la règle de l’encadré d’alerte a disparu');
   assert.match(regle[1], /border:[^;]*#b3261e/, 'le filet rouge fait l’alerte');
@@ -167,7 +155,7 @@ test('un seul encadré est signalé en rouge', () => {
     + 'description longue facultative, image déclarée décorative — ne se signale pas '
     + 'comme un défaut. L’encadré montre, il n’accuse pas.');
   assert.ok(calmes.length >= 4, 'les cas calmes ont disparu');
-  // Un seul APPEL au témoin d’alerte : sa définition ne compte pas.
+  // Un seul appel au témoin d’alerte ; sa définition ne compte pas.
   const alertes = (source.match(/alerte\(l\)/g) || []).length
                 - (source.match(/function alerte\(l\)/g) || []).length;
   assert.strictEqual(alertes, 1, 'un seul appel au témoin d’alerte');
@@ -185,9 +173,8 @@ test('les absences légitimes se disent en note, sans alerte', () => {
 });
 
 test('le cas rouge est le même que celui que l’export OJS refuse', () => {
-  // lib/references.js : imagesSansAlternative() = pas d’attribut alt ET pas de légende de
-  // repli. L’encadré montre exactement ce cas, beaucoup plus tôt. Si le contrat change
-  // là-bas, il faut revenir ici.
+  // L’encadré montre le cas de imagesSansAlternative() (lib/references.js) : ni attribut
+  // alt, ni légende de repli. Les deux définitions vont ensemble.
   const references = lire(path.join(RACINE, 'vscodium-extension', 'szh-cockpit', 'lib',
                                     'references.js'));
   assert.match(references, /!i\.altDefini && i\.legende\.trim\(\) === ''/,
@@ -200,9 +187,8 @@ test('le cas rouge est le même que celui que l’export OJS refuse', () => {
 });
 
 test('les commentaires HTML sont retirés avant de compter les en-têtes', () => {
-  // Le corpus d’accessibilité explique en commentaire qu’« aucun <th scope> n’existe » :
-  // sans ce retrait, le compte trouvait un en-tête dans la phrase qui dit qu’il n’y en a
-  // pas, et un tableau parfaitement conforme se voyait reprocher une portée manquante.
+  // Le corpus d’accessibilité dit en commentaire qu’« aucun <th scope> n’existe » : sans ce
+  // retrait, le compte trouverait un en-tête dans cette phrase.
   const i = source.indexOf("gsub('<!%-%-.-%-%->', '')");
   const j = source.indexOf("gmatch('<[tT][hH]");
   assert.ok(i > 0, 'le retrait des commentaires HTML a disparu');
@@ -251,9 +237,9 @@ test('aucun libellé n’est vide, et l’allemand est en orthographe suisse', (
 });
 
 test('les étiquettes techniques restent en clair et non traduites', () => {
-  // ALT= et DESCRIPTION= nomment la CASE du formulaire où la valeur a été saisie ; les
-  // traduire les couperait de lib/i18n.js, où le rédacteur lit « Texte alternatif » /
-  // « Alternativtext » au-dessus du même champ. Toute la prose, elle, est traduite.
+  // ALT= et DESCRIPTION= nomment le champ du formulaire où la valeur a été saisie, sous le
+  // libellé « Texte alternatif » / « Alternativtext » de lib/i18n.js : ils restent tels
+  // quels. Toute la prose est traduite.
   assert.match(source, /etiq\('ALT='\)/);
   assert.match(source, /etiq\('DESCRIPTION='\)/);
   const t = tables();
@@ -263,21 +249,18 @@ test('les étiquettes techniques restent en clair et non traduites', () => {
   }
 });
 
-// ---- Exécution réelle (C5) : les quatre cas d'image, un seul encadré rouge ----
+// ---- Exécution réelle : les quatre cas d'image, un seul encadré rouge ----
 //
-// Tout ce qui précède lit le SOURCE du filtre. Ici, on le fait vraiment tourner sous
-// pandoc, sous SZH_APERCU=1, sur les quatre états que encadre_image() distingue : alt
-// renseigné, décoratif (alt=""), alt absent avec légende (repli), alt absent sans légende
-// (le seul cas rouge). Deux petits fichiers Lua, écrits dans un dossier jetable — jamais le
-// vrai szh-numerotation.lua, hors périmètre en écriture ici :
-//   1. marque l'attribut alt de deux images (ce que fait szh-legendes.lua dans la vraie
-//      chaîne, lecture seule, donc hors de portée) ;
-//   2. charge le module par dofile et l'applique à tout le document, exactement comme
-//      szh-numerotation.lua le fait sous la garde SZH_APERCU.
-// Ce sont deux fichiers --lua-filter séparés, et pas un seul filtre à deux fonctions : une
-// mutation d'attribut faite par un filtre ne survit pas à la traversée manuelle d'un AUTRE
-// filtre du même fichier (mesuré) — seule la traversée propre de pandoc, entre deux
-// fichiers --lua-filter, la fait persister.
+// Ce qui précède lit le source du filtre. Ici, il tourne sous pandoc, avec SZH_APERCU=1, sur
+// les quatre états que distingue encadre_image() : alt renseigné, décoratif (alt=""), alt
+// absent avec légende (repli), alt absent sans légende (le seul cas rouge). Deux petits
+// fichiers Lua, écrits dans un dossier jetable :
+//   1. pose l'attribut alt de deux images, comme szh-legendes.lua dans la vraie chaîne ;
+//   2. charge le module par dofile et l'applique au document, comme szh-numerotation.lua
+//      sous SZH_APERCU.
+// Ce sont deux --lua-filter séparés : une modification d'attribut faite par un filtre ne
+// survit pas à la traversée manuelle d'un autre filtre du même fichier, seulement à la
+// traversée de pandoc entre deux fichiers.
 test('exécution réelle : sur les quatre cas d’image, un seul encadré est rouge, et c’est le bon',
   { skip: sansPandoc }, () => {
     const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-apercu-le-'));
@@ -305,8 +288,8 @@ test('exécution réelle : sur les quatre cas d’image, un seul encadré est ro
       fs.writeFileSync(fMarqueur, marqueur, 'utf8');
       fs.writeFileSync(fApplique, applique, 'utf8');
 
-      // Ordre documenté en tête de encadre_image() : alt renseigné, décoratif, repli sur
-      // la légende, puis le seul cas rouge — ni alt ni légende.
+      // Ordre d'encadre_image() : alt renseigné, décoratif, repli sur la légende, puis le
+      // seul cas rouge (ni alt ni légende).
       const entree = ['![Alt complet](a.png)', '', '![](b.png)', '',
         '![Une legende](c.png)', '', '![](d.png)', ''].join('\n');
       const r = cp.spawnSync('pandoc',
@@ -323,8 +306,8 @@ test('exécution réelle : sur les quatre cas d’image, un seul encadré est ro
       const rouges = encadres.filter(estRouge);
       assert.strictEqual(rouges.length, 1,
         'un nombre d’encadrés rouges différent de un : ' + html);
-      // Compter ne suffit pas (une permutation entre deux cas garderait le compte à un) :
-      // c'est la POSITION qui doit être la bonne, le cas sans alt ni légende (d.png).
+      // Compter ne suffit pas (une permutation garderait le compte) : on vérifie la
+      // position, celle du cas sans alt ni légende (d.png).
       assert.ok(!estRouge(encadres[0]), 'alt="Alt complet" (a.png) est rouge à tort');
       assert.ok(!estRouge(encadres[1]), 'alt="" décoratif (b.png) est rouge à tort');
       assert.ok(!estRouge(encadres[2]), 'le repli sur la légende (c.png) est rouge à tort');

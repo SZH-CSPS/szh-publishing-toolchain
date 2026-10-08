@@ -1,50 +1,38 @@
 #!/usr/bin/env python3
-# import-medias.py — dernier maillon de l'import d'un Word : range les photos des autrices
-# et auteurs, puis purge les images que le texte n'utilise pas.
+# Dernière étape de l'import d'un Word : range les photos des auteurs, supprime les images
+# que le texte n'utilise pas, puis renomme les autres.
 #
 #   python3 import-medias.py <slug> <dossier-article> [<fichier-photos>]
 #
-# 1. Photos. docx-meta.py apparie chaque auteur·e du tableau de fin de document à l'image
-#    de sa cellule (ou de la cellule voisine) et écrit ici ce qu'il a compris, une
-#    instruction par ligne :
-#      A<TAB><slug-auteur><TAB><nom dans media/>  photo appariée
-#      G<TAB><nom dans media/>                    photo reconnue, non appariée
-#    Une photo appariée quitte media/ pour portraits/<slug-auteur>.original.<ext>, puis
-#    pipeline/portraits.py recadre le visage et détoure le fond — exactement ce que fait un
-#    dépôt dans le formulaire des auteur·e·s du cockpit. Quand il réussit, le champ `photo`
-#    du meta.yaml passe de .original.<ext> à .sans-fond.png, la version que ce formulaire
-#    propose par défaut ; sinon il continue de désigner l'original, qui existe. Sans
-#    interprète de portraits (hors rootfs WSL), les photos sont quand même rangées : rien
-#    n'est perdu, le détourage se refait au dépôt.
-#    Quand le déplacement ne peut pas avoir lieu — fichier absent de media/, ou image que le
-#    corps de l'article utilise aussi — le champ `photo` est retiré du meta.yaml plutôt que
-#    de désigner un fichier qui n'existera pas : un chemin mort casse la composition.
+# 1. Photos. docx-meta.py associe chaque auteur du tableau de fin de document à l'image de
+#    sa cellule (ou de la voisine) et écrit une instruction par ligne :
+#      A<TAB><slug-auteur><TAB><nom dans media/>  photo associée
+#      G<TAB><nom dans media/>                    photo reconnue, non associée
+#    Une photo associée passe de media/ à portraits/<slug-auteur>.original.<ext>, puis
+#    portraits.py recadre le visage et détoure le fond, comme un dépôt de photo dans le
+#    cockpit. En cas de succès, le champ `photo` du meta.yaml passe à .sans-fond.png ;
+#    sinon il garde l'original. Sans interprète de portraits, les photos sont rangées sans
+#    détourage.
+#    Si le déplacement est impossible (fichier absent de media/, ou image utilisée aussi
+#    dans le corps), le champ `photo` est retiré, pour ne pas désigner un fichier absent.
 #
-# 2. Purge. Word livre tout ce que le document embarque — logos d'en-tête, filigranes,
-#    portraits — et pandoc extrait tout sous media/. Ce qu'aucune insertion du .md ni aucun
-#    <img src="media/…"> de tables/*.html ne cite n'a nulle part où être légendé ni rendu :
-#    ces fichiers sont supprimés. Trois garde-fous, la suppression étant définitive (le
-#    Makefile efface le .docx source dès l'import réussi) :
-#      - le test est volontairement grossier, une recherche du nom de fichier dans le
-#        texte : il peut garder une image de trop, jamais en supprimer une qui sert ;
-#      - toute image que docx-meta.py a reconnue comme photo d'auteur est protégée, même
-#        s'il n'a pas su à qui l'attribuer — le tableau des auteurs quittant le corps, ces
-#        images ne sont plus citées nulle part ;
-#      - sans texte de référence lisible (pas de .md, ou .md vide), la purge ne fait rien :
-#        « je ne sais pas ce qui sert » ne doit pas valoir « rien ne sert ».
-#    Seuls les fichiers image sont candidats : tout autre fichier de media/ reste.
+# 2. Suppression. pandoc extrait sous media/ tout ce que le Word contient (logos,
+#    filigranes, portraits). Une image qu'aucune insertion du .md ni aucun
+#    <img src="media/…"> de tables/*.html ne cite est supprimée, définitivement (le .docx
+#    l'est aussi). Précautions :
+#      - le test cherche le nom du fichier dans le texte : il peut garder une image de
+#        trop, pas en supprimer une qui sert ;
+#      - une photo d'auteur reconnue est protégée, même non associée (le tableau des
+#        auteurs ayant quitté le corps, rien ne la cite) ;
+#      - sans .md lisible et non vide, rien n'est supprimé.
+#    Seuls les fichiers image sont concernés.
 #
-# 3. Renommage. pandoc nomme les médias comme le fait Word : image1.png, image7.jpeg. Dans
-#    le formulaire des médias comme dans l'archive OJS, ces noms ne disent rien. Ce qui
-#    reste dans media/ après la purge est donc renommé <slug>-fig-NN.<ext>, NN suivant
-#    l'ordre de première citation dans le texte, et les références du .md et des tableaux
-#    sont réécrites du même mouvement. Un fichier qu'aucune citation ne désigne — une photo
-#    d'auteur protégée mais non appariée — garde son nom : il n'a pas de rang.
+# 3. Renommage. Les noms de Word (image1.png, image7.jpeg) deviennent <slug>-fig-NN.<ext>,
+#    NN suivant l'ordre de première citation, et les références du .md et des tableaux
+#    sont réécrites. Un fichier non cité (photo protégée non associée) garde son nom.
 #
-# Sortie : une ligne JSON de stats sur stdout, messages sur stderr. Code retour 0 même si
-# le détourage échoue : l'import ne doit pas tomber pour une photo.
-#
-# stdlib uniquement, comme les autres pré-passes : pas de PyYAML dans la WSL.
+# Sortie : une ligne JSON de statistiques sur stdout, messages sur stderr. Code 0 même si
+# le détourage échoue.
 
 import glob
 import json
@@ -55,21 +43,18 @@ import subprocess
 import sys
 import urllib.parse
 
-# Ce qui peut précéder une cible locale : le début du texte, une espace, une parenthèse, un
-# guillemet ou un chevron — et éventuellement « ./ », que pandoc écrit. Jamais autre chose,
-# sinon l'URL « https://exemple.org/media/image1.png » d'une entrée de bibliographie
-# passerait pour une insertion et son nom de fichier serait renommé dans le texte.
+# Ce qui peut précéder une cible locale : début du texte, espace, parenthèse, guillemet ou
+# chevron, puis éventuellement « ./ ». Ainsi une URL comme
+# « https://exemple.org/media/image1.png » n'est pas prise pour une insertion.
 AVANT_CIBLE = "\\s(\"'<"
 GARDE_CIBLE_LOCALE = '(?<![^' + AVANT_CIBLE + '])'
 PREFIXE_RELATIF = r'(?:\./)?'
 
-# Fichiers candidats à la purge. Tout ce que Word peut embarquer comme image, y compris les
-# métafichiers Windows que pandoc extrait sans savoir les rendre.
+# Images que Word peut contenir, métafichiers Windows (emf, wmf) compris.
 EXTENSIONS_IMAGE = ('.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.bmp',
                     '.tif', '.tiff', '.emf', '.wmf')
 
-# Interprète du venv de portraits dans le rootfs WSL, comme lib/portraits.js. La variable
-# d'environnement sert aux tests hors rootfs.
+# Python du venv de portraits, comme lib/portraits.js. La variable sert aux tests.
 INTERPRETE_PORTRAITS = os.environ.get('SZH_PORTRAITS_PYTHON', '/opt/portraits/bin/python')
 
 
@@ -78,23 +63,19 @@ def progression(message):
 
 
 # ---------------------------------------------------------------------------------
-# Texte de référence : ce qui décide de ce qui sert
+# Texte de référence : là où une image peut être citée
 
 def fichiers_de_texte(dossier, slug):
-    """Les fichiers de l'article où une image peut être citée, le corps en premier : le .md,
-    la bibliographie détachée à l'import, puis les tableaux extraits. Une seule liste, lue
-    par la purge et par la réécriture des noms — un fichier oublié d'un côté ferait
-    supprimer une image citée, ou laisserait une référence pointer dans le vide."""
+    """Fichiers où une image peut être citée, le .md en premier, puis la bibliographie et
+    les tableaux. Liste commune à la suppression et au renommage."""
     return [os.path.join(dossier, slug + '.md'),
             os.path.join(dossier, slug + '.biblio.md')] + \
         sorted(glob.glob(os.path.join(dossier, 'tables', '*.htm*')))
 
 
 def texte_de_reference(dossier, slug):
-    """Le .md, les tableaux extraits et la bibliographie détachée, concaténés en minuscules :
-    c'est là que se lit ce qui sert. Les tableaux comptent, docx-tables.py y écrivant des
-    <img src="media/…">.
-    Rend None si le .md manque ou est vide — cas où l'on ne purge rien."""
+    """Les fichiers de fichiers_de_texte() concaténés en minuscules (docx-tables.py écrit
+    des <img src="media/…"> dans les tableaux). None si le .md manque ou est vide."""
     md = os.path.join(dossier, slug + '.md')
     try:
         with open(md, encoding='utf-8', errors='replace') as f:
@@ -116,18 +97,18 @@ def texte_de_reference(dossier, slug):
 
 
 def est_citee(nom, texte):
-    """Le nom du fichier apparaît-il dans le texte de référence ? La forme citée peut être
-    percent-encodée (pandoc encode les espaces de certaines cibles)."""
+    """Vrai si le nom du fichier figure dans le texte, tel quel ou encodé en % (pandoc
+    encode les espaces de certaines cibles)."""
     if not texte:
         return False
     return any(forme in texte for forme in (nom.lower(), urllib.parse.quote(nom).lower()))
 
 
 # ---------------------------------------------------------------------------------
-# Photos des auteur·e·s
+# Photos des auteurs
 
 def un_segment(valeur):
-    """Nom de fichier sans chemin : rien ne doit sortir de media/ ni de portraits/."""
+    """Vrai pour un nom de fichier sans chemin, qui ne sort pas de media/ ni de portraits/."""
     return bool(valeur) and os.path.basename(valeur) == valeur and valeur not in ('.', '..')
 
 
@@ -149,10 +130,9 @@ def lire_instructions(chemin):
 
 
 def ranger_photos(dossier, appariements, texte):
-    """Déplace les photos appariées de media/ vers portraits/. Retourne
-    (rangees, echouees) où rangees = [(slug-auteur, extension, chemin absolu)] et
-    echouees = [(slug-auteur, extension)] — celles dont le champ `photo` du meta.yaml doit
-    être retiré, puisqu'il désignerait un fichier absent."""
+    """Déplace les photos associées de media/ vers portraits/. Rend (rangees, echouees) :
+    rangees = [(slug-auteur, extension, chemin absolu)], echouees = [(slug-auteur,
+    extension)], dont le champ `photo` est à retirer."""
     media = os.path.join(dossier, 'media')
     portraits = os.path.join(dossier, 'portraits')
     rangees, echouees = [], []
@@ -160,22 +140,19 @@ def ranger_photos(dossier, appariements, texte):
         ext = os.path.splitext(nom)[1].lstrip('.').lower()
         source = os.path.join(media, nom)
         if not os.path.isfile(source):
-            # pandoc n'extrait pas toutes les formes d'image : ne pas laisser le meta.yaml
-            # désigner un fichier qui n'arrivera jamais.
+            # pandoc n'extrait pas toutes les formes d'image.
             progression('[import-medias] photo absente de media/ : %s' % nom)
             echouees.append((base, ext))
             continue
         if est_citee(nom, texte):
-            # Le corps de l'article utilise la même image : la déplacer casserait son
-            # insertion. L'article passe avant le portrait.
+            # Le corps utilise la même image : la déplacer casserait son insertion.
             progression('[import-medias] %s sert aussi dans le texte : laissée dans media/' % nom)
             echouees.append((base, ext))
             continue
         cible = os.path.join(portraits, '%s.original.%s' % (base, ext))
         try:
             os.makedirs(portraits, exist_ok=True)
-            # Un seul .original.* par auteur, sinon trouverOriginal() du cockpit devient
-            # ambigu — même invariant que son dépôt de photo.
+            # Un seul .original.* par auteur, sinon trouverOriginal() du cockpit hésite.
             for autre in glob.glob(os.path.join(portraits, base + '.original.*')):
                 if os.path.abspath(autre) != os.path.abspath(cible):
                     os.unlink(autre)
@@ -189,14 +166,13 @@ def ranger_photos(dossier, appariements, texte):
 
 
 def detourer(dossier, rangees):
-    """Appelle portraits.py sur les originaux rangés. Retourne l'ensemble des slugs
-    traités avec succès ; vide si l'interprète manque, si l'appel échoue, ou si l'appelant
-    a dit ne pas en vouloir."""
+    """Appelle portraits.py sur les originaux rangés. Rend l'ensemble des slugs réussis ;
+    vide si l'interprète manque, si l'appel échoue ou si SZH_SANS_DETOURAGE est posée."""
     if not rangees:
         return set()
     if os.environ.get('SZH_SANS_DETOURAGE'):
-        # Réimport : les portraits déjà rangés dans l'article ne sont pas remplacés, et
-        # détourer ceux du Word coûterait des minutes pour un résultat mis au rebut.
+        # Réimport : les portraits de l'article sont gardés, détourer ceux du Word ne
+        # servirait à rien.
         progression('[import-medias] portraits rangés sans détourage (réimport)')
         return set()
     if not os.path.isfile(INTERPRETE_PORTRAITS):
@@ -209,8 +185,8 @@ def detourer(dossier, rangees):
     for base, _, source in rangees:
         commande += [base, source]
     try:
-        # Le premier appel paie le réveil du modèle u2net_human_seg : marge large, comme
-        # le TIMEOUT_DEFAUT de lib/portraits.js.
+        # Le premier appel charge le modèle u2net_human_seg : délai large, comme
+        # TIMEOUT_DEFAUT de lib/portraits.js.
         fini = subprocess.run(commande, capture_output=True, text=True, timeout=300)
     except (OSError, subprocess.SubprocessError) as exc:
         progression('[import-medias] détourage impossible : %s' % exc)
@@ -232,10 +208,9 @@ def detourer(dossier, rangees):
 
 
 def corriger_meta(chemin_meta, rangees, reussis, echouees):
-    """Deux retouches du champ `photo`, littérales : les chaînes comparées sont écrites par
-    docx-meta.py. Un portrait détouré passe à .sans-fond.png ; un portrait qui n'a pas pu
-    être rangé perd sa ligne, plutôt que de désigner un fichier absent.
-    Retourne (promus, retires)."""
+    """Retouche le champ `photo` (lignes écrites par docx-meta.py, comparées telles
+    quelles) : .sans-fond.png pour un portrait détouré, ligne retirée pour un portrait
+    non rangé. Rend (promus, retires)."""
     if not os.path.isfile(chemin_meta):
         return 0, 0
     with open(chemin_meta, encoding='utf-8') as f:
@@ -252,8 +227,7 @@ def corriger_meta(chemin_meta, rangees, reussis, echouees):
             promus += 1
     retires = 0
     for base, ext in echouees:
-        # La ligne entière part, indentation et fin de ligne comprises : le champ `photo`
-        # est facultatif, l'auteur reste complet sans lui.
+        # Ligne entière, fin de ligne comprise (le champ `photo` est facultatif).
         motif = re.compile(r'^[ \t]*photo: "portraits/%s\.original\.%s"[ \t]*\r?\n'
                            % (re.escape(base), re.escape(ext)), re.M)
         contenu, n = motif.subn('', contenu, count=1)
@@ -266,22 +240,21 @@ def corriger_meta(chemin_meta, rangees, reussis, echouees):
 
 
 # ---------------------------------------------------------------------------------
-# Purge des images que le texte n'utilise pas
+# Suppression des images que le texte n'utilise pas
 
 def purger(dossier, texte, protegees):
-    """Supprime de media/ les images dont le nom n'apparaît nulle part dans `texte` et que
-    docx-meta.py n'a pas signalées comme photos d'auteur. Retourne les noms supprimés."""
+    """Supprime de media/ les images absentes de `texte` et non protégées. Rend les noms
+    supprimés."""
     media = os.path.join(dossier, 'media')
     if texte is None or not os.path.isdir(media):
         return []
     supprimees = []
     for racine, _, fichiers in os.walk(media):
         for nom in fichiers:
-            # Un « ~$… » est un temporaire abandonné par une écriture interrompue : il ne
-            # sert à rien et rien ne peut le citer.
+            # « ~$… » : temporaire laissé par une écriture interrompue.
             temporaire = nom.startswith('~$')
             if not temporaire and not nom.lower().endswith(EXTENSIONS_IMAGE):
-                continue                  # pas une image : jamais candidate
+                continue                  # pas une image
             if not temporaire and (nom in protegees or est_citee(nom, texte)):
                 continue
             chemin = os.path.join(racine, nom)
@@ -298,11 +271,9 @@ def purger(dossier, texte, protegees):
 # Renommage des images en <slug>-fig-NN.<ext>
 
 def premiere_citation(nom, texte):
-    """Position de la première citation « media/<nom> » dans le texte de référence, ou -1.
-    Le préfixe est exigé, contrairement à est_citee : ici la réponse fait DÉPLACER un
-    fichier, et reecrire_references ne réécrit que les cibles préfixées. Une simple mention
-    du nom en prose ne doit donc pas donner un rang de figure — le fichier bougerait sans
-    que rien ne le suive."""
+    """Position de la première citation « media/<nom> » dans le texte, ou -1. Le préfixe
+    est exigé, contrairement à est_citee : reecrire_references ne réécrit que les cibles
+    préfixées, et une mention du nom en prose ne doit pas faire renommer le fichier."""
     positions = []
     for forme in (nom.lower(), urllib.parse.quote(nom).lower()):
         trouve = re.search(GARDE_CIBLE_LOCALE + PREFIXE_RELATIF + 'media/' + re.escape(forme), texte)
@@ -314,13 +285,11 @@ def premiere_citation(nom, texte):
 def reecrire_references(dossier, slug, couples):
     """Réécrit media/<ancien> en media/<nouveau> dans le .md et les tableaux extraits.
 
-    ⚠ Une seule passe, par une alternation : appliquer les substitutions l'une après l'autre
-    ferait frapper une cible que la précédente vient d'écrire. Avec media/ = {image1.png
-    citée en 1re, art-fig-01.png citée en 2e}, la seconde substitution rattrapait ce que la
-    première avait produit, et les deux références finissaient sur le même fichier.
-    La comparaison est insensible à la casse, la cible écrite par pandoc pouvant différer du
-    nom sur le disque ; l'extension dans le motif évite qu'image1.png attrape image10.png.
-    Les fins de ligne d'origine sont préservées (newline='')."""
+    Une seule passe, par une alternative : des substitutions successives pourraient
+    réécrire ce qu'une précédente vient d'écrire (image1.png -> art-fig-01.png, puis
+    art-fig-01.png -> art-fig-02.png).
+    Insensible à la casse (la cible écrite par pandoc peut différer du disque) ; l'extension
+    dans le motif empêche image1.png de prendre image10.png. Fins de ligne conservées."""
     table = {}
     for ancien, nouveau in couples:
         table['media/' + ancien.lower()] = 'media/' + nouveau
@@ -329,9 +298,8 @@ def reecrire_references(dossier, slug, couples):
             table['media/' + cite.lower()] = 'media/' + urllib.parse.quote(nouveau)
     if not table:
         return
-    # Les cibles les plus longues d'abord : aucune ne peut alors en masquer une autre. La
-    # garde de cible locale écarte les URL, qui portent aussi des « media/… » ; le « ./ »
-    # éventuel est capturé pour être réécrit tel quel.
+    # Les cibles les plus longues d'abord, pour qu'aucune n'en masque une autre. La garde
+    # écarte les URL ; le « ./ » éventuel est recopié tel quel.
     motif = re.compile(GARDE_CIBLE_LOCALE + '(' + PREFIXE_RELATIF + ')('
                        + '|'.join(re.escape(k) for k in sorted(table, key=len, reverse=True)) + ')',
                        re.I)
@@ -354,9 +322,9 @@ def reecrire_references(dossier, slug, couples):
 
 
 def renommer(dossier, slug, texte):
-    """Renomme les images citées en <slug>-fig-NN.<ext>. Retourne [(ancien, nouveau)].
-    Passage par un nom temporaire : le nom visé peut être celui d'un fichier pas encore
-    renommé (ré-import, image déjà nommée par une passe précédente)."""
+    """Renomme les images citées en <slug>-fig-NN.<ext>. Rend [(ancien, nouveau)].
+    En deux temps, par un nom temporaire : le nom visé peut être celui d'un fichier pas
+    encore renommé (image déjà nommée par un import précédent)."""
     media = os.path.join(dossier, 'media')
     if texte is None or not os.path.isdir(media):
         return []
@@ -367,7 +335,7 @@ def renommer(dossier, slug, texte):
             continue
         rang = premiere_citation(nom, texte)
         if rang < 0:
-            continue                      # non citée : pas un rang de figure
+            continue                      # non citée : pas de rang
         candidats.append((rang, nom))
     if not candidats:
         return []
@@ -396,9 +364,8 @@ def renommer(dossier, slug, texte):
         try:
             os.replace(tmp, os.path.join(media, nouveau))
         except OSError as exc:
-            # Seconde phase en échec : remettre le fichier sous son ancien nom, et surtout
-            # ne pas réécrire sa référence — elle pointerait un fichier absent, et les
-            # octets dormiraient sous un « ~$ » que le cockpit masque et qu'OneDrive ignore.
+            # Échec : le fichier reprend son ancien nom et sa référence n'est pas réécrite.
+            # Resté sous « ~$ », il serait masqué par le cockpit et ignoré par OneDrive.
             progression('[import-medias] renommage annulé pour %s : %s' % (nouveau, exc))
             try:
                 os.replace(tmp, os.path.join(media, ancien))
@@ -412,7 +379,7 @@ def renommer(dossier, slug, texte):
 
 
 def principal(argv):
-    try:  # console Windows en cp1252 : un accent combinant (nom venu du partage) y plante.
+    try:  # console Windows en cp1252 : un accent combinant y ferait planter print().
         sys.stdout.reconfigure(encoding='utf-8')
         sys.stderr.reconfigure(encoding='utf-8')
     except Exception:
@@ -423,8 +390,7 @@ def principal(argv):
     slug, dossier = argv[1], argv[2]
     chemin_photos = argv[3] if len(argv) == 4 else None
 
-    # Le texte de référence est lu avant tout déplacement : il dit aussi si une photo sert
-    # dans le corps, auquel cas elle ne bouge pas.
+    # Lu avant tout déplacement : il dit aussi si une photo sert dans le corps.
     texte = texte_de_reference(dossier, slug)
     appariements, protegees = lire_instructions(chemin_photos)
     rangees, echouees = ranger_photos(dossier, appariements, texte)
@@ -432,7 +398,7 @@ def principal(argv):
     promus, retires = corriger_meta(os.path.join(dossier, slug + '.meta.yaml'),
                                     rangees, reussis, echouees)
     supprimees = purger(dossier, texte, protegees)
-    # Après la purge : seul ce qui reste mérite un rang, et la numérotation ne saute pas.
+    # Après la suppression, pour que la numérotation n'ait pas de trou.
     renommees = renommer(dossier, slug, texte)
 
     stats = {

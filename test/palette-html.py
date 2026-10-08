@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
-# palette-html.py — génère docs/palette.html, la planche de la palette annuelle avec ses
-# contrastes APCA mesurés. Lit pipeline/styles/couleurs.css, calcule les Lc avec
-# pipeline/apca.py (le même module que le rendu), écrit une page autonome — polices
-# embarquées en base64, aucun accès réseau. À relancer après toute retouche de
-# couleurs.css, sinon la planche affiche des valeurs périmées.
+# Génère docs/palette.html, la planche de la palette annuelle avec ses contrastes APCA.
+# Lit pipeline/styles/couleurs.css, calcule les Lc avec pipeline/apca.py et écrit une page
+# autonome (polices en base64, sans accès réseau). À relancer après toute retouche de
+# couleurs.css.
 #
 #     python3 test/palette-html.py
 #
-# ⚠ Le <meta charset="utf-8"> doit rester la première ligne du modèle : la page s'ouvre en
-# file://, sans en-tête HTTP Content-Type, et à défaut de déclaration le navigateur
-# retombe sur l'encodage de la machine — « clarté » lu « clartÃ© ».
-# stdlib uniquement.
+# Le <meta charset="utf-8"> reste la première ligne du modèle : la page s'ouvre en
+# file://, sans en-tête Content-Type, et le navigateur prendrait sinon l'encodage du poste.
+# Bibliothèque standard seulement.
 
 import base64
 import io
@@ -31,13 +29,12 @@ COULEURS = [
     ('rouge', 'Rouge'), ('capucine', 'Capucine'), ('moutarde', 'Moutarde'),
     ('poireau', 'Poireau'), ('bleuacier', 'Bleu acier'), ('mountbatten', 'Mountbatten'),
 ]
-# Les 11 crans de la grille à clarté fixe : apca.CLARTES est la source, la planche ne doit
-# jamais avoir sa propre idée de l'échelle. La couleur de charte est l'un de ces crans,
-# celui que désigne apca.cran_de_charte, et c'est lui qui porte le badge dans la rampe.
+# Les 11 crans de la grille à clarté fixe, lus dans apca.CLARTES. Le cran que désigne
+# apca.cran_de_charte porte la couleur de charte et reçoit le badge.
 CRANS = [cran for cran, _ in apca.CLARTES]
 CIBLES = dict(apca.CLARTES)
-# Les deux surfaces réelles contre lesquelles un filet de couleur se juge : le papier de la
-# maquette, et le zébrage des tableaux (lu dans couleurs.css, jamais recopié ici).
+# Les deux surfaces sur lesquelles un filet se juge : le papier et le zébrage des
+# tableaux (lu dans couleurs.css).
 PAPIER = '#FFFFFF'
 ZEBRE = None        # renseigné par main() depuis couleurs.css
 # Polices embarquées dans la planche : famille, graisse, fichier de pipeline/fonts.
@@ -83,9 +80,8 @@ def echapper(t):
 
 
 def fr(x):
-    """Le Lc tel qu'il s'affiche partout dans la chaîne : entier signé, sans décimale
-    (79,7 -> « +80 »). La règle vit dans apca.lc_affiche et non ici, sinon la planche
-    finirait par contredire couleurs.css et test/apca-check.py sur la même couleur."""
+    """Lc affiché comme dans toute la chaîne (apca.lc_affiche) : entier signé,
+    79,7 -> « +80 »."""
     return apca.lc_affiche(x, signe=True)
 
 
@@ -99,21 +95,18 @@ def _pied(lc_txt, role):
             '<span class="case__role">%s</span></div>' % (lc_txt, role))
 
 
-# Étiquette et taille de rendu de l'échantillon, par usage du cran. Ce sont les tailles
-# que le seuil autorise, et l'échantillon est rendu à cette taille-là : la planche ne peut
-# pas annoncer un seuil et montrer un autre corps.
-#   14 px      : la taille réelle du corps de la maquette (print.css, --body-size), et le
-#                plancher du niveau 90.
-#   18 px      : le plancher du niveau 75. Un tel cran ne peut porter ni le corps de la
-#                maquette ni le texte des tableaux (13,6 px).
-#   19 px gras : le plancher du gros texte d'APCA, où le seuil tombe à 60. Écrire plus
-#                gros flatterait le contraste.
+# Étiquette et taille de l'échantillon, par usage du cran. L'échantillon est rendu à la
+# plus petite taille que le seuil autorise :
+#   14 px      : le corps de la maquette (--body-size), plancher du niveau 90 ;
+#   18 px      : plancher du niveau 75, trop petit pour le corps et pour les tableaux
+#                (13,6 px) ;
+#   19 px gras : plancher du gros texte APCA, seuil 60.
 ETIQUETTE_TAILLE = {
     apca.USAGE_TEXTE_14: 'dès 14 px',
     apca.USAGE_TEXTE_18: 'dès 18 px',
     apca.USAGE_GROS_TITRE: 'gros titre',
 }
-# À garder d'accord avec les tailles écrites dans les classes .case__texte du modèle.
+# Correspond aux tailles des classes .case__texte du modèle.
 CLASSE_TAILLE = {
     apca.USAGE_TEXTE_14: ('case__texte', 'Texte'),
     apca.USAGE_TEXTE_18: ('case__texte case__texte--moyen', 'Texte'),
@@ -124,9 +117,8 @@ CLASSE_TAILLE = {
 def usage_interface(hexa, papier, zebre):
     """Ce cran peut-il servir d'élément d'interface (filet, bordure, puce, icône) ?
 
-    Seuil APCA non textuel contre la surface voisine (apca.LC_NON_TEXTUEL). Trois états
-    et non un oui/non, parce que les deux surfaces réelles de la chaîne — le papier et le
-    zébrage des tableaux — ne donnent pas le même verdict."""
+    Seuil APCA non textuel (apca.LC_NON_TEXTUEL) sur le papier et sur le zébrage, d'où
+    trois états : partout, sur papier seul, non."""
     sur_papier = abs(apca.lc(hexa, papier))
     sur_zebre = abs(apca.lc(hexa, zebre))
     seuil = apca.LC_NON_TEXTUEL
@@ -138,9 +130,8 @@ def usage_interface(hexa, papier, zebre):
 
 
 def _interface(hexa, papier, zebre):
-    """Le rappel d'usage en interface, sous les étiquettes de texte. Le trait est tracé
-    dans la couleur du cran sur le fond de la page et non sur l'aplat : c'est là qu'un
-    filet vit, donc c'est là qu'il doit se juger."""
+    """Verdict d'usage en interface, sous les étiquettes de texte. Le trait est tracé sur
+    le fond de la page, là où un filet est posé, et non sur l'aplat."""
     etat, libelle, valeur = usage_interface(hexa, papier, zebre)
     return ('<div class="case__ui case__ui--%s"><span class="case__trait" '
             'style="background:%s"></span><span class="case__uitxt">filet %s '
@@ -150,32 +141,25 @@ def _interface(hexa, papier, zebre):
 
 def pastille(hexa, cran, charte=False):
     """Une case de la planche : le fond, et dessus un échantillon dans la couleur de texte
-    que le cran admet. La preuve est visuelle — si c'est illisible à l'écran, la valeur
-    mentait.
+    que le cran admet, pour juger à l'œil.
 
-    Toutes les cases ont la même forme ; seuls la taille de l'échantillon et le texte de
-    l'étiquette changent, dictés par apca.CONTRAT :
-      dès 14 px  : « Texte » à 14 px, la taille du corps de la maquette. Ces crans sont
-                   les seuls utilisables en fond de tableau (13,6 px) ;
-      dès 18 px  : « Texte » à 18 px, taille sous laquelle le cran ne tient plus ;
-      gros titre : « Titre » à 19 px gras, seul texte que le cran autorise ;
-      sans texte : « Titre » lui aussi, dans la meilleure polarité, mais l'étiquette dit
-                   « Pas pour les textes » — montrer le cas le plus favorable échouer
-                   informe mieux qu'une case vide.
-    Chaque case porte en plus son verdict d'usage en interface (voir usage_interface).
+    Seuls la taille de l'échantillon et l'étiquette changent, selon apca.CONTRAT :
+      dès 14 px  : « Texte » à 14 px, le corps de la maquette. Seuls ces crans servent en
+                   fond de tableau (13,6 px) ;
+      dès 18 px  : « Texte » à 18 px ;
+      gros titre : « Titre » à 19 px gras ;
+      sans texte : « Titre » dans la meilleure polarité, étiqueté « Pas pour les textes ».
+    Chaque case porte aussi son verdict d'usage en interface (voir usage_interface).
 
-    `charte` : le cran porte le hex de la charte. Il reçoit alors un liseré foncé et un
-    badge posé au-dessus de la case ; toutes les cases réservent la même gouttière haute,
-    sans quoi le badge d'une rampe repliée recouvrirait la rangée du dessus. Ce badge garde
-    les couleurs de la page et non celles de la case, pour rester lisible quel que soit le
-    cran badgé."""
+    `charte` : le cran porte le hex de la charte. Il reçoit un liseré foncé et un badge
+    au-dessus de la case, aux couleurs de la page. Toutes les cases réservent la même
+    marge haute, sinon le badge d'une rangée repliée couvrirait la rangée du dessus."""
     texte_admis, garanti, usage = apca.CONTRAT[cran]
     badge = '<span class="case__badge">charte</span>' if charte else ''
     classe_charte = ' case--charte' if charte else ''
     ui = _interface(hexa, PAPIER, ZEBRE)
 
-    # Cran sans texte (400) : présenté comme les autres, dans sa meilleure polarité, mais
-    # l'étiquette dit « Pas pour les textes ».
+    # Cran sans texte (400).
     if texte_admis is None:
         meilleure, meilleur_lc = apca.meilleure_polarite(hexa)
         return (
@@ -184,9 +168,7 @@ def pastille(hexa, cran, charte=False):
         ) % (classe_charte, hexa, meilleure, badge, _tete(cran, hexa),
              _pied('Lc&nbsp;%s' % fr(meilleur_lc), 'Pas pour les textes'), ui)
 
-    # Crans porteurs de texte : l'échantillon est rendu à la taille que le contrat autorise
-    # et cette taille est écrite sur la case. Le noir ou le blanc n'est pas choisi par
-    # mesure ici, il est imposé par le contrat du cran.
+    # Crans porteurs de texte : noir ou blanc selon le contrat du cran, pas selon la mesure.
     lc = apca.lc(texte_admis, hexa)
     classe_texte, echantillon = CLASSE_TAILLE[usage]
     role = '%s · %s' % ('texte blanc' if texte_admis == apca.BLANC else 'texte noir',
@@ -201,14 +183,13 @@ def pastille(hexa, cran, charte=False):
 def main():
     global ZEBRE
     css = io.open(CSS_COULEURS, encoding='utf-8').read()
-    # Le zébrage vient du CSS : s'il est éclairci, le verdict « filet » des cases suit.
+    # Zébrage lu dans le CSS, pour le verdict « filet » des cases.
     ZEBRE = resoudre(css, '--szh-zebre') or '#F2F2F2'
     lignes = []
     for cle, libelle in COULEURS:
         marque = resoudre(css, '--c-%s-marque' % cle)
-        # Quel cran porte la charte : la règle vient d'apca (même calcul que le CSS) et le
-        # fichier la confirme. Si le cran désigné ne porte pas le hex de charte, la planche
-        # se tait plutôt que de mentir ; test/apca-check.py, lui, échoue.
+        # Cran de charte calculé par apca, confirmé par le CSS. S'il ne porte pas le hex de
+        # charte, aucun badge n'est posé (test/apca-check.py échoue dans ce cas).
         cran_charte = apca.cran_de_charte(marque)
         if resoudre(css, '--c-%s-%s' % (cle, cran_charte)) != marque:
             cran_charte = None
@@ -217,9 +198,7 @@ def main():
             hexa = resoudre(css, '--c-%s-%s' % (cle, cran))
             if hexa:
                 cases.append(pastille(hexa, cran, charte=(cran == cran_charte)))
-        # Les alias sont lus dans le CSS et non récités : si quelqu'un repointe -clair vers
-        # un autre cran, la planche le montre. Le cran est retrouvé par son hex, donc
-        # -normal aboutit au cran de charte comme n'importe quel autre alias.
+        # Alias lus dans le CSS ; leur cran est retrouvé par son hex.
         par_hex = {resoudre(css, '--c-%s-%s' % (cle, c)): c for c in CRANS}
         alias = []
         for nom in ('normal', 'clair', 'fonce'):

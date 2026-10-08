@@ -1,29 +1,25 @@
 ﻿<#
-  Le plan de désinstallation du poste SZH : ce qu'il faut retirer, et ce qu'il faut
-  conserver. Dot-sourcé après le socle (szh-common.ps1 puis szh-taches.ps1, dans cet
-  ordre -- voir bootstrap.ps1) par windows/uninstall.ps1, qui seul décide quand agir.
+  Plan de désinstallation du poste SZH : ce qu'il faut retirer et ce qu'il faut conserver.
+  Dot-sourcé par windows/uninstall.ps1, après szh-common.ps1 puis szh-taches.ps1.
 
-  Trois fonctions, pures autant que possible :
-    Get-SzhPlanDesinstallation   construit le plan (jamais n'agit)
-    Invoke-SzhPlanDesinstallation applique un plan déjà construit
+  Trois fonctions :
+    Get-SzhPlanDesinstallation    construit le plan, sans agir
+    Invoke-SzhPlanDesinstallation applique un plan construit
     Format-SzhPlanDesinstallation rend le plan lisible, en français
 
-  Ce que ce fichier ne fait JAMAIS, sous aucune option :
-    - désinscrire la distribution WSL (elle et son enregistrement sont conservés) ;
-    - supprimer C:\ProgramData\SZH\WSL\ ou l'un de ses sous-dossiers (les disques des
-      distributions, un par compte -- Get-SzhDossierDistro, szh-common.ps1) ;
-    - un Remove-Item sur $SzhBase lui-même (la racine reste, avec son ACL, tant que
-      WSL\ existe).
-  Ces trois refus sont vérifiés par test/js/desinstallation.test.js et par la garde
-  Assert-SzhCibleMachineAutorisee ci-dessous, réappliquée avant CHAQUE suppression
-  d'une entrée « fichier-machine » -- même patron que Clear-SzhDossierDistro
-  (szh-common.ps1) : un nom de dossier vérifié juste avant l'opération qui le retire,
-  jamais une seule fois en amont.
+  Quelle que soit l'option, le plan conserve :
+    - la distribution WSL et son enregistrement ;
+    - C:\ProgramData\SZH\WSL\ et ses sous-dossiers (les disques des distributions, un par
+      compte, voir Get-SzhDossierDistro) ;
+    - $SzhBase lui-même, avec son ACL.
+  La garde Assert-SzhCibleMachineAutorisee le vérifie juste avant chaque suppression d'un
+  fichier du poste, comme Clear-SzhDossierDistro (szh-common.ps1).
+  test/js/desinstallation.test.js le vérifie aussi.
 
-  Compatibilité : Windows PowerShell 5.1 (proscrire ?. ?? ?: && ||).
+  Compatibilité : Windows PowerShell 5.1.
 #>
 
-# ---- Une entrée de plan : toujours les quatre mêmes champs ----
+# ---- Une entrée de plan, à quatre champs ----
 function New-SzhPlanEntree {
   param(
     [Parameter(Mandatory = $true)][string]$Type,
@@ -34,11 +30,9 @@ function New-SzhPlanEntree {
   return [pscustomobject]@{ type = $Type; cible = $Cible; detail = $Detail; present = $Present }
 }
 
-# ---- La garde : jamais WSL, jamais la racine ----
-# Réutilisée à la construction du plan (ci-dessous, sur la liste fixe -- une tripwire pour
-# une future liste mal modifiée) ET à l'exécution (Invoke-SzhPlanDesinstallation, sur un
-# plan qui pourrait avoir été forgé à la main). Chemins comparés sans casse ni barre de fin,
-# comme Clear-SzhDossierDistro.
+# ---- La garde : ni WSL ni la racine ----
+# Appliquée à la construction du plan (contre une liste mal modifiée) et à l'exécution
+# (contre un plan fabriqué à la main). Chemins comparés sans casse ni « \ » final.
 function Assert-SzhCibleMachineAutorisee {
   param(
     [Parameter(Mandatory = $true)][string]$Base,
@@ -55,9 +49,7 @@ function Assert-SzhCibleMachineAutorisee {
   }
 }
 
-# Les onze entrées « machine » directement sous $SzhBase, chacune avec ce qu'elle est.
-# Ordre sans conséquence pour le plan (Format- et Invoke- regroupent par type), mais gardé
-# stable pour la lisibilité d'un diff.
+# Les entrées du poste directement sous $SzhBase, avec leur description.
 function Get-SzhNomsFichiersMachine {
   return @(
     [ordered]@{ nom = 'toolkit';        detail = 'toolkit installé (pipeline, gabarits, extensions figées)' }
@@ -74,10 +66,9 @@ function Get-SzhNomsFichiersMachine {
   )
 }
 
-# Les extensions VSCodium à retirer : celles épinglées dans vsix.lock (le toolkit peut déjà
-# avoir disparu, d'où le repli figé -- une liste légèrement périmée ne fait qu'échouer
-# proprement sur une extension déjà absente d'un poste, jamais plus), plus les deux
-# extensions maison, qui ne sont pas dans vsix.lock (elles ne sont pas tierces).
+# Extensions VSCodium à retirer : celles de vsix.lock, plus les deux extensions maison qui
+# n'y figurent pas. Si le toolkit a déjà disparu, on prend une liste figée ; une extension
+# déjà absente échoue alors sans conséquence.
 function Get-SzhIdsExtensions {
   param([string]$Toolkit = $SzhToolkit)
   $ids = @()
@@ -89,7 +80,7 @@ function Get-SzhIdsExtensions {
     }
   } catch { $ids = @() }
   if ($ids.Count -eq 0) {
-    # Repli, identique à windows/vsix.lock au moment d'écrire ce désinstalleur.
+    # Liste figée, copie de windows/vsix.lock.
     $ids = @(
       'tomoki1207.pdf', 'Gruntfuggly.triggertaskonsave',
       'streetsidesoftware.code-spell-checker', 'streetsidesoftware.code-spell-checker-french',
@@ -100,10 +91,9 @@ function Get-SzhIdsExtensions {
   return (@($ids) + @('szh-csps.szh-cockpit', 'szh-csps.szh-apercu'))
 }
 
-# Les fichiers profil d'UN compte (le courant, ou un autre sous -TousLesProfils) : réglages
-# VSCodium, extraits de code, et l'état par utilisateur. $LocalAppData/$AppData sont ceux du
-# compte visé -- %LOCALAPPDATA%/%APPDATA% pour le compte courant, ou
-# <profil>\AppData\Local / <profil>\AppData\Roaming pour un autre compte.
+# Les fichiers profil d'un compte (le courant, ou un autre avec -TousLesProfils) : réglages
+# VSCodium, extraits de code et état par utilisateur. $LocalAppData et $AppData sont ceux du
+# compte visé (<profil>\AppData\Local et \Roaming pour un autre compte).
 function Get-SzhPlanFichiersProfilCompte {
   param(
     [Parameter(Mandatory = $true)][string]$LocalAppData,
@@ -125,8 +115,8 @@ function Get-SzhPlanFichiersProfilCompte {
       ('réglages VSCodium' + $Suffixe + ' (' + $f + ')') (Test-Path -LiteralPath $cible)))
   }
 
-  # Un extrait de code n'est reconnu que si son nom existe dans le toolkit : sans lui,
-  # impossible de dire ce qui vient de nous plutôt qu'un extrait personnel du compte.
+  # Un extrait de code n'est retiré que si son nom existe dans le toolkit : les extraits
+  # personnels du compte restent.
   $srcSnippets = Join-Path $Toolkit 'vscodium-user\snippets'
   $dstSnippets = Join-Path $dstVscodium 'snippets'
   if (Test-Path -LiteralPath $srcSnippets) {
@@ -145,16 +135,15 @@ function Get-SzhPlanFichiersProfilCompte {
 
 # ---- Le plan ----
 #
-# -Machine : tâches planifiées, fichiers sous $SzhBase, et ce qui est conservé là (WSL,
-#   racine, distribution enregistrée). Demande l'administrateur à l'exécution -- pas ici,
-#   la LECTURE seule ne l'exige jamais (Get-ScheduledTask, Test-Path).
-# -Profil : ce qui est par utilisateur pour le compte COURANT -- raccourcis, réglages
-#   VSCodium, extraits de code, état par utilisateur, registre HKCU, extensions VSCodium.
-# -Applications : VSCodium et SumatraPDF, jamais par défaut (logiciels partagés).
-# -AutresProfils : dossiers C:\Users\<compte> AUTRES que le courant (uninstall.ps1
-#   -TousLesProfils) -- seulement leurs fichiers profil, jamais leur registre (la ruche HKCU
-#   d'un autre compte n'est pas chargée) ni leurs extensions (le CLI ne répond que pour le
-#   compte qui l'invoque).
+# -Machine : tâches planifiées, fichiers sous $SzhBase, et ce qui y est conservé (WSL,
+#   racine, distribution enregistrée). L'exécution demande l'administrateur, pas la
+#   construction du plan.
+# -Profil : ce qui appartient au compte courant : raccourcis, réglages VSCodium, extraits de
+#   code, état par utilisateur, registre HKCU, extensions VSCodium.
+# -Applications : VSCodium et SumatraPDF.
+# -AutresProfils : dossiers C:\Users\<compte> des autres comptes (-TousLesProfils). Seuls
+#   leurs fichiers profil sont retirés : leur registre n'est pas chargé, et la CLI de
+#   VSCodium ne gère que les extensions du compte qui l'appelle.
 function Get-SzhPlanDesinstallation {
   param(
     [switch]$Applications,
@@ -166,9 +155,8 @@ function Get-SzhPlanDesinstallation {
 
   # ---- Machine ----
   if ($Machine) {
-    # Tâches planifiées. $SzhTacheMaj vient de szh-taches.ps1 (nom canonique, une seule
-    # vérité) ; repli sur le même littéral si ce fichier n'a pas été dot-sourcé (les tests
-    # qui n'éprouvent que le plan, sans charger tout le socle).
+    # Tâches planifiées. $SzhTacheMaj vient de szh-taches.ps1 ; le littéral sert quand ce
+    # fichier n'est pas chargé (tests du plan seul).
     $nomTacheMaj = 'SZH - Mise a jour'
     if ($script:SzhTacheMaj) { $nomTacheMaj = $script:SzhTacheMaj }
     $tachesVoulues = @(
@@ -185,13 +173,12 @@ function Get-SzhPlanDesinstallation {
     $noms = @(Get-SzhNomsFichiersMachine)
     foreach ($n in $noms) {
       $cible = Join-Path $SzhBase $n.nom
-      # Garde de construction : une liste fixe ne désigne jamais WSL ni la racine, mais la
-      # garde reste posée ici -- une tripwire si la liste ci-dessus était un jour mal reprise.
+      # Garde contre une liste mal modifiée.
       Assert-SzhCibleMachineAutorisee -Base $SzhBase -Cible $cible
       [void]$plan.Add((New-SzhPlanEntree 'fichier-machine' $cible $n.detail (Test-Path -LiteralPath $cible)))
     }
 
-    # Ce qui n'est ni connu ni WSL, à la racine : jamais supprimé, seulement signalé.
+    # Ce qui, à la racine, n'est ni connu ni WSL est signalé, pas supprimé.
     $connus = @($noms | ForEach-Object { $_.nom.ToLowerInvariant() }) + @('wsl')
     if (Test-Path -LiteralPath $SzhBase) {
       foreach ($item in @(Get-ChildItem -LiteralPath $SzhBase -Force -ErrorAction SilentlyContinue)) {
@@ -233,7 +220,7 @@ function Get-SzhPlanDesinstallation {
       [void]$plan.Add((New-SzhPlanEntree 'extension' $id 'extension VSCodium (codium --uninstall-extension)' $present))
     }
 
-    # Raccourcis du menu Démarrer (les deux entrées voulues, quel que soit leur état réel).
+    # Raccourcis du menu Démarrer actuels, présents ou non.
     $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
     $nomsCanoniques = @{}
     foreach ($r in @(Get-SzhRaccourcisMenu)) {
@@ -242,14 +229,9 @@ function Get-SzhPlanDesinstallation {
       [void]$plan.Add((New-SzhPlanEntree 'raccourci' $cible $r.nom (Test-Path -LiteralPath $cible)))
     }
 
-    # Anciens noms (Get-SzhRaccourcisObsoletes, szh-shell.ps1). Set-SzhRaccourcisMenu, elle,
-    # reconnaît un ancien raccourci à sa CIBLE plutôt qu'à son nom -- mais la désinstallation
-    # tourne sur un poste dont le toolkit peut déjà avoir été retiré avant elle, et ne peut
-    # donc pas ouvrir les .lnk pour lire où ils pointent. Il ne lui reste que les noms.
-    # Seuls les fichiers réellement présents sont ajoutés ici, contrairement aux entrées
-    # canoniques ci-dessus : le plan est lu par un humain avant exécution, et une poignée de
-    # lignes « absent » à chaque désinstallation ne dirait rien à personne. Le nom canonique
-    # prime en cas de coïncidence, pour ne jamais compter deux fois le même .lnk.
+    # Anciens raccourcis, reconnus à leur nom (Get-SzhRaccourcisObsoletes, szh-shell.ps1) :
+    # le toolkit peut déjà avoir disparu, on ne peut donc pas lire la cible des .lnk. Seuls
+    # les fichiers présents entrent dans le plan, et un nom actuel n'est pas compté deux fois.
     foreach ($nom in @(Get-SzhRaccourcisObsoletes)) {
       if ($nomsCanoniques.ContainsKey($nom.ToLowerInvariant())) { continue }
       $cible = Join-Path $menu ($nom + '.lnk')
@@ -304,7 +286,7 @@ function Get-SzhPlanDesinstallation {
     }
   }
 
-  # ---- Applications (jamais par défaut) ----
+  # ---- Applications (avec -Applications seulement) ----
   if ($Applications) {
     $uninsSysteme = Join-Path $env:ProgramFiles 'VSCodium\unins000.exe'
     $uninsLocal = Join-Path $env:LOCALAPPDATA 'Programs\VSCodium\unins000.exe'
@@ -325,11 +307,10 @@ function Get-SzhPlanDesinstallation {
 
 # ---- L'application du plan ----
 #
-# Ordre fixe : tâches, extensions, raccourcis, fichiers profil, registre, fichiers machine,
-# applications. Chaque suppression est dans son propre try/catch -- un fichier verrouillé ou
-# une clé refusée ne doit jamais arrêter le reste. $Journal (scriptblock à un paramètre) reçoit
-# une ligne par entrée traitée ; l'appelant l'écrit où il veut (jamais $SzhLogs ici : ce
-# dossier peut disparaître pendant l'opération même).
+# Ordre fixe : tâches, extensions, raccourcis, fichiers profil, registre, fichiers du poste,
+# applications. Chaque suppression a son try/catch : un fichier verrouillé n'arrête pas le
+# reste. $Journal (scriptblock à un paramètre) reçoit une ligne par entrée ; on n'écrit pas
+# dans $SzhLogs, que l'opération peut supprimer.
 function Invoke-SzhPlanDesinstallation {
   param(
     [Parameter(Mandatory = $true)]$Plan,
@@ -393,9 +374,7 @@ function Invoke-SzhPlanDesinstallation {
             }
           }
           'fichier-machine' {
-            # Réappliquée ici, sur l'entrée telle qu'exécutée -- pas seulement à la
-            # construction du plan : un plan forgé à la main (test, ou appelant fautif) ne
-            # doit jamais pouvoir faire supprimer WSL ou la racine.
+            # Garde réappliquée à l'exécution, contre un plan fabriqué à la main.
             Assert-SzhCibleMachineAutorisee -Base $SzhBase -Cible $entree.cible
             Remove-Item -LiteralPath $entree.cible -Recurse -Force
           }
@@ -418,8 +397,8 @@ function Invoke-SzhPlanDesinstallation {
     }
   }
 
-  # « conserve » et « inconnu » : jamais touchés, mais comptés -- le bilan doit rendre
-  # compte de CHAQUE ligne du plan, pas seulement de celles qui pouvaient agir.
+  # « conserve » et « inconnu » ne sont pas touchés mais sont comptés : le bilan couvre
+  # chaque ligne du plan.
   foreach ($entree in @($Plan | Where-Object { ($_.type -eq 'conserve') -or ($_.type -eq 'inconnu') })) {
     [void]$ignores.Add($entree)
   }

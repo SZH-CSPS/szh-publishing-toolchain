@@ -13,10 +13,8 @@ const { spawnSync } = require('child_process');
 const { POWERSHELL, sansPowerShell } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
-// Extrait le corps d'une fonction PowerShell par comptage d'accolades -- aucune des
-// fonctions ci-dessous n'a de `{`/`}` dans un commentaire ou une chaîne, un simple compteur
-// suffit donc (contrairement à un JS/CSS quelconque, il n'y a ici ni accolade dans une regex
-// ni dans un template).
+// Extrait le corps d'une fonction PowerShell par comptage d'accolades. Les fonctions lues
+// ici n'ont pas d'accolade dans un commentaire ou une chaîne : un simple compteur suffit.
 function extraireFonction(texte, nom) {
   const debut = texte.indexOf('function ' + nom + ' {');
   assert.ok(debut !== -1, 'fonction introuvable : ' + nom);

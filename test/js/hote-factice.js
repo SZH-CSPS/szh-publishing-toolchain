@@ -1,11 +1,5 @@
-// Active extension.js avec un faux « vscode », sur une revue temporaire, et rend de quoi
-// l'interroger : le fournisseur d'arbre, les panneaux ouverts, la table des commandes.
-//
-// Pourquoi ce filet. Deux pannes ont traversé les contrôles de source sans être vues :
-// une fonction supprimée par erreur avec ses voisines, qui laissait le formulaire des
-// métadonnées inouvrable, et une commande posée après le `return` de la méthode qui la
-// portait, qui laissait un onglet de la barre latérale sans effet. Les deux se voient en
-// une ligne dès qu'on active l'extension pour de vrai.
+// Active extension.js avec un faux « vscode », sur une revue ou un livre temporaire, et rend
+// de quoi l'interroger : l'arbre, les panneaux ouverts, la table des commandes, les dialogues.
 //
 // Un seul appel d'activerHote() par processus : le crochet de Module._load et le cache de
 // require ne se défont pas. `node --test` donne un processus par fichier, ce qui suffit.
@@ -19,15 +13,10 @@ const Module = require('module');
 
 const LF = String.fromCharCode(10);
 
-// Nettoyage d'une racine jetable (revueDEssai/livreDEssai) à la fin du PROCESSUS — jamais
-// via test.after() : appelé depuis l'INTÉRIEUR d'un test (plusieurs fichiers mettent la
-// fixture en cache au premier test qui la demande, p. ex. hoteBiblio() dans biblio.test.js),
-// test.after() n'attache le nettoyage qu'à CE test précis et le rejoue avant les suivants —
-// la fixture partagée disparaissait alors sous les tests qui la réutilisaient. `node --test`
-// donne un processus par fichier (voir plus bas), et l'évènement 'exit' n'arrive qu'une fois
-// la boucle d'évènements vidée — après la tâche de fond non attendue que pose activerHote()
-// (rafraîchissement du cache auteur·e·s), qui sinon recréait un fichier après un rmSync trop
-// précoce.
+// Efface une racine jetable à la fin du processus. test.after(), appelé depuis l'intérieur
+// d'un test, ne vaudrait que pour ce test : la fixture, partagée par les tests suivants,
+// disparaîtrait sous eux. L'évènement 'exit' arrive aussi après la tâche de fond lancée par
+// activerHote() (cache des auteur·e·s), qui recréerait sinon un fichier.
 function nettoyerEnFinDeProcessus(racineJetable) {
   process.on('exit', () => {
     try { fs.rmSync(racineJetable, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
@@ -35,31 +24,19 @@ function nettoyerEnFinDeProcessus(racineJetable) {
   });
 }
 
-// Garde-fou anti-réseau. Posée dès que ce fichier est chargé — avant tout require de
-// extension.js — pour couvrir le crochet Module._load ci-dessous autant que les caches
-// écrits plus bas. lib/auteurs-ojs.js (recupererHttps) est le SEUL endroit de tout le
-// cockpit qui ouvre une vraie connexion https ; lib/mots-cles-edudoc.js le réutilise tel
-// quel plutôt que d'en écrire un second. Une seule variable, respectée à cet unique
-// endroit, couvre donc les deux moissonneurs — et n'importe quel futur module qui s'y
-// brancherait. Si un test laisse passer un appel réel malgré un cache qu'on croyait frais
-// (nouvelle migration de format, oubli d'un `recuperer` factice…), l'appel échoue tout de
-// suite avec un message clair, au lieu de partir en silence interroger ojs.szh.ch ou
-// edudoc.ch — la panne qui a motivé ce garde-fou (voir plus bas, cache des auteur·e·s).
+// Interdit le réseau, avant tout require d'extension.js. La seule connexion https du
+// cockpit passe par recupererHttps (lib/auteurs-ojs.js), que lib/mots-cles-edudoc.js
+// réutilise : un appel réel qui échapperait aux caches échoue aussitôt, avec un message.
 process.env.SZH_RESEAU_INTERDIT = '1';
 
-// Les deux fichiers du poste — C:\ProgramData\SZH\config.json et state.json — sont
-// détournés vers des fichiers vides, pour la même raison que le garde-fou anti-réseau
-// juste au-dessus : un test ne doit rien lire de la machine qui l'exécute. Le second est
-// arrivé avec la cascade de langue (lib/i18n.js) : state.json porte la langue du dernier
-// lanceur ouvert, et sans ce détour la suite entière basculait en allemand sur un poste
-// allemand — mille assertions comparées à des textes français. Le premier ferait de même
-// le jour où un rédacteur cache les tâches de la vue « Articles », choix qui vit dans
-// config.json. Voir poste-isole.js.
+// Détourne C:\ProgramData\SZH\config.json et state.json vers des fichiers vides : un test
+// ne lit rien du poste. state.json porte la langue du lanceur, qui ferait passer la suite
+// en allemand sur un poste allemand.
 require('./poste-isole');
 
-// L'état du compte (%LOCALAPPDATA%\\SZH\\etat-utilisateur.json) : détourné vers un dossier jetable, sauf
-// si le test a déjà posé le sien sous le dossier temporaire. Le lanceur y lit ses réglages d'avant
-// et y écrit la langue et la mise à jour silencieuse : un test ne touche jamais au compte réel.
+// L'état du compte (%LOCALAPPDATA%\SZH\etat-utilisateur.json) va dans un dossier jetable,
+// sauf si le test en a déjà posé un sous le dossier temporaire. Le lanceur y lit et y écrit
+// ses réglages.
 if (String(process.env.LOCALAPPDATA || '').indexOf(os.tmpdir()) !== 0) {
   process.env.LOCALAPPDATA = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-compte-'));
 }
@@ -68,12 +45,9 @@ if (String(process.env.LOCALAPPDATA || '').indexOf(os.tmpdir()) !== 0) {
 // trois versions désigné par la fiche, une image insérée dans le texte, un Word en attente
 // et le rapport de la dernière conversion.
 function revueDEssai() {
-  // Le numéro vit sous <racine jetable>\Revue\<nom> — jamais posé à plat dans os.tmpdir().
-  // kirby-contenu.js#racineArbre ne reconnaît la racine de l'arbre (celle qui porte
-  // _NewsUndActu\) qu'à cette forme précise (<racine>\Revue\<numero>) ; un numéro posé à
-  // plat lui fait rendre le PARENT du numéro — ici os.tmpdir() lui-même — et la
-  // bibliothèque partagée de fiches finissait écrite dans le dossier temporaire commun à
-  // tout le poste et à tous les tests (304 dossiers relevés sous _NewsUndActu\Fiches).
+  // Le numéro vit sous <racine jetable>\Revue\<nom> : racineArbre (kirby-contenu.js) ne
+  // reconnaît la racine de l'arbre qu'à cette forme. Posé à plat, il ferait de os.tmpdir()
+  // la racine, et la bibliothèque de fiches (_NewsUndActu\) s'y écrirait.
   const racineJetable = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-hote-'));
   nettoyerEnFinDeProcessus(racineJetable);
   const revue = path.join(racineJetable, 'Revue', 'essai-01');
@@ -98,8 +72,7 @@ function revueDEssai() {
     fs.writeFileSync(path.join(portraits, n), Buffer.alloc(128));
   }
 
-  // La bibliographie détachée à l'import : un fichier voisin du .md, comme la fiche et les
-  // tâches. L'autre article n'en a pas — un article sans bibliographie ne doit rien montrer.
+  // La bibliographie détachée à l'import, voisine du .md. L'autre article n'en a pas.
   fs.writeFileSync(path.join(dossier, slug + '.biblio.md'),
     ['Dupont, A. (2024). *Un titre*. SZH.', '', 'Muller, B. (2023). Un autre titre. CSPS.',
      ''].join(LF));
@@ -132,16 +105,12 @@ function activerHote(revue, opts) {
   const sansDossier = !!(opts && opts.sansDossier);
   const ongletsInitiaux = (opts && opts.onglets) || [];
   const cockpit = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit');
-  // Un cache d'auteur·e·s FRAIS avant l'activation : l'extension rafraîchit la liste
-  // OAI-PMH en tâche de fond quand dateFetch a plus de trente jours, et aucun test ne doit
-  // faire de réseau. Le fichier sert aussi de corpus au message auteurs-connus.
-  //
-  // Écrit directement en FORME v2 (lib/auteurs-ojs.js) : un cache v1 se ferait migrer par
-  // lireCache(), qui remet dateFetch à null — « périmé », donc moissonné pour de vrai. C'est
-  // exactement ce qui s'est produit (25.08.2026 -> 31.08.2026) : les 19 tests qui passent par
-  // cet hôte factice interrogeaient réellement ojs.szh.ch, en silence, à chaque exécution.
-  // dateCorpus est frais pour la même raison : sinon l'activation balaie les vraies racines du
-  // poste (PowerShell) et réécrit ce cache pendant les tests.
+  // Un cache d'auteur·e·s frais avant l'activation : l'extension moissonne OAI-PMH en tâche
+  // de fond quand dateFetch a plus de trente jours. Il sert aussi de corpus au message
+  // auteurs-connus.
+  // Il est écrit en version 2 (lib/auteurs-ojs.js) : lireCache() migre un cache v1 en
+  // remettant dateFetch à null, ce qui déclencherait le moissonnage. dateCorpus est frais
+  // pour que l'activation ne balaie pas les vraies racines du poste.
   process.env.SZH_AUTEURS_CACHE = path.join(revue, 'auteurs.json');
   fs.writeFileSync(process.env.SZH_AUTEURS_CACHE, JSON.stringify({
     version: 2, dateFetch: new Date().toISOString(), dateCorpus: new Date().toISOString(), ror: {}, vus: {},
@@ -150,10 +119,8 @@ function activerHote(revue, opts) {
       { prenom: 'Anne', nom: 'Dupont', datePublication: '2025-06-01T00:00:00Z' }
     ]
   }, null, 2) + LF);
-  // Même précaution pour le vocabulaire edudoc.ch (lib/mots-cles-edudoc.js) : un cache
-  // FRAIS avant l'activation, sans quoi rafraichirMotsClesConnusEnFond (extension.js) le
-  // jugerait périmé (plus de sept jours) et ferait un vrai appel réseau. Le fichier sert
-  // aussi de corpus au message mots-cles-connus.
+  // De même pour le vocabulaire edudoc.ch (lib/mots-cles-edudoc.js), périmé au-delà de sept
+  // jours. Il sert aussi de corpus au message mots-cles-connus.
   process.env.SZH_MOTS_CLES_CACHE = path.join(revue, 'mots-cles.json');
   fs.writeFileSync(process.env.SZH_MOTS_CLES_CACHE, JSON.stringify({
     dateFetch: new Date().toISOString(),
@@ -163,9 +130,8 @@ function activerHote(revue, opts) {
     ]
   }, null, 2) + LF);
   const evenement = () => () => ({ dispose() {} });
-  // Un événement dont on garde les abonnés, pour pouvoir le déclencher depuis un test.
-  // `evenement()` jette le gestionnaire : suffisant pour la plupart, pas pour la fin d'une
-  // tâche, qui est le seul endroit où le cockpit apprend ce que la chaîne a relevé.
+  // Un événement qui garde ses abonnés, pour qu'un test puisse le déclencher (emettre).
+  // `evenement()`, lui, jette le gestionnaire.
   const emetteur = () => {
     const abonnes = [];
     const brancher = (f) => { abonnes.push(f); return { dispose() {} }; };
@@ -173,31 +139,22 @@ function activerHote(revue, opts) {
     return brancher;
   };
   const finTache = emetteur();
-  // La dernière TaskExecution rendue par executeTask(), par nom de tâche : lancerTache()
-  // (extension.js) n'accepte la fin de SA tâche que sur `e.execution === execution`, la
-  // même référence que celle rendue par vscode.tasks.executeTask(). Sans elle, finirTache()
-  // ne pouvait faire aboutir que le SUIVEUR global (onDidStartTask/onDidEndTaskProcess,
-  // qui ne compare que le nom) — jamais l'attente propre de lancerTache(), ce qui interdit
-  // de tester une compilation du cockpit qui va à son terme. Vide tant que fetchTasks()
-  // ne rend rien (le défaut) : finirTache() retombe alors sur la forme d'avant.
+  // La dernière TaskExecution rendue par executeTask(), par nom de tâche. lancerTache()
+  // reconnaît la fin de sa tâche à cette référence (`e.execution === execution`) ;
+  // finirTache() la réutilise. Vide tant que fetchTasks() ne rend rien (le défaut).
   const executionsParTache = {};
-  // Le démarrage d'une tâche (onDidStartTask), et sa fin SANS notification de processus
-  // (onDidEndTask) : le chemin le plus fréquent (Ctrl+S, triggerTaskOnSave) ne passe par
-  // aucune fonction du cockpit, seulement par ces deux événements globaux. Même repli que
-  // finTache quand le cockpit n'a pas lui-même lancé la tâche nommée.
+  // Le démarrage d'une tâche (onDidStartTask) et sa fin sans notification de processus
+  // (onDidEndTask). Une compilation par Ctrl+S (triggerTaskOnSave) n'est vue du cockpit
+  // que par ces événements globaux.
   const debutTache = emetteur();
   const finTacheBrute = emetteur();
   // Ctrl+S : le cockpit retient l'article enregistré pour le voile de « À corriger ».
   const enregistrement = emetteur();
-  // Les deux événements du défilement synchronisé aperçu HTML (pousserDefilementVersApercu,
-  // pousserSurlignageVersApercu, extension.js) : réels et non jetés, pour qu'un test puisse
-  // simuler un geste dans l'éditeur SANS ouvrir une vraie fenêtre.
+  // Les événements du défilement synchronisé avec l'aperçu HTML, déclenchables par un test.
   const rangesVisibles = emetteur();
   const selectionEditeur = emetteur();
-  // Les réglages « szh.* » écrits par update() : un faux getConfiguration() qui les
-  // oublierait rendrait basculerApercu invérifiable — son .update() ne se verrait jamais
-  // au .get() suivant. Une seule table pour tout l'hôte, comme le ferait VS Code au niveau
-  // Global (aucun cockpit n'écrit à un autre niveau).
+  // Les réglages écrits par update(), relus par get(). Une seule table, comme le niveau
+  // Global de VS Code, le seul où le cockpit écrit.
   const configValeurs = {};
   const barres = [];
   const panneaux = [];
@@ -208,24 +165,18 @@ function activerHote(revue, opts) {
   const motifsSurveilles = []; // les motifs passés à createFileSystemWatcher, dans l'ordre
   let arbre = null;
   let controleurDepot = null;   // dragAndDropController de la TreeView (.docx glissés dessus)
-  // Ce que showWarningMessage rendra, dans l'ordre des appels : une file, et non une seule
-  // valeur, parce qu'un geste peut désormais en enchaîner deux — le dialogue de
-  // remplacement renvoie vers celui de « poser à côté », et le test doit répondre aux deux.
-  // File vide -> undefined, c'est-à-dire « Annuler », comme avant.
+  // Ce que showWarningMessage rendra, dans l'ordre des appels : un geste peut enchaîner deux
+  // dialogues. File vide : undefined, c'est-à-dire « Annuler ».
   const reponsesModales = [];
   // Le chemin que showSaveDialog rendra : null = « Annuler ».
   let cibleEnregistrement = null;
-  // Les réponses des trois autres dialogues, même contrat que cibleEnregistrement :
-  // undefined (le défaut) = « Annuler », sans quoi un test qui n'a rien posé verrait le
-  // comportement changer sous lui.
+  // Les réponses des trois autres dialogues ; undefined (le défaut) = « Annuler ».
   let reponseQuickPick;
   let reponseInput;
   let reponseOuverture;
-  // Les clés de contexte posées par `setContext` (menus, quand-clauses) : jetées jusqu'ici,
-  // alors qu'un test qui veut savoir si un onglet doit apparaître n'a que ça à lire.
+  // Les clés de contexte posées par `setContext` (menus, clauses `when`).
   const contexteVsCode = {};
-  // L'appel entier, pour les contrôles qui portent sur les ISSUES OFFERTES et pas seulement
-  // sur la question posée : un bouton perdu ne change rien à la question.
+  // Chaque appel de showWarningMessage avec ses boutons, pour vérifier les choix offerts.
   const modales = [];
   // La TreeView : reveal() est enregistré (resélection d'un article), et les événements de
   // chevron sont déclenchables depuis un test (accordéon des sections).
@@ -261,10 +212,8 @@ function activerHote(revue, opts) {
       },
       reveal() {}, dispose() { if (p.onDispose) { p.onDispose(); } },
       onDidDispose(f) { p.onDispose = f; return { dispose() {} }; },
-      // Un vrai émetteur, pas evenement() (qui jette le gestionnaire) : le bouton « Aperçu
-      // du PDF » de la Documentation (documentation-hote.js) s'en sert pour redire son état
-      // quand ce panneau redevient actif — un test doit pouvoir simuler ce réveil
-      // (p.onDidChangeViewState.emettre({ webviewPanel: { active: true } })).
+      // Déclenchable : documentation-hote.js redit l'état de son bouton quand le panneau
+      // redevient actif (p.onDidChangeViewState.emettre({ webviewPanel: { active: true } })).
       onDidChangeViewState: emetteur()
     };
     panneaux.push(p);
@@ -274,9 +223,8 @@ function activerHote(revue, opts) {
   const stub = {
     EventEmitter: class { constructor() { this.event = () => ({ dispose() {} }); } fire() {} },
     Uri: {
-      // `with` comme dans l'API : le cockpit s'en sert pour rhabiller le chemin d'une copie
-      // en conflit sous son propre schéma (szh-conflit), ce qui en fait l'« original » du
-      // fichier du numéro aux yeux du diff rapide.
+      // `with` sert à passer une copie en conflit sous le schéma szh-conflit, qui en fait
+      // l'« original » du diff rapide.
       file: (p) => {
         const faire = (schema) => ({
           fsPath: p, scheme: schema, path: p,
@@ -285,9 +233,8 @@ function activerHote(revue, opts) {
         });
         return faire('file');
       },
-      // Reprend le « schéma://reste » que Uri.file(p).toString() produit ci-dessus, sans
-      // rien décoder (rien n'est encodé au départ) : controleurDepotVue (extension.js) lit
-      // un « text/uri-list » déposé sur l'arbre et en tire ses .docx par ce chemin.
+      // Relit le « schéma://reste » produit par toString() ci-dessus, sans décodage. Sert au
+      // « text/uri-list » des .docx déposés sur l'arbre.
       parse: (s) => {
         const texte = String(s || '');
         const m = texte.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):\/\/(.*)$/);
@@ -295,8 +242,7 @@ function activerHote(revue, opts) {
       }
     },
     Position: class { constructor(l, c) { this.line = l; this.character = c; } },
-    // Les deux formes de l'API réelle : (Position, Position) et (ligne, colonne, ligne,
-    // colonne) — revelerLigneSource (extension.js) emploie la seconde.
+    // Les deux formes de l'API : (Position, Position) et (ligne, colonne, ligne, colonne).
     Range: class {
       constructor(a, b, c, d) {
         if (typeof a === 'number') {
@@ -305,8 +251,7 @@ function activerHote(revue, opts) {
       }
     },
     Selection: class { constructor(a, b) { this.start = a; this.end = b; this.active = b; } },
-    // szh.fmt.falcHeader/szh.fmt.qrLink (lib/formatting.js) : le texte du snippet, tel quel
-    // — le vrai éditeur en fait les tabulations ${1:…}, hors de propos ici.
+    // Garde le texte du snippet tel quel (lib/formatting.js).
     SnippetString: class { constructor(v) { this.value = v; } },
     // Les remplacements sont retenus : applyEdit les verse dans `editions`, sans toucher au disque.
     WorkspaceEdit: class { constructor() { this.ops = []; } replace(uri, plage, texte) { this.ops.push({ uri, texte }); } insert() {} },
@@ -321,14 +266,8 @@ function activerHote(revue, opts) {
     ConfigurationTarget: { Global: 1, Workspace: 2 },
     QuickPickItemKind: { Separator: -1, Default: 0 },
     ProgressLocation: { Notification: 15 },
-    // Les pièces d'une tâche construite à la main. tacheMakeArticle() (extension.js) est le
-    // seul endroit du cockpit qui en fabrique une : partout ailleurs on reprend une tâche
-    // déjà déclarée dans tasks.json, via fetchTasks(). Elles manquaient ici, si bien que
-    // « Exporter cet article » levait « vscode.ProcessExecution is not a constructor » dès
-    // sa première ligne — envelopperCommande avalait l'exception, et le geste ne faisait
-    // simplement rien. Aucun contrôle ne pouvait le voir : ce chemin n'était pas jouable.
-    // Les champs retenus sont ceux que le harnais lit (`name`, `definition`) et ceux que le
-    // cockpit relit après coup ; le reste est gardé tel quel, sans interprétation.
+    // Les pièces d'une tâche construite à la main, comme le fait tacheMakeArticle()
+    // (extension.js). Les autres tâches viennent de tasks.json, via fetchTasks().
     ProcessExecution: class {
       constructor(processus, args, options) {
         this.process = processus;
@@ -352,29 +291,22 @@ function activerHote(revue, opts) {
     TaskPanelKind: { Shared: 1, Dedicated: 2, New: 3 },
     env: {
       language: 'fr', clipboard: { writeText: () => Promise.resolve() },
-      // Ce qui part vers l'extérieur du cockpit — un fichier rendu au navigateur, un
-      // lien. Enregistré, parce qu'un geste dont tout l'effet est « le système ouvre ça »
-      // ne se mesure pas autrement.
+      // Ce que le cockpit ouvre à l'extérieur (fichier, lien) est retenu dans `ouvertures`.
       openExternal: (u) => { ouvertures.push(u && u.fsPath ? u.fsPath : String(u)); return Promise.resolve(true); }
     },
     extensions: { getExtension: () => undefined },
     commands: {
       _table: {},
       registerCommand(id, fn) { stub.commands._table[id] = fn; return { dispose() {} }; },
-      // Le journal des commandes jouées. Les commandes de l'ÉDITEUR (vscode.open,
-      // markdown.showPreviewToSide…) ne sont enregistrées nulle part et retombaient donc
-      // dans le vide : un geste qui ne fait qu'en enchaîner ne se mesurait pas du tout.
-      // `setContext` en est exclu : il part à chaque rafraîchissement et noierait le reste.
+      // Le journal des commandes jouées, celles de l'éditeur comprises (vscode.open…).
+      // `setContext`, appelé à chaque rafraîchissement, en est exclu.
       _journal: [],
       executeCommand(id, ...a) {
         if (id === 'setContext') { contexteVsCode[a[0]] = a[1]; return Promise.resolve(); }
         stub.commands._journal.push({ id: id, args: a });
         if (stub.commands._table[id]) { return Promise.resolve(stub.commands._table[id](...a)); }
-        // Les ids natifs de VS Code (vscode.open, vscode.diff, revealFileInOS,
-        // markdown.showPreviewToSide, workbench.*…) ne sont enregistrés nulle part ici — on
-        // ne peut pas les vérifier, donc on les laisse passer comme avant. Seul un `szh.*`
-        // manquant est une vraie panne : une commande de CE cockpit qui n'existe plus (ou
-        // plus encore) doit faire échouer le geste qui l'appelle, pas disparaître en silence.
+        // Les commandes natives de VS Code passent sans effet. Une commande `szh.*` absente
+        // fait échouer le geste qui l'appelle.
         if (String(id).indexOf('szh.') === 0) {
           return Promise.reject(new Error('command not found: ' + id));
         }
@@ -427,11 +359,10 @@ function activerHote(revue, opts) {
       },
       showInformationMessage: () => Promise.resolve(undefined),
       showErrorMessage: (m) => { erreurs.push(m); return Promise.resolve(undefined); },
-      // Les messages passagers de la barre d'état : c'est souvent le SEUL signe qu'un geste
-      // est allé jusqu'au bout, la plupart écrivant par WorkspaceEdit que ce harnais ne
-      // rejoue pas. Retenus dans l'ordre, lisibles par `statutsDits`.
+      // Les messages passagers de la barre d'état, souvent le seul signe qu'un geste a
+      // abouti. Lisibles par `statutsDits`.
       setStatusBarMessage: (m) => { statuts.push(String(m)); return { dispose() {} }; },
-      // Posé par le test (`repondreOuverture`) ; undefined = « Annuler », comme avant.
+      // Posé par le test (`repondreOuverture`) ; undefined = « Annuler ».
       showOpenDialog: () => Promise.resolve(reponseOuverture),
       // Le chemin que showSaveDialog rendra, posé par le test (`repondreEnregistrement`).
       // undefined = l'utilisateur a annulé, et c'est le défaut.
@@ -449,8 +380,6 @@ function activerHote(revue, opts) {
     workspace: {
       workspaceFolders: sansDossier ? undefined
         : [{ uri: { fsPath: revue }, name: path.basename(revue), index: 0 }],
-      // Persiste ce qu'update() écrit : sans ça, basculerApercu (szh.apercuMode) ne se
-      // vérifie pas, son .update() ne changeant jamais ce que le .get() suivant rend.
       getConfiguration: (section) => {
         const prefixe = section ? section + '.' : '';
         return {
@@ -460,10 +389,8 @@ function activerHote(revue, opts) {
               ? configValeurs[cheminCle] : defaut;
           },
           update: (cle, valeur) => { configValeurs[prefixe + cle] = valeur; return Promise.resolve(); },
-          // La sonde des réglages de la maison (poserReglagesMaison) lit le défaut EFFECTIF
-          // de chaque clé pour savoir laquelle la contribution n'a pas prise. Ce harnais n'a
-          // pas de couche de défauts : il rend ce qui a été écrit, et undefined sinon —
-          // toutes les clés paraissent donc « à poser », ce qui est le cas le plus complet.
+          // Pas de couche de défauts : poserReglagesMaison, qui lit le défaut effectif de
+          // chaque clé, trouve donc toutes les clés « à poser ».
           inspect: (cle) => ({
             key: prefixe + cle,
             defaultValue: undefined,
@@ -472,9 +399,8 @@ function activerHote(revue, opts) {
           })
         };
       },
-      // Les motifs sont RETENUS : surveiller un chemin qui n'existe pas ne lève rien, et un
-      // arbre qui ne se rafraîchit jamais ressemble à un arbre à jour. Seule la liste des
-      // motifs demandés distingue les deux.
+      // Les motifs sont retenus : surveiller un chemin absent ne lève rien, seule la liste
+      // des motifs montre ce qui est surveillé.
       createFileSystemWatcher: (motif) => {
         motifsSurveilles.push(motif && motif.pattern !== undefined ? motif.pattern : String(motif));
         return {
@@ -505,9 +431,8 @@ function activerHote(revue, opts) {
         return { dispose() {} };
       }
     },
-    // Le contrôle de source. Le cockpit n'en crée un que s'il existe une copie en conflit, et
-    // le détruit dès qu'il n'en reste plus : un test lit donc `vivant` autant que le contenu
-    // du groupe.
+    // Le contrôle de source, créé par le cockpit tant qu'il existe une copie en conflit.
+    // `vivant` dit s'il a été détruit.
     scm: {
       _controles: [],
       createSourceControl(id, label, rootUri) {
@@ -541,7 +466,7 @@ function activerHote(revue, opts) {
   Module._load = function (r, p, i) {
     if (r === 'vscode') { return stub; }
     const m = orig(r, p, i);
-    // Le dormeur WSL garderait le processus en vie, et réveillerait la distro pour rien.
+    // Neutralise le dormeur WSL, qui garderait le processus en vie et réveillerait la distro.
     if (m && typeof m.demarrerDormeurWsl === 'function') {
       return Object.assign({}, m, {
         demarrerDormeurWsl: () => {}, arreterDormeurWsl: () => {},
@@ -559,13 +484,11 @@ function activerHote(revue, opts) {
   };
 
   const ext = require(path.join(cockpit, 'extension.js'));
-  // Un globalState qui SE SOUVIENT : deux mécanismes n'agissent qu'une fois par valeur
-  // voulue (les réglages de la maison, les réglages protégés) et se règlent sur ce qu'il
-  // porte. Un état qui oublie tout les ferait rejouer à chaque activation, et le contrôle
-  // du « une seule fois » n'aurait rien à mesurer.
+  // Un globalState qui garde ses valeurs : les réglages de la maison et les réglages protégés
+  // ne se posent qu'une fois, d'après ce qu'il porte.
   const memoire = {};
-  // Le coffre (SecretStorage) et l'environnement des terminaux : un coffre qui SE SOUVIENT et
-  // dont on suit les changements, une collection qui retient ce que le cockpit y pose.
+  // Le coffre (SecretStorage), qui garde ses valeurs et signale ses changements, et
+  // l'environnement des terminaux.
   const coffre = {};
   const changementCoffre = emetteur();
   const variablesTerminal = {};
@@ -596,8 +519,7 @@ function activerHote(revue, opts) {
     // Ce qui a été joué depuis le dernier oubli, commandes de l'éditeur comprises.
     commandesJouees: () => stub.commands._journal.slice(),
     oublierCommandes: () => { stub.commands._journal.length = 0; },
-    // L'éditeur de texte actif, et les onglets ouverts : deux états que l'hôte lit et que
-    // rien ne posait ici.
+    // L'éditeur de texte actif et les onglets ouverts.
     poserEditeurActif: (chemin) => {
       stub.window.activeTextEditor = chemin
         ? { document: { uri: stub.Uri.file(chemin), fileName: chemin, languageId: 'markdown' },
@@ -614,8 +536,7 @@ function activerHote(revue, opts) {
     oublierFermetures: () => { fermetures.length = 0; },
     arbre: () => arbre,
     gestionnaireUri: () => gestionnaireUri,
-    // Le dragAndDropController posé sur la TreeView (controleurDepotVue, extension.js) :
-    // de quoi simuler un .docx glissé sur l'arbre, sans passer par un vrai DataTransfer.
+    // Le dragAndDropController de la TreeView, pour simuler un .docx glissé sur l'arbre.
     controleurDepot: () => controleurDepot,
     panneaux: panneaux,
     // Les chemins et liens passés à env.openExternal, dans l'ordre.
@@ -627,15 +548,12 @@ function activerHote(revue, opts) {
     panneauDeType: (type) => panneaux.filter((x) => x.type === type).pop() || null,
     // Ce que showSaveDialog rendra au prochain appel ; null pour simuler « Annuler ».
     repondreEnregistrement: (chemin) => { cibleEnregistrement = chemin; },
-    // Les trois autres dialogues, même contrat : la valeur posée est rendue TELLE QUELLE
-    // (le test choisit l'item, la chaîne ou le tableau d'URIs exact), et ne rien poser
-    // laisse le comportement d'aujourd'hui — undefined, c'est-à-dire « Annuler ».
+    // Les trois autres dialogues : la valeur posée est rendue telle quelle (item, chaîne ou
+    // tableau d'URIs). Sans valeur : undefined, c'est-à-dire « Annuler ».
     repondreQuickPick: (valeur) => { reponseQuickPick = valeur; },
     repondreInput: (valeur) => { reponseInput = valeur; },
     repondreOuverture: (uris) => { reponseOuverture = uris; },
-    // Les clés `setContext` posées jusqu'ici (menus, quand-clauses) : { 'szh.verrouillee':
-    // true, … }. Un objet neuf à chaque appel pour qu'un test ne puisse pas le modifier par
-    // erreur en pensant lire un instantané.
+    // Une copie des clés `setContext` posées jusqu'ici : { 'szh.verrouillee': true, … }.
     contexte: () => Object.assign({}, contexteVsCode),
     memoire: memoire,
     coffre: coffre,
@@ -654,16 +572,10 @@ function activerHote(revue, opts) {
     barres: barres,
     barreQuiDit: (fragment) => barres.filter(
       (b) => b.visible && String(b.text).indexOf(fragment) !== -1).pop() || null,
-    // Simule la fin d'une tâche de la chaîne, comme VS Code la signale. Reprend la
-    // TaskExecution qu'executeTask() a rendue pour ce nom, si le cockpit a bien lancé LUI-
-    // MÊME cette tâche (fetchTasks() la lui aura fait trouver) : c'est cette même référence
-    // que lancerTache() attend pour résoudre. Sinon (le défaut, fetchTasks() vide — Ctrl+S
-    // et triggerTaskOnSave, hors du cockpit), une exécution synthétique, comme avant : le
-    // suiveur global (onDidStartTask/onDidEndTaskProcess) ne regarde que le nom.
-    // Une tâche normale émet les deux événements de fin, dans cet ordre : onDidEndTaskProcess
-    // (le code de sortie), puis onDidEndTask (VS Code le déclenche pour toute fin de tâche,
-    // processus ou non). Sans le second, aucun test ne peut éprouver un gestionnaire qui
-    // écoute onDidEndTask sur le chemin le plus fréquent d'une compilation qui va à son terme.
+    // Simule la fin d'une tâche comme VS Code la signale : onDidEndTaskProcess (code de
+    // sortie), puis onDidEndTask. L'exécution est celle qu'executeTask() a rendue si le
+    // cockpit a lancé la tâche lui-même, sinon une exécution synthétique (cas du Ctrl+S),
+    // que le suiveur global reconnaît à son nom.
     finirTache: (nom, code) => {
       const execution = executionsParTache[nom] || { task: { name: nom, definition: { type: 'process' } } };
       finTache.emettre({ exitCode: code, execution: execution });
@@ -713,15 +625,10 @@ function activerHote(revue, opts) {
   };
 }
 
-// Un LIVRE minimal, le pendant de revueDEssai() : buch.yaml, deux chapitres, un dépôt Word.
-// Il sert à éprouver que le cockpit reconnaît un livre et lui montre SES sections — pas
-// celles d'un numéro. C'est la seule différence qui compte ici ; tout le reste de la
-// mécanique (médias, tableaux, verrous) est indifférent au profil, et ses tests le disent
-// déjà pour la revue.
+// Un livre minimal, pendant de revueDEssai() : buch.yaml, deux chapitres, un dépôt Word.
+// Il sert à vérifier que le cockpit reconnaît un livre et lui montre ses propres sections.
 function livreDEssai() {
-  // Même précaution que revueDEssai() ci-dessus : le livre vit sous
-  // <racine jetable>\Books\<nom>, jamais posé à plat dans os.tmpdir() — sans quoi
-  // racineArbre() se rabattrait sur os.tmpdir() lui-même comme racine de l'arbre.
+  // Sous <racine jetable>\Books\<nom>, pour la même raison que dans revueDEssai().
   const racineJetable = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-livre-'));
   nettoyerEnFinDeProcessus(racineJetable);
   const livre = path.join(racineJetable, 'Books', 'essai-livre');
@@ -740,10 +647,8 @@ function livreDEssai() {
   return livre;
 }
 
-// Concatène extension.js et tous les lib/**/*.js. Préalable au découpage d'extension.js :
-// un contrat qui cherche aujourd'hui une chaîne dans extension.js doit continuer de la
-// trouver le jour où elle aura migré vers un module de lib/ — sans quoi chaque migration
-// casserait silencieusement un contrôle qui n'a plus rien à voir avec le découpage lui-même.
+// Concatène extension.js et tous les lib/**/*.js, pour qu'un contrôle de source trouve une
+// chaîne où qu'elle vive dans le cockpit.
 function sourceExtensionEtLib(cockpit) {
   const morceaux = [fs.readFileSync(path.join(cockpit, 'extension.js'), 'utf8')];
   const empiler = (base) => {
@@ -757,11 +662,8 @@ function sourceExtensionEtLib(cockpit) {
   return morceaux.join('\n');
 }
 
-// Laisse les micro-tâches du démarrage asynchrone (demarrageInitial, rafraîchissements en
-// tâche de fond) s'épuiser, puis VÉRIFIE que rien n'a crié pendant ce temps — jusqu'ici
-// chaque fichier vidait erreurs/avertissements sans jamais les avoir regardés, un « le
-// démarrage se tait » qui ne pouvait pas rougir même si le démarrage hurlait. Remet les
-// deux compteurs à zéro pour ne pas polluer les assertions qui suivent dans le test.
+// Laisse s'épuiser les micro-tâches du démarrage asynchrone, vérifie qu'aucune erreur ni
+// aucun avertissement n'a été émis, puis vide les deux listes pour la suite du test.
 async function demarrageSeTait(HOTE, ticks = 30) {
   for (let i = 0; i < ticks; i++) { await new Promise((r) => setImmediate(r)); }
   assert.ok(HOTE.erreurs.length === 0 && HOTE.avertissements.length === 0,

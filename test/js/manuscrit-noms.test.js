@@ -1,26 +1,12 @@
-// pipeline/manuscrit_noms.py : attribution prénom/nom au sein d'un segment de nom déjà
-// reconnu (problème (b), distinct de la SEGMENTATION de docx-meta.nom_plausible()) — §3 de
-// CONTRAT-noms.md (lot A, non committé), qui prolonge docs/ARCHITECTURE-nettoyeur-
-// manuscrit.md, §5.5.
+// Tests de pipeline/manuscrit_noms.py : dans un segment de nom déjà reconnu, quel jeton est
+// le prénom et lequel le nom. Voir docs/ARCHITECTURE-nettoyeur-manuscrit.md.
 //
 //   node --test "test/js/manuscrit-noms.test.js"
 //
-// Module PUR : ce fichier passe par le mode --diagnostic, patron de
-// test/js/manuscrit-entete.test.js — {"segments": [{"texte", "indices"}, ...], "base":
-// {"prenoms": [...], "noms": [...]}} sur stdin, une ligne JSON {"resultats": [...]} sur
-// stdout. `base` voyage TOUJOURS en ligne : aucun test ici ne lit
-// C:\ProgramData\SZH\auteurs.json (absent des runners CI, §2 bis du contrat de lot). Seul le
-// test « BaseNoms.charger() » (§8 quater) sort de ce patron : il vérifie le chargement
-// DEPUIS DISQUE du lexique du dépôt (pipeline/lexique/noms-famille.txt), toujours sans
-// dépendre de la base OJS de production.
-//
-// Contrôles couverts (§3.7 du contrat de lot) : casse tapée, casse mise en forme, tout en
-// majuscules (aucun signal) ; e-mail tranchant dans les deux sens, e-mail à initiale, adresse
-// institutionnelle ignorée ; lexique tranchant (à un et deux jetons concordants), réellement
-// indécis (égalité stricte), muet ; conflit à poids égal ; propagation dans une byline et
-// non-propagation en cas de contradiction ; titres académiques ; particules dans les deux
-// ordres ; base absente ; BaseNoms.charger() ne lit plus que noms-famille.txt (prenoms.txt
-// supprimé le 22.09.2026, décision de Robin).
+// Les tests passent par le mode --diagnostic : {"segments": [{"texte", "indices"}, ...],
+// "base": {"prenoms": [...], "noms": [...]}} sur stdin, une ligne JSON {"resultats": [...]}
+// sur stdout. La base est fournie en ligne, sans lire C:\ProgramData\SZH\auteurs.json, absent
+// des runners CI. Seul le test de BaseNoms.charger() lit le disque (lexique du dépôt).
 'use strict';
 
 const test = require('node:test');
@@ -35,9 +21,8 @@ const MANUSCRIT_NOMS = path.join(RACINE, 'pipeline', 'manuscrit_noms.py');
 
 const ENV_UTF8 = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
 
-// Lance manuscrit_noms.py --diagnostic sur {segments, base}, rend {resultats: [...]} déjà
-// parsé — un résultat par segment, dans l'ordre d'entrée (la propagation de trancher_groupe()
-// tourne sur les segments reçus ENSEMBLE dans un même appel).
+// Lance manuscrit_noms.py --diagnostic et rend un résultat par segment, dans l'ordre
+// d'entrée. La propagation de trancher_groupe() ne joue qu'entre segments d'un même appel.
 function diagnostiquer(segments, base) {
   const entree = { segments, base: base || { prenoms: [], noms: [] } };
   const r = python( [MANUSCRIT_NOMS, '--diagnostic'], {
@@ -49,7 +34,6 @@ function diagnostiquer(segments, base) {
   return JSON.parse(lignes[lignes.length - 1]).resultats;
 }
 
-// Un seul segment : raccourci pour ne pas répéter le tableau à chaque test.
 function decouper(texte, indices, base) {
   return diagnostiquer([{ texte, indices: indices || {} }], base)[0];
 }
@@ -70,9 +54,8 @@ test('trancher : casse TAPÉE marque le nom (GUILLEY Edith), ordre inversé',
 
 test('trancher : casse MISE EN FORME (indices.majuscules, pas de majuscule tapée)',
   { skip: sansPython }, () => {
-    // « Guilley » est tapé en bas de casse ; c'est indices.majuscules (position 0, forme du
-    // modèle riche — manuscrit_modele.FORME_CLES) qui dit que ce jeton est composé en
-    // capitales — un texte tapé normalement ne peut pas porter ce renseignement lui-même.
+    // « Guilley » est tapé en bas de casse ; indices.majuscules (forme de
+    // manuscrit_modele.FORME_CLES) dit que le jeton 0 est mis en capitales par la mise en forme.
     const r = decouper('Guilley Edith', { majuscules: [0] });
     assert.strictEqual(r.prenom, 'Edith');
     assert.strictEqual(r.nom, 'Guilley');
@@ -153,9 +136,7 @@ test('trancher : nom certifié par la bibliographie (inverse)', { skip: sansPyth
 });
 
 // -----------------------------------------------------------------------------------------
-// 4. Le lexique — force probable, marge = 1 (§3.3 du contrat, marge révisée par le
-// superviseur le 22.09.2026 après mesure : la formule d'origine du contrat, marge = 2, ne
-// tranchait presque rien — voir le commentaire de MARGE_LEXIQUE dans manuscrit_noms.py).
+// 4. Le lexique — force probable, marge = 1 (voir MARGE_LEXIQUE dans manuscrit_noms.py).
 
 test('trancher : lexique tranchant (les deux jetons concordent d’un côté, rien de l’autre)',
   { skip: sansPython }, () => {
@@ -169,7 +150,7 @@ test('trancher : lexique tranchant (les deux jetons concordent d’un côté, ri
 test('trancher : lexique tranchant avec un seul jeton concordant (marge = 1, un écart suffit)',
   { skip: sansPython }, () => {
     // La base ne connaît « Guilley » que comme nom : score_direct = 1 (Guilley nom, Edith
-    // prénom inconnu), score_inverse = 0 — écart de 1, ça suffit désormais (MARGE_LEXIQUE = 1).
+    // prénom inconnu), score_inverse = 0 : l'écart de 1 suffit.
     const base = { prenoms: [], noms: ['guilley'] };
     const r = decouper('Edith Guilley', {}, base);
     assert.strictEqual(r.ordre, 'prenom_nom');
@@ -179,9 +160,8 @@ test('trancher : lexique tranchant avec un seul jeton concordant (marge = 1, un 
 
 test('trancher : lexique réellement indécis (égalité stricte des deux scores, jamais un pari)',
   { skip: sansPython }, () => {
-    // Les DEUX jetons sont connus à la fois comme prénom ET comme nom ailleurs dans la base
-    // (des homonymes réels existent, « Martin » par exemple) : score_direct = score_inverse
-    // = 2, égalité stricte — le seul cas qui reste muet à marge = 1.
+    // Les deux jetons sont connus à la fois comme prénom et comme nom (cas réel : « Martin ») :
+    // score_direct = score_inverse = 2, seul cas qui reste muet à marge = 1.
     const base = { prenoms: ['edith', 'guilley'], noms: ['edith', 'guilley'] };
     const r = decouper('Edith Guilley', {}, base);
     assert.strictEqual(r.confiance, 'defaut');
@@ -200,9 +180,8 @@ test('trancher : lexique muet (base disponible mais aucun des deux jetons connu)
 
 test('trancher : conflit entre biblio (direct) et lexique (inverse), même poids (2)',
   { skip: sansPython }, () => {
-    // La bibliographie certifie « guilley » comme nom (-> direct, Guilley en queue) ; la base
-    // lexicale, elle, connaît « guilley » comme PRÉNOM et « edith » comme NOM (-> inverse) —
-    // deux signaux de poids 2 qui se contredisent frontalement.
+    // La bibliographie dit « guilley » nom (-> direct) ; le lexique connaît « guilley » comme
+    // prénom et « edith » comme nom (-> inverse). Deux signaux de poids 2 contradictoires.
     const base = { prenoms: ['guilley'], noms: ['edith'] };
     const r = decouper('Edith Guilley', { noms_biblio: ['guilley'] }, base);
     assert.strictEqual(r.conflit, true);
@@ -212,13 +191,12 @@ test('trancher : conflit entre biblio (direct) et lexique (inverse), même poids
   });
 
 // -----------------------------------------------------------------------------------------
-// 6. Propagation — l'indice le moins cher, le plus robuste (§3.5 du contrat).
+// 6. Propagation de l'ordre entre les segments d'une même byline.
 
 test('trancher_groupe : propagation dans une byline, un seul nom connu -> les deux segments en ordre inverse',
   { skip: sansPython }, () => {
-    // « Guilley Edith, Valarino Isabel » : seule « Guilley » est certifiée par la
-    // bibliographie. Le premier segment tranche (probable, inverse) ; le second, muet tout
-    // seul, adopte le même ordre par propagation.
+    // Seul « Guilley » est dans la bibliographie : le premier segment tranche, le second
+    // adopte le même ordre par propagation.
     const nomsBiblio = ['guilley'];
     const resultats = diagnostiquer([
       { texte: 'Guilley Edith', indices: { noms_biblio: nomsBiblio } },
@@ -241,21 +219,19 @@ test('trancher_groupe : deux segments tranchés qui se contredisent -> aucune pr
     const resultats = diagnostiquer([
       { texte: 'Guilley Edith', indices: { email: 'guilley@x.ch' } },       // -> inverse
       { texte: 'Isabel Valarino', indices: { email: 'valarino@x.ch' } },    // -> direct
-      { texte: 'Jean Dupont', indices: {} },                                // muet, ne doit
-    ]);                                                                     // pas bouger
+      { texte: 'Jean Dupont', indices: {} },                                // muet
+    ]);
     assert.strictEqual(resultats[0].ordre, 'nom_prenom');
     assert.strictEqual(resultats[0].confiance, 'certaine');
     assert.strictEqual(resultats[1].ordre, 'prenom_nom');
     assert.strictEqual(resultats[1].confiance, 'certaine');
-    // Aucun consensus entre les deux segments tranchés : le troisième reste en 'defaut',
-    // jamais 'propagee' — une propagation vers une contradiction serait pire que le silence.
+    // Sans consensus entre les segments tranchés, le troisième reste en 'defaut'.
     assert.strictEqual(resultats[2].confiance, 'defaut');
     assert.strictEqual(resultats[2].ordre, 'prenom_nom');
   });
 
 // -----------------------------------------------------------------------------------------
-// 7. Titres académiques — dm.sans_titres_academiques() en amont (§3.6 du contrat : « c'est
-// ce qui manque aujourd'hui » à _segments_plausibles()).
+// 7. Titres académiques, retirés en amont par dm.sans_titres_academiques().
 
 test('trancher : titres académiques en tête retirés avant découpage (Dr. phil.)',
   { skip: sansPython }, () => {
@@ -271,7 +247,7 @@ test('trancher : chaîne de titres académiques (Prof. Dr.)', { skip: sansPython
 });
 
 // -----------------------------------------------------------------------------------------
-// 8. Particules — dans les deux ordres (§3.6 du contrat, les deux exemples de référence).
+// 8. Particules, dans les deux ordres.
 
 test('trancher : particule côté nom, ordre direct (Anne-Françoise de Chambrier)',
   { skip: sansPython }, () => {
@@ -283,9 +259,8 @@ test('trancher : particule côté nom, ordre direct (Anne-Françoise de Chambrie
 
 test('trancher : particule côté nom, ordre inverse (De Chambrier Anne-Françoise, casse marquée)',
   { skip: sansPython }, () => {
-    // Sans indice, « De Chambrier Anne-Françoise » resterait en ordre direct par défaut (la
-    // particule en tête n'est PAS, à elle seule, un signal du contrat) — la casse, elle,
-    // tranche : le nom composé « DE CHAMBRIER » est marqué en tête, bloc contigu.
+    // Une particule en tête n'est pas un signal à elle seule : c'est la casse du bloc
+    // « DE CHAMBRIER » qui tranche.
     const r = decouper('DE CHAMBRIER Anne-Françoise');
     assert.strictEqual(r.prenom, 'Anne-Françoise');
     assert.strictEqual(r.nom, 'DE CHAMBRIER');
@@ -294,10 +269,8 @@ test('trancher : particule côté nom, ordre inverse (De Chambrier Anne-Françoi
   });
 
 // -----------------------------------------------------------------------------------------
-// 8 bis. Initiale(s) pointée(s) intercalaire(s) — ajout du 22.09.2026, mesuré sur 8 fiches
-// sur 1155 (0,7 %) de la base réelle (« Susan C. A. » / « Burkhardt », « Bernard N. » /
-// « Schumacher »…) : une seule lettre suivie d'un point, entre le prénom et le nom, colle au
-// prénom — jamais un nom de famille à elle seule.
+// 8 bis. Initiales pointées intercalaires : une lettre suivie d'un point, entre le prénom et
+// le nom, colle au prénom.
 
 test('trancher : une initiale intercalaire colle au prénom, ordre direct (Bernard N. Schumacher)',
   { skip: sansPython }, () => {
@@ -315,10 +288,8 @@ test('trancher : deux initiales intercalaires collent au prénom, ordre direct (
 
 test('trancher : initiale intercalaire, ordre INVERSE (casse marquée pour lever le doute d’ordre)',
   { skip: sansPython }, () => {
-    // « SCHUMACHER Bernard N. » : sans la casse, l'ordre resterait direct par défaut — une
-    // fois l'ordre inverse établi, l'initiale doit rester collée au prénom, jamais isolée
-    // comme si elle était, à elle seule, tout le prénom (l'ancienne symétrie « dernier jeton
-    // = prénom » aurait rendu prénom= « N. », nom= « SCHUMACHER Bernard », faux).
+    // En ordre inverse, l'initiale reste collée au prénom : prendre le dernier jeton comme
+    // prénom donnerait prénom « N. », nom « SCHUMACHER Bernard ».
     const r = decouper('SCHUMACHER Bernard N.');
     assert.strictEqual(r.prenom, 'Bernard N.');
     assert.strictEqual(r.nom, 'SCHUMACHER');
@@ -334,19 +305,14 @@ test('trancher : initiale accentuée (É.), casse et accent indifférents à la 
   });
 
 // -----------------------------------------------------------------------------------------
-// 8 ter. Limite connue, documentée, non corrigée : un VRAI prénom composé à l'ESPACE, sans
-// initiale ni tiret — mesuré le 22.09.2026, 12 fiches sur 1155 (1,0 %) de la base réelle
-// (« Salomé Calina » / « Schneiter », « Laura Marie » / « Maaß »…). Rien dans le texte seul
-// ne distingue ce cas d'un troisième jeton qui serait en réalité un second nom de famille :
-// ce test CONSTATE la limite documentée dans _repartir(), il ne prétend pas la corriger.
+// 8 ter. Limite connue : un prénom composé à l'espace, sans initiale ni tiret (environ 1 %
+// de la base). Le texte seul ne le distingue pas d'un second nom de famille. Ce test fixe le
+// comportement décrit dans _repartir().
 
 test('trancher : limite connue — prénom composé à l’espace, sans initiale ni tiret (non corrigé)',
   { skip: sansPython }, () => {
     const r = decouper('Laura Marie Maaß');
-    // Comportement documenté, pas souhaité : seul « Laura » est reconnu comme prénom, le
-    // reste (y compris le vrai second prénom « Marie ») tombe dans le nom — une coupe
-    // optimiste, jamais un prénom et un nom permutés (la propriété de sûreté du module tient
-    // toujours : aucune inversion fabriquée à tort).
+    // « Marie » tombe dans le nom. La coupe est fausse mais ne permute pas prénom et nom.
     assert.strictEqual(r.prenom, 'Laura');
     assert.strictEqual(r.nom, 'Marie Maaß');
     assert.strictEqual(r.confiance, 'defaut');
@@ -354,21 +320,16 @@ test('trancher : limite connue — prénom composé à l’espace, sans initiale
   });
 
 // -----------------------------------------------------------------------------------------
-// 8 quater. BaseNoms.charger() — le lexique du dépôt (pipeline/lexique/) ne porte plus que
-// noms-famille.txt : prenoms.txt a été supprimé le 22.09.2026 (décision de Robin, dérivé de
-// la base OJS du poste — voir le rapport de livraison de ce lot). Seul ce test-ci passe par
-// charger() (donc par le disque) ; tous les autres tests de ce fichier passent par
-// depuis_dict() via --diagnostic, qui ne change pas (base toujours EN LIGNE).
+// 8 quater. BaseNoms.charger() : le lexique du dépôt (pipeline/lexique/) ne contient que
+// noms-famille.txt ; les prénoms viennent de la base OJS du poste.
 
 test('BaseNoms.charger() : ne lit que noms-famille.txt dans le lexique du dépôt, même si '
   + 'un prenoms.txt traîne encore dans le dossier', { skip: sansPython }, () => {
     const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-basenoms-lexique-'));
     fs.writeFileSync(path.join(dossier, 'noms-famille.txt'), '# test\nguilley\n', 'utf8');
-    // Un prenoms.txt présent malgré tout (reliquat d'un ancien poste, ou base régénérée à
-    // l'ancienne) : BaseNoms ne doit plus le chercher, donc jamais le lire.
+    // Un prenoms.txt laissé par un ancien poste ne doit pas être lu.
     fs.writeFileSync(path.join(dossier, 'prenoms.txt'), '# reliquat\nedith\n', 'utf8');
-    // Chemin de base OJS délibérément inexistant : isole le test sur le SEUL lexique du
-    // dépôt, sans dépendre de C:\ProgramData\SZH\auteurs.json (absent des runners CI).
+    // Base OJS inexistante : le test ne voit que le lexique.
     const cheminBaseInexistant = path.join(dossier, 'auteurs-inexistant.json');
 
     const programme = [

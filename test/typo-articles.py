@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
-# typo-articles.py — éprouve szh-typographie.lua sur du vrai pandoc.
+# Teste szh-typographie.lua avec pandoc.
 #
 #   python3 test/typo-articles.py           -> tableau lisible ; sortie 0 si tout passe
 #   python3 test/typo-articles.py -v        -> montre aussi les cas qui passent
 #
-# Le filtre normalise la typographie du TEXTE DES ARTICLES à la compilation. Le .md n'est
-# jamais réécrit : ce qui se vérifie ici, c'est donc la SORTIE, pas la source.
+# Le filtre corrige la typographie du texte des articles à la compilation, sans réécrire
+# le .md : on vérifie donc la sortie.
 #
-# Chaque cas est un aller simple : un fragment Markdown, une langue d'article, et le texte
-# attendu en sortie. Le rendu se fait en `plain` — sans balise, sans échappement — pour que
-# l'attendu se lise comme du texte et non comme du HTML. Les espaces invisibles y sont
-# écrites [nb] (insécable) et [fin] (fine), sans quoi un attendu faux serait indiscernable
-# d'un attendu juste.
+# Un cas : un fragment Markdown, une langue d'article et le texte attendu. Le rendu se fait
+# en `plain`, sans balise ni échappement. Les espaces invisibles s'écrivent [nb]
+# (insécable) et [fin] (fine).
 #
-# ⚠ Ce contrôle a besoin de pandoc. Sans lui il ne prétend pas passer : il le dit et sort
-# en échec, plutôt que de faire croire que les règles sont vérifiées.
+# Sans pandoc, le script le dit et sort en échec.
 """Contrôle du filtre de typographie des articles, par pandoc."""
 
 import os
@@ -26,8 +23,8 @@ import tempfile
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FILTRE = os.path.join(RACINE, "pipeline", "filters", "szh-typographie.lua")
-# L3 (l'escalier du titre) vit dans un filtre à part : il mesure le titre et doit donc
-# passer APRÈS celui-ci, qui pose les insécables et soude les mots outils.
+# L3 (l'escalier du titre) est un filtre à part. Il mesure le titre, donc passe après
+# szh-typographie.lua, qui pose les insécables et soude les mots outils.
 FILTRE_TITRE = os.path.join(RACINE, "pipeline", "filters", "szh-titre-lignes.lua")
 
 NB = " "
@@ -40,8 +37,7 @@ def montrer(t):
 
 # (code de règle, langue, entrée Markdown, sortie attendue)
 #
-# Les codes sont ceux de docs/TYPOGRAPHIE-FR.md : la table ci-dessous est la seule preuve
-# que chacun fait ce que la note promet à la rédaction.
+# Les codes sont ceux de docs/TYPOGRAPHIE-FR.md.
 CAS = [
     # ---- A1 · apostrophe -------------------------------------------------------------
     ("A1", "fr", "l'enfant d'ici n'a qu'une idee",
@@ -99,16 +95,15 @@ CAS = [
     ("E4", "de", "siehe S. 202 dort", "siehe S." + NB + "202 dort"),
 
     # ---- T1 · tiret d'incise ------------------------------------------------------------
-    # L'insécable devant le tiret est la seconde moitié de la règle : elle manquait ici
-    # jusqu'au 08.09.2026, alors que typo-check.py la tenait déjà pour l'interface.
+    # La règle comprend aussi l'insécable devant le tiret.
     ("T1", "fr", "un mot --- une incise --- la suite",
      "un mot" + NB + "– une incise" + NB + "– la suite"),
     ("T1", "de", "ein Wort --- ein Einschub --- der Rest",
      "ein Wort – ein Einschub – der Rest"),
 
-    # ---- T2 · plage de pages, deux prescriptions inverses (08.09.2026) -------------------
-    # Trait d'union en français (bis-Strich romand), demi-cadratin en allemand (Duden).
-    # La règle convertit dans les DEUX sens : ce que la rédaction a tapé ne décide pas.
+    # ---- T2 · plage de pages, deux prescriptions inverses --------------------------------
+    # Trait d'union en français, demi-cadratin en allemand (Duden). La règle convertit
+    # dans les deux sens, quel que soit le signe tapé.
     ("T2", "fr", "voir pp. 12-25 ici", "voir pp." + NB + "12-25 ici"),
     ("T2", "fr", "voir pp. 12–25 ici", "voir pp." + NB + "12-25 ici"),
     ("T2", "de", "siehe S. 12-25 dort", "siehe S." + NB + "12–25 dort"),
@@ -126,7 +121,7 @@ CAS = [
     ("S4", "fr", "voir etc.. ici", "voir etc. ici"),
     ("S4", "fr", "voir etc... ici", "voir etc. ici"),
     ("S4", "de", "siehe usw... hier", "siehe usw. hier"),
-    # Ce qui n'est PAS un point doublé : les points de suspension d'une phrase inachevée.
+    # Les points de suspension d'une phrase inachevée ne sont pas un point doublé.
     ("S4", "fr", "et ainsi de suite... ", "et ainsi de suite…"),
 
     # ---- E3 · pour mille, comme le pour-cent, dans les trois langues -----------------------
@@ -147,8 +142,8 @@ CAS = [
     ("E5", "de", "in 3 Tagen um 8.30 Uhr", "in 3" + NB + "Tagen um 8.30" + NB + "Uhr"),
     ("E5", "de", "siehe Abb. 4 und Art. 8",
      "siehe Abb." + NB + "4 und Art." + NB + "8"),
-    # Ce qui n'est pas une unité reste sécable : souder tout nombre au mot qui suit
-    # multiplierait les insécables dans une colonne étroite.
+    # Hors unité, l'espace reste sécable, pour ne pas multiplier les insécables dans une
+    # colonne étroite.
     ("E5", "fr", "il y avait 2000 personnes", "il y avait 2000 personnes"),
 
     # ---- E6 · le groupement des nombres ne se coupe pas ------------------------------------
@@ -166,12 +161,12 @@ CAS = [
     ("E8", "de", "das Wort , dann der Rest .", "das Wort, dann der Rest."),
 
     # ---- A4 · majuscules accentuées ---------------------------------------------------------
-    # Le « A » isolé qui est un « À », en OUVERTURE DE PHRASE seulement.
+    # Le « A » isolé devient « À » en début de phrase seulement.
     ("A4", "fr", "A l'heure actuelle, tout va bien.",
      "À l’heure actuelle, tout va bien."),
     ("A4", "fr", "Tout va bien. A la maison aussi.", "Tout va bien. À la maison aussi."),
-    # Au milieu d'une phrase, un « A » capital est un « à » minuscule : une coquille de
-    # casse, que le filtre ne peut pas distinguer d'un intitulé. Il n'y touche pas.
+    # Au milieu d'une phrase, un « A » capital peut être une coquille pour « à » ou un
+    # intitulé : le filtre n'y touche pas.
     ("A4", "fr", "Il va A la maison.", "Il va A la maison."),
     ("A4", "fr", "Voir A. Dupont et la variante A) ici.",
      "Voir A." + NB + "Dupont et la variante A) ici."),
@@ -184,39 +179,37 @@ CAS = [
     ("A5", "fr", "le coeur de l'oeuvre", "le cœur de l’œuvre"),
     ("A5", "fr", "OEUVRES choisies", "ŒUVRES choisies"),
     ("A5", "fr", "Oeuvres choisies", "Œuvres choisies"),
-    # Les pièges : le o et le e ne se lient pas ici.
+    # Mots où o et e ne se lient pas.
     ("A5", "fr", "un coefficient de moelle", "un coefficient de moelle"),
     ("A5", "de", "das Oeuvre bleibt", "das Oeuvre bleibt"),
 
     # ---- L2 · déterminant et préposition restent avec leur mot (titres) ---------------------
-    # L'exemple de la rédaction : la coupure ne peut plus tomber entre « de » et
-    # « formation », elle se fera devant « de ».
+    # La coupure ne peut plus tomber entre « de » et « formation », mais devant « de ».
     ("L2", "fr", "## Les personnes en situation de handicap comme partenaires de formation",
      "Les" + NB + "personnes en" + NB + "situation de" + NB + "handicap comme"
      + NB + "partenaires de" + NB + "formation"),
     ("L2", "de", "## Menschen mit Behinderung als Partner in der Ausbildung",
      "Menschen mit" + NB + "Behinderung als" + NB + "Partner in" + NB + "der"
      + NB + "Ausbildung"),
-    # La chaîne de soudures s'arrête au plafond de 30 signes : la boîte du titre est en
-    # overflow: hidden, et un groupe insécable plus long qu'elle serait tronqué sans bruit.
-    # « Malgré la professionnalisation » fait exactement 30 signes et passe donc encore.
+    # Les soudures s'arrêtent à 30 signes : la boîte du titre est en overflow: hidden, et
+    # un groupe insécable plus long serait tronqué sans erreur. « Malgré la
+    # professionnalisation » fait exactement 30 signes et reste soudé.
     ("L2", "fr", "## Malgré la professionnalisation des métiers",
      "Malgré" + NB + "la" + NB + "professionnalisation des" + NB + "métiers"),
     # Un seul mot de 27 signes fait déjà dépasser le plafond : l'espace reste sécable.
     ("L2", "de", "## Nach der Behindertenrechtskonvention",
      "Nach" + NB + "der Behindertenrechtskonvention"),
-    # Le corps ne reçoit PAS la soudure : ce sont les points de coupure qui permettent à
-    # WeasyPrint de répartir le blanc d'un paragraphe justifié.
+    # Pas de soudure dans le corps : WeasyPrint a besoin de ces coupures pour répartir le
+    # blanc d'un paragraphe justifié.
     ("L2", "fr", "Les personnes de la formation restent ici.",
      "Les personnes de la formation restent ici."),
 
-    # ---- ce que la maquette a déjà posé, et qui doit survivre ---------------------------
-    # szh-numerotation.lua écrit « Note⍽: » avec une FINE insécable : c'est une décision
-    # de composition, et l'élargir en insécable ordinaire la déferait.
+    # ---- ce que la maquette a déjà posé reste en place ----------------------------------
+    # szh-numerotation.lua écrit « Note⍽: » avec une fine insécable, à garder telle quelle.
     ("E2", "fr", "Le crédit dit Source : Banc d’essai.",
      "Le crédit dit Source : Banc d’essai."),
 
-    # ---- ce qui ne doit PAS bouger ----------------------------------------------------------
+    # ---- ce qui ne change pas -------------------------------------------------------------
     ("--", "fr", "le code `mot : suite` reste", "le code mot : suite reste"),
     ("--", "de", "Massnahmen und Schulschliessungen",
      "Massnahmen und Schulschliessungen"),
@@ -228,15 +221,13 @@ CAS = [
     ("--", "de", "**fett** : der Rest", "fett: der Rest"),
 
     # ---- E9 · l'ordinal en tête de cellule, absent des paragraphes ------------------------
-    # La même suite de caractères, hors tableau : E9 ne vaut que dans une cellule, jamais
-    # ici. « 3. Suite » au milieu de la phrase n'est de toute façon pas en tête de cellule.
+    # Hors tableau, la même suite de caractères ne change pas : E9 ne vaut qu'en tête de
+    # cellule.
     ("E9", "fr", "En 2021. Puis 3. Suite", "En 2021. Puis 3. Suite"),
 
-    # ---- LG · un passage balisé dans une autre langue suit les règles de SA langue --------
-    # Constat de l'audit du 30.09.2026 : la citation allemande d'un article français
-    # recevait les insécables françaises. Les deux langues ont des règles opposées.
+    # ---- LG · un passage balisé dans une autre langue suit les règles de sa langue --------
     # de dans fr : un mot, puis une citation (Div autour d'un « > »). L'espace qui borde le
-    # passage appartient à la phrase française, et garde son insécable.
+    # passage appartient à la phrase française et garde son insécable.
     ("LG", "fr", "Le mot [Nachteilsausgleich : Hilfe]{lang=de} : suite.",
      "Le mot Nachteilsausgleich: Hilfe" + NB + ": suite."),
     ("LG", "fr", '::: {lang=de}\n> «Die Schule ist keine Utopie.» Warum ? "Darum" !\n:::',
@@ -263,12 +254,11 @@ CAS = [
 
 # (code, langue, fragment HTML brut, fragment attendu)
 #
-# E9 s'applique au HTML des tableaux, posé en RawBlock par szh-tabelle-inclure — un texte
-# que pandoc ne relit jamais, et que seul normaliser_html() (szh-typographie.lua) traverse.
-# Ces cas-ci passent donc par un bloc ```{=html}``` et non par du Markdown : la table CAS
-# ci-dessus ne peut pas les exercer, --to=plain n'y montrerait même pas les balises.
+# E9 s'applique au HTML des tableaux, inséré en RawBlock par szh-tabelle-inclure : pandoc
+# ne le relit pas, seul normaliser_html() (szh-typographie.lua) le parcourt. Ces cas
+# passent donc par un bloc ```{=html}```, et non par la table CAS.
 CAS_TABLEAU = [
-    # 1 · le cas qui a motivé la règle : l'étiquette en première colonne
+    # 1 · l'étiquette en première colonne
     ("E9", "de", "<table><tr><td>1. Hilfe</td></tr></table>",
      "<table><tr><td>1." + NB + "Hilfe</td></tr></table>"),
     # 2 · <th>, l'espace de fin de cellule n'est pas concernée
@@ -304,8 +294,8 @@ CAS_TABLEAU = [
     # 12 · une <caption> n'est pas une cellule
     ("E9", "de", "<table><caption>1. Teil</caption></table>",
      "<table><caption>1. Teil</caption></table>"),
-    # 14 (13 est dans CAS, en Markdown) · non-régression E6 : la fine insécable du
-    # groupement des nombres survit à l'ajout de E9 dans la même fonction.
+    # 14 (13 est dans CAS, en Markdown) · la fine insécable du groupement des nombres
+    # (E6) reste en place.
     ("E6", "de", "<table><tr><td>12 345</td></tr></table>",
      "<table><tr><td>12" + FIN + "345</td></tr></table>"),
 ]
@@ -313,21 +303,19 @@ CAS_TABLEAU = [
 
 # (code, langue, clé, titre saisi, titre tel que la couverture l'imprime)
 #
-# Le hero n'est pas du texte d'article : le titre et le sous-titre sont des MetaString que
-# szh-maquette.lua pose AVANT szh-typographie, et ce sont deux filtres qui les composent —
-# szh-typographie pour la typographie et la soudure des mots outils (L2), szh-titre-lignes
-# pour l'escalier (L3). Ces cas-ci passent donc par un gabarit minimal, qui imprime la clé
-# comme le fait szh-article.html. « ⏎ » marque la fin de ligne calculée par L3.
+# Le titre et le sous-titre du hero sont des MetaString posées par szh-maquette.lua avant
+# szh-typographie. Deux filtres les composent : szh-typographie (typographie, soudure des
+# mots outils, L2) et szh-titre-lignes (escalier, L3). Ces cas passent par un gabarit
+# minimal qui imprime la clé comme szh-article.html. « ⏎ » marque la fin de ligne posée
+# par L3.
 CAS_TITRE = [
     # ---- L3 · effet d'escalier : la première ligne plus courte que la deuxième ---------
-    # Sans le filtre, WeasyPrint remplit la première ligne et laisse « régulière » seule
-    # (mesuré sur test/accessibilite/out/participation-fr.pdf, rendu du 08.09.2026).
+    # Sans le filtre, WeasyPrint remplit la première ligne et laisse « régulière » seule.
     ("L3", "fr", "titre-affiche", "La participation sociale en classe régulière",
-     # L'espace du point de coupure disparaît : c'est le <br> qui porte la fin de ligne, et
-     # le signet du PDF lit le titre à plat (data-signet), où rien ne se colle.
+     # L'espace de la coupure est remplacée par le <br> ; le signet du PDF lit le titre à
+     # plat (data-signet), où les mots restent séparés.
      "La" + NB + "participation⏎sociale en" + NB + "classe régulière"),
-    # Rien à faire : ce titre-là se replie DÉJÀ en escalier (304 px puis 340 px), et le
-    # filtre s'abstient plutôt que de déplacer une coupure qui est juste.
+    # Ce titre se replie déjà en escalier (304 px puis 340 px) : le filtre n'y touche pas.
     ("L3", "fr", "titre-affiche", "Développer ses compétences relationnelles grâce au handicap",
      "Développer ses" + NB + "compétences relationnelles grâce au" + NB + "handicap"),
     # Un titre d'une seule ligne n'a pas d'escalier.
@@ -338,18 +326,17 @@ CAS_TITRE = [
      "Erfahrungen von" + NB + "Schülerinnen und" + NB + "Schülern in" + NB
      + "inklusiven Klassen"),
 
-    # ---- L2 · le sous-titre de couverture, l'exemple de la rédaction -------------------
-    # Avant : « … comme partenaires de / formation », préposition en fin de ligne et mot
-    # seul en dessous. La soudure de « de formation » déplace la coupure devant « de ».
+    # ---- L2 · le sous-titre de couverture ----------------------------------------------
+    # Sans soudure : « … comme partenaires de / formation ». La soudure de « de formation »
+    # déplace la coupure devant « de ».
     ("L2", "fr", "sous-titre-affiche",
      "Les personnes en situation de handicap comme partenaires de formation",
      "Les" + NB + "personnes en" + NB + "situation de" + NB + "handicap comme"
      + NB + "partenaires de" + NB + "formation"),
 
-    # ---- la couverture reçoit la MÊME typographie que le corps -------------------------
-    # ⚠ Ce n'était pas le cas avant le 08.09.2026 : szh-maquette pose ces clés avant le
-    # filtre, et une MetaString arrive en chaîne nue dans un filtre Lua — la
-    # normalisation les traversait sans rien faire.
+    # ---- la couverture reçoit la même typographie que le corps -------------------------
+    # Ces clés arrivent au filtre Lua en MetaString, c'est-à-dire en chaîne nue, et
+    # doivent être traitées à part.
     ("A4", "fr", "titre-affiche", "L'Ecole inclusive : un défi",
      "L’École inclusive" + NB + ": un" + NB + "défi"),
     ("A5", "fr", "titre-affiche", "Au coeur de l'oeuvre",
@@ -357,10 +344,9 @@ CAS_TITRE = [
 ]
 
 
-# Les résumés de couverture, chacun dans SA langue (30.09.2026). szh-maquette.lua les pose
-# en `resumes`, une liste dont le texte est une MetaString : le filtre ne les atteignait pas,
-# et aucun résumé n'avait de typographie. Un résumé français dans la Zeitschrift se compose
-# en français, un résumé allemand dans la Revue en allemand.
+# Les résumés de couverture, chacun dans sa langue. szh-maquette.lua les pose en
+# `resumes`, une liste dont le texte est une MetaString. Un résumé français dans la
+# Zeitschrift se compose en français, un résumé allemand dans la Revue en allemand.
 # (code, produit du numéro, langue du résumé, résumé tapé, résumé attendu)
 CAS_RESUME = [
     ("E2", "revue", "fr", "Un résumé : « oui » ou non ?",
@@ -374,8 +360,8 @@ CAS_RESUME = [
     ("T1", "revue", "fr", "l'école — et la suite", "l’école" + NB + "– et la suite"),
 ]
 
-# Les attributs que szh-numerotation.lua IMPRIME sous une figure (note, copyright, source),
-# et eux seuls : ils passent par le filtre avant d'être composés.
+# Les attributs que szh-numerotation.lua imprime sous une figure (note, copyright,
+# source) : ils passent par le filtre avant d'être composés.
 # (code, langue, fragment Markdown, attribut html attendu dans la sortie)
 CAS_ATTRIBUT = [
     ("E2", "fr", '![L](a.png){note="fin 2025 : voir l\'annexe"}',
@@ -391,7 +377,7 @@ CAS_ATTRIBUT = [
 # data-note, data-copyright et data-source du <table> réinjecté (szh-tabelle-inclure) :
 # la valeur est échappée HTML, et « &amp; » ne doit pas se lire « &amp » suivi d'un « ; ».
 CAS_ATTRIBUT_TABLEAU = [
-    # Le même piège dans le TEXTE d'une cellule : « &amp; » y sortait « &amp ; ».
+    # Même piège dans le texte d'une cellule.
     ("E2", "fr", "<table><tr><td>Effectifs &amp; durées : A &lt; B</td></tr></table>",
      "<td>Effectifs &amp; durées" + NB + ": A &lt; B</td>"),
     ("E2", "fr", '<table data-note="Effectifs &amp; durées : arrondis. Voir l&#39;annexe" '
@@ -415,8 +401,8 @@ def rendre_resume(texte, produit, langue_resume):
         with open(os.path.join(dossier, "ausgabe.yaml"), "w", encoding="utf-8") as f:
             f.write("revue: " + produit + "\n")
         with open(os.path.join(dossier, "essai.meta.yaml"), "w", encoding="utf-8") as f:
-            # szh-maquette exige le résumé dans la langue de l'article : un résumé neutre
-            # l'y pose quand le cas éprouve l'autre langue.
+            # szh-maquette exige un résumé dans la langue de l'article : on en ajoute un
+            # quand le cas teste l'autre langue.
             resumes = {langue_article: "Neutre."}
             resumes[langue_resume] = texte
             f.write('type: article\nlang: %s\ntitle:\n  %s: "Titre"\nresume:\n'
@@ -474,7 +460,7 @@ def rendre(md, langue):
 def rendre_titre(titre, langue, cle):
     """Compose une clé de couverture par les deux filtres, comme le fait le gabarit."""
     if cle == "titre-affiche":
-        # La même expansion qu'à la ligne 110 de szh-article.html.
+        # La même expansion que dans szh-article.html.
         gabarit = "$if(titre-lignes)$$titre-lignes$$else$$titre-affiche$$endif$\n"
     else:
         gabarit = "$" + cle + "$\n"
@@ -561,8 +547,7 @@ def main(argv):
         elif bavard:
             print("  ok   %-4s %-3s %s" % (code, etiquette, montrer(obtenu)))
 
-    # Un attribut se vérifie par sa présence dans le HTML produit : le reste de la balise
-    # (src, dimensions, ordre des attributs) n'est pas ce que ces cas éprouvent.
+    # On cherche l'attribut dans le HTML produit, sans regarder le reste de la balise.
     for table, rendu in ((CAS_ATTRIBUT, rendre_html), (CAS_ATTRIBUT_TABLEAU, rendre_tableau)):
         for code, langue, entree, attendu in table:
             obtenu, err = rendu(entree, langue)

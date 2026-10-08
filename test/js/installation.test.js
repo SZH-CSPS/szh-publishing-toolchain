@@ -2,24 +2,19 @@
 //
 //   node --test "test/js/*.test.js"
 //
-// Le défaut gardé ici est celui du 26 août 2026, et il a coûté une matinée de support. Une
-// installation lancée depuis la session d'une rédactrice mais élevée avec le compte du
-// support tourne SOUS le compte du support : HKCU, %APPDATA%, %LOCALAPPDATA% et
-// l'enregistrement des distributions WSL sont ceux du support. Tout ce qui est par
-// utilisateur atterrissait donc dans le mauvais profil, et rien ne le disait — les lignes
-// de journal ne nommaient pas le compte. Quatre conséquences, toutes gardées ici :
+// Une installation lancée depuis la session d'une rédactrice mais élevée avec le compte du
+// support tourne sous le compte du support : HKCU, %APPDATA%, %LOCALAPPDATA% et
+// l'enregistrement des distributions WSL sont ceux du support. Ce fichier vérifie que :
 //
-//   * le dossier de la distribution était commun au poste alors que son enregistrement est
-//     par compte : le deuxième compte trouvait le dossier pris et `wsl --import` refusait
-//     (Wsl/Service/RegisterDistro/ERROR_FILE_EXISTS), sans que rien ne nettoie jamais ce
-//     reste — le même message à chaque essai, pour toujours ;
-//   * state.json, commun au poste, affirmait « environnement installé, dix extensions
-//     posées » à un compte qui n'avait ni l'un ni les autres, et la mise à jour les sautait
-//     comme « déjà à jour » : une panne parfaitement silencieuse ;
-//   * l'échec de l'étape de l'environnement emportait les étapes suivantes, donc les
-//     raccourcis, les réglages et les extensions — pour une panne qui ne les concernait pas ;
-//   * la passe silencieuse lisait « poste à jour » et ressortait, laissant un compte neuf
-//     sans rien, sur un poste que le journal disait en ordre.
+//   * le dossier de la distribution est par compte, comme son enregistrement ; un dossier
+//     déjà pris ferait refuser `wsl --import`
+//     (Wsl/Service/RegisterDistro/ERROR_FILE_EXISTS), et un reste d'installation est
+//     nettoyé ;
+//   * l'état de l'environnement et des extensions est lu chez le compte, pas dans
+//     state.json, commun au poste ;
+//   * l'échec d'une étape n'empêche pas les suivantes (raccourcis, réglages, extensions) ;
+//   * la passe silencieuse regarde aussi le compte, pas seulement la version du poste ;
+//   * le journal nomme le compte.
 'use strict';
 
 const test = require('node:test');
@@ -59,8 +54,8 @@ test('le disque de la distribution est rangé par compte, et personne ne bâtit 
   // et un compte renommé garde son SID.
   assert.match(corps, /\$Sid = \(Get-SzhIdentite\)\.sid/);
   assert.match(corps, /Join-Path \$SzhBase \('WSL\\' \+ \$Sid \+ '\\' \+ \$SzhDistro\)/);
-  // Et le chemin commun d'avant a disparu partout : c'est lui qui bloquait le deuxième
-  // compte du poste.
+  // Le chemin commun au poste n'apparaît plus nulle part : il bloquerait le deuxième
+  // compte.
   for (const [nom, source] of [['update.ps1', UPDATE], ['szh-common.ps1', COMMUN]]) {
     assert.ok(source.indexOf("Join-Path $SzhBase 'WSL\\SZH-Publishing'") === -1,
       nom + ' construit encore un dossier de distribution commun au poste');
@@ -70,32 +65,28 @@ test('le disque de la distribution est rangé par compte, et personne ne bâtit 
 });
 
 test('l’état est coupé en deux : ce qui est au poste, ce qui est au compte', () => {
-  // Le toolkit est commun — une seule copie, une seule version. La distribution WSL et les
-  // extensions sont par compte. Les confondre est ce qui faisait sauter l'installation.
+  // Le toolkit est commun au poste (une seule copie, une seule version). La distribution
+  // WSL et les extensions sont par compte.
   assert.match(COMMUN, /\$script:SzhEtatUtilisateurFile = Join-Path \$SzhBaseUtilisateur/);
   assert.match(COMMUN, /\$script:SzhBaseUtilisateur = Join-Path \$env:LOCALAPPDATA 'SZH'/);
   for (const f of ['Get-SzhEtatUtilisateur', 'Save-SzhEtatUtilisateur', 'Get-SzhEtatUtilisateurChamp']) {
     assert.ok(COMMUN.indexOf('function ' + f) !== -1, 'szh-common.ps1 ne déclare plus ' + f);
   }
-  // update.ps1 écrit les deux, et retire du commun ce qui a déménagé : deux vérités pour
-  // une même question, c'est exactement ce qui a menti à un compte neuf.
+  // update.ps1 écrit les deux, et retire de l'état commun ce qui est par compte.
   assert.match(UPDATE, /Set-SzhStateCles \(\[ordered\]@\{/);
   assert.match(UPDATE, /-Retirer @\('rootfs', 'vsix'\)/);
   assert.match(UPDATE, /Save-SzhEtatUtilisateur \(\[ordered\]@\{/);
-  // Et la version de l'environnement se lit chez le compte, plus dans l'état commun.
+  // La version de l'environnement se lit chez le compte.
   assert.ok(UPDATE.indexOf("Get-SzhEtatUtilisateurChamp $etatUtil 'rootfs'") !== -1);
   assert.ok(LANCEUR.indexOf("Get-SzhEtatUtilisateurChamp $etatUtil 'rootfs'") !== -1);
-  // Une seule lecture de l'état commun subsiste de chaque côté, et sous condition : les
-  // postes installés avant l'état par utilisateur ne doivent ni réimporter 3 Go, ni voir
-  // s'ouvrir une fenêtre de mise à jour pour rien. La confiance n'est accordée que si la
-  // distribution est enregistrée pour CE compte — sans quoi ce serait le mensonge
-  // d'origine, réintroduit sous forme de reprise.
+  // Une seule lecture de l'état commun reste de chaque côté, pour les postes installés
+  // avant l'état par utilisateur (ni réimport de 3 Go, ni fenêtre de mise à jour inutile).
+  // Elle ne compte que si la distribution est enregistrée pour ce compte.
   assert.match(UPDATE,
     /if \(\(-not \$rootfsPose\) -and \$distroPresente -and \$etat -and \$etat\.rootfs\) \{/);
   assert.match(LANCEUR,
     /if \(\(-not \$rootfsActuel\) -and \$etat -and \$etat\.rootfs -and[\s\S]{0,120}Get-SzhDistrosEnregistrees\) -contains \$SzhDistro\)\) \{/);
-  // Deux mentions de chaque côté, et deux seulement : la condition gardée et l'affectation
-  // qu'elle protège.
+  // Deux mentions de chaque côté : la condition et l'affectation qu'elle protège.
   for (const [nom, source] of [['update.ps1', UPDATE], ['update-launcher.ps1', LANCEUR]]) {
     const reprises = source.match(/\$etat\.rootfs/g) || [];
     assert.strictEqual(reprises.length, 2, nom + ' relit l’environnement dans l’état commun');
@@ -103,7 +94,7 @@ test('l’état est coupé en deux : ce qui est au poste, ce qui est au compte',
 });
 
 test('une distribution absente fait taire l’état, jamais l’inverse', () => {
-  // Un fichier peut mentir, une distribution enregistrée non : c'est elle qui décide.
+  // C'est la distribution enregistrée qui décide, pas un fichier d'état.
   const i = UPDATE.indexOf('$distroPresente = ((Get-SzhDistrosEnregistrees) -contains $SzhDistro)');
   assert.ok(i !== -1, 'update.ps1 ne demande plus la liste des distributions enregistrées');
   const suite = UPDATE.slice(i, i + 1000);
@@ -113,19 +104,18 @@ test('une distribution absente fait taire l’état, jamais l’inverse', () => 
 test('les extensions se lisent chez l’éditeur, et « aucune » se distingue de « pas de réponse »', () => {
   const corps = fonction(COMMUN, 'Get-SzhExtensionsInstallees');
   assert.match(corps, /--list-extensions --show-versions/);
-  // $null quand le CLI ne répond pas, une table quand il répond. Un profil neuf n'a AUCUNE
-  // extension : confondre les deux ferait sauter l'installation là où elle est nécessaire.
+  // $null quand le CLI ne répond pas, une table quand il répond. Un profil neuf n'a aucune
+  // extension : confondre les deux sauterait l'installation là où elle est nécessaire.
   assert.match(corps, /if \(-not \$Cli\) \{ return \$null \}/);
   assert.match(corps, /if \(\$LASTEXITCODE -ne 0\) \{ return \$null \}/);
   assert.match(corps, /catch \{ return \$null \}/);
-  // Et update.ps1 fait de cette lecture la vérité, l'état retenu ne servant que de repli.
+  // update.ps1 se fie à cette lecture ; l'état retenu ne sert que de repli.
   assert.ok(UPDATE.indexOf('if ($null -ne $reelles) { $etatVsix = $reelles }') !== -1,
     'update.ps1 ne fait plus confiance à l’éditeur mais au fichier');
 });
 
 test('la passe silencieuse demande aussi « et CE compte, a-t-il tout reçu ? »', () => {
-  // « Le poste est-il à la bonne version ? » ne dit rien d'un compte qui vient d'ouvrir sa
-  // première session sur ce poste : c'est ainsi qu'un compte neuf restait sans rien.
+  // La version du poste ne dit rien d'un compte qui ouvre sa première session.
   assert.match(LANCEUR, /\$moiPose = \(\(\$rootfsActuel -eq \$manifest\.rootfs\.version\) -and \(Test-SzhExtensionsAJour \$manifest\)\)/);
   assert.match(LANCEUR, /if \(\(\$actuel -eq \$manifest\.version\) -and \$moiPose\)/);
   // Une mesure impossible ne déclenche rien : sans éditeur, ou si son CLI se tait, on ne
@@ -137,16 +127,15 @@ test('la passe silencieuse demande aussi « et CE compte, a-t-il tout reçu ? »
 });
 
 test('la cadence de la passe silencieuse est par utilisateur', () => {
-  // Fichier commun : le premier compte connecté consommait la fenêtre de la semaine pour
-  // tout le monde, et le deuxième ressortait muet jusqu'au mardi suivant.
+  // Un fichier par compte : un fichier commun ferait consommer la fenêtre de la semaine par
+  // le premier compte connecté, pour tout le monde.
   assert.match(TACHES, /\$script:SzhMajSuiviFile = Join-Path \$SzhBaseUtilisateur 'maj-auto\.json'/);
-  // Et l'ancien fichier commun est retiré au nettoyage : laissé en place, il ne dirait plus
-  // rien de personne et ferait mal lire un poste au diagnostic suivant.
+  // L'ancien fichier commun est retiré au nettoyage, pour ne pas tromper un diagnostic.
   assert.match(UPDATE, /\$ancienneCadence = Join-Path \$SzhBase 'maj-auto\.json'/);
   assert.match(UPDATE, /Remove-Item -LiteralPath \$ancienneCadence -Force/);
 });
 
-// ---- Un reste d'installation ne bloque plus le poste pour toujours ----
+// ---- Un reste d'installation est nettoyé ----
 
 test('le reste d’une installation interrompue est écarté, et jamais un dossier étranger', () => {
   const corps = fonction(COMMUN, 'Clear-SzhDossierDistro');
@@ -155,8 +144,8 @@ test('le reste d’une installation interrompue est écarté, et jamais un dossi
   assert.match(corps, /if \(\(Split-Path \$Dossier -Leaf\) -ne \$SzhDistro\)/);
   assert.match(corps, /throw/);
   assert.match(corps, /Remove-Item -LiteralPath \$Dossier -Recurse -Force/);
-  // Et update.ps1 l'appelle AVANT l'import, sinon `wsl --import` refuse d'écrire dans un
-  // dossier déjà pris et rien ne le nettoie jamais.
+  // update.ps1 l'appelle avant l'import : `wsl --import` refuse d'écrire dans un dossier
+  // déjà pris.
   const iClear = UPDATE.indexOf('Clear-SzhDossierDistro');
   const iImport = UPDATE.indexOf('--import $SzhDistro');
   assert.ok(iClear !== -1 && iImport !== -1 && iClear < iImport,
@@ -164,8 +153,8 @@ test('le reste d’une installation interrompue est écarté, et jamais un dossi
 });
 
 test('trois pannes WSL, trois messages, trois gestes — dans les trois langues', () => {
-  // Un seul message envoyait le support fermer un éditeur qui n'avait rien à voir : un
-  // dossier déjà pris ne se ferme pas, et la virtualisation ne s'active pas sans la DSI.
+  // Un message par cause : un dossier déjà pris ne se ferme pas comme un éditeur, et la
+  // virtualisation ne s'active pas sans la DSI.
   for (const cle of ['err.wsl', 'err.wsl.dossier', 'err.wsl.moteur', 'err.espace', 'maj.partiel']) {
     const motif = new RegExp("'" + cle.replace(/\./g, '\\.') + "'\\s*=\\s*(.+)", 'g');
     const lignes = TEXTES.match(motif) || [];
@@ -184,8 +173,8 @@ test('trois pannes WSL, trois messages, trois gestes — dans les trois langues'
 });
 
 test('un import réussi ne suffit pas : la distribution doit répondre', () => {
-  // Sans virtualisation, l'import passe et le premier `--exec` échoue : la panne
-  // n'apparaissait qu'à la première tentative de PDF, loin de sa cause.
+  // Sans virtualisation, l'import passe et le premier `--exec` échoue : la panne se
+  // montrerait à la première compilation, loin de sa cause.
   const corps = fonction(COMMUN, 'Test-SzhDistroRepond');
   assert.match(corps, /--exec \/bin\/true/);
   assert.match(corps, /return \(\$LASTEXITCODE -eq 0\)/);
@@ -206,12 +195,11 @@ test('la place libre est vérifiée avant de désenregistrer quoi que ce soit', 
   assert.match(UPDATE, /if \(\(\$libre -ge 0\) -and \(\$libre -lt 5\)\)/);
 });
 
-// ---- Une étape qui tombe n'emporte plus les autres ----
+// ---- Une étape qui échoue n'empêche pas les suivantes ----
 
 test('l’environnement de fabrication ne peut plus priver le rédacteur du reste', () => {
-  // C'est le cœur du défaut : l'étape 2 mourait et les étapes 3, 4 et 5 ne s'exécutaient
-  // jamais. La rédactrice s'est retrouvée sans raccourcis, sans extensions et sans réglages
-  // pour une panne qui ne concernait que la distribution WSL.
+  // Un échec de l'étape 2 (distribution WSL) laisse s'exécuter les étapes 3, 4 et 5
+  // (raccourcis, extensions, réglages).
   const iEnv = UPDATE.indexOf("Write-SzhEtape (T 'maj.e2')");
   const iExt = UPDATE.indexOf("Write-SzhEtape (T 'maj.e3')");
   assert.ok(iEnv !== -1 && iExt > iEnv);
@@ -219,17 +207,15 @@ test('l’environnement de fabrication ne peut plus priver le rédacteur du rest
   assert.match(etape, /\} catch \{/, 'l’étape de l’environnement n’est plus sous try/catch');
   assert.match(etape, /\[void\]\$ennuis\.Add/, 'l’ennui n’est plus retenu');
   assert.match(etape, /\$rootfsPose = ''\s+# rien n'est retenu de ce qui n'est pas installé/);
-  // Et rien n'est affirmé de ce qui n'a pas été fait : la version n'est retenue qu'après
-  // l'essai de démarrage réussi.
+  // La version n'est retenue qu'après un essai de démarrage réussi.
   const iPose = UPDATE.indexOf('$rootfsPose = $manifest.rootfs.version');
   assert.ok(iPose > UPDATE.indexOf('Test-SzhDistroRepond'),
     'la version est retenue avant que la distribution ait répondu');
 });
 
 test('un ennui retenu se dit à l’écran, et l’état est écrit avant', () => {
-  // Ni « terminé », qui serait faux, ni un écran d'erreur nu qui laisserait croire que rien
-  // n'a été fait. Et l'état s'écrit d'abord : ce qui a réussi ne doit pas être réinstallé
-  // au prochain passage sous prétexte qu'autre chose a échoué.
+  // Ni « terminé », ni un écran d'erreur nu : le bilan dit ce qui a réussi. L'état s'écrit
+  // d'abord, pour que ce qui a réussi ne soit pas réinstallé au passage suivant.
   const iEtat = UPDATE.indexOf('Save-SzhEtatUtilisateur ([ordered]@{');
   const iPartiel = UPDATE.indexOf('if ($ennuis.Count -gt 0) {');
   assert.ok(iEtat !== -1 && iPartiel > iEtat, 'l’état doit être écrit avant l’écran de fin');
@@ -244,16 +230,15 @@ test('un ennui retenu se dit à l’écran, et l’état est écrit avant', () =
 // ---- Le journal nomme le compte ----
 
 test('tout ce qui est posé par utilisateur nomme son compte au journal', () => {
-  // Le défaut de diagnostic : « raccourcis du menu Démarrer posés : Revues SZH, … » sans
-  // dire pour QUI. La ligne était vraie — pour le compte du support.
+  // « raccourcis du menu Démarrer posés : … » dit pour quel compte.
   assert.match(UPDATE, /\$moi = Get-SzhIdentite/);
   assert.match(UPDATE, /update : compte \{0\} \(admin : \{1\}\)/);
   for (const motif of [/raccourcis du menu Démarrer posés pour \{0\}/,
     /ProgId SZH\.Markdown posé pour \{0\}/, /protocole szh: posé pour \{0\}/]) {
     assert.match(UPDATE, motif);
   }
-  // Et la fonction qui dit qui exécute, plus celle qui dit pour qui la session est ouverte :
-  // c'est l'écart entre les deux qui décrit une élévation avec un autre compte.
+  // La fonction qui dit qui exécute, et celle qui dit pour qui la session est ouverte :
+  // leur écart révèle une élévation avec un autre compte.
   for (const f of ['Get-SzhIdentite', 'Get-SzhSessionUtilisateur']) {
     assert.ok(COMMUN.indexOf('function ' + f) !== -1, 'szh-common.ps1 ne déclare plus ' + f);
   }
@@ -263,8 +248,8 @@ test('tout ce qui est posé par utilisateur nomme son compte au journal', () => 
 // ---- Le réseau du poste ----
 
 test('un proxy d’entreprise et une connexion qui coupe ne bloquent plus une installation', () => {
-  // 407 à chaque téléchargement, sans qu'un message le dise : les identifiants de la session
-  // suffisent, aucune saisie n'est demandée.
+  // Le proxy reçoit les identifiants de la session, sans saisie (sinon : 407 à chaque
+  // téléchargement).
   assert.match(COMMUN, /\[Net\.WebRequest\]::DefaultWebProxy = \$proxySysteme/);
   assert.match(COMMUN, /DefaultNetworkCredentials/);
   const corps = fonction(COMMUN, 'Get-SzhFichier');
@@ -272,20 +257,20 @@ test('un proxy d’entreprise et une connexion qui coupe ne bloquent plus une in
   assert.match(corps, /\[int\]\$Essais = 3/);
   assert.match(corps, /\$partiel = \$Destination \+ '\.part'/);
   assert.match(corps, /Move-Item -LiteralPath \$partiel -Destination \$Destination -Force/);
-  // Une coupure ne lève pas : le flux rend 0 comme à la fin normale. Sans cette
-  // comparaison, un fichier tronqué portait le bon nom et n'était rejeté qu'à l'empreinte,
-  // une minute plus tard, en faisant échouer toute la mise à jour au lieu de réessayer.
+  // Une coupure ne lève pas d'erreur : le flux rend 0 comme à la fin normale. La
+  // comparaison de taille fait réessayer, au lieu d'un rejet à l'empreinte qui ferait
+  // échouer toute la mise à jour.
   const une = fonction(COMMUN, 'Get-SzhFichierUneFois');
   assert.match(une, /if \(\(\$total -gt 0\) -and \(\$fait -lt \$total\)\)/);
 });
 
 test('une seule mise à jour à la fois sur le POSTE, pas par session', () => {
-  // « Local\ » bornait le verrou à la session : deux comptes connectés détendaient deux
-  // Expand-Archive sur le même toolkit.
+  // Verrou « Global\ » : « Local\ » le bornerait à la session, et deux comptes connectés
+  // détendraient le toolkit en même temps.
   const corps = fonction(COMMUN, 'New-SzhMutexPoste');
   assert.match(corps, /'Global\\' \+ \$Nom/);
-  // Et son ACL nomme les Utilisateurs (S-1-5-32-545), sinon le deuxième compte se voit
-  // refuser l'ouverture et croit qu'une mise à jour est en cours alors qu'il n'y en a aucune.
+  // Son ACL nomme les Utilisateurs (S-1-5-32-545), sinon le deuxième compte se verrait
+  // refuser l'ouverture et croirait une mise à jour en cours.
   assert.match(corps, /SecurityIdentifier\('S-1-5-32-545'\)/);
   assert.match(corps, /MutexRights\]::FullControl/);
   // Repli de session si le poste refuse « Global\ » : un verrou de session vaut mieux que
@@ -297,18 +282,15 @@ test('une seule mise à jour à la fois sur le POSTE, pas par session', () => {
 // ---- Les deux applications du poste : figées, vérifiées, au niveau machine ----
 
 test('winget n’est plus dans la chaîne d’installation', () => {
-  // Il tombe en panne sur un poste neuf plus souvent qu'on ne le croit — index de source
-  // jamais synchronisé, source msstore qui réclame une région, proxy qui coupe le CDN — et
-  // sous une élévation faite avec un compte de support, son App Installer n'est même pas
-  // provisionné pour ce compte : winget n'existe simplement pas. Le 26 août 2026, VSCodium
-  // et SumatraPDF ont fini par être posés à la main.
-  // L'appel, pas la mention : l'en-tête et les commentaires expliquent justement pourquoi il
-  // a disparu.
+  // winget échoue souvent sur un poste neuf (index de source non synchronisé, source
+  // msstore qui réclame une région, proxy), et n'existe pas sous une élévation faite avec
+  // un compte de support. On cherche un appel, pas une mention : les commentaires de
+  // bootstrap.ps1 peuvent le nommer.
   const appels = BOOTSTRAP.split(/\r?\n/).filter((l) =>
     /(&\s*winget|winget\s+(install|source)|Get-Command\s+winget)/.test(l));
   assert.deepStrictEqual(appels, [], 'bootstrap.ps1 appelle encore winget : ' + appels.join(' | '));
-  // Et l'appel à l'API GitHub a disparu avec : non authentifiée, elle rend 403 au-delà de
-  // 60 requêtes par heure et par adresse — tout un bureau derrière un même NAT l'épuise.
+  // Pas d'appel à l'API GitHub : non authentifiée, elle rend 403 au-delà de 60 requêtes
+  // par heure et par adresse, ce qu'un bureau derrière un même NAT atteint vite.
   assert.ok(BOOTSTRAP.indexOf('api.github.com') === -1,
     'bootstrap.ps1 dépend encore de l’API GitHub pour trouver un installeur');
 });
@@ -321,8 +303,7 @@ test('apps.lock épingle les deux applications, empreinte et signataire compris'
     // Une empreinte, sans quoi le reste n'est qu'un téléchargement.
     assert.match(a.sha256, /^[0-9a-f]{64}$/, a.id + ' : sha256 mal formé');
     assert.match(a.source, /^https:\/\//, a.id + ' : source non chiffrée');
-    // La version se lit dans le nom du fichier et dans l'URL : un bump qui n'en change
-    // qu'une moitié se verrait ici avant de se voir sur un poste.
+    // La version figure dans le nom du fichier et dans l'URL : les deux doivent concorder.
     assert.ok(a.fichier.indexOf(a.version) !== -1, a.id + ' : version absente du nom de fichier');
     assert.ok(a.source.indexOf(a.version) !== -1, a.id + ' : version absente de l’URL');
     assert.ok(a.signataire && a.signataire.length > 4, a.id + ' : signataire attendu non déclaré');
@@ -339,8 +320,8 @@ test('apps.lock épingle les deux applications, empreinte et signataire compris'
   // L'éditeur est indispensable, le lecteur PDF non : la chaîne compile sans lui.
   assert.strictEqual(apps[0].requis, true, 'un poste sans éditeur n’est pas un poste');
   assert.strictEqual(apps[1].requis, false, 'le lecteur PDF ne doit pas bloquer une installation');
-  // Le paquet SYSTÈME de VSCodium, jamais « UserSetup » : sous une élévation faite avec un
-  // autre compte, la variante par utilisateur atterrit dans le profil du support.
+  // Le paquet système de VSCodium, pas « UserSetup » : sous une élévation faite avec un
+  // autre compte, la variante par utilisateur irait dans le profil du support.
   assert.ok(apps[0].fichier.indexOf('UserSetup') === -1,
     'VSCodium est épinglé sur son installeur par utilisateur');
   assert.match(apps[0].fichier, /^VSCodiumSetup-x64-/);
@@ -350,8 +331,7 @@ test('l’installation vérifie avant de poser, et conclut par le disque', () =>
   const debut = BOOTSTRAP.indexOf('function Install-SzhAppEpinglee');
   assert.ok(debut !== -1, 'bootstrap.ps1 ne déclare plus Install-SzhAppEpinglee');
   const corps = BOOTSTRAP.slice(debut, BOOTSTRAP.indexOf('\r\nInfo ', debut));
-  // L'empreinte arrête tout : un installeur qui n'est pas celui qui est épinglé ne
-  // s'exécute pas.
+  // Une empreinte fausse arrête tout : seul l'installeur épinglé s'exécute.
   assert.match(corps, /Test-SzhSha256 -Fichier \$exe -Attendu \$App\.sha256/);
   assert.match(corps, /Empreinte inattendue pour/);
   // Un proxy qui répond par une page d'erreur rend un fichier de la bonne taille et du
@@ -363,8 +343,8 @@ test('l’installation vérifie avant de poser, et conclut par le disque', () =>
   assert.match(corps, /Get-AuthenticodeSignature/);
   assert.match(corps, /HashMismatch/);
   assert.match(corps, /NotSigned/);
-  // Et c'est la sonde qui tranche, pas le code de retour : un installeur peut sortir en 0
-  // sans rien poser là où on l'attend.
+  // La sonde tranche, pas le code de retour : un installeur peut sortir en 0 sans rien
+  // poser là où on l'attend.
   const iSortie = corps.indexOf('$p = Start-Process');
   const iSonde = corps.indexOf('Get-SzhAppChemin $App', iSortie);
   assert.ok(iSonde > iSortie, 'la présence sur le disque n’est plus vérifiée après l’installation');
@@ -372,39 +352,38 @@ test('l’installation vérifie avant de poser, et conclut par le disque', () =>
 });
 
 test('une version déjà posée n’est jamais remplacée en silence', () => {
-  // Une montée de version est un geste volontaire : remplacer l'éditeur pendant
-  // l'installation d'un poste n'est pas une surprise à faire à quelqu'un.
+  // Une montée de version est un geste volontaire : l'installation ne remplace pas
+  // l'éditeur déjà là.
   const i = BOOTSTRAP.indexOf('Info \'Applications du poste (versions figées dans apps.lock)\'');
   assert.ok(i !== -1, 'bootstrap.ps1 ne pose plus les applications épinglées');
   const boucle = BOOTSTRAP.slice(i, i + 2000);
   assert.match(boucle, /déjà en place/);
   assert.match(boucle, /Laissé tel quel : une montée de version est un geste volontaire/);
   assert.match(boucle, /windows\/APPS\.md/);
-  // Et quand l'élévation vient d'un autre compte, le paquet « par utilisateur » trouvé
-  // serait celui du support : on l'ignore et on pose le paquet système.
+  // Quand l'élévation vient d'un autre compte, le paquet « par utilisateur » trouvé serait
+  // celui du support : on l'ignore et on pose le paquet système.
   assert.match(boucle, /-SystemeSeulement:\(-not \$memeCompte\)/);
   const sonde = BOOTSTRAP.slice(BOOTSTRAP.indexOf('function Get-SzhAppChemin'), i);
   assert.match(sonde, /if \(\$SystemeSeulement -and \(\$brut -like '\*LOCALAPPDATA\*'\)\) \{ continue \}/);
 });
 
 test('la CI refuse de publier si un installeur épinglé a changé amont', () => {
-  // Les installeurs ne sont pas réhébergés — 164 Mo par release. La contrepartie se vérifie
-  // à chaque release : l'URL répond, et les octets sont les mêmes.
+  // Les installeurs ne sont pas réhébergés (164 Mo par release) : à chaque release, on
+  // vérifie que l'URL répond et que les octets sont les mêmes.
   assert.match(RELEASE, /Vérifier les installeurs épinglés \(apps\.lock\)/);
   const etape = RELEASE.slice(RELEASE.indexOf('Vérifier les installeurs épinglés'));
   assert.match(etape, /jq -c '\.applications\[\]' windows\/apps\.lock/);
   assert.match(etape, /sha256sum/);
   assert.match(etape, /Empreinte inattendue pour/);
   assert.match(etape, /exit 1/);
-  // Et la procédure de montée est écrite quelque part : un verrou sans mode d'emploi finit
-  // contourné.
+  // La procédure de montée de version est documentée.
   assert.match(APPS_MD, /Monter de version/);
   assert.match(APPS_MD, /Get-FileHash/);
   assert.match(APPS_MD, /Get-AuthenticodeSignature/);
 });
 
 test('le diagnostic compare les versions posées au verrou', () => {
-  // Sans cela, un écart de flotte ne se voit qu'en ouvrant dix postes un par un.
+  // Un écart avec les versions épinglées se voit sans ouvrir les postes un par un.
   assert.match(DIAGNOSTIC, /Join-Path \$PSScriptRoot 'apps\.lock'/);
   assert.match(DIAGNOSTIC, /version épinglée \{1\}/);
   assert.match(DIAGNOSTIC, /installé pour ce compte seulement/);
@@ -461,10 +440,8 @@ const PILOTE = [
   '$r.espace = Get-SzhEspaceLibreGo',
   '$r.espaceAbsurde = Get-SzhEspaceLibreGo -Chemin "ZZ:\\rien"',
   // 6. le verrou de poste. Un mutex Windows est réentrant pour le thread qui le tient : la
-  //    concurrence ne se mesure que depuis un AUTRE processus, ce qui est justement le cas
-  //    à garder — deux fenêtres de mise à jour, ou deux sessions.
-  //    La sonde est écrite par Node ($args[2]) : un script qui écrit un script qui écrit un
-  //    script ne se relit pas.
+  //    concurrence se mesure depuis un autre processus (deux fenêtres de mise à jour, ou
+  //    deux sessions). La sonde est écrite par Node ($args[2]), pour rester lisible.
   '$m1 = New-SzhMutexPoste -Nom "SZH-Essai-Installation"',
   '$r.verrou1 = $m1.WaitOne(0)',
   '$ps = Join-Path $env:WINDIR "System32\\WindowsPowerShell\\v1.0\\powershell.exe"',
@@ -510,13 +487,11 @@ test('le dossier de distribution porte le SID du compte qui l’exécute', { ski
 
 test('écrire l’état du poste n’efface pas la langue choisie', { skip: sansPowerShell }, () => {
   const s = bilan.r.state;
-  // Le défaut : update.ps1 réécrivait state.json de zéro, donc la langue disparaissait à
-  // chaque mise à jour. Sur ces postes, dont Windows est en anglais, le lanceur reparlait
-  // anglais à une équipe francophone.
+  // update.ps1 garde la langue de state.json : sur des postes dont Windows est en anglais,
+  // le lanceur la perdrait.
   assert.strictEqual(s.langue, 'de', 'la langue du poste a été effacée');
   assert.strictEqual(s.version, '2026.08.55');
-  // Et ce qui a déménagé chez l'utilisateur ne traîne plus dans le commun : deux vérités
-  // pour une même question, c'est ce qui a menti à un compte neuf.
+  // Ce qui est par compte est retiré de l'état commun.
   assert.strictEqual(s.aRootfs, false, 'rootfs traîne encore dans l’état commun');
   assert.strictEqual(s.aVsix, false, 'vsix traîne encore dans l’état commun');
 });
@@ -554,16 +529,14 @@ test('le verrou de poste est pris une fois, et se rend', { skip: sansPowerShell 
 
 // ---- Le bloc empreinte/signature, réellement exécuté ----
 //
-// Le test « l'installation vérifie avant de poser, et conclut par le disque », plus haut
-// dans ce fichier, ne lisait que le SOURCE de Install-SzhAppEpinglee : les littéraux
-// HashMismatch/NotSigned étaient là, jamais exécutés. Une sonde qui désactive le rejet de
-// signature laissait les 27 tests verts.
+// Le test « l'installation vérifie avant de poser, et conclut par le disque », plus haut,
+// lit la source de Install-SzhAppEpinglee ; celui-ci exécute la vérification.
 //
-// On n'exécute jamais la fonction ENTIÈRE (elle installerait pour de vrai, avec Start-
-// Process) : seul le tronçon empreinte + en-tête + signature est extrait par tranche(), sur
-// le modèle de test/js/diagnostic.test.js, puis rejoué contre deux faux .exe fabriqués dans
-// un dossier jetable — jamais de réseau : Get-SzhFichier est remplacée par une fonction qui
-// ne fait rien, le fichier « en cache » reste tel quel après le faux téléchargement.
+// La fonction entière installerait pour de vrai (Start-Process) : seul le tronçon
+// empreinte + en-tête + signature est extrait par tranche(), comme dans
+// test/js/diagnostic.test.js, puis rejoué contre deux faux .exe dans un dossier jetable.
+// Pas de réseau : Get-SzhFichier est remplacée par une fonction qui ne fait rien, et le
+// fichier « en cache » reste tel quel.
 function tranche(source, debutMotif, finMotif) {
   const iDebut = source.indexOf(debutMotif);
   assert.ok(iDebut !== -1, 'motif de début introuvable dans bootstrap.ps1 : ' + debutMotif);
@@ -578,8 +551,8 @@ const BLOC_EMPREINTE = tranche(BOOTSTRAP, '$exe = Join-Path $SzhStaging',
 const PILOTE_EMPREINTE = [
   "$ErrorActionPreference = 'Stop'",
   '. "' + COMMUN_PS1 + '"',
-  // Pas de réseau : un « téléchargement » qui ne fait rien laisse le fichier en cache tel
-  // quel, ce qui est justement le cas qu'on veut rejouer (empreinte fausse même après coup).
+  // Pas de réseau : le « téléchargement » laisse le fichier en cache tel quel, et son
+  // empreinte reste fausse.
   'function Get-SzhFichier { param($Url, $Destination) }',
   'function Info([string]$m) { }',
   'function Attention([string]$m) { }',

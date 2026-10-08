@@ -1,14 +1,13 @@
-{# verification-meta.twig : la feuille « Vérifier les méta (print) » — une page A4 par
+{# verification-meta.twig : la feuille « Vérifier les méta (print) », une page A4 par
    article, à imprimer et à relire à côté de la source (le Word de l'auteur·e, son
-   courriel). Rendue par lib/verif-meta.js, écrite et ouverte par l'hôte dans le
-   navigateur par défaut : c'est le navigateur qui imprime (Ctrl+P), pas l'extension.
+   courriel). Rendue par lib/verif-meta.js, puis ouverte dans le navigateur par défaut,
+   qui l'imprime (Ctrl+P).
 
-   ⚠ ÉCHAPPEMENT. Le moteur (lib/gabarits.js) ne l'applique PAS tout seul. Toute valeur
-   de texte doit porter le filtre |e, sans quoi un titre contenant « & » ou « < »
-   casserait la page. Les clés qui finissent par `Html` font exception : elles sortent de
-   lib/verif-meta.js déjà échappées, et leur poser |e les afficherait en clair.
+   Échappement : le moteur (lib/gabarits.js) n'échappe pas de lui-même. Toute valeur de
+   texte porte le filtre |e, sans quoi un « & » ou un « < » casserait la page. Sauf les
+   clés en `Html`, déjà échappées par lib/verif-meta.js : |e les afficherait en clair.
 
-   Variables disponibles ici :
+   Variables :
    numero                      "Revue 2026/03 | Adaptations du PER" (yaml.js, titreNumero)
    horodatage                  "15.09.2026 14:22"
    vide                        la marque d'un champ vide — "LEER"
@@ -20,12 +19,13 @@
    fiches[].empreinte                "3f9a2c" — repère d'état, voir le pied de page
    fiches[].langues[]                { code, libelle } — colonnes des champs traduisibles
    fiches[].identification[]         { libelle, valeurHtml, vide, identifiant, note }
-   fiches[].textes[]                 une LIGNE par champ et par langue (titre, sous-titre,
-                                     résumé empilés) : { libelle — vide sauf sur la première
-                                     ligne du champ, debutChamp, langueLibelle, valeurHtml, vide }
-   fiches[].motsCles[]               { numero, cellules[] } — les seules rangées en COLONNES,
-                                     parce que c'est leur appariement qui se vérifie
-   fiches[].auteurs[]                { lignes[] } — sans titre propre : un seul titre de section
+   fiches[].textes[]                 une ligne par champ et par langue (titre, sous-titre,
+                                     résumé empilés) : { libelle (rempli sur la première
+                                     ligne du champ seulement), debutChamp, langueLibelle,
+                                     valeurHtml, vide }
+   fiches[].motsCles[]               { numero, cellules[] } : les langues en colonnes, pour
+                                     vérifier l'appariement des mots-clés
+   fiches[].auteurs[]                { lignes[] }, sous un seul titre de section
    fiches[].sansAuteur               true quand la fiche n'en porte aucun
 #}
 {% block contenu %}<!doctype html>

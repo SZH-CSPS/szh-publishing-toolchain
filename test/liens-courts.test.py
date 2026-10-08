@@ -1,17 +1,12 @@
 #!/usr/bin/env python3
-# test/liens-courts.test.py — pipeline/liens-courts.py contre un VRAI serveur HTTP, mais
-# local (http.server, stdlib) : jamais le serveur Shlink réel de la maison, exactement
-# comme pipeline/liens-courts.py lui-même le dit en tête. Couvre l'appel REST (en-tête
-# X-Api-Key, corps JSON, champ "shortUrl" de la réponse), le repli sur l'URL longue (sans
-# configuration, ou serveur en échec), le cache (lecture/écriture, round-trip), et
+# Teste pipeline/liens-courts.py contre un serveur HTTP local (http.server), jamais contre
+# le Shlink réel. Couvre l'appel REST (en-tête X-Api-Key, corps JSON, champ "shortUrl"),
+# le repli sur l'URL longue (sans configuration ou serveur en échec), le cache, et
 # l'extraction des liens `.qr` d'un dossier de chapitres.
 #
 #   python3 test/liens-courts.test.py
-#   (ou : python -m unittest test.liens-courts.test — impossible, le nom porte des tirets ;
-#   lancer le fichier directement, comme les autres *-check.py de test/.)
 #
-# ⚠ Comme test/filtres-pandoc.test.js : aucun de ces tests ne s'abstient. Si le module ne
-#   se charge pas (importlib échoue), c'est une ERREUR de collecte, pas un test qui passe.
+# Un module qui ne se charge pas est une erreur, pas un test sauté.
 
 import http.server
 import importlib.util
@@ -27,9 +22,7 @@ import urllib.error
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHEMIN_MODULE = os.path.join(RACINE, 'pipeline', 'liens-courts.py')
 
-# Le nom de fichier porte un tiret : pas un identifiant Python valide pour `import
-# liens-courts`. Chargement par chemin, comme un plugin — patron standard de la doc
-# importlib, pas une bibliothèque de plus.
+# Chargement par chemin : le nom du fichier contient un tiret.
 _spec = importlib.util.spec_from_file_location('liens_courts', CHEMIN_MODULE)
 lc = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(lc)
@@ -38,16 +31,16 @@ CLE_API_ATTENDUE = 'cle-de-test-1234'
 
 
 class Gestionnaire(http.server.BaseHTTPRequestHandler):
-    """Un Shlink miniature : POST /rest/v3/short-urls, une seule route. Le comportement
-    (clé attendue, code de réponse) est lu sur la classe elle-même à chaque requête —
-    modifiable par un test sans redémarrer le serveur."""
+    """Shlink miniature, une seule route : POST /rest/v3/short-urls. Le comportement (clé
+    attendue, code de réponse) est lu sur la classe à chaque requête, pour qu'un test le
+    change sans redémarrer le serveur."""
 
     cle_attendue = CLE_API_ATTENDUE
     code_reponse = 200
     # Fonction (dict_corps) -> dict de réponse ; None = shortUrl déterministe par défaut.
     fabrique_reponse = None
 
-    def log_message(self, *_args):  # silence : sinon http.server écrit sur stderr à chaque requête
+    def log_message(self, *_args):  # http.server écrirait sur stderr à chaque requête
         pass
 
     def do_POST(self):
@@ -74,8 +67,7 @@ class Gestionnaire(http.server.BaseHTTPRequestHandler):
         if type(self).fabrique_reponse:
             reponse = type(self).fabrique_reponse(corps)
         else:
-            # Lien court déterministe : dérivé de longUrl, pour vérifier sans ambiguïté
-            # que c'est bien CETTE url qui a été envoyée.
+            # Lien court dérivé de longUrl, pour vérifier quelle URL a été envoyée.
             reponse = {
                 'shortUrl': 'https://link.szh-csps.ch/T' + str(abs(hash(corps.get('longUrl', '')))  % 10000),
                 'longUrl': corps.get('longUrl'),
@@ -88,9 +80,7 @@ class Gestionnaire(http.server.BaseHTTPRequestHandler):
 
 
 class ServeurTest:
-    """Un http.server.HTTPServer sur un port éphémère (0 -> le système en choisit un
-    libre), dans un thread démon — la même recette que le module standard documente pour
-    un test qui n'a pas à gérer un cycle de vie de serveur en dur."""
+    """HTTPServer sur un port libre choisi par le système, dans un thread démon."""
 
     def __enter__(self):
         self.serveur = http.server.HTTPServer(('127.0.0.1', 0), Gestionnaire)
@@ -98,17 +88,14 @@ class ServeurTest:
         self.base_url = 'http://127.0.0.1:%d' % self.port
         self.thread = threading.Thread(target=self.serveur.serve_forever, daemon=True)
         self.thread.start()
-        # Pas de remise à zéro ICI : certains tests configurent Gestionnaire (cle_attendue,
-        # fabrique_reponse…) AVANT `with ServeurTest()`, pour que le comportement soit en
-        # place dès la première requête. La remise à zéro vit dans __exit__ — après le
-        # test, pour le suivant, jamais avant.
+        # Gestionnaire n'est pas remis à zéro ici : certains tests le configurent avant
+        # `with ServeurTest()`. La remise à zéro se fait dans __exit__.
         return self
 
     def __exit__(self, *_exc):
         self.serveur.shutdown()
         self.serveur.server_close()
-        # Un test qui règle code_reponse=500 ou une fabrique_reponse ne doit pas laisser
-        # ce comportement au test suivant.
+        # Rend au test suivant le comportement par défaut.
         Gestionnaire.cle_attendue = CLE_API_ATTENDUE
         Gestionnaire.code_reponse = 200
         Gestionnaire.fabrique_reponse = None
@@ -257,9 +244,8 @@ class ScannerLiensQr(unittest.TestCase):
             self.assertEqual(lc.scanner_liens_qr(d), [])
 
     def test_extrait_aussi_les_url_du_bloc_qr_link(self):
-        # Le bloc qr-link (cahier des charges, réutilisable seul ou embarqué dans un
-        # falc-header) : filters/szh-qr-lister.lua le lit comme szh-qr.lua/szh-livre-
-        # entete.lua le liraient à la compilation — pas un motif texte.
+        # Bloc qr-link, seul ou dans un falc-header : filters/szh-qr-lister.lua le lit avec
+        # pandoc, comme la compilation, et non par un motif de texte.
         with tempfile.TemporaryDirectory() as d:
             chap = os.path.join(d, 'chap1')
             os.makedirs(chap)
@@ -272,9 +258,8 @@ class ScannerLiensQr(unittest.TestCase):
             self.assertEqual(urls, ['https://exemple.ch/bloc', 'https://exemple.ch/embarque'])
 
     def test_tracked_false_est_liste_mais_pas_resolu(self):
-        # `tracked=false` (qr-link ou `.qr`) : listé par le filtre (il ne juge rien), mais
-        # scanner_liens_qr() l'écarte lui-même — c'est lui qui décide ce qui part vers
-        # Shlink, pas le filtre Lua.
+        # `tracked=false` : le filtre Lua liste le lien, scanner_liens_qr() l'écarte. C'est
+        # lui qui décide ce qui part vers Shlink.
         with tempfile.TemporaryDirectory() as d:
             chap = os.path.join(d, 'chap1')
             os.makedirs(chap)
@@ -287,8 +272,8 @@ class ScannerLiensQr(unittest.TestCase):
             self.assertEqual(urls, ['https://exemple.ch/suivi'])
 
     def test_lecteur_hard_line_breaks_lit_aussi_le_bloc(self):
-        # --lecteur doit être CELUI de la compilation (livre.mk, LECTEUR) : un chapitre FALC
-        # se lit en markdown+hard_line_breaks, pas en markdown nu — voir le en-tête du CLI.
+        # --lecteur est celui de la compilation (LECTEUR dans livre.mk) : un chapitre FALC
+        # se lit en markdown+hard_line_breaks.
         with tempfile.TemporaryDirectory() as d:
             chap = os.path.join(d, 'chap1')
             os.makedirs(chap)
@@ -332,8 +317,7 @@ class Principal(unittest.TestCase):
             self.assertTrue(cache['https://exemple.ch/bout-en-bout'].startswith('https://link.szh-csps.ch/'))
 
     def test_scan_lit_aussi_le_bloc_qr_link(self):
-        # Même bout-en-bout que ci-dessus, mais avec la forme de référence du cahier des
-        # charges (bloc qr-link) plutôt que la forme courte `.qr`.
+        # Comme ci-dessus, avec le bloc qr-link au lieu de la forme courte `.qr`.
         with tempfile.TemporaryDirectory() as d:
             chap = os.path.join(d, 'chapitres', 'chap1')
             os.makedirs(chap)
@@ -356,11 +340,9 @@ class Principal(unittest.TestCase):
             self.assertTrue(cache['https://exemple.ch/bloc-bout-en-bout'].startswith('https://link.szh-csps.ch/'))
 
     def test_deuxieme_compilation_ne_rappelle_plus_le_serveur(self):
-        # La preuve demandée : une fois le lien en cache, une compilation suivante ne doit
-        # plus parler au serveur — ici poussé à l'extrême, sans même SZH_SHLINK_URL/CLE
-        # posées au second appel (retirées après la 1re) : si liens-courts.py retentait un
-        # appel, resoudre_liens() le verrait comme « non configuré » et écraserait l'entrée
-        # avec l'URL longue — ce que ce test interdit.
+        # Au second appel, SZH_SHLINK_URL et SZH_SHLINK_CLE sont retirées : si le lien en
+        # cache était retraité, resoudre_liens() le jugerait « non configuré » et
+        # l'écraserait par l'URL longue.
         with tempfile.TemporaryDirectory() as d:
             chap = os.path.join(d, 'chapitres', 'chap1')
             os.makedirs(chap)
@@ -381,9 +363,7 @@ class Principal(unittest.TestCase):
             court = lc.lire_cache(cache_path)['https://exemple.ch/deux-fois']
             self.assertTrue(court.startswith('https://link.szh-csps.ch/'))
 
-            # 2e compilation : ni URL ni clé Shlink dans l'environnement, le serveur de test
-            # n'écoute même plus (bloc `with` refermé) — l'entrée déjà en cache doit rester
-            # identique, preuve qu'elle n'a pas été retraitée.
+            # Seconde compilation, sans URL ni clé et serveur arrêté : l'entrée reste.
             code2 = lc.principal([cache_path, '--scan', os.path.join(d, 'chapitres')])
             self.assertEqual(code2, 0)
             self.assertEqual(lc.lire_cache(cache_path)['https://exemple.ch/deux-fois'], court)

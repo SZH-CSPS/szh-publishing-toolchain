@@ -1,8 +1,6 @@
-// L'aperçu commutable HTML / PDF, vu de l'hôte : jusqu'ici seule la recompilation
-// (focus-recompilation.test.js) et le rendu du fragment (webviews.test.js) étaient
-// éprouvés — jamais le panneau lui-même, sa bascule, ni le défilement synchronisé entre
-// l'éditeur et l'aperçu. Écrit AVANT tout déplacement de code vers lib/apercu.js : ce
-// fichier doit rester vert, sans y toucher, une fois le découpage fait.
+// L'aperçu commutable HTML / PDF, vu de l'hôte : le panneau, sa bascule et le défilement
+// synchronisé entre l'éditeur et l'aperçu. La recompilation est vérifiée par
+// focus-recompilation.test.js, le rendu du fragment par webviews.test.js.
 //
 //   node --test test/js/apercu-hote.test.js
 'use strict';
@@ -21,9 +19,9 @@ const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const REVUE = revueDEssai();
 const HOTE = activerHote(REVUE);
-// Comme focus-recompilation.test.js : l'hôte factice n'attend pas le démarrage
-// asynchrone qui pose la racine (majContexte, dans demarrageInitial) ; on la pose nous-
-// mêmes pour agir tout de suite, puis on laisse les micro-tâches du démarrage s'épuiser.
+// L'hôte factice n'attend pas le démarrage asynchrone qui pose la racine (majContexte, dans
+// demarrageInitial) : on la pose soi-même, puis on laisse les micro-tâches du démarrage
+// s'épuiser.
 HOTE.arbre().definirRacine(REVUE);
 
 test('mise en route : le démarrage se tait', async () => {
@@ -31,8 +29,7 @@ test('mise en route : le démarrage se tait', async () => {
 });
 
 // Dépose un aperçu HTML déjà compilé, daté dans le futur : ouvrirArticle ne le juge pas
-// obsolète et l'affiche directement, sans passer par une tâche de compilation — ce que ce
-// fichier n'a pas à éprouver, focus-recompilation.test.js le fait déjà.
+// obsolète et l'affiche sans lancer de compilation.
 function ecrireApercuCompile(slug, corps) {
   const dossier = path.join(REVUE, 'out', slug);
   fs.mkdirSync(dossier, { recursive: true });
@@ -115,8 +112,8 @@ test('un message « scrollSource » de l’aperçu révèle la bonne ligne dans 
     assert.strictEqual(appels[0].kind, HOTE.stub.TextEditorRevealType.AtTop);
   } finally {
     HOTE.stub.window.visibleTextEditors.length = 0;
-    // revelerLigneSource pose defilementProgrammatiqueHote (garde anti-boucle) pour 200ms :
-    // les contrôles suivants, sur le sens inverse, ne doivent pas hériter de cette garde.
+    // revelerLigneSource pose defilementProgrammatiqueHote (garde anti-boucle) pour 200 ms :
+    // on attend sa fin avant de tester le sens inverse.
     await attendre(220);
   }
 });
@@ -173,7 +170,7 @@ test('un article jamais compilé affiche la page « indisponible » et ne relanc
     let appels = 0;
     HOTE.stub.tasks.executeTask = (t) => { appels++; return origExecute(t); };
     try {
-      // 02-sans-fiche (fixture de revueDEssai()) n'a ni fiche ni out/ : jamais compilé.
+      // 02-sans-fiche (montage de revueDEssai()) n'a ni fiche ni out/ : jamais compilé.
       const promesse = HOTE.executer('szh.ouvrirArticle', '02-sans-fiche');
       await tick(); await tick();
       await HOTE.finirTache(NOM_BUILD, 0);   // la première compilation (obsolète -> lancerBuild)
@@ -186,9 +183,8 @@ test('un article jamais compilé affiche la page « indisponible » et ne relanc
       assert.ok(panneau.html.indexOf(i18n.TEXTES_COCKPIT.fr['apercu.encours']) !== -1,
         'la page devrait dire qu’une compilation est en cours (enAttente)');
 
-      // relancerCompilation() (appelée une fois par ouvrirArticle, faute d’aperçu prêt)
-      // lance une SECONDE tâche, en tâche de fond : on la laisse aller à son terme sans
-      // qu’une troisième ne reparte toute seule derrière.
+      // relancerCompilation(), appelée une fois par ouvrirArticle faute d’aperçu prêt,
+      // lance une seconde tâche en fond. Une fois celle-ci finie, aucune troisième ne part.
       await tick(); await tick();
       assert.strictEqual(appels, 2,
         'ouvrirArticle doit lancer deux compilations au plus (celle du corps, puis la '

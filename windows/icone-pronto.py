@@ -1,34 +1,21 @@
 #!/usr/bin/env python3
-# icone-pronto.py — fabrique les deux icônes de l'application, à côté de ce script :
+# icone-pronto.py : fabrique les deux icônes de l'application, à côté de ce script.
 #
-#     pronto.ico       raccourci « Pronto » du menu Démarrer, fenêtre du lanceur,
-#                      entrée d'« Ouvrir avec » et type .md, et — posée par
-#                      patch-icone.ps1 — celle des raccourcis de VSCodium
+#     pronto.ico       raccourci « Pronto » du menu Démarrer, fenêtre du lanceur, « Ouvrir
+#                      avec » et type .md, raccourcis de VSCodium (posée par patch-icone.ps1)
 #     pronto-maj.ico   raccourci « Pronto (Updater) » du menu Démarrer
 #
 #     python3 windows/icone-pronto.py
 #
-# Séparé d'icone.py, qui fabrique les trois icônes de PRODUIT (les boîtes « Nouveau… »)
-# par un tracé analytique en Python pur. Ici la source est un .svg — pronto.svg et
-# pronto-maj.svg, à côté — et c'est Edge qui le rend. Deux dessins, deux techniques, deux
-# scripts : mélanger les deux rendrait le fichier illisible pour les deux.
+# La source est le .svg voisin (pronto.svg, pronto-maj.svg) : un .ico retouché à la main
+# serait écrasé à la prochaine exécution. Les icônes de produit sont faites par icone.py.
 #
-# ⚠ Le .svg est la source de vérité. Retoucher un .ico à la main ne se verrait qu'à la
-#   prochaine exécution de ce script, qui l'écraserait sans rien dire.
+# Edge rend le SVG à chaque taille, sur une planche que Pillow découpe : un dessin rendu à
+# 16 px est plus net qu'une image de 256 px réduite. Ce script tourne sous Windows, côté
+# dépôt seulement ; les postes reçoivent les .ico déjà faits.
 #
-# Rendu à CHAQUE taille, jamais par réduction d'une grande image : un dessin vectoriel
-# rendu à 16 px et le même rendu à 256 px puis réduit ne donnent pas la même image — le
-# second bave. C'est la raison d'être de la planche ci-dessous, qui place une instance du
-# SVG par taille et les découpe.
-#
-# Pourquoi Edge : il est sur tout poste Windows, et ce script ne tourne QUE côté dépôt —
-# jamais sur un poste de rédacteur, qui reçoit les .ico déjà faits. Aucune dépendance n'est
-# donc ajoutée à la chaîne livrée. Pillow sert au découpage, comme pour les planches de
-# contrôle du reste du dépôt.
-#
-# Le format .ico : DIB 32 bits jusqu'à 48 px, PNG au-delà. C'est le partage que font les
-# outils d'icônes, et le plus sûr — Windows lit le PNG dans un .ico depuis Vista, mais les
-# petites tailles restent servies en DIB par tout ce qui existe.
+# Format .ico : DIB 32 bits jusqu'à 48 px, PNG au-delà. Les petites tailles en DIB sont
+# lues par tous les logiciels.
 
 import io
 import os
@@ -44,9 +31,8 @@ ICI = os.path.dirname(os.path.abspath(__file__))
 # selon la mise à l'échelle, 64 à 256 pour les grandes tuiles et les propriétés de fichier.
 TAILLES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
 
-# Le .svg, et le .ico qu'il produit. Ces noms sont ceux que cherchent szh-shell.ps1,
-# update.ps1 et patch-icone.ps1 : les changer ici sans les changer là-bas fait retomber
-# les raccourcis sur l'icône de VSCodium.
+# Le .svg et le .ico qu'il produit. szh-shell.ps1, update.ps1 et patch-icone.ps1 lisent
+# ces noms : un changement se fait partout.
 VARIANTES = (('pronto.svg', 'pronto.ico'),
              ('pronto-maj.svg', 'pronto-maj.ico'))
 
@@ -62,12 +48,11 @@ def edge():
 
 
 def rendre(svg, travail):
-    """Une page, une instance du SVG par taille, fond transparent. Rend {taille: Image}."""
+    """Rend le SVG à chaque taille sur une page à fond transparent. Rend {taille: Image}."""
     source = open(os.path.join(ICI, svg), encoding='utf-8').read()
     blocs, y = [], 0
     for t in TAILLES:
-        # Le SVG porte ses propres width/height ; on les neutralise par le conteneur, qui
-        # impose la taille de rendu. viewBox fait le reste.
+        # Le conteneur impose la taille de rendu, à la place des width/height du SVG.
         blocs.append('<div style="position:absolute;left:0;top:%dpx;width:%dpx;height:%dpx">'
                      '<svg style="width:100%%;height:100%%" %s</div>'
                      % (y, t, t, source.split('<svg', 1)[1]))
@@ -98,7 +83,7 @@ def rendre(svg, travail):
 
 def dib(im):
     """Une entrée .ico au format BMP 32 bits : en-tête, pixels BGRA de bas en haut, puis le
-    masque AND — laissé à zéro, la transparence étant portée par le canal alpha."""
+    masque AND, laissé à zéro car l'alpha porte la transparence."""
     larg, haut = im.size
     px = im.load()
     xor = bytearray()

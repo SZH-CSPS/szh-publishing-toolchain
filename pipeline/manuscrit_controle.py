@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# manuscrit_controle.py — le garde-fou « rien ne se perd » du nettoyeur (mots et images du
-# manuscrit comparés au .docx écrit, contenu mis de côté par l'en-tête) et la validation de
-# bonne formation du .docx annoté. Déplacé tel quel depuis manuscrit-nettoyer.py.
-# `_capture_suspendue` vit ici : la CLI le lit (`mc._capture_suspendue`) pour ses constats d'import.
+# Contrôles de sortie du nettoyeur : vérifie qu'aucun mot ni aucune image du manuscrit ne
+# s'est perdu dans le .docx écrit, et que le .docx annoté reste un XML bien formé.
+# La CLI lit `_capture_suspendue` pour taire ses constats d'import pendant la relecture.
 
 import io
 import os
@@ -22,23 +21,16 @@ _capture_suspendue = False
 
 
 # ---------------------------------------------------------------------------------
-# Garde-fou « rien ne se perd » (décision de Robin, 29.09.2026). L'incident qui l'a fait
-# poser : un manuscrit court sans bibliographie ressortait du nettoyeur SANS SON CORPS — le
-# repli du bloc d'autrices final l'avait avalé en entier, images comprises — avec un code 0 et
-# aucune alerte. La cause est corrigée (manuscrit_entete._bloc_auteurs_final_paragraphes) ;
-# ce contrôle est là pour la SUIVANTE, celle qu'on n'a pas vue venir : il compare les mots et
-# les images du manuscrit à ceux du .docx écrit, relu comme n'importe quel manuscrit.
-#
-# Les mots, pas les signes : la typographie change des espaces et des guillemets, jamais un
-# mot. L'en-tête reconnu part dans les tableaux fixes, qui sont relus aussi (cellules
-# comprises) — seuls sortent vraiment du document ce que l'en-tête jette exprès (ligne de
-# revue, DOI, étiquettes « Résumé », « Mots-clés »…), quelques mots. D'où les deux seuils :
-# PERTE_ALERTE donne une alerte `error` (le document est écrit, à vérifier avant usage),
-# PERTE_REFUS refuse la sortie — un document qui a perdu la moitié de ses mots ne doit pas
-# pouvoir être importé par mégarde.
+# Contrôle « rien ne se perd » : compare les mots et les images du manuscrit à ceux du .docx
+# écrit, relu comme n'importe quel manuscrit. On compte des mots et non des signes, car la
+# typographie change des espaces et des guillemets mais pas les mots. L'en-tête reconnu est
+# relu dans les tableaux du gabarit ; seules quelques étiquettes (« Résumé », « Mots-clés »…)
+# disparaissent réellement.
+# Seuils : PERTE_ALERTE produit une alerte `error` (le document est écrit, à vérifier) ;
+# PERTE_REFUS refuse la sortie, pour qu'un document mutilé ne soit pas importé par mégarde.
 
 RE_MOT = re.compile(r'\w{2,}', re.UNICODE)
-PERTE_MOTS_MIN = 10          # en deçà, ce sont les étiquettes d’en-tête qu’on a quittées
+PERTE_MOTS_MIN = 10          # en deçà, ce sont les étiquettes d’en-tête retirées
 PERTE_ALERTE = 0.05          # 5 % des mots du manuscrit
 PERTE_REFUS = 0.5            # la moitié
 
@@ -64,14 +56,11 @@ def _mots_et_images(document):
 
 
 def _ecartes_par_entete(document, entete, indices_entete):
-    """Ce que la reconnaissance de l'en-tête met de côté SANS que le gabarit ait où l'écrire :
-    le DOI, la ligne de citation de la revue, les résumés dans une autre langue que celle du
-    produit, et les photos des blocs d'autrices consommés (le tableau des autrices du gabarit
-    n'en reçoit pas). Mesuré sur les 72 manuscrits lisibles de tmp/docx-dev (29.09.2026) : le
-    résumé français d'un article allemand (4 à 7 % des mots) et la photo de l'autrice, dans
-    presque tous — une perte RÉELLE, mais connue, et antérieure au garde-fou. Elle n'est donc
-    pas comptée comme une perte inexpliquée (qui crierait sur chaque manuscrit, et qu'on
-    apprendrait vite à ne plus lire) : elle est DITE à part, par `Nettoyage.ContenuEcarte`.
+    """Ce que la reconnaissance de l'en-tête met de côté faute de place dans le gabarit : le
+    DOI, la ligne de citation de la revue, les résumés dans une autre langue que celle du
+    produit, et les photos des fiches d'autrices en tableau. Cette perte connue est retirée de
+    l'étalon et signalée à part par `Nettoyage.ContenuEcarte`, pour que l'alerte de perte ne
+    se déclenche pas sur presque chaque manuscrit.
     Rend {'mots': Counter, 'images': int, 'elements': [(fr, de), ...]}."""
     from collections import Counter
     mots = Counter()
@@ -86,10 +75,9 @@ def _ecartes_par_entete(document, entete, indices_entete):
         ajouter(entete.ligne_revue, 'la ligne de citation de la revue', 'die Zitierzeile der Zeitschrift')
         for langue, texte in sorted((entete.resumes_autres or {}).items()):
             ajouter(texte, 'le résumé (%s)' % langue, 'die Zusammenfassung (%s)' % langue)
-    # Les photos : seulement celles d'une FICHE en tableau consommée (la voie des tableaux
-    # d'autrices, _tableaux_auteurs). Une image d'un PARAGRAPHE consommé n'est jamais « une
-    # photo mise de côté » : c'est exactement ce que l'incident du 29.09.2026 avalait — le
-    # corps d'un manuscrit court, images comprises —, et elle doit compter comme perdue.
+    # Seules les images d'une fiche d'autrice en tableau comptent comme photos écartées. Une
+    # image d'un paragraphe consommé par l'en-tête compte comme perdue : c'est le signe que
+    # l'en-tête a avalé du corps de texte.
     images = 0
     for idx in indices_entete or {}:
         if 0 <= idx < len(document.blocs) and isinstance(document.blocs[idx], mm.Tableau):
@@ -103,16 +91,14 @@ def _ecartes_par_entete(document, entete, indices_entete):
 
 
 def _controler_perte(entree, chemin_sortie, langue, ecartes=None):
-    """(alerte ou None, mesure) — la comparaison du manuscrit lu (`entree` : le résultat de
-    _mots_et_images() pris AVANT tout traitement) avec le .docx écrit, relu par le lecteur du
-    nettoyeur lui-même. `ecartes` (_ecartes_par_entete) : ce qui est mis de côté sciemment,
-    retiré de l'étalon et dit ailleurs."""
+    """Rend (alerte ou None, mesure). Compare `entree` (_mots_et_images() du manuscrit, pris
+    avant tout traitement) au .docx écrit, relu par le lecteur du nettoyeur. `ecartes`
+    (_ecartes_par_entete) est retiré de l'étalon."""
     mots_in, images_in = entree
     if ecartes:
         mots_in = mots_in - ecartes['mots']
         images_in = max(images_in - ecartes['images'], 0)
-    # La relecture refait les constats du lecteur (en-têtes et pieds non lus…) sur NOTRE
-    # sortie : ils ont déjà été dits sur le manuscrit, on les tait ici.
+    # La relecture referait les constats du lecteur, déjà émis sur le manuscrit : on les tait.
     global _capture_suspendue
     stderr, journal = sys.stderr, os.environ.pop('SZH_IMPORT_LOG', None)
     try:
@@ -183,10 +169,9 @@ def _controler_perte(entree, chemin_sortie, langue, ecartes=None):
 
 
 def _valider_docx_bien_forme(chemin):
-    """Après manuscrit_annoter.annoter() (troisième défaut connu, voir le commentaire au point
-    d'appel) : chaque partie .xml/.rels de la sortie doit rester un XML bien formé. Lève sinon
-    — l'appelant restaure alors la version PRÉ-annotation plutôt que de livrer un .docx
-    corrompu qui semblerait avoir réussi (code de sortie 0, aucune exception)."""
+    """Lève une exception si une partie .xml/.rels du .docx annoté n'est pas un XML bien
+    formé. L'appelant restaure alors la version d'avant l'annotation, plutôt que de livrer
+    un .docx corrompu en apparence réussi."""
     with zipfile.ZipFile(chemin) as z:
         for nom in z.namelist():
             if nom.endswith('.xml') or nom.endswith('.rels'):

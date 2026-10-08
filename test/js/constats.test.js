@@ -1,18 +1,12 @@
-// Le socle des constats : ce qu'un défaut ferme, où on va le corriger, et comment il
-// s'écrit.
+// Les constats (messages de la chaîne affichés à la rédaction) : ce qu'un défaut bloque, où
+// on va le corriger, et comment il s'écrit. lib/constats.js tient trois tables, la gravité,
+// la destination du bouton et la phrase ; ce fichier en vérifie le contrat.
 //
-//   node --test "test/js/*.test.js"
+//   node --test test/js/constats.test.js
 //
-// Trois décisions vivaient éparpillées, et c'est ce qui a fait diverger l'interface : la
-// couleur (sept endroits la choisissaient, plus une huitième table qui inventait un ton
-// que l'affichage ne connaissait pas), le bouton (un seul `if` en dur, pour un code sur
-// cinquante) et la phrase (soixante paragraphes libres, dont quatre disaient le même
-// défaut de quatre façons). lib/constats.js les réunit en trois tables, et ce fichier en
-// fixe le contrat.
-//
-// Le contrôle qui compte est celui d'exhaustivité : tout code que lib/journal.js sait
-// produire doit avoir sa ligne ici. Un code ajouté à la chaîne sans décision de gravité ni
-// de destination fait tomber ce fichier, au lieu d'arriver gris et sans bouton à l'écran.
+// Contrôle d'exhaustivité : tout code que lib/journal.js sait produire a sa ligne dans la
+// table. Un code ajouté à la chaîne sans gravité ni destination fait échouer ce fichier,
+// au lieu d'arriver gris et sans bouton à l'écran.
 'use strict';
 
 const test = require('node:test');
@@ -40,7 +34,7 @@ test('gravité : un défaut qui ferme une porte ouverte est bloquant', () => {
 });
 
 test('gravité : la même porte fermée ailleurs, et le défaut redevient un avertissement', () => {
-  // Une image muette fait échouer la validation PDF/UA — mais seulement si elle tourne.
+  // Une image sans texte alternatif fait échouer la validation PDF/UA, si celle-ci tourne.
   const muette = constat('numerotation', 'figure-sans-alt', { image: 'media/fig-01.png' });
   assert.strictEqual(constats.gravite(muette, { pdfua: true }), 'bloquant');
   assert.strictEqual(constats.gravite(muette, { pdfua: false }), 'avert',
@@ -49,8 +43,8 @@ test('gravité : la même porte fermée ailleurs, et le défaut redevient un ave
 
 test('gravité : ce qui n’est pas encore fait n’est jamais rouge', () => {
   // Les deux cas d'attente : aucun article dans le numéro, des Word encore en dépôt.
-  // Ils ferment pourtant la compilation — mais rien n'est faux, le travail n'a pas
-  // commencé, et le rouge doit rester rare pour se faire entendre.
+  // Ils arrêtent la compilation, mais rien n'est faux : le travail n'a pas commencé, et le
+  // rouge reste rare pour garder son poids.
   for (const c of [constat('pipeline', 'aucun-article'), constat('import', 'restes')]) {
     assert.strictEqual(constats.gravite(c, { pdfua: true }), 'avert',
       'une attente est passée en rouge : ' + c.code);
@@ -58,7 +52,7 @@ test('gravité : ce qui n’est pas encore fait n’est jamais rouge', () => {
 });
 
 test('gravité : un geste qui a échoué est rouge, même sans porte de publication', () => {
-  // Le réimport qui s'arrête ne bloque aucune publication : il n'a simplement pas eu lieu.
+  // Le réimport qui s'arrête ne bloque aucune publication : il n'a pas eu lieu.
   assert.strictEqual(
     constats.gravite(constat('import', 'reimport-echec'), { pdfua: true }), 'bloquant');
 });
@@ -70,9 +64,8 @@ test('gravité : une information reste grise', () => {
 });
 
 test('gravité : la bibliographie récupérée est une information, pas un défaut', () => {
-  // Le cas NOMINAL de szh-biblio-detacher.lua. Sans ligne dans la table, il arrivait en
-  // ambre, sous un triangle, et dans la prose allemande du filtre — un succès déguisé en
-  // défaut. Ses trois voisins, eux, constatent bien quelque chose à regarder.
+  // Le cas normal de szh-biblio-detacher.lua : une information, pas un avertissement. Ses
+  // trois voisins signalent quelque chose à regarder.
   assert.strictEqual(
     constats.gravite(constat('import', 'biblio-detachee'), { pdfua: true }), 'info');
   for (const code of ['biblio-incomplete', 'biblio-bornes-perdues', 'biblio-fichier-refuse']) {
@@ -84,9 +77,8 @@ test('gravité : la bibliographie récupérée est une information, pas un défa
 // ---- 1 bis. La croix : ce qu'on a le droit d'effacer d'un clic --------------------
 
 test('fermable : les gris seulement, jamais un bloquant ni un avertissement — sauf ce que dit l’import', () => {
-  // Un constat gris ne demande rien : il dit qu'une chose s'est bien passée. Le faire
-  // taire ne cache aucun geste à faire — à l'inverse d'un ambre, qu'on refermerait pour se
-  // donner un numéro propre sans l'avoir corrigé.
+  // Un constat gris ne demande rien : il dit qu'une chose s'est bien passée, et peut se
+  // fermer. Un ambre ne se ferme pas : on le corrige.
   assert.strictEqual(
     constats.fermable(constat('import', 'biblio-detachee'), { pdfua: true }), true);
   assert.strictEqual(
@@ -95,23 +87,23 @@ test('fermable : les gris seulement, jamais un bloquant ni un avertissement — 
   assert.strictEqual(
     constats.fermable(constat('rendu', 'image-manquante'), { pdfua: true }), false,
     'un avertissement de la chaîne se referme d’un clic');
-  // Décision de Robin (07.10.2026) : tout ce que dit l'import se ferme, rouge compris — un
-  // import refusé ne laisse aucun article où corriger.
+  // Tout ce que dit l'import se ferme, rouge compris : un import refusé ne laisse aucun
+  // article où corriger.
   for (const code of ['restes', 'etiquette-metadonnees-inconnue', 'type-article-non-reconnu']) {
     assert.strictEqual(constats.fermable(constat('import', code), { pdfua: true }), true,
       'un message d’import sans croix : ' + code);
   }
   assert.strictEqual(constats.fermable({ source: 'cockpit', code: 'champs-gabarit-vides',
     origine: 'import', champs: { elements: [] } }, {}), true, 'la carte regroupée de l’import');
-  // Le réglage PDF/UA déplace la frontière du rouge, jamais celle de la croix : une image
-  // muette reste un défaut là où la validation est éteinte, donc sans croix.
+  // Le réglage PDF/UA déplace la frontière du rouge, pas celle de la croix : une image sans
+  // texte alternatif reste un défaut quand la validation est éteinte, donc sans croix.
   const muette = constat('numerotation', 'figure-sans-alt', { image: 'media/fig-01.png' });
   assert.strictEqual(constats.fermable(muette, { pdfua: false }), false);
 });
 
 test('gravité : un code inconnu ne disparaît pas et ne bloque pas', () => {
-  // Une source neuve arrive à l'écran sans être passée par ce module : elle doit se voir,
-  // en avertissement, plutôt que d'être tue ou de tout arrêter.
+  // Une source inconnue de ce module s'affiche en avertissement, sans être tue ni tout
+  // arrêter.
   assert.strictEqual(constats.gravite(constat('scission', 'jamais-vu'), { pdfua: true }), 'avert');
 });
 
@@ -136,8 +128,7 @@ test('cible : ce qui regarde le numéro entier n’emporte pas de slug', () => {
 });
 
 test('cible : pas de bouton quand aucun geste n’existe dans l’application', () => {
-  // Renommer un dossier se fait dans l'explorateur de Windows : un bouton qui mènerait
-  // « quelque part » serait un mensonge.
+  // Renommer un dossier se fait dans l'explorateur de Windows : pas de bouton.
   assert.strictEqual(constats.cible(constat('pipeline', 'dossier-espaces')), null);
   assert.strictEqual(constats.cible(constat('scission', 'jamais-vu')), null);
 });
@@ -178,10 +169,8 @@ test('cible : le fichier et l’image, eux, restent rognés à leur nom', () => 
   assert.strictEqual(constats.cible(image).focus, 'fig-01.png');
 });
 
-// Revue F03 (22.09.2026) : pdf-verrouille visait « apercu » (szh.basculerApercu), un
-// INTERRUPTEUR sur l'article en aperçu courant qui ne prend même pas de slug — la flèche ne
-// menait donc jamais au bon PDF, ni à aucun PDF en particulier. Il vise désormais « pdf »
-// (szh.voirPdfArticle), qui accepte { slug, focus } et ouvre le PDF de CET article.
+// pdf-verrouille vise « pdf » (szh.voirPdfArticle), qui accepte { slug, focus } et ouvre le
+// PDF de cet article. szh.basculerApercu ne prend pas de slug : il agit sur l'aperçu courant.
 test('cible : pdf-verrouille mène à « pdf » (szh.voirPdfArticle), pas à l’interrupteur d’aperçu', () => {
   const fichier = constat('pipeline', 'pdf-verrouille', { fichier: 'out/01-essai/01-essai.pdf' });
   const cible = constats.cible(fichier);
@@ -204,27 +193,27 @@ test('objet : la phrase et le bouton désignent la même chose, / compris', () =
   assert.strictEqual(constats.objet(image, 'fr'), constats.cible(image).focus);
 });
 
-// ---- 2 bis. Les trois familles qui n’avaient aucune ligne (revue F03, 22.09.2026) --
+// ---- 2 bis. Les familles typo, métafichier et scission ------------------------------
 
 test('typo : le mot fautif mène à l’article, quand le filtre le fournit', () => {
   const c = constat('typo', 'eszett', { mot: 'Strasse' });
   assert.deepStrictEqual(constats.cible(c),
     { lieu: 'article', slug: '01-essai', focus: 'Strasse' });
   // `\s` et non une espace littérale : test/typo-check.py pose des insécables dans les
-  // guillemets français et les colle en allemand. La typographie de ces libellés est sa
-  // décision ; ce test ne juge que la composition de la phrase.
+  // guillemets français et les colle en allemand. Ce test ne juge que la composition de la
+  // phrase.
   assert.match(constats.phrase(c, 'fr'), /^«\s*ß\s*» à la place de «\s*ss\s*»\s*: Strasse$/);
   assert.match(constats.phrase(c, 'de'), /^Eszett statt «\s*ss\s*»\s*: Strasse$/);
-  // La nuance du filtre (nom propre, citation) ne doit pas se perdre : elle vit dans le
-  // détail, à part de l’intitulé court.
+  // La nuance du filtre (nom propre, citation) est dans le détail, à part de l’intitulé
+  // court.
   for (const langue of ['fr', 'de']) {
     assert.ok(constats.detail(c, langue).length > 0, 'détail manquant en ' + langue);
   }
 });
 
 test('typo : sans le champ « mot » (pas encore écrit par le filtre), la flèche se dégrade proprement', () => {
-  // Deux chantiers parallèles ajoutent ce champ à l’émetteur ; en attendant, focusChamp lit
-  // un champ absent — la carte s’affiche quand même, sans flèche ni objet dans la phrase.
+  // Le filtre omet « mot » quand il n'a pas retrouvé le mot : la carte s’affiche quand même,
+  // sans flèche ni objet dans la phrase.
   for (const code of ['eszett', 'guillemets-droits', 'majuscule-accentuee']) {
     const c = constat('typo', code, {});
     assert.strictEqual(constats.cible(c).focus, '', code + ' : la flèche n’a pas dégradé sur focus vide');
@@ -239,8 +228,8 @@ test('typo : guillemets droits et majuscule non accentuée ont leur phrase, en f
   const majuscule = constat('typo', 'majuscule-accentuee', { mot: 'Ecole' });
   assert.match(constats.phrase(majuscule, 'fr'), /^Majuscule non accentuée : Ecole$/);
   assert.match(constats.phrase(majuscule, 'de'), /^Grossbuchstabe ohne Akzent: Ecole$/);
-  // Les trois typo/* portent une nuance du filtre (ce qu'il NE corrige pas, et pourquoi) :
-  // perdue dans l'intitulé court, elle vit dans le détail — comme pour « eszett ».
+  // Les trois typo/* portent une nuance du filtre (ce qu'il ne corrige pas, et pourquoi),
+  // dans le détail plutôt que dans l'intitulé court, comme pour « eszett ».
   for (const c of [guillemets, majuscule]) {
     for (const langue of ['fr', 'de']) {
       assert.ok(constats.detail(c, langue).length > 0,
@@ -273,8 +262,8 @@ test('scission : image et tableau introuvables mènent au bon endroit, dans le b
 });
 
 test('scission : le champ « média » (accentué) du texte de tête et des liminaires est bien lu', () => {
-  // livre-scinder.py nomme ce champ « média », pas « media » : un désaccord d’accent
-  // laisserait la flèche muette (champsNommes de lib/journal.js est sensible à l’accent).
+  // livre-scinder.py nomme ce champ « média », pas « media » : champsNommes de
+  // lib/journal.js est sensible à l’accent, et la flèche resterait sans cible.
   for (const code of ['liminaire-texte-media-introuvable', 'liminaire-media-introuvable']) {
     const c = constat('scission', code, { média: 'media/x.png' });
     assert.deepStrictEqual(constats.cible(c),
@@ -283,8 +272,8 @@ test('scission : le champ « média » (accentué) du texte de tête et des limi
 });
 
 test('scission : deux codes arrêtent vraiment la compilation, malgré leur préfixe « avertissement »', () => {
-  // livre-scinder.py appelle sys.exit(1) juste après avoir écrit ces deux-là : le barrage
-  // réel ne suit pas le ton du préfixe, il a été vérifié dans le code (revue F03).
+  // livre-scinder.py appelle sys.exit(1) juste après avoir écrit ces deux-là : ils
+  // bloquent, quel que soit le ton du préfixe.
   for (const code of ['aucun-titre-niveau-1', 'chapitre-cible-existe']) {
     assert.strictEqual(constats.gravite(constat('scission', code), { pdfua: true }), 'bloquant', code);
   }
@@ -309,8 +298,8 @@ test('import : le crédit de photo non repris est une information, sans geste po
   assert.strictEqual(constats.gravite(c, { pdfua: true }), 'info');
 });
 
-// Un en-tête se déclare dans l'éditeur du tableau, jamais dans le .md (29.09.2026) : la
-// flèche mène à CE tableau, le fichier que docx-tables.py a écrit pour son numéro.
+// Un en-tête se déclare dans l'éditeur du tableau, pas dans le .md : la flèche mène à ce
+// tableau, le fichier que docx-tables.py a écrit pour son numéro.
 test('import : tableau sans en-tête — la flèche ouvre l’éditeur de CE tableau, la phrase le nomme', () => {
   const c = constat('import', 'tableau-sans-entete', { tableau: '2', debut: 'Nom de la colonne' });
   assert.deepStrictEqual(constats.cible(c), { lieu: 'table', slug: '01-essai', focus: 'table-02.html' },
@@ -325,8 +314,8 @@ test('import : tableau sans en-tête — sans « debut », le numéro suffit à 
   const c = constat('import', 'tableau-sans-entete', { tableau: '12' });
   assert.strictEqual(constats.cible(c).focus, 'table-12.html');
   assert.strictEqual(constats.objet(c, 'fr'), '12');
-  // Sans numéro lisible : le lieu reste l'éditeur de tableaux, sans tableau nommé — c'est
-  // ouvrirEditeurTable qui retombe alors sur la liste des tableaux de l'article.
+  // Sans numéro lisible : le lieu reste l'éditeur de tableaux, sans tableau nommé ;
+  // ouvrirEditeurTable se rabat sur la liste des tableaux de l'article.
   assert.deepStrictEqual(constats.cible(constat('import', 'tableau-sans-entete', {})),
     { lieu: 'table', slug: '01-essai', focus: '' });
 });
@@ -345,7 +334,7 @@ test('phrase : « {défaut} : {objet} », et rien de plus', () => {
   const dit = constats.phrase(c, 'fr');
   assert.match(dit, /^Image sans description : fig-01\.png$/,
     'la phrase ne suit pas le gabarit : ' + dit);
-  // Le geste n'est plus dans le texte : c'est le bouton qui le porte.
+  // L'action n'est pas dans le texte : c'est le bouton qui la porte.
   assert.ok(!/Ouvrez|Cliquez|formulaire/.test(dit), 'la phrase explique encore où cliquer');
 });
 
@@ -354,8 +343,8 @@ test('phrase : un défaut sans objet se dit seul, sans deux-points en l’air', 
   assert.match(dit, /^Titre manquant$/, 'un deux-points traîne sans objet : ' + dit);
 });
 
-// La seconde ligne est devenue UNE phrase d'action (29.09.2026) ; ce qu'elle disait de
-// ce qui a été gardé ou perdu n'a pas disparu, il est dans l'infobulle.
+// La seconde ligne est une phrase d'action ; ce qui a été gardé ou perdu est dans
+// l'infobulle.
 test('phrase : la seconde ligne est une consigne, l’explication part en infobulle', () => {
   const conflit = constat('import', 'tableau-conflit');
   conflit.cle = 'ctl.reimport.tableau-conflit';
@@ -374,7 +363,7 @@ test('consigne : une seule phrase, dans les deux langues, pour tout défaut à c
     const e = constats.TABLE[cle];
     if (e.nature === 'fait' || e.detailChamp) { continue; }
     const s = constats.SECOND_ETAGE[cle];
-    // Une entrée vide, posée exprès : le geste a été refusé et il n'y a rien à faire.
+    // Une entrée vide, posée exprès : l'action a été refusée et il n'y a rien à faire.
     if (s && !s.consigne) { continue; }
     if (!s) { vides.push(cle); continue; }
     for (const langue of ['fr', 'de']) {
@@ -400,7 +389,7 @@ test('règle PDF/UA : le geste en consigne, la cause et le repère en infobulle,
   const pourquoi = constats.infobulle(c, 'fr');
   assert.match(pourquoi, /le champ title de la fiche est vide\./);
   assert.match(pourquoi, /ISO 14289-1 7\.1-9/);
-  // Une règle sans geste (défaut de la chaîne) n'invente pas de consigne.
+  // Une règle sans action (défaut de la chaîne) n'invente pas de consigne.
   const sansGeste = constat('pdfua', 'regle', { regle: 'X', explication: 'En cause : y.', repere: '7.1-10' });
   assert.strictEqual(constats.consigne(sansGeste, 'fr'), '');
   assert.match(constats.infobulle(sansGeste, 'fr'), /^y\./);
@@ -412,7 +401,7 @@ test('infobulle : le message complet de la maison, ou la phrase de la chaîne, j
   assert.match(constats.infobulle(c, 'fr'), /ne mène à aucune référence/);
   const typo = constat('typo', 'eszett', { mot: 'Straße' });
   typo.brut = 'Un « ß » dans le texte.';
-  // La typographie n'a pas de message ctl.* : c'est l'ancienne seconde ligne qui explique.
+  // La typographie n'a pas de message ctl.* : la phrase du filtre sert d'explication.
   assert.match(constats.infobulle(typo, 'fr'), /usage suisse/);
 });
 
@@ -493,9 +482,8 @@ test('regrouper : l’import seul reste ambre, et un tableau corrigé depuis ne 
   assert.deepStrictEqual(constats.elements(r[0], 'fr').map((e) => e.focus), ['table-02.html']);
 });
 
-// Constaté par Robin (30.09.2026) : vingt cartes « Champ du gabarit laissé vide » pour un
-// article, sans le nom du champ, toutes à la même empreinte (fermer l'une les fermait
-// toutes), et un bouton vers les Word en attente, où le document n'était plus.
+// Sans regroupement, un article pouvait afficher vingt cartes « Champ du gabarit laissé
+// vide », sans le nom du champ et de même empreinte (fermer l'une les fermait toutes).
 test('regrouper : les champs du gabarit laissés vides font UNE carte, un lien par champ, dans la langue de qui lit', () => {
   const vide = (cle, cleDe, lieu) => constat('import', 'cle-attendue-absente',
     { 'clé': cle, 'clé-de': cleDe, lieu: lieu });
@@ -543,8 +531,8 @@ test('phrase : les deux langues, pour tout code connu', () => {
 // ---- 4. Exhaustivité : aucun code de la chaîne sans décision -----------------------
 
 // Les codes que lib/journal.js sait produire, relevés dans sa source : les tables de clés
-// (CLES_*) et les codes littéraux de ses lecteurs (`code: 'x'`). Lire la source plutôt que
-// d'énumérer ici ce qu'on croit savoir — c'est exactement ainsi qu'une divergence passe.
+// (CLES_*) et les codes littéraux de ses lecteurs (`code: 'x'`). La source est lue plutôt
+// que recopiée ici, pour ne pas diverger.
 function codesDeJournal() {
   const src = fs.readFileSync(path.join(COCKPIT, 'lib', 'journal.js'), 'utf8');
   const vus = new Set();
@@ -583,8 +571,8 @@ test('exhaustivité : fichier-illisible et tableau-texte-perdu, émis par pipeli
     const src = fs.readFileSync(path.join(dossier, f), 'utf8');
     for (const m of src.matchAll(/avertir\(\s*'([a-z-]+)'/g)) { emis.add(m[1]); }
   }
-  // Les deux refus et pertes de l'import qui portaient une carte grise (01.10.2026). Les autres
-  // codes d'avertir() relèvent d'autres sources (scission, rendu...) ou de repli connu.
+  // Deux refus et pertes de l'import qui doivent avoir leur entrée. Les autres codes
+  // d'avertir() relèvent d'autres sources (scission, rendu...) ou d'un repli connu.
   for (const code of ['fichier-illisible', 'tableau-texte-perdu']) {
     assert.ok(emis.has(code), 'plus émis par pipeline/ : ' + code);
     assert.ok(constats.TABLE['import/' + code], 'code émis sans entrée : ' + code);
@@ -593,8 +581,7 @@ test('exhaustivité : fichier-illisible et tableau-texte-perdu, émis par pipeli
 });
 
 test('exhaustivité : aucune ligne morte dans la table', () => {
-  // L'inverse du contrôle ci-dessus : une entrée pour un code que plus personne n'émet est
-  // une décision qui ne s'applique à rien, et qu'on relira comme si elle valait encore.
+  // L'inverse du contrôle ci-dessus : pas d'entrée pour un code que personne n'émet.
   const connus = codesDeJournal();
   // Les codes que le cockpit produit lui-même, hors journal de la chaîne.
   const propres = ['pipeline/pdf-verrouille', 'pdfua/non-conforme', 'pdfua/outillage',
@@ -606,13 +593,12 @@ test('exhaustivité : aucune ligne morte dans la table', () => {
     'cockpit/images-sans-description', 'cockpit/tableaux-entete', 'cockpit/tableaux-sans-entete',
     'cockpit/champs-gabarit-vides',
     // pipeline/pagination.py écrit « [pagination-avertissement] perimee », préfixe
-    // générique lui aussi : codesDeJournal() ne le voit pas, et le journal le produit.
+    // générique lui aussi : codesDeJournal() ne le voit pas.
     'pagination/perimee',
     // typo (szh-typographie.lua), metafichier (szh-metafichier.lua) et scission
     // (livre-scinder.py) passent par le préfixe générique « <source>-<ton> » que
-    // familleCode() de lib/journal.js reconnaît sans code ni table CLES_* dédiée (même
-    // mécanisme que « scission » dans extension.js, SOURCES_CONSTAT) : codesDeJournal()
-    // ci-dessus ne peut donc pas les voir, alors que le journal les produit bel et bien.
+    // familleCode() de lib/journal.js reconnaît sans table CLES_* dédiée (comme
+    // « scission » dans SOURCES_CONSTAT d'extension.js) : codesDeJournal() ne les voit pas.
     'typo/eszett', 'typo/guillemets-droits', 'typo/majuscule-accentuee',
     'metafichier/image-native-word', 'metafichier/placeholder-introuvable',
     'scission/aucun-titre-niveau-1', 'scission/chapitre-cible-existe',
@@ -620,15 +606,15 @@ test('exhaustivité : aucune ligne morte dans la table', () => {
     'scission/liminaire-texte-non-repris', 'scission/liminaire-texte-media-introuvable',
     'scission/liminaire-media-introuvable', 'scission/source-non-supprimee',
     // Quatre codes de docx-meta.py qui passent par « [import-avertissement] » sans entrée
-    // dans CLES_IMPORT (revue F03, 22.09.2026) : même raison, même repli.
+    // dans CLES_IMPORT : même raison.
     'import/tableau-auteurs-non-lu', 'import/biblio-references-restees',
     'import/biblio-non-detachee', 'import/credit-photo-non-repris',
-    // La garantie « rien ne disparaît » de l'import (29.09.2026) : szh-legendes.lua,
+    // Les contrôles « rien ne disparaît » de l'import : szh-legendes.lua,
     // docx-controle-import.py et pronto_modele.py les émettent par le même préfixe, sans
-    // entrée CLES_IMPORT — même repli que les quatre ci-dessus.
+    // entrée CLES_IMPORT.
     'import/bloc-valeur-non-reprise', 'import/image-absente-import',
     'import/figure-alt-a-completer', 'import/tableau-images-et-texte',
-    // Émis par docx-meta.py, pronto-lire.py et docx-controle-import.py (revue du 01.10.2026).
+    // Émis par docx-meta.py, pronto-lire.py et docx-controle-import.py.
     'import/fichier-illisible', 'import/tableau-texte-perdu',
     // Vu par le cockpit en lisant les tableaux de l'article (constatEnteteVide).
     'cockpit/entete-vide'];
@@ -649,8 +635,8 @@ test('exhaustivité : chaque entrée est complète et bien formée', () => {
     if (e.lieu) {
       assert.ok(constats.LIEUX[e.lieu], 'lieu inconnu (' + cle + ') : ' + e.lieu);
     }
-    // Une attente ou une information ne peut pas être rouge : la règle doit tenir dans la
-    // table elle-même, pas seulement dans la fonction qui la lit.
+    // Une attente ou une information n'est pas rouge : la règle tient dans la table, pas
+    // seulement dans la fonction qui la lit.
     if (e.nature !== 'defaut') {
       assert.ok(!e.barrage || e.nature === 'attente',
         'une information ne ferme pas une porte : ' + cle);

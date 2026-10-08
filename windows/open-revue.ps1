@@ -1,8 +1,8 @@
 ﻿<#
 .SYNOPSIS
-  Point d'entree de « Pronto », appele par hidden.vbs, donc sans console. Le raccourci du
-  menu Demarrer (Get-SzhRaccourcisMenu), le gestionnaire du protocole "szh:" (update.ps1) et
-  le bouton « Changer de version... » du cockpit visent ce script par son nom.
+  Point d'entree de « Pronto », lance sans console par hidden.vbs. Le raccourci du menu
+  Demarrer, le protocole "szh:" (update.ps1) et le bouton « Changer de version... » du
+  cockpit appellent ce script par son nom.
 
     powershell -ExecutionPolicy Bypass -File open-revue.ps1              # l'Accueil, dans VSCodium
     powershell -ExecutionPolicy Bypass -File open-revue.ps1 szh://...    # le numero vise
@@ -12,23 +12,22 @@
 #>
 [CmdletBinding()]
 param(
-  # Lien « szh://... » passe par le gestionnaire de protocole Windows : ouvre directement le
-  # numero vise. Positionnel, parce que hidden.vbs requote chacun de ses arguments et qu'un
-  # « %1 » requote se lie a un parametre positionnel.
+  # Lien « szh://... » recu du protocole Windows : ouvre le numero vise. Positionnel, car
+  # hidden.vbs remet chaque argument entre guillemets et un « %1 » ainsi quote se lie a un
+  # parametre positionnel.
   [Parameter(Position = 0)][string]$Lien,
-  # Passe encore par d'anciens epinglages, et ignore : l'Accueil propose le produit du reglage
-  # du compte, et une variable d'environnement n'atteint pas un VSCodium deja ouvert.
+  # Encore passe par d'anciens epinglages, et ignore : l'Accueil suit le produit regle pour
+  # le compte.
   [string]$Produit = '',
-  # Ouvre directement le selecteur de version, comme le bouton « Changer de version... » du
-  # cockpit.
+  # Ouvre seulement le selecteur de version.
   [switch]$Versions
 )
 
 . "$PSScriptRoot\szh-common.ps1"
 
-# Le selecteur de version, en WinForms et avant tout controle : c'est l'outil de reparation
-# d'une installation abimee, il ne depend ni de VSCodium ni du cockpit. Il prend l'identite de
-# la mise a jour, dont il lance une version.
+# Le selecteur de version sert a reparer une installation abimee : il est en WinForms et
+# passe avant tout controle, sans dependre de VSCodium ni du cockpit. Il prend l'identite de
+# barre des taches de la mise a jour.
 if ($Versions) {
   Write-SzhLog 'open-revue : selecteur de versions demande'
   if ($env:SZH_LANCEUR_SIMULE -eq '1') {

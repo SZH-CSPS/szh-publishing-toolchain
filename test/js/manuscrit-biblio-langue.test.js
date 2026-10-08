@@ -114,9 +114,8 @@ test('langue de : aucune alerte de la fixture allemande ne porte de français, '
 });
 
 // Écriture inclusive des Richtlinien : « Autor:in » au singulier, « Autor:innen » au pluriel,
-// jamais « Autor:in(nen) » ; un seul terme pour la citation dans le texte (Quellenangabe) et un
+// pas « Autor:in(nen) » ; un seul terme pour la citation dans le texte (Quellenangabe) et un
 // seul pour l'entrée de la liste (Eintrag) ; la forme normée du DOI est étiquetée.
-// Sabotage : remettre 'Autor:in(nen)', 'Verweis' ou l'ancienne phrase du DOI dans MESSAGES.
 test('langue de : Autor:in / Autor:innen selon le nombre, Quellenangabe et Eintrag partout, forme du DOI étiquetée', { skip: sansPython }, () => {
     const sortie = executer([
       'def tester(corps, biblio):',

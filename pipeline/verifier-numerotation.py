@@ -7,24 +7,14 @@ du même article, et signale un écart.
 
 Appelé par `make -f <toolkit>/pipeline/Makefile verifier-numerotation A=… B=…`.
 
-**Pourquoi ce contrôle existe.** `filters/szh-numerotation.lua` ne consomme un numéro que
-pour un objet légendé : « sans légende, aucun numéro consommé ». C'est un choix défendable
-— « Tableau 3 » désigne le 3ᵉ tableau *légendé* — mais il a une conséquence qui ne se voit
-pas : « Tableau 2 » peut être le troisième tableau du texte, et si la version traduite
-ajoute ou retire une légende, les numérotations française et allemande du **même** article
-divergent. Un renvoi « voir Tableau 2 » désigne alors deux objets différents selon la
-langue dans laquelle on lit. Rien, jusqu'ici, ne le disait.
+`filters/szh-numerotation.lua` ne numérote que les objets légendés : « Tableau 3 » est le
+3ᵉ tableau légendé. Si la traduction ajoute ou retire une légende, les deux langues du même
+article ne numérotent plus pareil, et « voir Tableau 2 » désigne deux objets différents.
+Ce script le signale.
 
-**Pourquoi une comparaison et non un changement de règle.** Rendre la numérotation
-indépendante des légendes déplacerait tous les numéros de tous les articles déjà publiés,
-et les renvois écrits par les auteurs avec eux. La règle reste ; c'est la divergence entre
-deux langues qu'on interdit.
-
-**Pourquoi deux chemins passés à la main.** Les deux langues d'un article ne vivent pas
-dans le même dossier : la Revue et la Zeitschrift sont deux numéros distincts, et deux
-revues distinctes côté OJS. Aucune clé de la fiche ne relie un article à sa traduction —
-le `.traduction.yaml` ne suit que l'état des champs de la fiche, jamais le corps. C'est
-donc la rédaction qui désigne la paire.
+Les deux chemins se donnent à la main : la Revue et la Zeitschrift sont deux numéros
+distincts, et rien dans la fiche ne relie un article à sa traduction
+(`.traduction.yaml` ne suit que les champs de la fiche).
 """
 
 import html
@@ -50,8 +40,7 @@ def compter(chemin):
                re.findall(r'class="szh-numero"[^>]*>\s*([A-Za-zÀ-ÿ]+)', d)]
     figures = sum(1 for n in numeros if n in LIBELLES_FIGURE)
     tableaux = sum(1 for n in numeros if n in LIBELLES_TABLEAU)
-    # Un objet non légendé ne consomme pas de numéro : c'est lui la cause d'un écart, et
-    # c'est donc lui qu'il faut montrer à côté du compte.
+    # Les objets non légendés, qui expliquent un écart, sont comptés à part.
     tableaux_total = len(re.findall(r'<table\b', d))
     # Médias : les <img> plus les images décoratives, que szh-numerotation.lua rend en
     # fond CSS (span.szh-decor) parce qu'un <img alt=""> casserait PDF/UA-1.
@@ -74,7 +63,7 @@ def _ligne(nom, c):
 
 
 def main(argv):
-    try:  # console Windows en cp1252 : un accent combinant (nom venu du partage) y plante.
+    try:  # une console en cp1252 plante sur un accent combinant
         sys.stdout.reconfigure(encoding='utf-8')
         sys.stderr.reconfigure(encoding='utf-8')
     except Exception:

@@ -2,11 +2,8 @@
 //
 //   node --test "test/js/*.test.js"
 //
-// contrats.test.js lit la source, webviews.test.js rend les pages. Restait l'entre-deux :
-// l'extension qui s'active, l'arbre qu'elle construit, les panneaux qu'elle ouvre. Deux
-// pannes y sont passées sans qu'aucun contrôle les voie — une fonction supprimée avec ses
-// voisines, un `it.command` posé après le `return` de sa méthode — et se voyaient toutes
-// deux à la première activation.
+// L'extension qui s'active, l'arbre qu'elle construit, les panneaux qu'elle ouvre (la
+// source est contrôlée par contrats.test.js, le rendu des pages par webviews.test.js).
 'use strict';
 
 const test = require('node:test');
@@ -20,9 +17,8 @@ const REVUE = revueDEssai();
 const HOTE = activerHote(REVUE);
 const COCKPIT = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit');
 
-// Les sections de l'accordéon, sans le raccourci « À corriger » qui les suit : celui-ci
-// n'est pas une section (aucune catégorie, aucun pli), et les contrôles d'accordéon
-// ci-dessous ne parlent que des sections.
+// Les sections de l'accordéon, sans le raccourci « À corriger » qui les suit et qui n'est
+// pas une section.
 function sectionsDe(racine) {
   return racine.filter((it) => String(it.contextValue || '').indexOf('section-') === 0);
 }
@@ -38,10 +34,8 @@ test('l’extension s’active et enregistre ses commandes', () => {
   assert.deepStrictEqual(manquantes, [],
     'commande(s) du manifeste jamais enregistrée(s) : ' + manquantes.join(', '));
 
-  // Deux commandes s'enregistrent délibérément hors menu — invoquées par le code lui-même
-  // (TreeItem.command d'un article, clic sur un en-tête d'accordéon), jamais par la palette.
-  // Si cette liste devait grandir, c'est un signal à vérifier à la main, pas à faire
-  // échouer aveuglément ici.
+  // Deux commandes sont hors menu : le code les invoque lui-même (TreeItem.command d'un
+  // article, clic sur un en-tête d'accordéon). Toute nouvelle entrée ici se vérifie à la main.
   const registreesHorsMenu = ['szh.ouvrirArticle', 'szh.ouvrirSection', 'szh.ouvrirActualite'];
   const inattendues = ids.filter((id) => id.indexOf('szh.') === 0
     && manifeste.indexOf(id) === -1 && registreesHorsMenu.indexOf(id) === -1);
@@ -55,9 +49,9 @@ test('l’extension s’active et enregistre ses commandes', () => {
   }
 });
 
-// L'en-tête d'une section doit porter la commande qui la déplie (l'accordéon) et rouvre
-// sa vue d'ensemble. Le contrôle lit la ligne construite, et non la source : une commande
-// avait déjà été posée après un `return`, ce qui se relit sans rien voir.
+// L'en-tête d'une section porte la commande qui la déplie et rouvre sa vue d'ensemble. Le
+// contrôle lit l'élément construit, pas la source : une commande posée après un `return`
+// ne se voit pas à la lecture.
 test('les en-têtes de section basculent leur section (accordéon)', async () => {
   const arbre = HOTE.arbre();
   assert.ok(arbre, 'aucun fournisseur d’arbre enregistré');
@@ -72,13 +66,12 @@ test('les en-têtes de section basculent leur section (accordéon)', async () =>
   }
 });
 
-// Les quatre sections dans l'ordre du travail, et saillantes : le TreeView natif n'offre ni
-// gras ni taille de police, ce sont les majuscules et la couleur de l'icône qui font
-// l'en-tête. L'accordéon n'en déplie qu'une : « Articles » au départ.
+// Les quatre sections dans l'ordre du travail. Le TreeView n'offre ni gras ni taille de
+// police : les majuscules et la couleur de l'icône font l'en-tête. L'accordéon n'en déplie
+// qu'une : « Articles » au départ.
 //
-// « Actualité » vient en deuxième, entre les articles et leurs traductions : c'est la
-// rubrique Documentation du numéro (« Actualité et ressources » / « News & Ressourcen »),
-// dont les articles ont quitté la section ARTICLES — voir TYPE_ACTUALITE dans extension.js.
+// « Actualité » est la rubrique Documentation du numéro (« Actualité et ressources » /
+// « News & Ressourcen ») ; voir TYPE_ACTUALITE dans extension.js.
 test('l’arbre : sections dans l’ordre Articles / Actualité / Traductions / Word, en majuscules et en couleur', async () => {
   const arbre = HOTE.arbre();
   const racine = sectionsDe(await arbre.getChildren());
@@ -89,7 +82,7 @@ test('l’arbre : sections dans l’ordre Articles / Actualité / Traductions / 
   assert.strictEqual(racine[1].collapsibleState, 1, '« Actualité » devrait arriver repliée');
   assert.strictEqual(racine[2].collapsibleState, 1, '« Traductions » devrait arriver repliée');
   assert.strictEqual(racine[3].collapsibleState, 1, '« Word » devrait arriver repliée (accordéon)');
-  // Majuscules dans les deux langues — dans le dictionnaire, pas seulement au rendu.
+  // Majuscules dans les deux langues, dans le dictionnaire même.
   const i18n = require(path.join(COCKPIT, 'lib', 'i18n.js'));
   for (const cle of ['arbre.articles', 'arbre.actualite', 'arbre.traductions', 'arbre.word']) {
     for (const langue of ['fr', 'de']) {
@@ -110,9 +103,8 @@ test('l’arbre : sections dans l’ordre Articles / Actualité / Traductions / 
     'le compteur des Word en attente a disparu de la description');
 });
 
-// Chaque article se distingue de ses voisins : une icône colorée dit son avancement —
-// cercle vide (rien), disque bleu (en cours), coche verte (tout est fait) — et la
-// description « slug · n/m tâches » reste. Aucun faux item séparateur.
+// L'icône d'un article dit son avancement : cercle vide (rien), disque bleu (en cours),
+// coche verte (tout est fait). La description reste « slug · n/m tâches ».
 test('l’arbre : chaque article porte l’icône colorée de son avancement', async () => {
   const arbre = HOTE.arbre();
   const racine = await arbre.getChildren();
@@ -120,23 +112,19 @@ test('l’arbre : chaque article porte l’icône colorée de son avancement', a
   const articles = (await arbre.getChildren(section))
     .filter((it) => it.contextValue === 'article');
   assert.ok(articles.length >= 2, 'les articles d’essai manquent');
-  // Rien de coché : cercle vide, sans couleur — et plus l'icône de fichier du thème.
+  // Rien de coché : cercle vide, sans couleur.
   for (const it of articles) {
     assert.ok(it.iconPath && it.iconPath.id, 'article sans icône : ' + it.label);
     assert.strictEqual(it.iconPath.id, 'circle-large-outline',
       'icône inattendue sur un article non commencé : ' + it.iconPath.id);
     assert.ok(!it.iconPath.color, 'une couleur sur un article non commencé');
   }
-  // La liste des tâches vient des mêmes modules que l'hôte : le test coche ce que la
-  // configuration du poste — ou le jeu de départ — définit vraiment.
+  // La liste des tâches vient des mêmes modules que l'hôte.
   const art = require(path.join(COCKPIT, 'lib', 'articles.js'));
   const archivage = require(path.join(COCKPIT, 'lib', 'archivage.js'));
   const taches = art.tachesRevue(archivage.lireConfigPoste(), 'revue');
-  // « En cours » n'a de sens qu'entre deux tâches : une seule tâche ne peut être qu'à zéro
-  // ou à cent pour cent, et le disque bleu ne serait jamais atteignable. La fixture pointe
-  // SZH_CONFIG_OJS vers un config.json vide (hote-factice.js) : tachesRevue() retombe donc
-  // toujours sur TACHES_DEFAUT (4 tâches, lib/articles.js) — si ce n'est plus le cas,
-  // mieux vaut le savoir ici que voir le bloc suivant s'abstenir en silence.
+  // « En cours » demande au moins deux tâches. Avec le config.json vide de la fixture,
+  // tachesRevue() rend TACHES_DEFAUT (4 tâches, lib/articles.js).
   assert.ok(taches.length > 1,
     'le jeu de tâches ne compte qu’une seule tâche (' + taches.length + ') : le disque bleu '
     + '« en cours » ne peut pas être éprouvé par ce test');
@@ -160,9 +148,9 @@ test('l’arbre : chaque article porte l’icône colorée de son avancement', a
 });
 
 // L'accordéon par la commande du clic : déplier « Traductions » replie « Articles » et
-// ouvre la vue d'ensemble des traductions ; recliquer l'en-tête ouvert ne replie PAS —
-// la section active reste ouverte, seule la vue se rouvre. L'id des en-têtes change avec
-// l'état — c'est lui qui force VS Code à suivre, contre sa mémoire de pli par élément.
+// ouvre la vue d'ensemble des traductions ; recliquer l'en-tête ouvert le laisse ouvert et
+// rouvre la vue. L'id des en-têtes change avec l'état, ce qui oblige VS Code à suivre au
+// lieu de sa mémoire de pli par élément.
 test('accordéon : une seule section dépliée, et l’id des en-têtes suit l’état', async () => {
   const arbre = HOTE.arbre();
   await HOTE.executer('szh.ouvrirSection', 'traductions');
@@ -194,8 +182,8 @@ function fermerVuesEnsemble() {
   }
 }
 
-// Le chevron reste un geste valable : l'accordéon tient aussi par lui, et il ouvre la
-// même vue d'ensemble que le clic sur le titre.
+// Le chevron tient l'accordéon aussi, et ouvre la même vue d'ensemble que le clic sur le
+// titre.
 test('accordéon : déplier par le chevron replie les autres sections', async () => {
   const arbre = HOTE.arbre();
   const racine = await arbre.getChildren();
@@ -214,10 +202,8 @@ test('accordéon : déplier par le chevron replie les autres sections', async ()
   fermerVuesEnsemble();
 });
 
-// Le premier clic tenait la sélection… jusqu'à la reconstruction qui suivait : l'élément
-// recréé (id nouveau) n'était plus sélectionné, et le surlignage s'éteignait. Le clic
-// resélectionne désormais l'article — sans voler le focus — et la section « Articles »
-// suit (accordéon), d'où que vienne le geste.
+// La reconstruction de l'arbre recrée les éléments (id nouveau) et perd la sélection : le
+// clic resélectionne donc l'article, sans voler le focus, et déplie la section « Articles ».
 test('ouvrir un article resélectionne son élément sans voler le focus', async () => {
   await HOTE.executer('szh.ouvrirSection', 'traductions');   // partir d'ailleurs
   await HOTE.executer('szh.ouvrirArticle', '01-essai');
@@ -231,8 +217,8 @@ test('ouvrir un article resélectionne son élément sans voler le focus', async
   const racine = sectionsDe(await HOTE.arbre().getChildren());
   assert.strictEqual(racine[0].collapsibleState, 2,
     'la section « Articles » doit suivre le clic');
-  // Décision B : le dépliage que VS Code signale au reveal (sectionDeployee déjà posé)
-  // ne doit PAS rouvrir la vue d'ensemble Articles par-dessus le texte.
+  // Le dépliage que VS Code signale au reveal (sectionDeployee déjà posé) ne rouvre pas la
+  // vue d'ensemble Articles par-dessus le texte.
   const vueArt = HOTE.panneauDeType('szhVueArticles');
   const messagesAvant = vueArt ? vueArt.messages.length : 0;
   HOTE.deplierElement(racine.find((it) => it.contextValue === 'section-articles'));
@@ -271,8 +257,7 @@ test('le marqueur « article ouvert » suit l’éditeur actif', async () => {
     'perdre l’éditeur actif (aperçu, panneau) a éteint le point');
 });
 
-// Ouvrir un panneau touche à tout : lecture du disque, assemblage du HTML, première charge
-// utile. Une seule référence manquante et l'utilisateur voit un panneau vide, ou rien.
+// Ouvrir un panneau lit le disque, assemble le HTML et envoie la première charge utile.
 test('chaque panneau s’ouvre, s’assemble et envoie sa première charge', async () => {
   const panneaux = [
     ['szh.apercuMetadonnees', undefined, 'valeurs'],
@@ -320,8 +305,7 @@ test('la vue d’ensemble des traductions liste les articles et ses commandes', 
     assert.ok(b.libelle && b.libelle.length > 0, 'bouton sans libellé : ' + b.id);
     assert.ok(b.icone, 'bouton sans pictogramme : ' + b.id);
   }
-  // Chaque état porte sa couleur et son pictogramme : une liste se lit d'un coup d'œil,
-  // pas en déchiffrant quatre libellés qui se ressemblent.
+  // Chaque état porte sa couleur et son pictogramme.
   for (const l of charge.lignes) {
     for (const past of l.pastilles) {
       assert.ok(past.icone, 'pastille sans pictogramme : ' + past.texte);
@@ -331,9 +315,7 @@ test('la vue d’ensemble des traductions liste les articles et ses commandes', 
   }
 });
 
-// Les trois boutons d'état sont côte à côte : ils doivent se comporter pareil. « À
-// traduire » se dérobait dès qu'un état était déjà posé — il ne promouvait que ce qui
-// n'avait pas commencé — et semblait donc ne rien faire.
+// Les trois boutons d'état se comportent pareil : chacun écrase l'état déjà posé.
 test('les trois états de masse écrivent, même à rebours du flux', async () => {
   const suivi = path.join(REVUE, 'articles', '01-essai', '01-essai.traduction.yaml');
   await HOTE.executer('szh.vueTraductions');
@@ -356,8 +338,8 @@ test('les trois états de masse écrivent, même à rebours du flux', async () =
     'un refus de confirmation a tout de même écrit');
 });
 
-// Le rapport de la dernière conversion ne vivait que dans le terminal d'une tâche : la vue
-// le relit, et chaque ligne prend le ton de ce qu'elle raconte.
+// La vue relit le rapport de la dernière conversion, et chaque ligne prend le ton de ce
+// qu'elle raconte.
 test('la vue d’ensemble des Word montre le rapport de conversion', async () => {
   await HOTE.executer('szh.vueWord');
   const p = HOTE.panneauDeType('szhVueWord');
@@ -368,7 +350,7 @@ test('la vue d’ensemble des Word montre le rapport de conversion', async () =>
   assert.ok(tons.indexOf('ok') !== -1, 'aucune conversion réussie signalée');
   assert.ok(tons.indexOf('attention') !== -1, 'aucun fichier ignoré signalé');
   assert.ok(tons.indexOf('danger') !== -1, 'aucun échec signalé');
-  // Le bilan compte les échecs : il ne doit pas se faire prendre pour l'un d'eux.
+  // Le bilan compte les échecs sans être pris pour l'un d'eux.
   const bilan = charge.lignes.filter((l) => /termin/i.test(l.titre))[0];
   assert.ok(bilan, 'ligne de bilan absente');
   assert.strictEqual((bilan.pastilles[0] || {}).ton, '', 'le bilan est classé comme un échec');
@@ -378,7 +360,7 @@ test('la vue d’ensemble des Word montre le rapport de conversion', async () =>
 });
 
 // Deux pièges du rapport : un .docx dont le nom porte des espaces, et un autre dont le nom
-// contient « terminé » — son échec se déguisait en ligne de bilan, c'est-à-dire en rien.
+// contient « terminé », qui ne doit pas passer pour une ligne de bilan.
 test('le rapport de conversion nomme les fichiers à espaces et n’excuse aucun échec', async () => {
   const journal = path.join(REVUE, 'articles-word', '.import.log');
   const LF = String.fromCharCode(10);
@@ -432,9 +414,7 @@ test('la fiche d’auteur·e écrit son rang, et refuse un rang décalé', async
 });
 
 // La liste des auteur·e·s publiés (cache OAI, lib/auteurs-ojs.js) part avec la charge de
-// chaque vue qui porte la modale d'auteur·e. Le harnais a posé un cache FRAIS avant
-// l'activation (hote-factice.js) : c'est aussi ce qui garantit qu'aucun test ne déclenche
-// le moissonnage réseau du rafraîchissement d'activation.
+// chaque vue qui porte la modale d'auteur·e. Le cache vient de hote-factice.js.
 test('la liste des auteur·e·s publiés part vers le panneau des médias', async () => {
   await HOTE.executer('szh.mediasArticle', { slug: '01-essai' });
   const p = HOTE.panneauDeType('szhMedias');
@@ -443,23 +423,20 @@ test('la liste des auteur·e·s publiés part vers le panneau des médias', asyn
   const msg = p.messages.filter((m) => m.type === 'auteurs-connus').pop();
   assert.ok(msg, 'aucun message auteurs-connus après la charge');
   assert.deepStrictEqual(msg.auteurs.map((a) => a.nom).sort(), ['Dupont', 'Morand']);
-  // Les six champs que la modale sait remplir, et EUX SEULS : ni `datePublication` ni
-  // `source`, qui ne servent qu'à la fusion côté cache. Une clé de plus qui partirait vers
-  // la webview y serait du bruit qu'aucun champ ne reçoit.
+  // Les six champs que la modale sait remplir, sans `datePublication` ni `source`, qui ne
+  // servent qu'à la fusion côté cache.
   for (const a of msg.auteurs) {
     assert.deepStrictEqual(Object.keys(a).sort(),
       ['affiliation', 'email', 'fonction', 'nom', 'orcid', 'prenom', 'ror']);
   }
 });
 
-// Le geste le plus destructeur du formulaire, et sa sortie de secours. Un fichier lâché
-// sur « Remplacer » écrase l'image sans retour possible : quand ce n'était pas l'intention,
-// le dialogue doit offrir de la poser À CÔTÉ plutôt que par-dessus. Ce contrôle porte sur
-// les DEUX moitiés de la promesse — le bouton est bien offert, et le choisir ne touche pas
-// à l'octet de l'image existante.
+// Un fichier lâché sur « Remplacer » écrase l'image sans retour possible : le dialogue
+// offre de la poser à côté. On vérifie que le bouton est offert et que le choisir laisse
+// l'image existante intacte.
 test('médias : le remplacement offre de poser la nouvelle à côté, et n’écrase alors rien', async () => {
-  // Les libellés des boutons viennent d'où l'hôte les tire : le crochet de Module._load
-  // posé par l'activation est encore en place, donc i18n.js se charge tel quel.
+  // Les libellés viennent de i18n.js, chargeable ici grâce au crochet de Module._load posé
+  // par l'activation.
   const { T } = require(path.join(__dirname, '..', '..',
     'vscodium-extension', 'szh-cockpit', 'lib', 'i18n.js'));
   const md = path.join(REVUE, 'articles', '01-essai', '01-essai.md');
@@ -479,8 +456,7 @@ test('médias : le remplacement offre de poser la nouvelle à côté, et n’éc
     donneesBase64: Buffer.from('nouvelle image').toString('base64'), medias: []
   });
 
-  // Les deux dialogues, dans l'ordre, chacun offrant l'issue de l'autre — c'est cette
-  // symétrie qui rattrape le fichier lâché sur la mauvaise zone, dans les deux sens.
+  // Les deux dialogues, dans l'ordre, chacun offrant l'issue de l'autre.
   assert.strictEqual(HOTE.modales.length, 2,
     'deux dialogues attendus, vus : ' + JSON.stringify(HOTE.modales.map((d) => d.boutons)));
   const [remplacement, aCote] = HOTE.modales;
@@ -492,10 +468,10 @@ test('médias : le remplacement offre de poser la nouvelle à côté, et n’éc
     [T('modale.acote.bouton'), T('modale.remplacer.bouton')],
     'le dialogue « à côté » n’offre pas de remplacer après tout');
 
-  // Rien n'a été écrasé : c'est toute la raison d'être de ce bouton.
+  // Rien n'a été écrasé.
   assert.deepStrictEqual(fs.readFileSync(image), avant, 'l’image existante a été écrasée');
-  // Le fichier déposé est entré sous un nom NEUF et assaini — accents, espaces,
-  // parenthèses et majuscule d'extension ne traversent ni un lien markdown ni WSL.
+  // Le fichier déposé entre sous un nom neuf et assaini : accents, espaces, parenthèses et
+  // majuscule d'extension ne traversent ni un lien markdown ni WSL.
   const nouvelles = fs.readdirSync(path.join(REVUE, 'articles', '01-essai', 'media'))
     .filter((n) => n !== 'a.png');
   assert.strictEqual(nouvelles.length, 1, 'le fichier déposé n’est pas arrivé : ' + nouvelles);
@@ -503,18 +479,15 @@ test('médias : le remplacement offre de poser la nouvelle à côté, et n’éc
     'le nom du fichier déposé n’a pas été assaini : ' + nouvelles[0]);
   assert.strictEqual(fs.readFileSync(path.join(REVUE, 'articles', '01-essai', 'media',
     nouvelles[0]), 'utf8'), 'nouvelle image');
-  // Le geste est allé jusqu'au bout : la barre d'état nomme les deux images. L'écriture du
-  // .md elle-même passe par un WorkspaceEdit, que ce harnais ne rejoue pas — c'est
-  // `poserDansGrille` qui la porte, éprouvée dans contrats.test.js.
+  // La barre d'état nomme les deux images. L'écriture du .md passe par un WorkspaceEdit
+  // (`poserDansGrille`), vérifié dans contrats.test.js.
   assert.strictEqual(HOTE.statutsDits(nouvelles[0]).length, 1,
     'la barre d’état ne dit pas que l’image a été posée à côté : ' + JSON.stringify(HOTE.statuts));
   assert.ok(fs.existsSync(md), 'le .md de l’article a disparu');
 });
 
-// Le geste qui échoue à mi-chemin. Le fichier est écrit AVANT que la référence puisse
-// l'être — c'est lui qui fixe le nom qu'elle doit citer — et un refus de la pose laissait
-// donc dans media/ une image que rien n'insère : invisible dans le rendu, jamais nommée
-// par une erreur, et retrouvée des mois plus tard. Elle doit être reprise.
+// Le geste qui échoue à mi-chemin. Le fichier est écrit avant la référence, qui cite son
+// nom : si la pose est refusée, l'image orpheline doit être retirée de media/.
 test('médias : « à côté » refusé ne laisse pas d’image orpheline dans le dossier', async () => {
   const { T } = require(path.join(__dirname, '..', '..',
     'vscodium-extension', 'szh-cockpit', 'lib', 'i18n.js'));
@@ -522,7 +495,7 @@ test('médias : « à côté » refusé ne laisse pas d’image orpheline dans l
   const md = path.join(dossier, '01-essai.md');
   const avant = fs.readFileSync(md, 'utf8');
   // L'insertion n'est plus seule sur sa ligne : l'envelopper couperait la phrase en deux,
-  // et `poserDansGrille` refuse. C'est le refus le plus probable en vrai.
+  // et `poserDansGrille` refuse. C'est le refus le plus probable en pratique.
   fs.writeFileSync(md, avant.replace('![Une legende](media/a.png){alt="desc"}',
     'Au fil du texte ![Une legende](media/a.png){alt="desc"} et la suite.'));
   const medias = () => fs.readdirSync(path.join(dossier, 'media')).sort();
@@ -547,9 +520,8 @@ test('médias : « à côté » refusé ne laisse pas d’image orpheline dans l
   fs.writeFileSync(md, avant);
 });
 
-// analyserAusgabe retire le BOM depuis longtemps ; analyserMeta ne le faisait pas, et un
-// éditeur qui l'ajoute (Word, Notepad) faisait perdre la clé `type` en tête de fiche —
-// silencieusement, puisque la ligne ne matchait alors plus la regex de clé.
+// analyserMeta retire le BOM (ajouté par Word ou Notepad), sans quoi la première clé de la
+// fiche ne correspondrait plus à la regex de clé.
 test('une fiche .meta.yaml avec BOM garde sa clé type', () => {
   const { analyserMeta } = require(path.join(COCKPIT, 'lib', 'yaml.js'));
   const avecBom = '﻿' + 'type: article\nlang: fr\n';
@@ -558,13 +530,12 @@ test('une fiche .meta.yaml avec BOM garde sa clé type', () => {
   assert.strictEqual(valeurs.lang, 'fr');
 });
 
-// Ctrl+S / triggerTaskOnSave lancent la tâche de build sans passer par aucune fonction du
-// cockpit : seuls les gestionnaires globaux onDidStartTask/onDidEndTaskProcess/onDidEndTask
-// (activate()) l'apprennent. S'ils ne posent pas buildEnCours, les 14 gardes qui le lisent —
-// dont supprimerArticle — restent inopérantes sur ce chemin, pourtant le plus fréquent.
-// Deux fins possibles, et le compteur doit relâcher la garde dans les deux cas : une tâche
-// normale émet onDidEndTaskProcess puis onDidEndTask, une tâche interrompue avant le spawn
-// (wsl.exe absent) n'émet jamais onDidEndTaskProcess et ne se termine que par onDidEndTask.
+// Ctrl+S (triggerTaskOnSave) lance la compilation sans passer par le cockpit : seuls les
+// gestionnaires globaux onDidStartTask/onDidEndTaskProcess/onDidEndTask l'apprennent, et
+// posent buildEnCours, que lisent les gardes comme celle de supprimerArticle.
+// Deux fins possibles relâchent la garde : une tâche normale émet onDidEndTaskProcess puis
+// onDidEndTask ; une tâche interrompue avant le lancement (wsl.exe absent) n'émet que
+// onDidEndTask.
 test('une compilation démarrée hors du cockpit (Ctrl+S) bloque bien les gardes buildEnCours',
   async () => {
     const nom = 'Aperçu / Export PDF';
@@ -608,10 +579,8 @@ test('une compilation démarrée hors du cockpit (Ctrl+S) bloque bien les gardes
       'la suppression reste refusée après une tâche interrompue avant le spawn (onDidEndTask seul)');
   });
 
-// archiverEtVerrouiller/desarchiver/supprimerArticle ne testaient buildEnCours qu'avant la
-// modale de confirmation : une compilation démarrée pendant que la modale est ouverte (elle
-// reste affichée le temps que le rédacteur réponde) n'était donc jamais vue, et l'effet sur
-// le disque suivait quand même le clic sur « Supprimer ».
+// archiverEtVerrouiller/desarchiver/supprimerArticle testent buildEnCours aussi après la
+// modale de confirmation : une compilation peut démarrer pendant qu'elle est ouverte.
 // Une image appelée par le texte mais absente du disque sort en cadre dans le PDF : le numéro
 // ne s'archive pas tant qu'elle manque, et on le dit avant la question de confirmation.
 test('archiver : une image introuvable refuse l’archivage et se nomme', async () => {
@@ -665,9 +634,8 @@ test('supprimerArticle : une compilation démarrée pendant la modale bloque la 
     assert.ok(!fs.existsSync(dossier), 'le nettoyage du test a échoué');
   });
 
-// lancerTache() n'attendait que onDidEndTaskProcess : si cet événement ne vient jamais
-// (tâche interrompue, wsl.exe absent), la promesse ne résolvait jamais et buildEnCours
-// restait vrai jusqu'au rechargement de la fenêtre — même quand onDidEndTask, lui, arrive.
+// lancerTache() se termine aussi sur onDidEndTask seul (tâche interrompue, wsl.exe absent),
+// sans quoi buildEnCours resterait vrai jusqu'au rechargement de la fenêtre.
 test('lancerTache : une tâche qui ne notifie que sa fin (onDidEndTask) libère buildEnCours',
   async () => {
     HOTE.stub.tasks.fetchTasks = () => Promise.resolve([{ name: 'Tout exporter' }]);
@@ -696,9 +664,8 @@ test('lancerTache : une tâche qui ne notifie que sa fin (onDidEndTask) libère 
   });
 
 // media/documentation.js retire la carte du DOM avant de savoir si l'hôte a pu écrire
-// (retrait optimiste, voir retirerFiche()). Si le numéro se verrouille pendant que le
-// panneau reste ouvert, l'hôte sortait en silence : rien ne disait à la page que rien
-// n'avait été écrit, et la carte restait disparue pour de bon.
+// (retirerFiche()). Si le numéro est verrouillé, l'hôte doit dire à la page que rien n'a
+// été écrit, pour qu'elle remette la carte.
 test('documentation : un retrait refusé (numéro verrouillé) est signalé au panneau', async () => {
   const ausgabe = path.join(REVUE, 'ausgabe.yaml');
   const avantYaml = fs.readFileSync(ausgabe, 'utf8');
@@ -707,7 +674,7 @@ test('documentation : un retrait refusé (numéro verrouillé) est signalé au p
   assert.ok(p, 'aucun panneau de documentation');
   p.messages.length = 0;
 
-  // Verrouille le numéro sans fermer le panneau : c'est exactement le cas visé.
+  // Verrouille le numéro sans fermer le panneau.
   fs.writeFileSync(ausgabe, avantYaml + 'locked: "true"\n');
   await HOTE.executer('szh.cockpit.rafraichir');
   try {
@@ -721,9 +688,9 @@ test('documentation : un retrait refusé (numéro verrouillé) est signalé au p
   }
 });
 
-// appliquerEtVerifierVerrou (point 3b) : verrouApplique doit refléter le RÉEL, jamais le
-// voulu. Un settings.json devenu illisible pendant le déverrouillage laisse le verrou
-// intact sur le disque — l'avertissement doit le dire, pas prétendre que ça a marché.
+// appliquerEtVerifierVerrou : verrouApplique reflète l'état réel du disque. Un
+// settings.json illisible pendant le déverrouillage laisse le verrou en place, et
+// l'avertissement le dit.
 test('un settings.json illisible pendant le déverrouillage laisse l’interface dire « verrouillé »', async () => {
   const ausgabe = path.join(REVUE, 'ausgabe.yaml');
   const avantYaml = fs.readFileSync(ausgabe, 'utf8');
@@ -734,9 +701,8 @@ test('un settings.json illisible pendant le déverrouillage laisse l’interface
   await HOTE.executer('szh.cockpit.rafraichir');
   assert.ok(fs.existsSync(cheminSettings), 'le verrou n’a pas écrit settings.json');
 
-  // Confirme la modale directement, sans passer par la file `repondreModale` partagée par
-  // tout le fichier : une réponse posée par un test précédent et jamais consommée s'y
-  // serait mise devant la nôtre.
+  // Confirme la modale directement, sans la file `repondreModale` partagée par tout le
+  // fichier, où une réponse restée d'un test précédent passerait devant.
   const showWarningOriginal = HOTE.stub.window.showWarningMessage;
   HOTE.stub.window.showWarningMessage = (m, ...reste) => {
     HOTE.avertissements.push(m);
@@ -744,7 +710,7 @@ test('un settings.json illisible pendant le déverrouillage laisse l’interface
     return Promise.resolve(options && options.modal ? reste[1] : undefined);
   };
   try {
-    // Puis il devient illisible — un JSON cassé, comme une synchro interrompue en laisse.
+    // Puis il devient illisible : un JSON cassé, comme en laisse une synchro interrompue.
     fs.writeFileSync(cheminSettings, '{ ceci ne se referme pas');
     const nAvant = HOTE.avertissements.length;
     await HOTE.executer('szh.deverrouiller');
@@ -761,14 +727,10 @@ test('un settings.json illisible pendant le déverrouillage laisse l’interface
 
 // ---- « Exporter cet article » dans le panneau Export -------------------------------
 //
-// L'entrée n'était offerte que sur un numéro gelé, au motif que la compilation automatique
-// s'occupe du reste sur un numéro vivant. Elle s'en occupe à l'enregistrement, ce qui n'est
-// pas la même chose que de le demander. Ces deux contrôles tiennent les deux bouts : elle est
-// là sur un numéro vivant — ce qui n'était pas vrai — ET elle y reste sur un numéro gelé, où
-// elle est le SEUL moyen de régénérer un document, l'archivage ayant vidé out/.
+// L'entrée est offerte sur un numéro vivant comme sur un numéro gelé. Sur un numéro gelé,
+// c'est le seul moyen de régénérer un document, l'archivage ayant vidé out/.
 
-// Les entrées d'un panneau, telles que la personne les voit : on intercepte le QuickPick
-// plutôt que de relire la liste dans la source, pour prouver le chemin entier.
+// Les entrées d'un panneau telles qu'affichées, lues en interceptant le QuickPick.
 async function entreesDuPanneau(commande) {
   const original = HOTE.stub.window.showQuickPick;
   let items = null;
@@ -829,19 +791,15 @@ test('le panneau Export garde « Exporter cet article » sur un numéro verrouil
 
 // ---- L'export d'un article finit dans l'Explorateur --------------------------------
 //
-// On demande un document pour en faire quelque chose : le joindre à un courriel, le déposer
-// sur OJS, l'envoyer à l'imprimeur. Le retrouver à la main dans out/<slug>/ était le seul
-// bout du chemin qui restait à la charge du rédacteur. Le second contrôle est le plus
-// important des deux : sur un export EN ÉCHEC, aucune fenêtre ne doit s'ouvrir — un dossier
-// vide, ou pire un PDF de la veille, ferait croire que ça a marché.
+// Un export réussi montre le document dans l'Explorateur. Un export en échec n'ouvre rien :
+// un dossier vide ou un PDF de la veille ferait croire que l'export a marché.
 
 // Joue szh.exporterArticle de bout en bout et rend les chemins révélés dans l'Explorateur.
-// La tâche est simulée : on intercepte son nom à l'envol plutôt que de le réécrire ici, qui
-// serait réécrire un libellé traduit et son cadratin.
+// La tâche est simulée ; son nom est lu au lancement plutôt que recopié (libellé traduit).
 async function exporterEtNoterExplorateur(slug, codeSortie) {
   const dossierOut = path.join(REVUE, 'out', slug);
-  // Ce que `make` aurait produit. Sans ces deux fichiers, ouvrirArticle() juge l'aperçu
-  // obsolète et attend une compilation que personne ne finira : le contrôle se figerait.
+  // Ce que `make` aurait produit. Sans ces deux fichiers, ouvrirArticle() attendrait une
+  // compilation que personne ne finira.
   fs.mkdirSync(dossierOut, { recursive: true });
   fs.writeFileSync(path.join(dossierOut, slug + '.pdf'), 'PDF factice');
   fs.writeFileSync(path.join(dossierOut, slug + '.apercu.html'), '<p>aperçu factice</p>');
@@ -870,12 +828,8 @@ async function exporterEtNoterExplorateur(slug, codeSortie) {
 }
 
 test('« Exporter cet article » ouvre le dossier de sortie, le PDF sélectionné', async () => {
-  // Le fixture nommait cet article « 01-essai », mais les suppressions plus haut dans ce
-  // fichier (les gardes buildEnCours, ~L545) ont depuis fait passer alignerDossiersSurOrdre()
-  // sur ce qui restait, et son dossier porte désormais son rang en base 0
-  // (lib/renumerotation.js). On lit le slug réel sur l'arbre plutôt que d'en supposer un
-  // figé, sans quoi ce test casserait à chaque réalignement amont, sans rapport avec ce
-  // qu'il éprouve.
+  // Les suppressions des tests précédents ont renuméroté les dossiers
+  // (alignerDossiersSurOrdre()) : le slug réel se lit sur l'arbre.
   const [slug] = HOTE.arbre().listerArticles();
   assert.ok(slug, 'aucun article sur lequel exporter');
   const reveles = await exporterEtNoterExplorateur(slug, 0);
@@ -896,18 +850,13 @@ test('un export en échec n’ouvre aucune fenêtre d’Explorateur', async () =
 
 // ---- « Voir le PDF (Explorateur) » depuis le menu contextuel -----------------------
 //
-// Lecture pure : la commande ne compile rien et n'écrit rien, et le menu (package.json,
-// group navigation@3) ne porte aucune garde szh.verrouillee — retrouver un PDF déjà sorti
-// est justement le geste qu'on cherche sur un numéro qu'on ne peut plus modifier. Trois
-// états à couvrir : le PDF est là, il ne l'est pas mais out/<slug>/ existe encore (reste
-// d'une compilation en échec), et rien du tout n'existe — le seul cas où une notification
-// doit parler, faute de quoi montrer un chemin absent ferait croire à un document à jour.
+// La commande ne compile ni n'écrit rien, et reste offerte sur un numéro verrouillé. Trois
+// cas : le PDF est là ; seul out/<slug>/ existe (compilation en échec) ; rien n'existe, et
+// une notification le dit.
 
 // Joue szh.voirPdfArticle et rend { reveles, infos } : les chemins montrés dans
-// l'Explorateur, et les notifications d'information envoyées au rédacteur. Même détour que
-// exporterEtNoterExplorateur ci-dessus pour intercepter revealFileInOS ; showInformationMessage
-// s'intercepte de la même façon (archivage-suppression.test.js), l'hôte factice ne le
-// journalise pas de lui-même.
+// l'Explorateur et les notifications d'information. showInformationMessage est intercepté
+// ici, l'hôte factice ne le retenant pas.
 async function voirPdfEtNoter(slug) {
   const execOriginal = HOTE.stub.commands.executeCommand;
   const infoOriginal = HOTE.stub.window.showInformationMessage;
@@ -983,10 +932,9 @@ test('« Voir le PDF (Explorateur) » sans compilation ne montre jamais un chemi
     'la notification ne dit pas que l’article n’a pas encore été compilé : ' + infos[0]);
 });
 
-// Non-régression du chantier livre (point 3) : côté revue, un champ vidé à l'écran (le
-// rédacteur choisit « (aucun) » dans le <select> type) doit toujours effacer le type dans
-// la fiche — la préservation ajoutée pour un chapitre (test/js/hote-livre.test.js) ne doit
-// jouer que pour le profil livre, jamais ici.
+// Côté revue, un champ vidé à l'écran (« (aucun) » dans le <select> type) efface le type
+// dans la fiche. La préservation de ces clés ne vaut que pour un chapitre
+// (test/js/hote-livre.test.js).
 test('revue : un type remis à vide EST bien effacé (non-régression)', async () => {
   const [slug] = HOTE.arbre().listerArticles();
   const fichierMeta = path.join(REVUE, 'articles', slug, slug + '.meta.yaml');
@@ -1011,9 +959,8 @@ test('revue : un type remis à vide EST bien effacé (non-régression)', async (
   }
 });
 
-// Non-régression du chantier livre (point 5) : côté revue, les quatre blocs (auteur·e·s
-// publiés OJS, bibliographie, tâches par article, export OJS) continuent d'arriver au
-// panneau Réglages — seul un livre les fait omettre (test/js/hote-livre.test.js).
+// Côté revue, les quatre blocs (auteur·e·s publiés OJS, bibliographie, tâches par article,
+// export OJS) arrivent au panneau Réglages ; un livre les omet (test/js/hote-livre.test.js).
 test('revue : le panneau Réglages envoie toujours ojs, biblio, taches et auteursOjs', async () => {
   await HOTE.executer('szh.reglages');
   const p = HOTE.panneauDeType('szhAccueil');
@@ -1027,8 +974,8 @@ test('revue : le panneau Réglages envoie toujours ojs, biblio, taches et auteur
   assert.ok(valeurs.auteursOjs, 'le bloc auteur·e·s publiés n’est plus envoyé pour une revue');
 });
 
-// Non-régression du chantier livre (point 6) : côté revue, l'invitation au tutoriel
-// s'affiche toujours, une fois par personne (context.globalState).
+// Côté revue, l'invitation au tutoriel s'affiche une fois par personne
+// (context.globalState).
 test('revue : proposerTutoriel invite une fois, puis plus jamais avec le même contexte (non-régression)', async () => {
   const ext = require(path.join(COCKPIT, 'extension.js'));
   let invitations = 0;

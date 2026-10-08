@@ -2,19 +2,19 @@
 // en relisent le HTML par expressions régulières : pipeline/livre-assembler.py (RE_COULEUR_
 // CHAPITRE, RE_ONGLET_HAUTEUR, RE_HORS_SOMMAIRE, RE_NUMERO_CHAPITRE, RE_NUM_SECTION, RE_TITRE)
 // et pipeline/livre-epub-prepare.py (RE_CHAPITRE, RE_CHAPITRE_ID, RE_ONGLET, RE_PASTILLE,
-// RE_PICTO). Un attribut qui change d'ordre dans le gabarit ferait taire ces lectures sans
-// aucune erreur : ce test compile un vrai chapitre du banc avec le vrai gabarit, puis fait
-// relire le fragment par les VRAIES fonctions des deux scripts (importées, pas recopiées).
+// RE_PICTO). Un attribut qui change d'ordre dans le gabarit ferait échouer ces lectures sans
+// erreur : ce test compile un vrai chapitre du banc avec le vrai gabarit, puis fait relire le
+// fragment par les vraies fonctions des deux scripts (importées, pas recopiées).
 //
 //   node --test test/js/contrat-gabarit-chapitre.test.js
 //
 // Le chapitre est copié dans un dossier jetable : rien n'est écrit sous test/livre-normal.
 // La chaîne de filtres est réduite à ce qui écrit les balises lues (titre de fiche, numéro de
-// section) ; les attributs --metadata sont ceux que pipeline/profils/livre.mk passe. Ni
-// szh-numerotation.lua (RE_REGLE_DECOR, bloc <style> de décors) ni les règles d'URL CSS ne
-// sont éprouvés ici : leur balisage ne vient pas de ce gabarit.
+// section) ; les attributs --metadata sont ceux que pipeline/profils/livre.mk passe.
+// szh-numerotation.lua (RE_REGLE_DECOR, bloc <style> de décors) et les règles d'URL CSS ne
+// sont pas vérifiés ici : leur balisage ne vient pas de ce gabarit.
 //
-// Sonde de mutation : le même contrôle, sur une COPIE du gabarit dont deux attributs de la
+// Contre-épreuve : le même contrôle, sur une copie du gabarit dont deux attributs de la
 // pastille sont intervertis, doit échouer.
 'use strict';
 

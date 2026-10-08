@@ -1,25 +1,16 @@
-// La date d'un numéro : une clé, un sens. `date:` d'ausgabe.yaml est la date de
-// PUBLICATION, complète (AAAA-MM-JJ) ou vide, jamais tronquée à l'année.
+// La date d'un numéro : `date:` d'ausgabe.yaml est la date de publication, complète
+// (AAAA-MM-JJ) ou vide, jamais réduite à l'année.
 //
 //   node --test "test/js/*.test.js"
 //
-// Pourquoi ce fichier. La clé servait à deux besoins incompatibles : la couverture voulait
-// l'année, connue dès la création du dossier, et l'export OJS voulait le jour, qui ne l'est
-// pas. Le lanceur écrivait donc l'année seule — un champ qui paraît rempli alors qu'il ne
-// l'est pas, le pire des trois états : l'export la refusait, et le rédacteur ne voyait pas
-// pourquoi puisque la couverture affichait bien quelque chose.
+// La couverture n'en dépend pas : quand la clé est vide, szh-maquette.lua reprend l'année
+// du nom du dossier (« 2027-03 ») ; une date complète passe devant. Une année seule ferait
+// paraître le champ rempli, alors que l'export OJS la refuse.
 //
-// La règle posée : `date:` ne porte que la vraie date de publication. La couverture n'en
-// dépend plus — szh-maquette.lua reprend l'année du nom du dossier du numéro (« 2027-03 »)
-// quand la clé est vide, et une date complète saisie passe devant.
-//
-// Trois côtés à tenir ensemble, donc trois familles de contrôle : le lanceur qui crée le
-// numéro (source PowerShell), le gabarit livré aux rédactions, et le filtre Lua qui compose
-// la couverture — celui-là exécuté pour de vrai, pandoc étant le seul juge de ce qu'il fait.
-//
-// Le Lua tourne dans la WSL : pandoc n'existe pas côté Windows. S'il est introuvable, les
-// contrôles qui en dépendent sont sautés en le disant — jamais verts par défaut. SZH_WSL_OBLIGATOIRE
-// en fait des échecs, ce qu'une CI doit faire.
+// Trois familles de contrôle : le lanceur qui crée le numéro (source PowerShell), le gabarit
+// livré aux rédactions, et le filtre Lua de la couverture, exécuté par pandoc dans la WSL.
+// Sans pandoc dans la WSL, ces derniers contrôles sautent ; SZH_WSL_OBLIGATOIRE en fait des
+// échecs.
 'use strict';
 
 const test = require('node:test');
@@ -33,14 +24,11 @@ const { sauter, sansPandocWsl, sansPowerShell } = require('./gardes');
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 
-// AVANT le premier require du cockpit : lib/i18n.js résout la langue une fois, à son
-// chargement, et sa cascade finit sur l'état du poste — C:\ProgramData\SZH\state.json, qui
-// porte la langue du dernier lanceur ouvert. Ce fichier ne passe pas par hote-factice.js,
-// qui neutralise cet état pour tous les autres : sur un poste dont le dernier lanceur était
-// « Zeitschriften SZH », le message d'erreur de l'export sortait en allemand et le contrôle
-// ci-dessous tombait — sur la machine du développeur seulement, jamais en intégration, où
-// aucun état de poste n'existe. Une demi-heure perdue à chercher une régression qui n'en
-// était pas une.
+// Avant le premier require du cockpit : lib/i18n.js fixe la langue à son chargement, en
+// finissant par l'état du poste (C:\ProgramData\SZH\state.json, langue du dernier lanceur
+// ouvert). Ce fichier ne passe pas par hote-factice.js, qui neutralise cet état ; sans
+// cela, les messages sortiraient en allemand sur un poste où la Zeitschrift a été ouverte
+// en dernier.
 process.env.SZH_ETAT_POSTE = path.join(
   fs.mkdtempSync(path.join(os.tmpdir(), 'szh-date-etat-')), 'state.json');
 fs.writeFileSync(process.env.SZH_ETAT_POSTE, '{}\n');
@@ -61,20 +49,20 @@ function dossierJetable() {
 
 test('date : le lanceur ne fabrique pas de date à partir du nom du dossier', () => {
   const src = fs.readFileSync(LANCEUR, 'utf8');
-  // Le bloc d'identité, celui qui lit « 2027-03 ». Tout ce qui suit s'y juge.
+  // Le bloc qui lit l'identité dans le nom du dossier (« 2027-03 »).
   const i = src.indexOf("$leaf -match '^(\\d{4})-(\\d{1,3})$'");
   assert.notStrictEqual(i, -1, 'le lanceur ne déduit plus l’identité du nom du dossier');
   const bloc = src.slice(i, src.indexOf("'title'", i));
-  // Le numéro vient bien du dossier : c'est la moitié qui doit rester.
+  // Le numéro vient du dossier.
   assert.match(bloc, /'numero'\s+\$rang/, 'le numéro ne vient plus du nom du dossier');
-  // La date, elle, ne s'invente pas. Aucun appel qui pose 'date' avec une valeur.
+  // La date, non : aucun appel ne pose 'date' avec une valeur.
   const posesDeDate = [...src.matchAll(/Set-SzhAusgabeCle\s+\$chemin\s+'date'\s+(\S+)/g)]
     .map((m) => m[1]);
   assert.deepStrictEqual(posesDeDate, ["''"],
     'le lanceur écrit une valeur dans `date:` : une année tronquée ne doit plus revenir');
   assert.ok(!/'date'\s+\$Matches|'date'\s+\$annee/.test(src),
     'l’année du dossier repart dans `date:`');
-  // Et il dit où saisir la vraie : sans ce mot, le rédacteur découvre le manque à l'export.
+  // Le lanceur dit où saisir la date.
   assert.match(src, /Métadonnées du numéro/,
     'le lanceur ne dit pas où saisir la date de publication');
 });
@@ -87,10 +75,8 @@ test('date : le fichier du lanceur reste analysable, avec BOM et CRLF', (t) => {
   const lf = (texte.match(/\n/g) || []).length;
   const crlf = (texte.match(/\r\n/g) || []).length;
   assert.strictEqual(lf, crlf, 'new-revue.ps1 porte des fins de ligne LF : .gitattributes exige CRLF');
-  // L'analyse PowerShell n'est possible que si l'outil l'est : la forme (ci-dessus) suffit
-  // sinon. `process.platform !== 'win32'` seul ne suffisait pas — un Windows sans
-  // powershell.exe joignable (simulation, poste dégradé) appelait quand même
-  // spawnSync('powershell.exe', ...) en dur, et l'échec ne se lisait pas comme un saut.
+  // L'analyse demande powershell.exe ; sans lui (y compris sous Windows simulé), seule la
+  // forme ci-dessus est vérifiée.
   if (sansPowerShell) { sauter.powershell(t); return; }
   const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
     '$e=$null; $t=$null; ' +
@@ -106,15 +92,13 @@ test('date : le fichier du lanceur reste analysable, avec BOM et CRLF', (t) => {
 test('date : le gabarit ne livre aucune date de publication, pas même plausible', () => {
   const brut = fs.readFileSync(GABARIT, 'utf8');
   const valeurs = yaml.analyserAusgabe(brut);
-  // La clé existe — le formulaire du numéro doit la montrer, et son absence se lirait
-  // comme un oubli plutôt que comme un champ à remplir.
+  // La clé existe, pour que le formulaire du numéro la montre.
   assert.match(brut, /^date:/m, 'la clé `date:` a disparu du gabarit');
-  // Mais elle est vide. Une date d'exemple crédible (« 2026-06-15 ») partirait telle quelle
-  // dans un numéro de 2027 sans que personne ne la relise : une date fausse et crédible est
-  // pire qu'une date absente, parce qu'elle désarme le refus de l'export.
+  // Elle est vide : une date d'exemple crédible partirait telle quelle et désarmerait le
+  // refus de l'export.
   assert.strictEqual(String(valeurs.date || ''), '',
     'le gabarit livre une date de publication : elle voyagera dans un numéro qui n’est pas le sien');
-  // Et pas non plus une année seule, qui ferait paraître le champ rempli.
+  // Pas d'année seule non plus.
   assert.ok(!/^date:\s*"?\d{4}"?\s*$/m.test(brut), 'année seule revenue dans le gabarit');
 });
 
@@ -135,15 +119,13 @@ test('barre : le titre d’un numéro sans date de publication garde son année'
     fs.writeFileSync(path.join(racine, 'ausgabe.yaml'), lignes.join('\n'));
     return racine;
   };
-  // Sans date : l'année vient du dossier. Sans ce repli la barre annonçait « Revue /03 », ce
-  // qu'aucun rédacteur ne reconnaît comme son numéro.
+  // Sans date : l'année vient du dossier.
   assert.strictEqual(yaml.titreNumero(poser('2027-03', '')), 'Revue 2027/03 | Autodétermination');
-  // Avec une date : c'est elle qui fait foi, comme sur la couverture.
+  // Avec une date : elle fait foi, comme sur la couverture.
   assert.strictEqual(yaml.titreNumero(poser('2027-04', '2028-01-20')), 'Revue 2028/03 | Autodétermination');
   // Dossier hors convention : pas d'année inventée, et le titre reste lisible.
   assert.strictEqual(yaml.titreNumero(poser('numero-de-printemps', '')), 'Revue 03 | Autodétermination');
-  // Le jeton `revue: zeitschrift` décide seul du nom, même en français : c'est le seul
-  // contrôle qui prouve que le nom vient du jeton et non de la langue.
+  // `revue: zeitschrift` décide seul du nom, même avec lang: fr.
   assert.strictEqual(yaml.titreNumero(poser('2027-03', '', 'zeitschrift')),
     'Zeitschrift 2027/03 | Autodétermination');
   // Sans clé `revue:` du tout (ausgabe.yaml ancien) : repli sur la langue par défaut.
@@ -162,16 +144,14 @@ test('barre : le titre d’un numéro sans date de publication garde son année'
 
 // ---- la couverture, composée pour de vrai --------------------------------------------
 
-// Le filtre est appelé par pandoc avec un template d'une seule variable : ce qui sort est
-// exactement la ligne que la couverture imprime. Lire la source ne dirait rien.
+// pandoc appelle le filtre avec un template d'une seule variable : la sortie est la ligne
+// que la couverture imprime.
 const TEMPLATE = '$vol-ligne$\n';
-// La ligne n'est plus une chaîne mais des INLINES (szh-maquette.lua, ABREV_NUMERO) : le « o »
-// de l'abréviation française est un o en exposant, et un <sup> ne peut pas passer par une
-// MetaString, que pandoc échappe. C'est donc le balisage qu'on lit ici, et c'est voulu — un
-// « ° » ou un U+00BA remis à la place se verrait dans le diff.
-// L'insécable, elle, ne sert plus qu'à l'allemand et à l'italien, dont l'abréviation finit
-// par un point : « Nr.02 » se lirait comme un nombre décimal. Le français ne prend AUCUNE
-// espace — « Nᵒ02/2027 », décision du 08.09.2026.
+// La ligne est faite d'inlines (szh-maquette.lua, ABREV_NUMERO) : le « o » français est en
+// exposant, et un <sup> ne passe pas par une MetaString, que pandoc échappe. On lit donc le
+// balisage ; un « ° » ou un U+00BA à la place serait une erreur.
+// L'insécable ne sert qu'à l'allemand et à l'italien, dont l'abréviation finit par un point
+// (« Nr.02 » se lirait comme un nombre décimal). Le français n'a pas d'espace : « Nᵒ02/2027 ».
 const NBSP = '\u00A0';
 const NO_FR = 'N<sup>o</sup>';
 
@@ -183,8 +163,8 @@ function sauterSansLua(t, raison) {
 
 // Compose la ligne de couverture d'un numéro posé dans un dossier nommé `dossier`, avec la
 // valeur `date` dans son ausgabe.yaml. Rend la chaîne imprimée, telle quelle.
-// `revue` : le jeton de revue, « revue » par défaut. Il porte la langue de composition, dont
-// dépend l'abréviation du numéro — c'est le seul moyen d'éprouver la forme allemande.
+// `revue` : le jeton de revue, « revue » par défaut. Il fixe la langue de composition, donc
+// l'abréviation du numéro.
 function ligneCouverture(dossier, date, revue) {
   const travail = dossierJetable();
   const numero = path.join(travail, dossier);
@@ -194,8 +174,7 @@ function ligneCouverture(dossier, date, revue) {
   fs.writeFileSync(path.join(numero, 'ausgabe.yaml'),
     ['revue: ' + (revue || 'revue'), 'title: "Un dossier"', 'volume: "44"',
       'numero: "03"', 'date: "' + date + '"', ''].join('\n'), 'utf8');
-  // Pas de `lang:` dans la fiche : c'est le jeton de revue qui doit décider, sinon la
-  // variante allemande ci-dessous se composerait en français sans qu'on le voie.
+  // Pas de `lang:` dans la fiche : c'est le jeton de revue qui décide de la langue.
   fs.writeFileSync(path.join(article, '01-essai.meta.yaml'),
     ['type: article', 'title:', '  fr: "Un titre"', '  de: "Ein Titel"',
       ''].join('\n'), 'utf8');
@@ -227,7 +206,7 @@ test("couverture : sans date de publication, l’année vient du nom du dossier"
 
 test('couverture : une date de publication complète passe devant le dossier', (t) => {
   if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
-  // Dossier et date en désaccord : le seul cas où l'on voit laquelle des deux fait loi.
+  // Dossier et date en désaccord, pour voir laquelle des deux l'emporte.
   const ligne = ligneCouverture('2027-03', '2028-01-20');
   t.diagnostic('dossier « 2027-03 », date « 2028-01-20 » -> « ' + ligne + ' »');
   assert.strictEqual(ligne, 'Vol. 44 · ' + NO_FR + '03/2028',
@@ -236,8 +215,7 @@ test('couverture : une date de publication complète passe devant le dossier', (
 
 test("couverture : un dossier hors convention laisse l’année absente, pas fausse", (t) => {
   if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
-  // « Numero de printemps » ne porte pas d'année : mieux vaut une ligne sans année qu'une
-  // année prise ailleurs. Le lanceur laisse aussi le numéro à remplir dans ce cas.
+  // « numero-de-printemps » ne porte pas d'année : la ligne n'en a pas.
   const ligne = ligneCouverture('numero-de-printemps', '');
   t.diagnostic('dossier « numero-de-printemps », date vide -> « ' + ligne + ' »');
   assert.strictEqual(ligne, 'Vol. 44 · ' + NO_FR + '03',
@@ -246,9 +224,7 @@ test("couverture : un dossier hors convention laisse l’année absente, pas fau
 
 test('couverture : en allemand, « Jg. » et « Nr. » avec son insécable, jamais le o en exposant', (t) => {
   if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
-  // Le millésime allemand est un Jahrgang, pas un « Vol. » anglicisant. L'abréviation du
-  // numéro, elle, finit par un point et garde l'espace que le français perd, « Nr.03 » se
-  // lisant comme un nombre décimal. Et pas de <sup> : « Nr. » s'écrit en lettres pleines.
+  // En allemand : « Jg. » (Jahrgang), et « Nr. » suivi d'une insécable, sans <sup>.
   const ligne = ligneCouverture('2027-03', '', 'zeitschrift');
   t.diagnostic('revue: zeitschrift -> « ' + ligne + ' »');
   assert.strictEqual(ligne, 'Jg. 44 · Nr.' + NBSP + '03/2027',
@@ -258,9 +234,7 @@ test('couverture : en allemand, « Jg. » et « Nr. » avec son insécable, jama
 
 test('couverture : en français, le millésime reste « Vol. »', (t) => {
   if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
-  // Sans ce contrôle, rien n'empêcherait de faire passer TOUTES les langues en « Jg. » — la
-  // forme allemande a sa propre condition dans le filtre, et seul un essai français la met
-  // à l'épreuve.
+  // Vérifie que la condition de la forme allemande ne s'applique pas au français.
   const ligne = ligneCouverture('2027-03', '', 'revue');
   t.diagnostic('revue: revue -> « ' + ligne + ' »');
   assert.ok(ligne.startsWith('Vol. 44 · '),
@@ -270,7 +244,7 @@ test('couverture : en français, le millésime reste « Vol. »', (t) => {
 // ---- l'export OJS --------------------------------------------------------------------
 
 test('date : l’export refuse le numéro tant que la date n’est pas saisie', () => {
-  // Le config.json du poste n'est jamais touché : SZH_CONFIG_OJS détourne la lecture.
+  // SZH_CONFIG_OJS détourne la lecture du config.json du poste.
   process.env.SZH_CONFIG_OJS = path.join(
     fs.mkdtempSync(path.join(os.tmpdir(), 'szh-date-cfg-')), 'config.json');
   const ojs = require(path.join(COCKPIT, 'lib', 'export-ojs.js'));
@@ -311,13 +285,12 @@ test('date : l’export refuse le numéro tant que la date n’est pas saisie', 
   }, 'un numéro sans date de publication est parti quand même');
   assert.deepStrictEqual(xmlPresents(), []);
 
-  // Année seule : refusée aussi. C'est ce que le lanceur écrivait, et c'est le cas qui
-  // trompait — le champ paraissait rempli.
+  // Année seule : refusée aussi.
   monter('2027');
   assert.throws(() => ojs.genererExportOjs(racine, options), /2027/);
   assert.deepStrictEqual(xmlPresents(), []);
 
-  // Date complète : accepté, et c'est elle qui part, avec l'année qu'elle porte.
+  // Date complète : acceptée, elle part avec son année.
   monter('2027-03-31');
   const r = ojs.genererExportOjs(racine, options);
   const xml = fs.readFileSync(r.chemin, 'utf8');

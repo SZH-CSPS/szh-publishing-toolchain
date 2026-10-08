@@ -28,8 +28,8 @@ function dossierJetable() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'szh-mep-'));
 }
 
-/// Le contrat, lu dans le fichier même que lisent l'assembleur et szh-commun.lua : les tests le
-// citent, ils ne le recopient pas.
+// Le contrat, lu dans le fichier même que lisent l'assembleur et szh-commun.lua : les tests
+// le citent sans le recopier.
 const CONTRAT = JSON.parse(fs.readFileSync(
   path.join(RACINE, 'pipeline', 'livre', 'mise-en-page.json'), 'utf8'));
 const TABLE = CONTRAT.cles;
@@ -192,7 +192,7 @@ test('mise-en-page : une clé inconnue est refusée', { skip: sansPython }, () =
   exigerRefus(assembler(bloc({ 'marge-haut': '20' })), 'mise-en-page-cle-inconnue', 'marge-haut');
 });
 
-// La valeur annoncée au lot des clés, refusée tant que les parties n'existaient pas.
+// `numeros-chapitres: partie` est accepté.
 test('mise-en-page : numeros-chapitres partie est permise, maintenant que les parties existent', { skip: sansPython }, () => {
   const r = assembler(bloc({ 'numeros-chapitres': 'partie' }));
   assert.strictEqual(r.status, 0, r.stderr);

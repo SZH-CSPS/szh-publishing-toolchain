@@ -1,20 +1,18 @@
-// pipeline/manuscrit_annoter.py : annote un .docx DÉJÀ au gabarit (la sortie de
-// manuscrit_gabarit.ecrire()) avec les alertes du contrat §7 — révisions Word (w:ins/w:del)
-// pour les corrections déterministes, commentaires Word ancrés pour ce qui demande un
-// jugement, plafonnés (au plus 5 par règle, un plafond global). Contrat :
-// docs/ARCHITECTURE-nettoyeur-manuscrit.md, §7 ter.
+// pipeline/manuscrit_annoter.py : annote un .docx déjà au gabarit (la sortie de
+// manuscrit_gabarit.ecrire()) avec les alertes : révisions Word (w:ins/w:del) pour les
+// corrections déterministes, commentaires Word ancrés pour ce qui demande un jugement,
+// plafonnés (au plus 5 par règle, plus un plafond global). Voir
+// docs/ARCHITECTURE-nettoyeur-manuscrit.md.
 //
 //   node --test test/js/manuscrit-annoter.test.js
 //
-// Fixtures fabriquées en Python (patron test/js/docx-titres.test.js, fabriquerDocx) : un
-// .docx minimal dont le corps imite la forme que rend manuscrit_gabarit.ecrire() — deux
-// <w:p/> vides avant le corps (les séparateurs des deux tableaux fixes du gabarit, §7 du
-// contrat de l'écrivain) puis les paragraphes réels, avec un mot cible FRACTIONNÉ entre deux
-// runs pour éprouver « fractionne les runs aux deux décalages » (§7 ter, point 1).
+// Les fixtures sont fabriquées en Python : un .docx minimal dont le corps imite la sortie de
+// manuscrit_gabarit.ecrire() (deux <w:p/> vides, séparateurs des deux tableaux fixes, puis
+// les paragraphes réels).
 //
-// Gardes : python() de test/js/gardes.js (la WSL sous Windows). sansPandocWsl couvre la preuve indépendante (accepter /
-// rejeter / lire les commentaires via pandoc réel dans la WSL) et le contrôle sur corpus réel,
-// sauté proprement si tmp/ (hors git) est absent ou si la distro manque.
+// Python passe par python() de test/js/gardes.js (la WSL sous Windows). sansPandocWsl garde la
+// preuve par pandoc (accepter, rejeter, lire les commentaires) et l'essai sur corpus réel, qui
+// est sauté si tmp/ (hors git) ou la distribution WSL manquent.
 'use strict';
 
 const test = require('node:test');
@@ -31,12 +29,8 @@ const ANNOTER = path.join(PIPELINE, 'manuscrit_annoter.py');
 const CORPUS_LOT_A = path.join(RACINE, 'tmp', 'corpus-relecture', 'lot-A');
 const DISTRO = 'SZH-Publishing';
 
-// PYTHONIOENCODING=utf-8 : sans elle, l'interprète Python de ce poste écrit son stdout dans
-// l'encodage de la console Windows (cp1252) plutôt qu'en UTF-8 — un accent revient mangled
-// (« démarche » -> « d�marche ») alors que le XML produit, lui, est parfaitement correct.
-// Même piège que documenté dans manuscrit-gabarit.test.js ; mesuré ici sur le nouveau
-// contrôle « found court ou ambigu » (le seul de ce fichier à faire transiter un accent par
-// simularAceptarRechazar()).
+// PYTHONIOENCODING=utf-8 : sans elle, Python sous Windows écrit stdout en cp1252 et les
+// accents reviennent abîmés (« démarche » -> « d�marche »).
 const ENV_UTF8 = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
 const PYTHON_OPTS = { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 };
 
@@ -45,12 +39,11 @@ function dossierJetable() {
 }
 
 // ---------------------------------------------------------------------------------
-// Fabrication d'un .docx minimal — patron fabriquerDocx de docx-titres.test.js : un
-// programme Python écrit au vol, jamais un binaire figé. `paragraphes` : liste de
-// { texte } | { runs: [{ texte, rpr:{gras,italique} }, ...] } | { vide: true }. Le corps
-// imite manuscrit_gabarit.ecrire() : deux <w:p/> puis les paragraphes réels puis <w:sectPr/>,
-// entre deux <w:tbl> minimaux — de quoi éprouver que les w:tbl ne comptent pas dans
-// l'indexation des <w:p> (§7 ter, point « correspondance »).
+// Fabrication d'un .docx minimal par un programme Python écrit au vol. `paragraphes` : liste
+// de { texte } | { runs: [{ texte, rpr:{gras,italique} }, ...] } | { vide: true }. Le corps
+// imite manuscrit_gabarit.ecrire() : deux <w:tbl> minimaux suivis chacun d'un <w:p/>, puis
+// les paragraphes réels et <w:sectPr/>. Les w:tbl éprouvent que l'indexation des <w:p> les
+// ignore.
 const FABRICAR_DOCX_PY = [
   'import json, sys, zipfile',
   'chemin, paras, notas = sys.argv[1], json.loads(sys.argv[2]), json.loads(sys.argv[3])',
@@ -140,11 +133,9 @@ function fabriquerDocx(chemin, paragraphes, notes) {
 
 // ---------------------------------------------------------------------------------
 // Pilotage de annoter() : appelle le module, rend {stats, documentXml, commentsXml, parties}.
-// La validation « bien formée » (ET.fromstring) se fait ICI, dans le MÊME processus Python,
-// jamais via un second appel qui repasserait le contenu XML en ligne de commande : un
-// manuscrit réel (l'essai sur corpus, plus bas) produit un document.xml de plusieurs centaines
-// de Ko, largement au-delà de la limite de ligne de commande Windows (~32 Ko) — un piège
-// mesuré en écrivant ce fichier (voir le rapport de chantier).
+// La validation « bien formée » (ET.fromstring) se fait dans le même processus Python : le
+// document.xml d'un manuscrit réel pèse plusieurs centaines de Ko, au-delà de la limite de
+// ligne de commande Windows (~32 Ko).
 const ANNOTER_PY = [
   'import json, sys, zipfile',
   'import xml.etree.ElementTree as ET',
@@ -194,21 +185,15 @@ function anotar(paragraphes, alertes, correspondance, options, notas) {
 }
 
 // ---------------------------------------------------------------------------------
-// Validation XML — chaque partie .xml/.rels doit être bien formée (ET.fromstring, jamais un
-// simple code de sortie 0), déjà calculée par ANNOTER_PY dans le MÊME processus (voir sa
-// note : jamais de second appel qui repasserait un gros XML en ligne de commande).
+// Validation XML : chaque partie .xml/.rels doit être bien formée (calculé par ANNOTER_PY).
 function validerBienFormees(resultat) {
   assert.deepStrictEqual(resultat.erroresXml, [],
     'partie(s) XML mal formée(s) :\n' + resultat.erroresXml.join('\n'));
-  // §7 ter, point 2 : « identifiants uniques croissants pour tous les w:id de révision et de
-  // commentaire du document » — un compteur qui bégaierait (répète la même valeur au lieu
-  // d'avancer) ne casse AUCUNE des assertions de contenu ci-dessus : rien ne relit jamais
-  // l'identifiant d'UN w:ins/w:del/w:comment contre celui d'UN AUTRE sans ce contrôle dédié
-  // (sabotage vérifié, voir le rapport de chantier). Ne compte PAS commentRangeStart/End ni
-  // commentReference : ceux-là RÉPÈTENT légitimement l'id de leur commentaire, plusieurs fois.
+  // Les w:id de révision et de commentaire sont uniques dans tout le document. Aucune autre
+  // assertion ne verrait un compteur qui répète la même valeur. commentRangeStart/End et
+  // commentReference répètent légitimement l'id de leur commentaire : ils ne sont pas comptés.
   const idsDe = (xml, motif) => ((xml || '').match(motif) || []).map((m) => m.match(/\d+/)[0]);
-  // footnotesXml (§7 ter, révisions de note) : mêmes w:ins/w:del que le corps, même compteur
-  // partagé — un doublon là-dedans doit rougir exactement comme dans document.xml.
+  // Les révisions de note partagent le même compteur que celles du corps.
   const tousLesIds = idsDe(resultat.documentXml, /<w:(?:ins|del) w:id="\d+"/g)
     .concat(idsDe(resultat.footnotesXml, /<w:(?:ins|del) w:id="\d+"/g))
     .concat(idsDe(resultat.commentsXml, /<w:comment w:id="\d+"/g));
@@ -217,10 +202,8 @@ function validerBienFormees(resultat) {
     'w:id dupliqué(s) entre deux révisions/commentaires distincts : ' + doublons.join(', '));
 }
 
-// Simule accepter/rejeter TOUTES les révisions d'un document.xml — sans pandoc, en
-// manipulant directement w:ins/w:del (patron demandé par le contrat §7 ter, point 6 :
-// « un test qui simule accepter/rejeter en manipulant w:ins/w:del »). Ne prétend rien de la
-// lecture RÉELLE par Word : c'est le rôle de la preuve pandoc, plus bas, sous sansPandocWsl.
+// Simule accepter, puis rejeter, toutes les révisions d'un document.xml en manipulant
+// directement w:ins/w:del, sans pandoc. La lecture réelle est éprouvée plus bas par pandoc.
 const SIMULAR_ACEPTAR_RECHAZAR_PY = [
   'import re, sys',
   'doc = sys.argv[1]',
@@ -270,9 +253,8 @@ test('révision : span exact -> w:del/w:ins, accepter donne le texte suggéré, 
   });
 
 // ---------------------------------------------------------------------------------
-// 1 bis. Un span FAUX (ne correspond pas à `found` à cet endroit) doit être ignoré et remplacé
-// par la recherche de la première occurrence de `found` — jamais posé tel quel à l'aveugle
-// (§7 ter, point 1 : « si span est donné ET que found s'y trouve »).
+// 1 bis. Un span faux (`found` ne s'y trouve pas) est ignoré : `found` est cherché dans le
+// paragraphe.
 
 test('révision : span incorrect -> repli sur la recherche de `found`, jamais posé à l\'aveugle',
   { skip: sansPython }, () => {
@@ -293,8 +275,8 @@ test('révision : span incorrect -> repli sur la recherche de `found`, jamais po
   });
 
 // ---------------------------------------------------------------------------------
-// 2. Le mot cible est fractionné entre deux runs : la révision doit quand même le retrouver
-// et produire une frontière de run exacte (§7 ter, point 1 : « fractionne les runs »).
+// 2. Le mot cible est fractionné entre deux runs : la révision le retrouve et coupe les runs
+// aux bons décalages.
 
 test('révision : mot cible fractionné entre deux runs -> retrouvé, un w:r par moitié dans w:del', { skip: sansPython }, () => {
     const paragraphes = [{
@@ -312,7 +294,7 @@ test('révision : mot cible fractionné entre deux runs -> retrouvé, un w:r par
     const resultat = anotar(paragraphes, alertes, correspondance, {});
     validerBienFormees(resultat);
     assert.strictEqual(resultat.stats.revisions, 1);
-    // le mot coupé « sit »+« uation » redonne DEUX w:r à l'intérieur du même w:del.
+    // le mot coupé « sit »+« uation » donne deux w:r dans le même w:del.
     const del = resultat.documentXml.match(/<w:del\b[^>]*>(.*?)<\/w:del>/s)[1];
     assert.strictEqual((del.match(/<w:r>/g) || []).length, 2,
       'le w:del devrait porter un w:r par moitié du mot fractionné');
@@ -329,30 +311,28 @@ test('révision : mot cible fractionné entre deux runs -> retrouvé, un w:r par
   });
 
 // ---------------------------------------------------------------------------------
-// 2 bis. Révision du 21.09.2026 — trois défauts mesurés sur le corpus réel par le lot de
-// branchement (voir le contrat, §7 ter, section datée 21.09.2026).
+// 2 bis. Chevauchements, found ambigus et liens.
 
-// Défaut n°1 : deux révisions du même paragraphe dont les spans se chevauchent levaient un
-// KeyError('texto') — la seconde fusionnait un atome déjà fusionné par la première. Mesuré en
-// rejouant 2-grappes_En Route pour Apprendre.docx (deux règles distinctes sur le même DOI).
+// Deux révisions du même paragraphe dont les spans se chevauchent : la seconde fusionnerait un
+// atome déjà fusionné par la première (KeyError('texto')). Cas réel : deux règles sur un DOI.
 test('chevauchement de révisions dans un même paragraphe : la plus sévère devient révision, l\'autre un commentaire au même endroit',
   { skip: sansPython }, () => {
     const paragraphes = [{ texte: 'Un lien https://exemple.org/rapport-2026 est cite deux fois.' }];
     const correspondance = [{ source: 0, sortie: 2 }];
     const alertes = [
-      // Span plus LARGE, contenant le second, mais moins sévère (warning) : posée en premier
-      // dans la liste pour prouver que c'est bien la SÉVÉRITÉ qui décide, pas l'ordre brut.
+      // Span plus large, contenant le second, mais moins sévère (warning) : posée en premier
+      // pour prouver que la sévérité décide, pas l'ordre de la liste.
       { rule: 'Test.Chevauchement.Large', severity: 'warning', action: 'fix', para: 0,
         span: null, found: 'lien https://exemple.org/rapport-2026 est',
         suggested: 'lien *https://exemple.org/rapport-2026* est', message: 'reformulation large' },
-      // Span plus étroit, contenu dans le premier, mais plus sévère (error) : doit l'emporter.
+      // Span plus étroit, contenu dans le premier, plus sévère (error) : l'emporte.
       { rule: 'Test.Chevauchement.Etroit', severity: 'error', action: 'fix', para: 0,
         span: null, found: 'https://exemple.org/rapport-2026', suggested: 'URL-CORRIGEE',
         message: 'DOI/URL mal formé' },
     ];
     const resultat = anotar(paragraphes, alertes, correspondance, {});
     validerBienFormees(resultat);
-    // Aucun crash (c'était un KeyError avant le correctif) : une seule révision retenue.
+    // Une seule révision retenue.
     assert.strictEqual(resultat.stats.revisions, 1);
     assert.strictEqual(resultat.stats.commentaires, 1);
     assert.strictEqual(resultat.stats.par_regle['Test.Chevauchement.Etroit'].revisions, 1,
@@ -363,9 +343,9 @@ test('chevauchement de révisions dans un même paragraphe : la plus sévère de
     assert.match(resultat.documentXml, /<w:t[^>]*>URL-CORRIGEE<\/w:t>/);
   });
 
-// Demande de Robin (30.09.2026) : le DOI retrouvé toujours en suivi de modifications. La mise
-// en forme APA (principal) le porte ; si elle perd un chevauchement, son repli (l'insertion du
-// seul DOI en fin de référence) devient la révision ; si elle passe, le repli ne s'écrit pas.
+// Le DOI retrouvé part toujours en suivi de modifications. La mise en forme APA (principal)
+// le porte ; si elle perd un chevauchement, son repli (l'insertion du seul DOI en fin de
+// référence) devient la révision ; si elle passe, le repli ne s'écrit pas.
 const REF_DOI = 'Martin, A. (2020). Un titre. Revue X, 12(3), 45-67.';
 function alertesGroupeDoi(avecConcurrente) {
   const alertes = [
@@ -406,8 +386,8 @@ test('DOI retrouvé : la mise en forme passe, le repli ne s\'écrit ni en révis
       'le DOI ne doit figurer qu’une fois');
   });
 
-// Décision de Robin (01.10.2026) : seul un vrai doublon n'est pas posé en commentaire, c'est-à-dire
-// une règle de DOUBLON_DE_REVISION dont le constat est dit par la révision qui la chevauche.
+// Seul un vrai doublon n'est pas posé en commentaire : une règle de DOUBLON_DE_REVISION dont
+// le constat est déjà dit par la révision qui la chevauche.
 // Un constat différent qui chevauche une révision (ReferenceNonCitee) reste un commentaire.
 const REF_DOUBLON = 'Martin, A. et Durand, B. (2020). Un titre. Revue X, 12(3), 45-67. 10.1/x';
 function alertesDoublon(regleCommentaire, suggested) {
@@ -466,11 +446,10 @@ test('retrait des doublons : fait avant le plafond (ni place prise, ni synthèse
     assert.strictEqual(resultat.stats.par_regle['CSPS-Biblio.APA.Esperluette'].renvoyees, 6);
   });
 
-// Décision de Robin (01.10.2026, O2) : un commentaire DOI qui chevauche le commentaire
-// APA.MiseEnForme de la même référence ne fait qu'un dans Word : celui de mise en forme, avec la
-// forme attendue du DOI à la suite (sauf si sa suggestion la contient déjà) ; le commentaire DOI
-// reste au rapport. Sans ancrage commun, les deux restent.
-// Sabotage : supprimer le bloc « 2 quinquies » de manuscrit_annoter.py.
+// Un commentaire DOI qui chevauche le commentaire APA.MiseEnForme de la même référence ne fait
+// qu'un dans Word : celui de mise en forme, avec la forme attendue du DOI à la suite (sauf si
+// sa suggestion la contient déjà) ; le commentaire DOI reste au rapport. Sans ancrage commun,
+// les deux restent.
 const REF_FUSION = 'Martin, A. (2020). Un titre. Revue X, 12(3), 45-67. 10.1/x';
 const DOI_NORME = 'https://doi.org/10.1/x';
 function alertesFusion(regleDoi, suggestedMef, spanDoi) {
@@ -524,17 +503,16 @@ test('fusion DOI / mise en forme : le DOI déjà dans la forme APA n\'ajoute rie
     assert.ok(!/forme attendue/.test(separes.commentsXml));
   });
 
-// Défaut n°2 : found court/ambigu sans span valide mésancrait sur la première occurrence dans
-// TOUT le paragraphe, y compris À L'INTÉRIEUR d'un autre mot — mesuré en construisant le
-// contrôle n°13 du lot de branchement (« et » dans « Cette » -> « C&te »).
+// Un found court ou ambigu sans span valide ne s'ancre pas sur sa première occurrence, qui
+// peut être à l'intérieur d'un autre mot (« et » dans « Cette » -> « C&te »).
 test('found court ou ambigu sans span valide : jamais remplacé, repli sur un commentaire du paragraphe entier', { skip: sansPython }, () => {
     const paragraphes = [{ texte: 'Cette approche associe recherche et pratique, et convainc.' }];
     const correspondance = [{ source: 0, sortie: 2 }];
     const alertes = [
-      // "et" est un préfixe caché de "Cette" ET apparaît deux fois par ailleurs : ambigu.
+      // "et" est caché dans "Cette" et apparaît deux fois par ailleurs : ambigu.
       { rule: 'Test.EtCourt', severity: 'error', action: 'fix', para: 0, span: null,
         found: 'et', suggested: '&', message: 'liaison et/&' },
-      // "approche" ne fait que 8 caractères mais est UNIQUE : doit rester une révision normale.
+      // "approche" est court mais unique : révision normale.
       { rule: 'Test.Unique', severity: 'error', action: 'fix', para: 0, span: null,
         found: 'approche', suggested: 'démarche', message: 'reformulation' },
     ];
@@ -549,9 +527,8 @@ test('found court ou ambigu sans span valide : jamais remplacé, repli sur un co
     assert.strictEqual(rechazado, 'Cette approche associe recherche et pratique, et convainc.');
   });
 
-// Défaut n°3 : une révision qui touche un run enveloppé dans <w:hyperlink> pouvait laisser un
-// document.xml mal formé SANS lever d'exception (le XML « de collage » interne à un groupe
-// fusionné, dont l'ouverture/fermeture du lien, était perdu). Mesuré sur 3/12 manuscrits réels.
+// Une révision qui touche un run dans <w:hyperlink> perdrait l'ouverture ou la fermeture du
+// lien en fusionnant les runs, et laisserait un document.xml mal formé sans erreur.
 test('révision touchant un run de lien : jamais fusionnée, repli sur un commentaire, XML toujours bien formé', { skip: sansPython }, () => {
     const paragraphes = [{
       runs: [
@@ -562,7 +539,7 @@ test('révision touchant un run de lien : jamais fusionnée, repli sur un commen
     }];
     const correspondance = [{ source: 0, sortie: 2 }];
     const alertes = [{
-      // Le span demandé commence AVANT le lien et se termine DEDANS -> chevauche sa frontière.
+      // Le span commence avant le lien et se termine dedans.
       rule: 'Test.SpanSurLien', severity: 'error', action: 'fix', para: 0, span: null,
       found: 'lien https://exemple.org/rapport-cdph', suggested: 'REMPLACEMENT-REFUSE',
       message: 'ne doit jamais toucher le lien',
@@ -573,8 +550,7 @@ test('révision touchant un run de lien : jamais fusionnée, repli sur un commen
     assert.strictEqual(resultat.stats.commentaires, 1);
     assert.ok(!resultat.documentXml.includes('REMPLACEMENT-REFUSE'),
       'le texte suggéré ne doit jamais être écrit quand la cible touche un lien');
-    // <w:hyperlink> doit rester équilibré (ouvertures == fermetures) : c'est exactement ce
-    // que le défaut n°3 cassait silencieusement.
+    // <w:hyperlink> reste équilibré (ouvertures == fermetures).
     const ouvertures = (resultat.documentXml.match(/<w:hyperlink\b/g) || []).length;
     const fermetures = (resultat.documentXml.match(/<\/w:hyperlink>/g) || []).length;
     assert.strictEqual(ouvertures, 1);
@@ -582,12 +558,11 @@ test('révision touchant un run de lien : jamais fusionnée, repli sur un commen
   });
 
 // ---------------------------------------------------------------------------------
-// 2 ter. Révision du 21.09.2026 bis — demande de Robin, lot APA anglais.
+// 2 ter. Révisions par jeton, localisation tolérante, chevauchements à sévérité égale.
 
-// Point 6 : diff PAR JETON, pas la référence entière barrée pour trois mots changés. Trois
-// changements distincts (« et » -> « & », l'ajout d'italique sur le nom de revue, le volume
-// isolé en italique) doivent ressortir comme plusieurs petites paires w:del/w:ins, avec le
-// texte INCHANGÉ entre elles laissé en runs normaux (jamais marqué).
+// Diff par jeton : trois changements distincts (« et » -> « & », italique sur le nom de
+// revue, italique sur le volume) donnent plusieurs petites paires w:del/w:ins, et le texte
+// inchangé entre elles reste en runs normaux.
 test('révision par jeton : plusieurs petits changements dans une longue référence ne barrent '
   + 'pas tout le texte, seuls les segments qui changent deviennent w:del/w:ins',
   { skip: sansPython }, () => {
@@ -606,31 +581,25 @@ test('révision par jeton : plusieurs petits changements dans une longue référ
     const resultat = anotar(paragraphes, alertes, correspondance, {});
     validerBienFormees(resultat);
     assert.strictEqual(resultat.stats.revisions, 1, 'une seule ALERTE convertie en révision');
-    // Plusieurs w:del/w:ins DISTINCTS (l'ancien comportement n'en produisait qu'un seul,
-    // couvrant toute la référence) : au moins un pour « et » -> « & », un autre pour
-    // l'italique du nom de revue et du volume. Les segments identiques entre les deux
-    // (« Scruggs, T. E., Mastropieri, M. A. », « McDuffie… qualitative research. »,
-    // « (4), 392-416. ») ne doivent JAMAIS être repris dans un w:del.
+    // Au moins un w:del pour « et » -> « & », un autre pour l'italique du nom de revue et du
+    // volume.
     const nbDel = (resultat.documentXml.match(/<w:del\b/g) || []).length;
     assert.ok(nbDel >= 2, 'attendu plusieurs w:del distincts (un par changement), trouvé '
       + nbDel + ' : ' + resultat.documentXml);
-    // Le texte inchangé au milieu (« McDuffie... Co-teaching... qualitative research. ») doit
-    // apparaître en run NORMAL, jamais entouré de w:del/w:ins.
+    // Le texte inchangé du milieu reste un run normal, hors de w:del/w:ins.
     assert.match(resultat.documentXml,
       /<w:r><w:t[^>]*>[^<]*Co-teaching in inclusive classrooms: A metasynthesis of qualitative research\.[^<]*<\/w:t><\/w:r>/,
       'le texte inchangé au milieu de la référence devrait rester un run normal, non marqué');
-    // simularAceptarRechazar() ne réécrit pas les entités XML (&amp; reste &amp;) ni ne
-    // dépouille les astérisques (qui, dans le document réel, n'existent pas : ils sont
-    // traduits en <w:i/>, jamais écrits comme caractères — voir la preuve indépendante
-    // pandoc pour la lecture ENTITÉS/ITALIQUE réelle). La comparaison porte donc sur la
-    // forme sans astérisque, entité XML brute.
+    // simularAceptarRechazar() laisse les entités XML telles quelles (&amp;), et les
+    // astérisques deviennent <w:i/> dans le document : on compare à la forme sans astérisque,
+    // entité brute.
     const { aceptado, rechazado } = simularAceptarRechazar(resultat.documentXml);
     assert.strictEqual(aceptado, suggere.replace(/\*/g, '').replace('&', '&amp;'));
     assert.strictEqual(rechazado, original);
   });
 
-// Repli : une reformulation profonde (plus de 60% des jetons changés) retombe sur l'ancien
-// comportement — un seul w:del/w:ins couvrant tout le span, comme avant ce lot.
+// Repli : une reformulation profonde (plus de 60 % des jetons changés) donne un seul
+// w:del/w:ins couvrant tout le span.
 test('révision par jeton : une reformulation trop profonde (>60% des jetons) retombe sur un '
   + 'seul w:del/w:ins pour tout le span', { skip: sansPython }, () => {
     const paragraphes = [{ texte: 'Un texte tout à fait différent du résultat attendu ici.' }];
@@ -649,9 +618,9 @@ test('révision par jeton : une reformulation trop profonde (>60% des jetons) re
     assert.strictEqual((resultat.documentXml.match(/<w:ins\b/g) || []).length, 1);
   });
 
-// Point 6, cas italique : un segment dont le TEXTE est égal mais qui doit devenir italique
-// (marquage *…* du suggested) s'émet en w:del + w:ins du seul segment ; un segment déjà
-// italique et qui doit le rester n'est JAMAIS touché.
+// Cas italique : un segment au texte égal qui doit devenir italique (marquage *…* du
+// suggested) donne w:del + w:ins de ce seul segment ; un segment déjà italique qui le reste
+// n'est pas touché.
 test('révision par jeton : un segment à texte égal qui doit devenir italique est del+ins ; '
   + 'un segment déjà italique qui le reste n\'est pas touché', { skip: sansPython }, () => {
     const paragraphes = [{
@@ -671,8 +640,8 @@ test('révision par jeton : un segment à texte égal qui doit devenir italique 
     }];
     const resultat = anotar(paragraphes, alertes, correspondance, {});
     validerBienFormees(resultat);
-    // « Revue X » (pas italique -> italique) : del+ins. « Sous-titre » (déjà italique, le
-    // reste) : jamais touché, run normal intact avec son rPr d'origine.
+    // « Revue X » (devient italique) : del+ins. « Sous-titre » (déjà italique) : run intact
+    // avec son rPr d'origine.
     assert.match(resultat.documentXml, /<w:delText[^>]*>Revue X<\/w:delText>/);
     assert.match(resultat.documentXml,
       /<w:ins\b[^>]*><w:r><w:rPr><w:i\/><\/w:rPr><w:t[^>]*>Revue X<\/w:t>/);
@@ -686,9 +655,8 @@ test('révision par jeton : un segment à texte égal qui doit devenir italique 
     assert.strictEqual(rechazado, 'Titre Revue X et Sous-titre fin.');
   });
 
-// Point 3 (bis) : repli TOLÉRANT à la typographie — le texte du paragraphe porte une
-// apostrophe typographique (’) alors que `found` porte l'apostrophe droite (') : sans le
-// repli, ce found ne se localiserait jamais et l'alerte finirait en commentaire.
+// Repli tolérant à la typographie : le paragraphe porte une apostrophe typographique (’),
+// `found` l'apostrophe droite ('). Sans ce repli, l'alerte finirait en commentaire.
 test('localisation tolérante à la typographie : apostrophe droite dans found, typographique '
   + 'dans le texte -> quand même une révision', { skip: sansPython }, () => {
     const paragraphes = [{ texte: 'Les enseignants’ pratiques évoluent avec le temps.' }];
@@ -705,20 +673,18 @@ test('localisation tolérante à la typographie : apostrophe droite dans found, 
     assert.strictEqual(resultat.stats.commentaires, 0);
   });
 
-// Point 3 (ter) : chevauchement à sévérité ÉGALE -> le span le plus LARGE gagne désormais,
-// pas le plus proche du début de la liste (mesuré sur le corpus réel : APA.MiseEnForme,
-// span = la référence entière, perdait systématiquement face à une règle Vale plus étroite
-// qui ne corrige qu'un détail déjà couvert par la révision la plus large).
+// Chevauchement à sévérité égale : le span le plus large gagne, quelle que soit sa place dans
+// la liste. APA.MiseEnForme (la référence entière) couvre souvent le détail qu'une règle Vale
+// plus étroite corrige.
 test('chevauchement à sévérité égale : le span le plus large gagne (la révision la plus '
   + 'large a plus de chances d\'englober la plus étroite que l\'inverse)', { skip: sansPython }, () => {
     const paragraphes = [{ texte: 'Dupont, A. et Martin, B. (2020). Un titre. Revue Y, 1, 1-9.' }];
     const correspondance = [{ source: 0, sortie: 2 }];
     const alertes = [
-      // Posée EN PREMIER dans la liste (index le plus bas) mais span ÉTROIT.
+      // Posée en premier, span étroit.
       { rule: 'Test.Etroit', severity: 'warning', action: 'fix', para: 0, span: null,
         found: 'et Martin', suggested: '& Martin', message: 'liaison' },
-      // Posée ensuite, span LARGE (toute la référence) : doit l'emporter malgré son index
-      // plus élevé.
+      // Posée ensuite, span large (toute la référence) : l'emporte.
       { rule: 'Test.Large', severity: 'warning', action: 'track', para: 0, span: null,
         found: 'Dupont, A. et Martin, B. (2020). Un titre. Revue Y, 1, 1-9.',
         suggested: 'Dupont, A., & Martin, B. (2020). Un titre. *Revue Y*, 1, 1-9.',
@@ -733,8 +699,8 @@ test('chevauchement à sévérité égale : le span le plus large gagne (la rév
       'la révision au span le plus étroit doit devenir un commentaire au même endroit');
   });
 
-// Point 4 : un commentaire dont le `suggested` porte un marquage *…* ne doit jamais afficher
-// d'astérisque littéral — le texte reste lisible, une note signale l'italique perdu.
+// Un commentaire dont le `suggested` porte un marquage *…* n'affiche pas d'astérisque : une
+// note signale l'italique.
 test('commentaire : le texte plat ne porte jamais d\'astérisque littéral quand suggested est '
   + 'marqué en italique', { skip: sansPython }, () => {
     const paragraphes = [{ texte: 'Une référence mal formée dans le texte.' }];
@@ -753,8 +719,8 @@ test('commentaire : le texte plat ne porte jamais d\'astérisque littéral quand
   });
 
 // ---------------------------------------------------------------------------------
-// 3. Commentaire ancré sur un passage localisé, et commentaire de repli sur paragraphe
-// entier (found introuvable) — jamais perdu, jamais confondu avec une révision.
+// 3. Commentaire ancré sur un passage localisé, ou sur le paragraphe entier si found est
+// introuvable.
 
 test('commentaire : ancré sur le passage trouvé, et en repli sur le paragraphe entier sinon', { skip: sansPython }, () => {
     const paragraphes = [
@@ -767,7 +733,7 @@ test('commentaire : ancré sur le passage trouvé, et en repli sur le paragraphe
         found: 'plafond', suggested: null, message: 'a verifier' },
       { rule: 'Test.ParagrapheEntier', severity: 'suggestion', action: 'comment', para: 1,
         span: null, found: null, suggested: null, message: 'paragraphe vide signale' },
-      // fix/track non localisable (found absent du texte) -> repli commentaire, §7 ter pt.3.
+      // fix/track non localisable (found absent du texte) -> repli commentaire.
       { rule: 'Test.NonLocalisable', severity: 'error', action: 'track', para: 0, span: null,
         found: 'texte-absent', suggested: 'remplacement', message: 'ne doit pas se localiser' },
     ];
@@ -790,7 +756,7 @@ test('commentaire : ancré sur le passage trouvé, et en repli sur le paragraphe
 
 // ---------------------------------------------------------------------------------
 // 4. Plafond par règle : 7 occurrences d'une même règle -> 5 commentées, 2 renvoyées, la
-// 5e porte la synthèse (§7 ter, point 4).
+// 5e porte la synthèse.
 
 test('plafond par règle : au plus 5 commentaires, synthèse sur le 5e, le reste renvoyé', { skip: sansPython }, () => {
     const paragraphes = Array.from({ length: 7 }, (_, i) => ({ texte: 'Paragraphe numero ' + i + ' de remplissage.' }));
@@ -839,7 +805,7 @@ test('plafond global : les commentaires au-delà de `plafond_commentaires` sont 
 
 // ---------------------------------------------------------------------------------
 // `stats.plafond_global` ne compte que les commentaires refusés par le plafond global : ni les
-// doublons retirés, ni le plafond par règle. Sabotage : l'y faire compter (len(renvoyees)).
+// doublons retirés, ni le plafond par règle.
 test('plafond_global : 25 commentaires pile et un doublon retiré = 0 ; un 26e commentaire = 1', { skip: sansPython }, () => {
     const paragraphes = [{ texte: REF_DOUBLON }].concat(
       Array.from({ length: 26 }, (_, i) => ({ texte: 'Paragraphe numero ' + i + ' de remplissage.' })));
@@ -861,7 +827,7 @@ test('plafond_global : 25 commentaires pile et un doublon retiré = 0 ; un 26e c
     assert.strictEqual(trop.stats.plafond_global, 1);
   });
 
-// 6. Révisions sans plafond : 40 corrections de la même règle doivent TOUTES s'écrire.
+// 6. Révisions sans plafond : 40 corrections de la même règle s'écrivent toutes.
 
 test('les révisions n\'ont aucun plafond, contrairement aux commentaires',
   { skip: sansPython }, () => {
@@ -878,8 +844,8 @@ test('les révisions n\'ont aucun plafond, contrairement aux commentaires',
   });
 
 // ---------------------------------------------------------------------------------
-// 7. Alerte non ancrée : `para` absent, ou introuvable dans la correspondance -> comptée,
-// jamais perdue, et le document n'est PAS modifié.
+// 7. Alerte non ancrée : `para` absent, ou introuvable dans la correspondance -> comptée, et
+// le document reste intact.
 
 test('non ancrée : para=None ou introuvable -> comptée dans stats.non_ancrees, document intact', { skip: sansPython }, () => {
     const paragraphes = [{ texte: 'Paragraphe sans aucun rapport avec les alertes.' }];
@@ -899,7 +865,7 @@ test('non ancrée : para=None ou introuvable -> comptée dans stats.non_ancrees,
   });
 
 // ---------------------------------------------------------------------------------
-// 8. action='report' : jamais écrit, seulement compté par règle.
+// 8. action='report' : compté par règle, rien d'écrit dans le document.
 
 test("action='report' : jamais écrite dans le document, comptée dans par_regle", { skip: sansPython }, () => {
   const paragraphes = [{ texte: 'Article trop long pour la revue.' }];
@@ -917,8 +883,7 @@ test("action='report' : jamais écrite dans le document, comptée dans par_regle
 });
 
 // ---------------------------------------------------------------------------------
-// 9. Idempotence / sûreté : le fichier d'entrée n'est jamais modifié, même quand
-// `chemin_docx_sortie` lui est identique.
+// 9. Annoter en place : `chemin_docx_sortie` égal au fichier d'entrée.
 
 test('l\'entrée n\'est jamais modifiée : annoter en place laisse le contenu original récupérable ailleurs',
   { skip: sansPython }, () => {
@@ -944,8 +909,8 @@ test('l\'entrée n\'est jamais modifiée : annoter en place laisse le contenu or
   });
 
 // ---------------------------------------------------------------------------------
-// 10. CLI d'essai — accepte le rapport JSON complet du nettoyeur pour --alertes ET
-// --correspondance (alertes.liste / decisions.ecriture.correspondance, §7 ter point 8).
+// 10. CLI d'essai : accepte le rapport JSON complet du nettoyeur pour --alertes et
+// --correspondance (alertes.liste / decisions.ecriture.correspondance).
 
 test('CLI : accepte le rapport JSON complet du nettoyeur pour --alertes/--correspondance', { skip: sansPython }, () => {
     const base = dossierJetable();
@@ -969,10 +934,9 @@ test('CLI : accepte le rapport JSON complet du nettoyeur pour --alertes/--corres
   });
 
 // ---------------------------------------------------------------------------------
-// 11. Notes de bas de page (§7 ter du contrat, révision du 21.09.2026 ter) — capture réelle de
-// Robin : une alerte sur le TEXTE D'UNE NOTE ne doit jamais surligner tout le paragraphe de
-// corps qui porte l'appel. Ancrage : le dernier mot avant w:footnoteReference (barre oblique et
-// trait d'union intérieurs conservés, ponctuation finale exclue). Texte du commentaire :
+// 11. Notes de bas de page : une alerte sur le texte d'une note s'ancre sur le dernier mot
+// avant w:footnoteReference (barre oblique et trait d'union intérieurs conservés, ponctuation
+// finale exclue), pas sur tout le paragraphe qui porte l'appel. Texte du commentaire :
 // « Note N : <message> » puis « Passage : « <found> » ».
 
 const PARA_AVEC_APPEL_NOTE = [{
@@ -997,16 +961,15 @@ test('note : commentaire ancré sur le seul mot qui précède l\'appel (barre ob
     assert.strictEqual(resultat.stats.commentaires, 1);
     assert.strictEqual(resultat.stats.notes.commentaires, 1);
     assert.strictEqual(resultat.stats.notes.repli_paragraphe_entier, 0);
-    // le passage encerclé est EXACTEMENT « in/capacités » (avec sa barre oblique intérieure),
-    // jamais « Une personne en in/capacités » ni le paragraphe entier.
+    // le passage encerclé est exactement « in/capacités ».
     const m = resultat.documentXml.match(
       /<w:commentRangeStart w:id="\d+"\/>(.*?)<w:commentRangeEnd/s);
     assert.ok(m, 'commentRangeStart/End introuvables');
     const texteEncercle = (m[1].match(/<w:t[^>]*>([^<]*)<\/w:t>/) || [])[1];
     assert.strictEqual(texteEncercle, 'in/capacités',
       'seul le mot précédant l\'appel doit être encerclé : ' + m[1]);
-    // le commentReference suit le commentRangeEnd, AVANT le footnoteReference lui-même (choix
-    // documenté : l\'icône de commentaire colle au mot annoté, le chiffre d\'appel vient juste après).
+    // le commentReference suit le commentRangeEnd, avant le footnoteReference : l'icône de
+    // commentaire colle au mot annoté, le chiffre d'appel vient juste après.
     assert.match(resultat.documentXml,
       /<w:commentRangeEnd w:id="\d+"\/><w:r>.*?<w:commentReference w:id="\d+"\/><\/w:r>.*?<w:footnoteReference/s);
     assert.match(resultat.commentsXml, /Note 1 :/);
@@ -1030,8 +993,8 @@ test('note : alerte fix avec `found` dans le texte de la note -> révision DANS 
     assert.ok(resultat.footnotesXml, 'word/footnotes.xml doit exister');
     assert.match(resultat.footnotesXml, /<w:delText[^>]*>Reconnaître<\/w:delText>/);
     assert.match(resultat.footnotesXml, /<w:ins\b[^>]*><w:r><w:t[^>]*>Reconnaitre<\/w:t>/);
-    // jamais dans document.xml : ni commentaire (Word n'en accepte pas dans une note), ni
-    // révision (la révision est DANS la note, pas sur le mot qui précède l'appel).
+    // rien dans document.xml : ni commentaire (Word n'en accepte pas dans une note), ni
+    // révision (elle est dans la note).
     assert.ok(!resultat.documentXml.includes('commentRangeStart'),
       'aucun commentaire ne doit être posé dans le corps pour une révision de note réussie');
     assert.ok(!resultat.documentXml.includes('<w:ins'), 'la révision ne doit pas être dans document.xml');
@@ -1053,7 +1016,7 @@ test('note : `note_numero` qui ne correspond à aucun appel réel -> repli sur l
     assert.strictEqual(resultat.stats.notes.repli_paragraphe_entier, 1);
     assert.strictEqual(resultat.stats.notes.commentaires, 0);
     assert.strictEqual(resultat.stats.commentaires, 1);
-    // repli paragraphe entier : le commentaire encercle TOUT le texte du paragraphe, pas un mot.
+    // repli : le commentaire encercle tout le texte du paragraphe.
     const m = resultat.documentXml.match(
       /<w:commentRangeStart w:id="\d+"\/>(.*?)<w:commentRangeEnd/s);
     const texteEncercle = (m[1].match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || []).join('');
@@ -1081,10 +1044,8 @@ test('note : `found` introuvable dans le texte de la note -> repli commentaire s
   });
 
 // ---------------------------------------------------------------------------------
-// Preuve indépendante (§7 ter, point « validation ») : pandoc RÉEL dans la WSL, sur le
-// document produit ci-dessus — jamais un simulateur maison. --track-changes=accept doit
-// rendre le texte suggéré, =reject l'original, =all doit faire apparaître le texte des
-// commentaires.
+// Preuve indépendante : pandoc dans la WSL lit le document produit. --track-changes=accept
+// rend le texte suggéré, =reject l'original, =all fait apparaître le texte des commentaires.
 
 function cheminVersWsl(p) {
   const abs = path.resolve(p).replace(/\\/g, '/');
@@ -1142,10 +1103,8 @@ test('preuve indépendante pandoc : accepter/rejeter/lire les commentaires', { s
   }
 });
 
-// Preuve indépendante pandoc, notes (§7 ter, point 4) — une révision DANS footnotes.xml doit
-// s'accepter/se rejeter comme n'importe quelle révision (Word affiche le suivi de
-// modifications DANS les notes), et un commentaire ancré sur le mot avant l'appel doit
-// rester lisible par pandoc au même titre qu'un commentaire du corps.
+// Preuve pandoc pour les notes : une révision dans footnotes.xml s'accepte et se rejette
+// comme une révision du corps (Word affiche le suivi de modifications dans les notes).
 test('preuve indépendante pandoc, notes : accepter/rejeter une révision DANS footnotes.xml, '
   + 'lire un commentaire ancré sur le mot avant l\'appel', (t) => {
   if (sansPandocWsl) { sauterSansWsl(t, sansPandocWsl); return; }
@@ -1178,10 +1137,9 @@ test('preuve indépendante pandoc, notes : accepter/rejeter une révision DANS f
 });
 
 // ---------------------------------------------------------------------------------
-// Essai sur un manuscrit réel du corpus, DÉJÀ passé par le nettoyeur complet
-// (manuscrit-nettoyer.py -> manuscrit_gabarit.ecrire()) : preuve que ce module tient sur
-// une VRAIE sortie (runs de typographie fractionnés, tableaux fixes, styles réels), pas
-// seulement sur une fixture. Sauté proprement si tmp/ (hors git) ou la distro manquent.
+// Essai sur un manuscrit réel du corpus passé par le nettoyeur complet : le module tient sur
+// une vraie sortie (runs de typographie fractionnés, tableaux fixes, styles réels). Sauté si
+// tmp/ (hors git) ou la distribution WSL manquent.
 
 test('essai réel : une sortie du nettoyeur, annotée puis relue par pandoc réel', { skip: sansPython }, (t) => {
   if (sansPandocWsl) { sauterSansWsl(t, sansPandocWsl); return; }
@@ -1200,11 +1158,8 @@ test('essai réel : une sortie du nettoyeur, annotée puis relue par pandoc rée
     const nom = path.basename(manuscrit, '.docx');
     const docxNettoye = path.join(base, nom + '-nettoye.docx');
     const rapportJson = path.join(base, nom + '-rapport.json');
-    // manuscrit-nettoyer.py/manuscrit_gabarit.py ne sont PAS des fichiers de ce lot (annotation
-    // seule) : un autre chantier du même worktree peut les faire régresser entre deux essais
-    // (§ « agent concurrent dans le même arbre »). Un échec DE LA CHAÎNE EN AMONT (statut ou
-    // fichier absent, quelle qu'en soit la cause) saute cet essai proprement au lieu de faire
-    // échouer ce fichier pour un défaut hors de son périmètre — il est signalé, pas corrigé ici.
+    // Un échec du nettoyeur en amont saute cet essai avec un avertissement : ce fichier ne
+    // teste que l'annotation.
     if (rNettoyage.status > 1 || !fs.existsSync(docxNettoye) || !fs.existsSync(rapportJson)) {
       console.warn('\n*** manuscrit-nettoyer.py a échoué (hors périmètre de ce lot) : '
         + rNettoyage.stderr.split('\n').slice(-8).join('\n') + ' ***\n');
@@ -1214,13 +1169,10 @@ test('essai réel : une sortie du nettoyeur, annotée puis relue par pandoc rée
     const rapport = JSON.parse(fs.readFileSync(rapportJson, 'utf8'));
     const correspondance = rapport.decisions.ecriture.correspondance;
 
-    // Le moteur de règles réel n'a rien remonté d'ancrable sur ce fichier précis (alertes
-    // `report`/`para: null` seulement, voir le rapport de chantier) : cet essai fabrique donc
-    // UNE alerte de démonstration pour exercer la chaîne complète sur cette sortie réelle —
-    // mais jamais sur un mot/paragraphe supposé d'avance : la reconnaissance d'en-tête du
-    // nettoyeur (hors du périmètre de ce lot) peut déplacer titre/résumé entre le corps et le
-    // tableau fixe d'un essai à l'autre. Le mot cible se choisit DANS le paragraphe de corps
-    // le plus long réellement produit, lu par manuscrit_annoter lui-même.
+    // Le moteur de règles ne remonte rien d'ancrable sur ce fichier : l'essai fabrique une
+    // alerte de démonstration. Le mot cible se choisit dans le plus long paragraphe de corps
+    // produit, lu par manuscrit_annoter lui-même, car la reconnaissance d'en-tête peut
+    // déplacer titre et résumé entre le corps et le tableau fixe.
     const CHOISIR_CIBLE_PY = [
       'import json, re, sys, zipfile',
       'sys.path.insert(0, sys.argv[1])',
@@ -1274,12 +1226,11 @@ test('essai réel : une sortie du nettoyeur, annotée puis relue par pandoc rée
 });
 
 // ---------------------------------------------------------------------------------
-// 12. Ancrage sur une entrée `bloc` (demande du coordinateur, 22.09.2026) : une alerte
-// A11y.TexteAlternatif.* (para = source du paragraphe porteur de l'image, jamais un vrai
-// passage à citer) doit s'ancrer sur le paragraphe ENTIER de la clé « Texte alternatif : »
-// qu'une entrée `correspondance` marquée `bloc` désigne — manuscrit_gabarit.py, lu en
-// LECTURE seule ici (fichier hors de ce lot), écrit désormais cette entrée pour chaque bloc
-// figure/tableau. Jamais de recherche de `found` (rien à y trouver), jamais une révision.
+// 12. Ancrage sur une entrée `bloc` : une alerte A11y.TexteAlternatif.* (para = source du
+// paragraphe porteur de l'image) s'ancre sur le paragraphe entier de la clé « Texte
+// alternatif : » que désigne l'entrée `correspondance` marquée `bloc`. manuscrit_gabarit.py
+// écrit cette entrée pour chaque bloc figure ou tableau. Pas de recherche de `found`, pas de
+// révision.
 
 test('bloc : une alerte dont `para` a une entrée `correspondance.bloc` s\'ancre sur le '
   + 'paragraphe ENTIER de la clé, jamais une recherche de `found`', { skip: sansPython }, () => {
@@ -1287,9 +1238,8 @@ test('bloc : une alerte dont `para` a une entrée `correspondance.bloc` s\'ancre
       { texte: 'Légende : ' },
       { texte: 'Texte alternatif : ' },
     ];
-    // source=5 : la source du paragraphe PORTEUR de l'image dans le modèle (jamais un <w:p>
-    // réel de ce document, voir la docstring de _convertir_niveau_racine) — aucune entrée
-    // NORMALE ne le référence ici, seule l'entrée `bloc` le fait.
+    // source=5 : le paragraphe porteur de l'image dans le modèle (voir la docstring de
+    // _convertir_niveau_racine). Seule l'entrée `bloc` le référence.
     const correspondance = [{ source: 5, sortie: 3, bloc: 'figure' }];
     const alertes = [{
       rule: 'A11y.TexteAlternatif.Revue', severity: 'warning', action: 'comment', para: 5,
@@ -1315,8 +1265,8 @@ test('bloc : l\'entrée `bloc` l\'emporte sur une entrée NORMALE qui partagerai
       { texte: 'Paragraphe de corps ordinaire, avec texte ET image.' },
       { texte: 'Texte alternatif : ' },
     ];
-    // Les DEUX entrées partagent la MÊME source (5) : une normale (le texte du paragraphe
-    // porteur), une `bloc` (la clé de son image). L'alerte doit résoudre vers la seconde.
+    // Deux entrées de même source (5) : une normale (le texte du paragraphe porteur), une
+    // `bloc` (la clé de son image). L'alerte se résout vers la seconde.
     const correspondance = [
       { source: 5, sortie: 2 },
       { source: 5, sortie: 3, bloc: 'figure' },
@@ -1333,19 +1283,13 @@ test('bloc : l\'entrée `bloc` l\'emporte sur une entrée NORMALE qui partagerai
     const texteEncercle = (m[1].match(/<w:t[^>]*>([^<]*)<\/w:t>/) || [])[1];
     assert.strictEqual(texteEncercle, 'Texte alternatif : ',
       'la clé du bloc doit l\'emporter sur le paragraphe de texte ordinaire : ' + m[1]);
-    // Un seul commentaire au total (déjà vérifié ci-dessus) et il encercle la clé : le
-    // paragraphe de texte ordinaire ne peut donc porter aucune marque, sans avoir besoin de
-    // le revérifier par une recherche de texte (son propre texte apparaît de toute façon
-    // ailleurs dans le document, comme tout paragraphe écrit).
+    // Un seul commentaire, sur la clé : le paragraphe ordinaire n'en porte aucun.
     assert.strictEqual((resultat.documentXml.match(/<w:commentRangeStart/g) || []).length, 1);
   });
 
 // ---------------------------------------------------------------------------------
 // Langue des textes que le module ajoute lui-même (synthèse du plafond, « Note N », étiquettes,
 // remarque d'italique) : français pour la Revue, allemand pour la Zeitschrift.
-//
-// Sabotage minimal : dans _construir_texto_comentario, ignorer `langue` (t = _textes('fr')) —
-// les assertions allemandes rougissent.
 
 test('langue de : synthèse du plafond, étiquettes et note en allemand, sans espace avant « : »', { skip: sansPython }, () => {
     const paragraphes = Array.from({ length: 7 }, (_, i) => ({ texte: 'Absatz Nummer ' + i + ' zum Füllen.' }));

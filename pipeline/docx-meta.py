@@ -1,57 +1,48 @@
 #!/usr/bin/env python3
-# docx-meta.py — pré-pass d'import : extrait les métadonnées d'un .docx avant pandoc.
+# Étape d'import : extrait les métadonnées d'un Word hérité (hors gabarit Pronto) avant
+# pandoc.
 #
 #   python3 docx-meta.py <fichier.docx> <slug> <dossier-article>
 #
-# Produit <dossier-article>/<slug>.meta.yaml — seulement s'il n'existe pas déjà, ce fichier
-# appartenant au formulaire du cockpit — une ligne JSON de stats sur stdout, et, si la
-# variable $SZH_META est posée, un fichier d'instructions pour les autres maillons de la
-# chaîne d'import, une par ligne, « LETTRE<TAB>valeur » :
+# Écrit <dossier-article>/<slug>.meta.yaml s'il n'existe pas (sinon il appartient au
+# cockpit), une ligne JSON de statistiques sur stdout et, si $SZH_META est posée, des
+# instructions pour les étapes suivantes, une par ligne, « LETTRE<TAB>valeur » :
 #   Y  type d'article détecté (article|editorial|documentation)
 #   L  langue du document
-#   P  paragraphe consommé à retirer du corps, et seulement ceux que pandoc ne mange pas
-#      déjà (les styles Title/Subtitle/Author/Abstract partent d'eux-mêmes)
-#   G  nombre de paragraphes-image de tête à retirer (logo licence CC)
-#   T  k-ième tableau de premier niveau consommé (tableau des auteurs), lu par
-#      docx-tables.py et par szh-meta.lua : lisant la même liste, ils restent alignés
-#   F  légende de figure détectée par style et voisine d'une image, pour szh-legendes.lua
-#   B  paragraphe de l'étendue de bibliographie, en clé de comparaison, pour
-#      szh-biblio-detacher.lua : le premier et le dernier bornent l'étendue à détacher,
-#      leur nombre dit combien de paragraphes doivent partir
-#   BT titre de la bibliographie, en clé de comparaison : c'est lui qui quitte le corps,
-#      le titre étant reposé à la compilation dans la langue de l'article
+#   P  paragraphe à retirer du corps (seulement ceux que pandoc ne retire pas déjà : les
+#      styles Title/Subtitle/Author/Abstract partent seuls)
+#   G  nombre de paragraphes-image de tête à retirer (logo de licence CC)
+#   T  rang du tableau de premier niveau consommé (tableau des auteurs), lu par
+#      docx-tables.py et szh-meta.lua, qui restent ainsi alignés
+#   F  légende de figure reconnue par son style, voisine d'une image (szh-legendes.lua)
+#   B  paragraphe de la bibliographie, en clé de comparaison (szh-biblio-detacher.lua) :
+#      le premier et le dernier bornent l'étendue, leur nombre dit combien de paragraphes
+#      partent
+#   BT titre de la bibliographie, en clé de comparaison : il quitte le corps, et la
+#      compilation le repose dans la langue de l'article
 #
-# Écrit aussi, si $SZH_PHOTOS est posée, ce qu'il a compris des photos du tableau des
-# auteurs, une instruction par ligne, pour import-medias.py :
-#   A  <slug-auteur><TAB><nom dans media/>  photo appariée : à ranger dans portraits/ et à
-#      détourer. Le champ `photo` du meta.yaml, écrit ici, pointe l'original ; c'est
-#      import-medias.py qui le promeut en .sans-fond.png quand le détourage réussit.
-#   G  <nom dans media/>                    image reconnue comme photo d'auteur mais non
-#      appariée : à garder, la purge des images inutilisées ne doit pas l'effacer. Le
-#      tableau des auteurs étant consommé du corps, ces images ne sont citées nulle part.
+# Si $SZH_PHOTOS est posée, écrit pour import-medias.py, une instruction par ligne :
+#   A  <slug-auteur><TAB><nom dans media/>  photo associée, à ranger dans portraits/ et à
+#      détourer. Le champ `photo` écrit ici désigne l'original ; import-medias.py le
+#      remplace par .sans-fond.png si le détourage réussit.
+#   G  <nom dans media/>                    photo d'auteur reconnue mais non associée, à
+#      garder : le tableau des auteurs ayant quitté le corps, rien ne la cite.
 #
-# Deux champs de la fiche viennent d'ici et de nulle part ailleurs :
-#   lang    langue de l'article, écrite dans tous les cas. Un champ vide laissait
-#           szh-maquette.lua composer dans la langue du numéro, et un article allemand
-#           dans un numéro français n'avait alors aucun titre à afficher : la
-#           compilation s'arrêtait. Un champ rempli, corrigeable dans le formulaire,
-#           vaut mieux qu'un champ vide qui bloque. Quand la langue vient d'une
-#           déduction (langue_source `contenu` ou `defaut`) et non du document, un
-#           avertissement le dit au rédacteur.
-#   source  nom du fichier Word d'origine. C'est lui qui permet à la cible `import` du
-#           Makefile de distinguer deux articles homonymes (suffixe « -2 ») d'un même
-#           article redéposé après correction (rien n'est créé alors). Ce sera aussi
-#           l'ancre de la fonction « Réimporter cet article ».
+# Deux champs de la fiche ne viennent que d'ici :
+#   lang    langue de l'article, toujours écrite : sans elle, un article allemand dans un
+#           numéro français n'aurait pas de titre et la compilation s'arrêterait. Si elle
+#           est déduite (langue_source `contenu` ou `defaut`), un avertissement le dit.
+#   source  nom du fichier Word d'origine, qui permet à la cible `import` de distinguer
+#           deux articles homonymes d'un article redéposé, et au réimport d'apparier.
 #
-# Détection par style d'abord (w:styleId et nom localisé de styles.xml), repli heuristique
-# sinon : gras et taille pour le titre, motif « liste de noms » pour les auteurs. Patron de
-# tête des deux revues : Titel [Untertitel] Author Abstract(Résumé)
-# Abstract(Zusammenfassung) « Keywords: … » « DOI: … » ligne de revue [logo CC], puis le
-# corps ; tableau des auteurs en fin de document.
+# Détection par style d'abord (w:styleId et nom localisé de styles.xml), puis par indices :
+# gras et taille pour le titre, liste de noms pour les auteurs. Ordre habituel de la tête :
+# Titel [Untertitel] Author Abstract(Résumé) Abstract(Zusammenfassung) « Keywords: … »
+# « DOI: … » ligne de revue [logo CC], puis le corps ; tableau des auteurs en fin de
+# document.
 #
-# Règle d'or : ne jamais perdre de texte — un bloc incertain reste dans le corps. Le YAML
-# suit l'ordre canonique du cockpit, guillemets échappés comme dans lib/yaml.js.
-# stdlib uniquement : pas de PyYAML dans la WSL.
+# Aucun texte n'est perdu : un bloc incertain reste dans le corps. Le YAML suit l'ordre du
+# cockpit, guillemets échappés comme dans lib/yaml.js.
 
 import json
 import os
@@ -64,8 +55,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import szh_commun
 from pronto_modele import (langue_du_produit, aplatir, citer, cle_comparaison, lire_titres_bib,
                            slugifier_portrait)
-# Tous les noms de la bibliothèque, et non les seuls employés ici : livre-migrer-meta.py et
-# outils-dev/lexique/generer-noms.py les cherchent encore dans ce module.
+# Tous les noms, pas seulement ceux utilisés ici : livre-migrer-meta.py et
+# outils-dev/lexique/generer-noms.py les cherchent dans ce module.
 from heritage_meta import (
     RE_RESUME, LANG_RESUME, RE_KEYWORDS, RE_DOI_LIGNE, RE_DOI, RE_JOURNAL, langue_resume,
     nettoyer_doi, langue_du_doi, decouper_keywords, decouper_liste, RE_TITRE_DEUX_POINTS,
@@ -82,22 +73,21 @@ TYPES_VALIDES = ('article', 'editorial', 'interview', 'varia', 'tribune-libre',
                  'documentation')
 LANGUES_META = ('fr', 'de', 'it')          # ordre d'écriture du YAML (cockpit)
 CHAMPS_AUTEUR = ('prenom', 'nom', 'fonction', 'affiliation', 'orcid', 'email', 'photo')
-# Formats qu'accepte le dépôt de photo du cockpit (EXTENSIONS_PHOTO d'extension.js) et donc
-# le pipeline de portraits : une image d'un autre format n'est pas appariée.
+# Formats acceptés par le dépôt de photo du cockpit (EXTENSIONS_PHOTO d'extension.js) ; une
+# image d'un autre format n'est pas associée.
 EXTENSIONS_PORTRAIT = ('png', 'jpg', 'jpeg', 'webp')
 
-# rId -> nom du fichier tel que pandoc l'extrait sous media/. Rempli dans principal(), le
-# zip étant refermé ensuite.
+# rId -> nom du fichier tel que pandoc l'extrait sous media/. Rempli dans principal().
 RELS_IMAGES = {}
 
 # ---------------------------------------------------------------------------------
 # Texte et normalisation. normaliser() doit rester identique à celle de docx-titres.py et
-# de szh-titres.lua : c'est elle qui apparie les paragraphes dans les filtres.
+# de szh-titres.lua, qui comparent les paragraphes.
 
 
 def normaliser(t):
-    """Forme de COMPARAISON : blancs Unicode (insécables comprises, par str.split())
-    repliés, tirets spéciaux -> '-', rogné. Jamais pour une valeur : voir valeur()."""
+    """Forme de comparaison : blancs Unicode (insécables comprises) regroupés, tirets
+    -> '-', bords rognés. Pas pour une valeur : voir valeur()."""
     for a, b in (('–', '-'), ('—', '-'), ('‑', '-')):
         t = t.replace(a, b)
     return ' '.join(t.split())
@@ -107,9 +97,9 @@ _RE_BLANCS_ASCII = re.compile(r'[ \t\r\n\f\v]+')
 
 
 def valeur(t):
-    """Forme de VALEUR (titre, sous-titre, résumé, mots-clés, champs d'auteur) : seuls les
-    blancs ASCII sont repliés ; insécables, espace fine, tirets et U+2011 restent tels que
-    tapés, pour szh-typographie.lua. Même règle que pronto_modele.normaliser_valeur()."""
+    """Forme de valeur (titre, sous-titre, résumé, mots-clés, champs d'auteur) : seuls les
+    blancs ASCII sont regroupés ; insécables, espace fine, tirets et U+2011 restent tels
+    quels pour szh-typographie.lua. Même règle que pronto_modele.normaliser_valeur()."""
     return _RE_BLANCS_ASCII.sub(' ', t or '').strip()
 
 
@@ -120,7 +110,7 @@ def actif(prop):
 
 
 def a_image(el):
-    """L'élément contient-il une image (DrawingML ou VML hérité) ?"""
+    """Vrai si l'élément contient une image (DrawingML ou VML)."""
     return (next(el.iter(A + 'blip'), None) is not None
             or next(el.iter(W + 'drawing'), None) is not None
             or next(el.iter(W + 'pict'), None) is not None)
@@ -132,10 +122,9 @@ def images_de(el):
 
 
 def photo_de(el):
-    """Nom du fichier de la photo d'une cellule : la plus grande image déclarée, et non la
-    première. Une cellule de portrait porte parfois un fragment décoratif en plus du visage
-    (filet, icône, morceau d'image recadré), et prendre la première donnerait la vignette
-    pour le portrait — puis la purge effacerait le portrait, que rien ne citerait plus."""
+    """Nom du fichier de la photo d'une cellule : la plus grande image, pas la première.
+    Une cellule de portrait contient parfois aussi un petit élément décoratif (filet,
+    icône), qui serait pris pour le portrait."""
     trouvees = images_de(el)
     if not trouvees:
         return None
@@ -170,9 +159,9 @@ def taille_max(p):
 
 
 # ---------------------------------------------------------------------------------
-# Styles : classification par styleId et par nom localisé (styles.xml). pandoc mappe en
-# métadonnées les paragraphes dont le nom de style est Title, Subtitle, Author, Abstract
-# ou Date : ces blocs disparaissent du corps sans notre aide, aucune ligne P à émettre.
+# Styles : classement par styleId et par nom localisé (styles.xml). pandoc met en
+# métadonnées les paragraphes de style Title, Subtitle, Author, Abstract ou Date : ils
+# quittent le corps seuls, sans ligne P.
 
 NOMS_PANDOC_META = {'title', 'subtitle', 'author', 'abstract', 'date'}
 
@@ -200,9 +189,8 @@ class Classeur:
             return 'author'
         if nom == 'abstract' or i == 'abstract':
             return 'abstract'
-        # « EndNoteBibliography » est le style que le plugin EndNote pose sur la liste
-        # qu'il génère : 34 paragraphes du corpus des 421 galleys publiés, qu'aucune voie
-        # ne voyait.
+        # « EndNoteBibliography » : style que le module EndNote pose sur la liste qu'il
+        # génère.
         if nom == 'bibliography' or i.startswith('literaturverzeichnis') \
                 or i in ('bibliographie', 'bibliografia', 'bibliography',
                          'endnotebibliography'):
@@ -219,20 +207,20 @@ class Classeur:
         return self.styles.get(sid or '', '')
 
     def pandoc_mange(self, sid):
-        """pandoc mappe-t-il ce style en métadonnées (bloc absent du corps) ?"""
+        """Vrai si pandoc met ce style en métadonnées (bloc absent du corps)."""
         return self.nom(sid) in NOMS_PANDOC_META
 
 
 # --- cellules du tableau des auteurs -----------------------------------------------
 
 def lignes_cellule(tc):
-    """Lignes de texte d'une cellule : chaque w:p et chaque w:br découpe. Retourne
-    [(texte, sep)] où sep vaut 'p' (nouveau paragraphe) ou 'br' (saut de ligne interne),
-    pour joindre une affiliation multi-lignes sans fausse virgule."""
+    """Lignes de texte d'une cellule, coupées à chaque w:p et w:br. Rend [(texte, sep)],
+    sep valant 'p' (nouveau paragraphe) ou 'br' (saut de ligne), pour joindre une
+    affiliation sur plusieurs lignes sans virgule en trop."""
     lignes = []
     for enfant in tc:
         if enfant.tag != W + 'p':
-            continue                      # tableau imbriqué : cellule non-auteur ailleurs
+            continue                      # tableau imbriqué ignoré
         sep = 'p'
         courant = []
         for r in enfant.iter(W + 'r'):
@@ -258,9 +246,9 @@ def lignes_cellule(tc):
 
 
 def cellule_auteur(tc):
-    """Cellule « auteur » : lignes de rôle sautées, puis 1ʳᵉ ligne = nom plausible (titres
-    académiques tolérés, queue « , MA Fonction » acceptée) et (e-mail présent ou au moins
-    2 lignes). Retourne le dict auteur, ou None."""
+    """Cellule « auteur » : lignes de rôle sautées, puis première ligne = nom plausible
+    (titres académiques admis, suite « , MA Fonction » acceptée), et e-mail ou au moins
+    deux lignes. Rend le dict auteur, ou None."""
     lignes = lignes_cellule(tc)
     while lignes and RE_ROLE.match(lignes[0][0]):
         lignes.pop(0)                     # « Article rédigé par », « En collab. avec »…
@@ -269,8 +257,7 @@ def cellule_auteur(tc):
     premier, amorce_fonction = decouper_ligne_nom(lignes[0][0])
     # Ligne de titres seuls, le nom à la ligne suivante (« Prof. Dr. phil. » puis
     # « Angelika Schöllhorn ») : la ligne est sautée. Seulement si elle ne contient que
-    # des titres — chercher un nom plus loin dans n'importe quelle cellule ferait passer
-    # un encadré de contenu pour un bloc auteurs.
+    # des titres : sinon un encadré de contenu passerait pour un bloc auteurs.
     if not premier and len(lignes) > 1 and not sans_titres_academiques(lignes[0][0]):
         lignes.pop(0)
         premier, amorce_fonction = decouper_ligne_nom(lignes[0][0])
@@ -285,8 +272,8 @@ def cellule_auteur(tc):
         m = RE_EMAIL.search(txt)
         if m and not email:
             email = m.group(1)
-            # e-mail collé en fin de ligne (« PH Luzern bruno.zobrist@phlu.ch ») : le
-            # reste de la ligne est une info à part entière.
+            # e-mail en fin de ligne (« PH Luzern bruno.zobrist@phlu.ch ») : le reste de
+            # la ligne est une information à part.
             reste = valeur(txt.replace(m.group(1), ' '))
             if reste:
                 infos.append((reste, sep))
@@ -299,8 +286,8 @@ def cellule_auteur(tc):
     if not email and not infos:
         return None
     prenom, nom = decouper_prenom_nom(premier)
-    # fonction = 1ʳᵉ ligne d'info, complétée par la suivante si elle reste en suspens
-    # (& / et / und / virgule) ou si la suivante commence en minuscule (« Parent d'un
+    # fonction = première ligne d'information, prolongée par la suivante si elle finit par
+    # & / et / und / virgule, ou si la suivante commence par une minuscule (« Parent d'un
     # adolescent » + « polyhandicapé »).
     fonction = ''
     i = 0
@@ -324,20 +311,17 @@ def cellule_auteur(tc):
             'affiliation': affiliation, 'orcid': orcid, 'email': email}
 
 
-# Crédit posé sous le portrait, dans la cellule-image (« © Franca Pedrazetti »,
-# « @ ARC Sieber ») : la cellule tient une image et rien d'autre qu'un crédit. C'est une
-# cellule-photo, et elle ne doit pas faire tomber le tableau entier. Le schéma d'auteur
-# n'ayant pas de champ crédit, le texte part avec le tableau : analyser_table_auteurs()
-# le remonte pour que le rédacteur soit prévenu.
+# Crédit sous le portrait, dans la cellule de l'image (« © Franca Pedrazetti »,
+# « @ ARC Sieber ») : la cellule reste une cellule-photo. La fiche d'auteur n'ayant pas de
+# champ crédit, analyser_table_auteurs() rend ces crédits pour qu'ils soient signalés.
 RE_CREDIT_PHOTO = re.compile(
     r'^(?:[©@]|\(c\)|cr[ée]dits?\b|photos?\s*:'
     r'|foto(?:grafie)?\s*:|bild(?:quelle)?\s*:)', re.I)
 
 
 def _apparier(sans_photo, libres):
-    """Apparie des cellules-photos à des auteurs sans photo, dans l'ordre, et seulement
-    si les comptes concordent : mieux vaut aucune photo qu'une photo sur la mauvaise
-    personne."""
+    """Associe dans l'ordre des cellules-photos à des auteurs sans photo, seulement si les
+    nombres sont égaux : mieux vaut aucune photo qu'une photo sur la mauvaise personne."""
     if not libres or len(libres) != len(sans_photo):
         return
     for a, nom in zip(sans_photo, libres):
@@ -346,19 +330,16 @@ def _apparier(sans_photo, libres):
 
 def analyser_table_auteurs(tbl):
     """(est_tableau_auteurs, [auteurs], nb_photos, {images}, [crédits de photo]). Strict :
-    toute cellule non vide doit être soit une image seule (photo), soit une cellule auteur —
-    une seule cellule de prose libre suffit à laisser le tableau dans le corps.
+    chaque cellule non vide doit être une image seule (photo) ou une cellule auteur ; une
+    seule cellule de texte libre laisse le tableau dans le corps.
 
-    Chaque auteur reçoit dans '_image' le nom du fichier de sa photo sous media/ quand
-    l'appariement est sûr : l'image de sa propre cellule d'abord, sinon les cellules-photos
-    de la même rangée prises dans l'ordre, sinon celles du tableau entier (patron d'une
-    rangée d'images au-dessus d'une rangée de textes). Rien n'est posé si les comptes ne
-    concordent pas.
+    Chaque auteur reçoit dans '_image' le nom de sa photo sous media/ quand l'association
+    est sûre : l'image de sa propre cellule, sinon les cellules-photos de la même rangée
+    dans l'ordre, sinon celles du tableau entier (rangée d'images au-dessus d'une rangée de
+    textes). Rien si les nombres diffèrent.
 
-    Le quatrième membre porte TOUTES les images des cellules qui tiennent une photo, pas
-    seulement celles retenues : le tableau part du corps, ces fichiers ne sont donc plus
-    cités nulle part, et la purge des images inutilisées ne doit pas pouvoir emporter un
-    portrait sur une erreur d'appariement."""
+    {images} contient toutes les images des cellules-photos, retenues ou non : le tableau
+    quitte le corps, et ces fichiers doivent être protégés de la suppression."""
     auteurs = []
     photos = 0
     libres_table = []
@@ -402,7 +383,7 @@ def analyser_table_auteurs(tbl):
 
 
 # ---------------------------------------------------------------------------------
-# Type d'article — conservateur : documentation/editorial sur signaux explicites.
+# Type d'article : documentation ou editorial seulement sur un signe explicite.
 
 def detecter_type(nom_fichier, titre, doi):
     base = (os.path.basename(nom_fichier) or '').lower()
@@ -420,11 +401,9 @@ def detecter_type(nom_fichier, titre, doi):
 
 
 # ---------------------------------------------------------------------------------
-# Avertissement destiné au rédacteur : une ligne, préfixe fixe, deuxième champ = code
-# stable, français puis allemand. Même format que docx-tables.py, pour que l'interface
-# n'ait qu'un seul motif à reconnaître. stderr et articles-word/.import.log — voir
-# szh_commun.avertir() pour le mécanisme (partagé avec docx-tables.py, livre-scinder.py et
-# reimporter.py, qui recopiaient chacun la même fonction).
+# Avertissement pour la rédaction : une ligne, préfixe fixe, deuxième champ = code stable,
+# français puis allemand, sur stderr et dans $SZH_IMPORT_LOG (szh_commun.avertir(), commun
+# à docx-tables.py, livre-scinder.py et reimporter.py).
 PREFIXE_AVERT = '[import-avertissement]'
 
 
@@ -432,15 +411,15 @@ def avertir(code, champs, fr, de):
     szh_commun.avertir(PREFIXE_AVERT, code, champs, fr, de)
 
 
-# Sérialisation YAML, à garder alignée sur lib/yaml.js (serialiserMeta, citerFrontmatter) :
-# tout est cité "…" par pronto_modele.citer(), fins de ligne LF, clés vides omises. Elle
-# diffère de pronto_modele.serialiser_meta() : mots-clés écrits ici, pas de champ ror.
+# Sérialisation YAML, alignée sur lib/yaml.js (serialiserMeta, citerFrontmatter) : valeurs
+# entre "…" par pronto_modele.citer(), fins de ligne LF, clés vides omises. Diffère de
+# pronto_modele.serialiser_meta() : mots-clés écrits, pas de champ ror.
 def serialiser_meta(meta):
     lignes = []
     if meta.get('type') in TYPES_VALIDES:
         lignes.append('type: ' + meta['type'])
-    # Jeton nu et non cité, comme serialiserMeta() de lib/yaml.js : szh-maquette.lua
-    # relit cette ligne hors pandoc.
+    # Sans guillemets, comme serialiserMeta() de lib/yaml.js : szh-maquette.lua relit
+    # cette ligne hors pandoc.
     if meta.get('lang') in LANGUES_META:
         lignes.append('lang: ' + meta['lang'])
     if (meta.get('source') or '').strip():
@@ -482,35 +461,24 @@ def serialiser_meta(meta):
 
 
 # ---------------------------------------------------------------------------------
-# Bibliographie : quelle étendue du corps détacher.
+# Bibliographie : quelle partie du corps détacher.
 #
-# Le signal est le style, et lui seul : mesuré sur les 421 galleys publiés, les deux revues
-# marquent leurs références « Literaturverzeichnis », « Bibliographie », « Bibliography »
-# ou « EndNoteBibliography ». Le titre de section, lui, ne sert qu'à trouver le bord
-# supérieur de la liste — jamais à décider qu'il y a une bibliographie.
+# Le style seul décide : les deux revues marquent leurs références « Literaturverzeichnis »,
+# « Bibliographie », « Bibliography » ou « EndNoteBibliography ». Le titre de section ne
+# sert qu'à trouver le haut de la liste.
 #
-# L'étendue va du titre (exclu) au dernier paragraphe stylé. Prendre l'étendue plutôt que
-# les seuls paragraphes stylés répare le défaut mesuré sur le corpus — 121 références
-# restées en arrière parce que leur paragraphe avait perdu le style : elles sont dedans, et
-# partent avec les autres. Sur le corpus : 3823 paragraphes stylés, 3902 emportés, et les
-# 79 de plus sont bien des références.
+# L'étendue va du titre (exclu) au dernier paragraphe stylé : les références dont le
+# paragraphe a perdu son style, au milieu de la liste, partent avec les autres. Rien n'est
+# pris après le dernier paragraphe stylé (des notices d'auteurs suivent parfois la liste).
 #
-# Rien n'est cherché au-delà du dernier paragraphe stylé : 16 articles du corpus ont du
-# texte après leur liste (notices d'auteur·e·s en paragraphes), et il n'a rien à faire dans
-# la bibliographie.
-
-
 # aplatir(), cle_comparaison() et lire_titres_bib() viennent de pronto_modele : les deux
-# lecteurs écrivent les mêmes clés B/BT, que szh-biblio-detacher.lua relit. Un lexique
-# illisible rend un ensemble vide : l'étendue commence alors au premier paragraphe stylé.
-# ressemble_a_une_reference() vient de heritage_meta : le nettoyeur s'en sert aussi.
+# lecteurs écrivent les mêmes clés B/BT, relues par szh-biblio-detacher.lua. Un lexique
+# illisible donne un ensemble vide : l'étendue commence alors au premier paragraphe stylé.
 
 
 def references_restees(blocs, fin):
-    """Combien de paragraphes qui se lisent comme des références suivent l'étendue, avant le
-    prochain titre ou tableau. Le corpus en compte : 121 références qu'un paragraphe sans
-    style laissait en arrière, dans 32 articles. On ne les emporte pas — le style n'a pas
-    parlé — mais on ne se tait plus."""
+    """Nombre de paragraphes ressemblant à des références qui suivent l'étendue, avant le
+    prochain titre ou tableau. Ils ne sont pas détachés (pas de style), mais signalés."""
     n = 0
     for i in range(fin + 1, len(blocs)):
         e = blocs[i]
@@ -526,12 +494,11 @@ def references_restees(blocs, fin):
 
 
 def etendue_biblio(blocs, classeur, type_article):
-    """(lignes B, ligne BT, stats) — les clés des paragraphes à détacher, celle du titre à
-    retirer, et de quoi rendre compte.
+    """(lignes B, ligne BT, stats) : clés des paragraphes à détacher, clé du titre à
+    retirer, statistiques.
 
-    Une documentation est laissée entière : sa liste EST son contenu, et le corpus le
-    montre bien — ces articles portent le style de bibliographie sur leur sommaire, en tête,
-    avec cent cinquante paragraphes de texte derrière."""
+    Une documentation est laissée entière : sa liste est son contenu (le style de
+    bibliographie y est souvent posé sur le sommaire de tête)."""
     stats = {'voie': 'aucune', 'paragraphes': 0, 'styles': 0, 'titre': False}
     if type_article == 'documentation':
         stats['voie'] = 'documentation'
@@ -541,10 +508,8 @@ def etendue_biblio(blocs, classeur, type_article):
               if e.tag == W + 'p' and classeur.famille(pstyle(e)) == 'biblio'
               and normaliser(texte_paragraphe(e))]
     if not styles:
-        # Aucun style : reste-t-il un titre de bibliographie ? Alors le document en a une
-        # et nous ne savons pas la borner — c'est ce cas-là qu'il faut dire au rédacteur,
-        # et lui seul : un éditorial sans références n'a rien à se faire reprocher. Ce
-        # jugement ne décide de rien d'autre que du message.
+        # Aucun style, mais un titre de bibliographie : le document en a une qu'on ne sait
+        # pas borner, ce qui sera signalé (un éditorial sans références ne l'est pas).
         for e in blocs:
             if e.tag != W + 'p' or classeur.famille(pstyle(e)) != 'heading':
                 continue
@@ -553,9 +518,8 @@ def etendue_biblio(blocs, classeur, type_article):
                 break
         return [], '', stats
 
-    # Bord supérieur : le titre de section juste au-dessus. On remonte les paragraphes non
-    # vides, on s'arrête au premier titre rencontré — s'il est du lexique, l'étendue
-    # commence après lui ; sinon, elle commence au premier paragraphe stylé.
+    # Haut de l'étendue : on remonte jusqu'au premier titre. S'il est dans le lexique,
+    # l'étendue commence après lui ; sinon au premier paragraphe stylé.
     titre = None
     vus = 0
     j = styles[0] - 1
@@ -574,8 +538,8 @@ def etendue_biblio(blocs, classeur, type_article):
 
     debut = (titre + 1) if titre is not None else styles[0]
     fin = styles[-1]
-    # Un tableau dans l'étendue : on se replie sur les seuls paragraphes stylés. Le cas est
-    # absent du corpus, mais emporter un tableau serait une perte, pas un déplacement.
+    # Un tableau dans l'étendue : on se limite aux paragraphes stylés, pour ne pas
+    # emporter le tableau.
     if any(blocs[i].tag == W + 'tbl' for i in range(debut, fin + 1)):
         debut, titre = styles[0], None
 
@@ -595,7 +559,7 @@ def etendue_biblio(blocs, classeur, type_article):
 
 
 def principal(argv):
-    try:  # console Windows en cp1252 : un accent combinant (nom venu du partage) y plante.
+    try:  # console Windows en cp1252 : un accent combinant y ferait planter print().
         sys.stdout.reconfigure(encoding='utf-8')
         sys.stderr.reconfigure(encoding='utf-8')
     except Exception:
@@ -635,16 +599,16 @@ def principal(argv):
     blocs = blocs_du_corps(racine)
     nblocs = max(1, len(blocs))
 
-    # ---- 1) Machine de tête : consomme les blocs de métadonnées jusqu'au corps ----
+    # ---- 1) Tête du document : lit les blocs de métadonnées jusqu'au corps ----
     titre_parts, sous_titre_parts = [], []
     byline = ''
-    resumes = {}                          # lang -> texte (None = langue doc, résolue après)
-    keywords_brut = None                  # texte après déclencheur
+    resumes = {}                          # lang -> texte (None = langue du document)
+    keywords_brut = None                  # texte après l'étiquette
     doi = ''
     langue = None
     consommes_p = []                      # lignes P (texte normalisé)
     logos = 0
-    dernier_resume = None                 # langue du dernier résumé (continuations)
+    dernier_resume = None                 # langue du dernier résumé (pour sa suite)
     titre_source = ''
     sous_titre_source = ''
     i = 0
@@ -686,7 +650,7 @@ def principal(argv):
             byline = (byline + ', ' + val) if byline else val
             consommer()
         elif RE_KEYWORDS.match(txt):
-            # l'étiquette se reconnaît sur la forme de comparaison (« Mots‑clés » tapé au
+            # L'étiquette se reconnaît sur la forme de comparaison (« Mots‑clés » avec un
             # trait d'union insécable), la valeur se prend sur la forme tapée.
             source_mc = val if RE_KEYWORDS.match(val) else txt
             keywords_brut = RE_KEYWORDS.sub('', source_mc, count=1).strip()
@@ -703,7 +667,7 @@ def principal(argv):
                 lang = langue_resume(m.group(1))
                 corps_resume = RE_RESUME.sub('', val if RE_RESUME.match(val) else txt,
                                              count=1).strip()
-                cle = lang                # None (« Abstract ») = langue doc
+                cle = lang                # None (« Abstract ») = langue du document
                 if cle in resumes and resumes[cle]:
                     resumes[cle] += ' ' + corps_resume
                 else:
@@ -721,9 +685,9 @@ def principal(argv):
         i += 1
     fin_tete = i
 
-    # ---- 1bis) Repli heuristique du titre, si aucun style Title/Subtitle n'est trouvé --
+    # ---- 1bis) Titre deviné, si aucun style Title/Subtitle n'est trouvé ----------
     if not titre_parts:
-        # taille dominante du corps pour situer « nettement plus grand »
+        # taille la plus fréquente du corps, pour juger « nettement plus grand »
         freq = {}
         for p in (b for b in blocs if b.tag == W + 'p'):
             t = taille_max(p)
@@ -743,8 +707,8 @@ def principal(argv):
                 titre_source = 'heuristique'
                 if not classeur.pandoc_mange(pstyle(e)):
                     consommes_p.append(txt)
-                # sous-titre heuristique : bloc suivant, plus grand que le corps
-                # mais plus petit que le titre, court, non byline
+                # sous-titre deviné : bloc suivant, court, plus grand que le corps mais
+                # plus petit que le titre, et qui n'est pas une ligne d'auteurs
                 if j + 1 < len(blocs) and blocs[j + 1].tag == W + 'p':
                     e2 = blocs[j + 1]
                     txt2 = normaliser(texte_paragraphe(e2))
@@ -758,7 +722,7 @@ def principal(argv):
                             consommes_p.append(txt2)
             break
 
-    # ---- 1ter) Repli heuristique de la byline, si aucun style Author --------------
+    # ---- 1ter) Ligne d'auteurs devinée, si aucun style Author --------------------
     if not byline and titre_source == 'heuristique':
         for e in blocs[1:5]:
             if e.tag != W + 'p':
@@ -786,8 +750,8 @@ def principal(argv):
                 langue_source = 'premier-resume'
                 break
     if not langue:
-        # Dernier recours, pour les documents sans revue, DOI ni résumé : sondage de
-        # mots-outils sur les premiers paragraphes, fiable entre fr et de.
+        # Dernier recours (ni revue, ni DOI, ni résumé) : comptage de mots-outils dans les
+        # premiers paragraphes, fiable entre fr et de.
         de_mots = (' der ', ' die ', ' das ', ' und ', ' für ', ' mit ', ' im ',
                    ' ein ', ' eine ', ' zum ', ' von ')
         fr_mots = (' le ', ' la ', ' les ', ' et ', ' pour ', ' dans ', ' des ',
@@ -802,11 +766,10 @@ def principal(argv):
         if abs(nde - nfr) >= 5:
             langue = 'de' if nde > nfr else 'fr'
             langue_source = 'contenu'
-    # Le PRODUIT du numéro décide, comme pour pronto-lire.py (décision du 22.09.2026) :
-    # $SZH_PRODUIT, posé par import-docx.sh depuis ausgabe.yaml. Ce qui précède ne sert plus
-    # qu'à avertir d'un désaccord — une Zeitschrift porte souvent un résumé français en
-    # tête, et « premier-resume » faisait composer tout l'article allemand en français
-    # (mesuré le 30.09.2026). Sans produit (appel hors d'un numéro), la déduction reste.
+    # Le produit du numéro décide, comme pour pronto-lire.py ($SZH_PRODUIT, posé par
+    # import-docx.sh). La langue détectée ci-dessus ne sert qu'à signaler un désaccord : un
+    # article de la Zeitschrift commence souvent par un résumé français. Sans produit
+    # (appel hors d'un numéro), la langue détectée est gardée.
     langue_detectee, source_detectee = langue, langue_source
     langue_produit = langue_du_produit(os.getenv('SZH_PRODUIT', ''))
     if langue_produit:
@@ -815,7 +778,7 @@ def principal(argv):
         langue = 'fr'
         langue_source = 'defaut'
         stats['avertissements'].append('langue-indeterminee')
-    if None in resumes:                   # « Abstract » sans langue -> langue du doc
+    if None in resumes:                   # « Abstract » sans langue -> langue du document
         texte = resumes.pop(None)
         if langue not in resumes or not resumes[langue]:
             resumes[langue] = texte
@@ -824,24 +787,23 @@ def principal(argv):
 
     # ---- 3) Tableau(x) des auteurs en fin de document ----------------------------
     tables = [(idx, e) for idx, e in enumerate(blocs) if e.tag == W + 'tbl']
-    tables_consommees = []                # ordinaux 1-based (ordre du document)
+    tables_consommees = []                # rangs à partir de 1 (ordre du document)
     auteurs_table = []
     photos = 0
-    photos_connues = set()                # images des cellules-photos, à ne pas purger
+    photos_connues = set()                # images des cellules-photos, à protéger
     premier_tbl_consomme = None           # indice de bloc du 1er tableau consommé
     credits_photo = []                    # crédits partis avec les tableaux consommés
-    refuses_parlants = 0                  # tableaux de fin refusés portant un e-mail
+    refuses_parlants = 0                  # tableaux de fin refusés contenant un e-mail
     for k in range(len(tables) - 1, -1, -1):
         idx_bloc, tbl = tables[k]
-        if idx_bloc / nblocs < 0.4:       # jamais un bloc auteurs si tôt (corpus : >= 0.53)
+        if idx_bloc / nblocs < 0.4:       # pas de bloc auteurs avant 40 % du document
             break
         ok, auteurs, nb_photos, connues, credits = analyser_table_auteurs(tbl)
         if not ok:
-            # On continue vers le haut au lieu de s'arrêter : un encadré de contenu en
-            # fin d'article ne doit pas masquer le bloc auteurs placé juste avant. Le
-            # tableau refusé reste dans le corps, comme toujours. Un e-mail dedans
-            # trahit un bloc auteurs qu'on n'a pas su lire : c'est ce qui se dit au
-            # rédacteur plus bas.
+            # On continue vers le haut : un encadré en fin d'article ne doit pas masquer
+            # le bloc auteurs juste avant. Le tableau refusé reste dans le corps. S'il
+            # contient un e-mail, c'est sans doute un bloc auteurs illisible : signalé
+            # plus bas.
             if RE_EMAIL.search(' '.join(texte_paragraphe(p)
                                         for p in tbl.iter(W + 'p'))):
                 refuses_parlants += 1
@@ -853,10 +815,10 @@ def principal(argv):
         credits_photo.extend(credits)
         premier_tbl_consomme = idx_bloc
 
-    # L'en-tête de section au-dessus du tableau consommé (« Autrices et auteurs »,
-    # « Zur Person »…) partirait orphelin : on le consomme aussi. Uniquement un titre
-    # stylé, court, au lexique auteurs et collé au tableau, paragraphes vides enjambés —
-    # szh-meta.lua apparie aussi les Header.
+    # Le titre de section juste au-dessus du tableau consommé (« Autrices et auteurs »,
+    # « Zur Person »…) part aussi : seulement un titre stylé, court, du vocabulaire des
+    # auteurs, collé au tableau (lignes vides sautées). szh-meta.lua compare aussi les
+    # Header.
     if premier_tbl_consomme is not None:
         j = premier_tbl_consomme - 1
         while j >= 0 and blocs[j].tag == W + 'p' \
@@ -869,7 +831,7 @@ def principal(argv):
                     r'(autrice|auteur|autor|zur? person|zu den personen)', txt, re.I):
                 consommes_p.append(txt)
 
-    # ---- 4) Fusion byline / tableau ----------------------------------------------
+    # ---- 4) Auteurs : tableau, sinon ligne d'auteurs -----------------------------
     auteurs_byline = auteurs_depuis_byline(byline) if byline else []
     if auteurs_table:
         author = auteurs_table
@@ -884,11 +846,10 @@ def principal(argv):
         author = auteurs_byline
         auteurs_source = 'byline' if auteurs_byline else 'aucun'
 
-    # ---- 4b) Photos des auteur·e·s ------------------------------------------------
-    # Le champ `photo` désigne le fichier tel qu'il sera après le déplacement fait par
-    # import-medias.py, qui lit le fichier d'appariement écrit plus bas. Il pointe
-    # l'original, seul fichier certain d'exister ; le détourage réussi le promeut en
-    # .sans-fond.png, la version que le formulaire du cockpit propose par défaut.
+    # ---- 4b) Photos des auteurs -------------------------------------------------
+    # Le champ `photo` désigne le fichier après son déplacement par import-medias.py :
+    # l'original, seul fichier sûr d'exister. Un détourage réussi le remplace par
+    # .sans-fond.png.
     photos_appariees = []                 # (slug-auteur, nom du fichier dans media/)
     bases_vues = set()
     fichiers_vus = set()
@@ -903,10 +864,10 @@ def principal(argv):
             continue
         if base in bases_vues:
             stats['avertissements'].append('photo-homonyme-ignoree')
-            continue                      # deux fois le même nom : on s'abstient
+            continue                      # deux auteurs du même nom : aucune photo
         if nom_image in fichiers_vus:
-            # Word réutilise un seul fichier pour deux insertions identiques : le déplacer
-            # deux fois laisserait le second auteur avec un `photo` qui ne désigne rien.
+            # Word réutilise un fichier pour deux insertions identiques : le second auteur
+            # aurait un `photo` vers un fichier déjà déplacé.
             stats['avertissements'].append('photo-fichier-partage-ignore')
             continue
         bases_vues.add(base)
@@ -914,13 +875,13 @@ def principal(argv):
         a['photo'] = 'portraits/%s.original.%s' % (base, ext)
         photos_appariees.append((base, nom_image))
     for a in auteurs_table:
-        a.pop('_image', None)             # jamais sérialisé, mais rien ne traîne
+        a.pop('_image', None)             # champ interne, retiré
 
     # ---- 5) Type d'article --------------------------------------------------------
     type_article, type_regle = detecter_type(
         chemin_docx, ' '.join(titre_parts), doi)
 
-    # ---- 6) Bibliographie : l'étendue à détacher, lue dans les styles -------------
+    # ---- 6) Bibliographie : l'étendue à détacher, d'après les styles -------------
     lignes_b, ligne_bt, biblio = etendue_biblio(blocs, classeur, type_article)
 
     # ---- 7) Légendes de figures par style (voisines d'une image) -----------------
@@ -938,31 +899,25 @@ def principal(argv):
                 break
 
     # ---- 7bis) Titre à deux-points, faute de sous-titre ---------------------------
-    # Après le type d'article et la bibliographie : detecter_type() lit le titre entier, et
-    # « Aktuelles: Dokumentation » ne doit pas perdre son rubriquage en route. Les lignes P
-    # retirées du corps ne bougent pas non plus — c'est le paragraphe entier qui quitte le
-    # texte, scindé ou non ; seule la fiche voit deux champs au lieu d'un.
+    # Après la détection du type, qui lit le titre entier (« Aktuelles: Dokumentation »).
+    # Les lignes P ne changent pas : le paragraphe entier quitte le corps ; seule la fiche
+    # reçoit deux champs.
     if titre_parts and not sous_titre_parts:
         gauche, droite = scinder_titre(' '.join(titre_parts))
         if droite:
             titre_parts, sous_titre_parts = [gauche], [droite]
             sous_titre_source = 'deux-points'
 
-    # ---- 8) meta.yaml (jamais écrasé), $SZH_META et stats ------------------------
+    # ---- 8) meta.yaml (pas écrasé), $SZH_META et statistiques ---------------------
     meta = {
         'type': type_article,
         'lang': langue if langue in LANGUES_META else '',
-        # Le .docx vit encore dans articles-word/ à cet instant : son nom de fichier
-        # est l'identité que la cible `import` du Makefile comparera au prochain dépôt.
-        # $SZH_SOURCE (posée par import-docx.sh) porte le nom D'ORIGINE quand ce .docx est
-        # en réalité un .odt converti à la volée — sinon repli sur le basename d'ici, comme
-        # avant l'acceptation de l'ODT.
+        # Nom du Word déposé, que la cible `import` compare au prochain dépôt.
+        # $SZH_SOURCE donne le nom d'origine quand ce .docx vient d'un .odt converti.
         'source': os.environ.get('SZH_SOURCE') or os.path.basename(chemin_docx),
-        # Le DOI du Word n'est plus repris dans la fiche : le DOI est un calcul du cockpit
-        # (place de l'article dans le numéro, lib/export-ojs.js), et seul un DOI défini à
-        # la main dans le formulaire vit dans le meta.yaml — serialiser_meta sait toujours
-        # l'écrire, l'import n'en produit simplement plus. Le doi lu plus haut sert encore
-        # à deviner la langue (langue_du_doi) et le type (éditorial en -00), et aux stats.
+        # Le DOI du Word n'est pas repris : le cockpit le calcule (lib/export-ojs.js), et
+        # seul un DOI saisi à la main vit dans la fiche. Le DOI lu sert à deviner la
+        # langue et le type (éditorial en -00), et aux statistiques.
         'doi': '',
         'title': {langue: ' '.join(titre_parts)} if titre_parts else {},
         'subtitle': {langue: ' '.join(sous_titre_parts)} if sous_titre_parts else {},
@@ -973,8 +928,8 @@ def principal(argv):
     chemin_meta_yaml = os.path.join(dossier, slug + '.meta.yaml')
     meta_ecrit = False
     if os.path.exists(chemin_meta_yaml):
-        # Réimport forcé : ce fichier appartient au formulaire du cockpit, on ne le
-        # réécrit pas ; les instructions de retrait restent émises, pour un corps propre.
+        # La fiche existe (réimport) : elle appartient au cockpit et n'est pas réécrite.
+        # Les instructions de retrait sont quand même écrites.
         stats['avertissements'].append('meta-existant-conserve')
     else:
         contenu = serialiser_meta(meta)
@@ -983,10 +938,8 @@ def principal(argv):
                                        binaire=False, encoding='utf-8', newline='\n')
             meta_ecrit = True
 
-    # Langue devinée et non lue dans le document : le rédacteur doit pouvoir la
-    # démentir. On l'écrit quand même — un champ vide bloquerait la composition — mais
-    # on le dit. Sur une fiche conservée, rien à signaler : le champ du rédacteur fait
-    # foi et nous ne l'avons pas touché.
+    # Langue imposée par le produit ou devinée : écrite (un champ vide bloquerait la
+    # composition) et signalée. Rien à signaler sur une fiche existante, non modifiée.
     if (meta_ecrit and langue_source == 'produit' and langue_detectee
             and langue_detectee != langue):
         avertir(
@@ -1012,9 +965,8 @@ def principal(argv):
             'Prüfen Sie sie unter «Metadaten der Artikel» – Layout und '
             'Zusammenfassungen richten sich danach.')
 
-    # Le sous-titre déduit d'un deux-points est une coupe que nous avons décidée, et elle
-    # se voit à l'impression : le rédacteur doit pouvoir la défaire d'un coller. Sur une
-    # fiche conservée, rien à dire — nous ne l'avons pas touchée.
+    # Sous-titre tiré d'un deux-points : coupe visible à l'impression, signalée pour être
+    # vérifiée.
     if meta_ecrit and sous_titre_source == 'deux-points':
         avertir(
             'sous-titre-deduit',
@@ -1028,11 +980,9 @@ def principal(argv):
             '«Metadaten der Artikel» – Titel und Untertitel werden nicht gleich '
             'gesetzt.')
 
-    # Un tableau de fin porteur d'e-mails que nous n'avons pas su lire, et pas un seul
-    # auteur venu d'un tableau : la fiche n'aura que des noms — ni fonction, ni
-    # affiliation, ni e-mail, ni portrait — et l'export vers la plateforme partira
-    # amputé. Le tableau reste dans le corps, l'article est entier, mais ce repli ne doit
-    # plus être muet : c'est lui qui a fait passer des blocs auteurs inaperçus.
+    # Tableau de fin avec des e-mails, non lu, et aucun auteur venu d'un tableau : la fiche
+    # n'aura que des noms (ni fonction, ni affiliation, ni e-mail, ni portrait). Le
+    # tableau reste dans le corps ; c'est signalé.
     if refuses_parlants and not auteurs_table:
         avertir(
             'tableau-auteurs-non-lu',
@@ -1050,8 +1000,8 @@ def principal(argv):
             'Hand, oder setzen Sie im Word jede Person in ihre eigene Zelle (Name, '
             'Funktion, E-Mail) und importieren Sie den Artikel neu.')
 
-    # Crédit de photo emporté avec le tableau des auteurs : la fiche n'a pas de champ
-    # pour lui, et il ne s'imprimera plus. Mieux vaut le dire que le perdre en silence.
+    # Crédit de photo parti avec le tableau des auteurs : la fiche n'a pas de champ pour
+    # lui, il ne s'imprimera plus. Signalé.
     if credits_photo:
         avertir(
             'credit-photo-non-repris',
@@ -1065,9 +1015,8 @@ def principal(argv):
             'Übertragen Sie sie dorthin, wo sie erscheinen sollen, falls die Ausgabe '
             'sie nennen muss.' % (len(credits_photo), ' ; '.join(credits_photo)))
 
-    # Des références qui suivent la liste sans porter son style : elles restent dans le
-    # texte, l'article les imprime, mais elles ne seront ni ancrées ni exportées avec les
-    # autres. C'est une correction à faire dans le Word, et elle se dit.
+    # Références après la liste, sans son style : elles restent dans le texte, ni ancrées
+    # ni exportées avec les autres. À corriger dans le Word.
     if biblio.get('restees'):
         avertir(
             'biblio-references-restees',
@@ -1082,10 +1031,8 @@ def principal(argv):
             'Literaturverzeichnisse zu und importieren Sie den Artikel neu.'
             % biblio['restees'])
 
-    # Une bibliographie que le document annonce par un titre mais dont aucun paragraphe ne
-    # porte le style : elle reste dans le corps, l'article sort entier, et le rédacteur doit
-    # savoir pourquoi elle n'a pas son fichier — sans quoi il découvrirait plus tard que
-    # l'export OJS part sans références.
+    # Bibliographie annoncée par un titre, mais sans paragraphe stylé : elle reste dans le
+    # corps, et l'export OJS partira sans références. Signalé.
     if biblio['voie'] == 'titre-seul':
         avertir(
             'biblio-non-detachee',
@@ -1103,11 +1050,9 @@ def principal(argv):
             'Sie es: weisen Sie den Einträgen im Word die Formatvorlage für '
             'Literaturverzeichnisse zu und importieren Sie den Artikel neu.')
 
-    # Ce que import-medias.py doit savoir des photos, écrit dans tous les cas : sur un
-    # meta.yaml conservé (ré-import), aucun champ `photo` n'a été posé, mais les photos
-    # doivent quand même quitter media/ — sinon la purge les effacerait, et le premier
-    # import les avait déjà rangées sous les mêmes noms. Les lignes G protègent les images
-    # reconnues comme photos sans avoir été appariées.
+    # Instructions pour import-medias.py, écrites même si la fiche existait : les photos
+    # doivent quitter media/, sinon elles seraient supprimées. Les lignes G protègent les
+    # photos reconnues mais non associées.
     chemin_photos = os.getenv('SZH_PHOTOS')
     if chemin_photos:
         appariees = {nom for _, nom in photos_appariees}

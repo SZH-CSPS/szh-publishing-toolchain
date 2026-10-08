@@ -1,25 +1,20 @@
-# Pipeline central SZH/CSPS : .md -> pandoc -> WeasyPrint -> PDF et HTML,
-# un jeu de sorties par article. Vit dans le toolkit, s'invoque depuis le dossier de
-# revue (cwd), ce Makefile étant passé par -f :
+# Compilation d'un numéro : .md -> pandoc -> WeasyPrint -> PDF et HTML, une sortie par
+# article. Se lance depuis le dossier du numéro :
 #   wsl.exe -d SZH-Publishing --cd <dossier revue> -- make -f <toolkit>/pipeline/Makefile all
 #
-# Entrées : articles/<slug>/<slug>.md + media/ ; sorties : out/<slug>/<slug>.pdf et .html.
-# Import Word : articles-word/*.docx et *.odt (converti en .docx à la volée), traités par
-# import-docx.sh (sa chaîne y est décrite).
-# Word corrigé d'un article déjà importé : cible `reimporter`, portée par reimporter.py.
+# Entrées : articles/<slug>/<slug>.md et media/. Sorties : out/<slug>/<slug>.pdf et .html.
+# Les Word déposés dans articles-word/ (.docx, ou .odt converti) passent par import-docx.sh.
+# Le Word corrigé d'un article déjà importé passe par la cible `reimporter`.
+# Les chaînes de filtres Lua et leur ordre : pipeline/filtres.mk.
 #
-# Les chaînes de filtres Lua de la compilation, leur ordre et ce qui casse si on le
-# permute : pipeline/filtres.mk.
-#
-# Aucun chemin /mnt/c codé en dur ici (portabilité macOS). Conserver l'indentation
-# par tabulations et les fins de ligne LF.
+# Aucun chemin /mnt/c en dur (portabilité macOS). Indentation par tabulations, fins de
+# ligne LF.
 
 SHELL      := /bin/bash
 PANDOC     ?= pandoc
 WEASYPRINT ?= weasyprint
-# Validateur PDF/UA. veraPDF est un outil Java ; l'image embarque un runtime taillé au
-# jlink dans /opt/jre-min, pas un JRE complet, d'où le JAVA_HOME explicite. Surchargeables
-# depuis l'environnement pour une intégration continue qui les installe ailleurs.
+# Validateur PDF/UA. veraPDF est en Java ; l'image embarque un runtime réduit (jlink) dans
+# /opt/jre-min, d'où le JAVA_HOME explicite. Surchargeables depuis l'environnement.
 VERAPDF      ?= /opt/verapdf-cli/verapdf
 VERAPDF_JAVA ?= /opt/jre-min
 
@@ -27,9 +22,9 @@ VERAPDF_JAVA ?= /opt/jre-min
 THIS         := $(abspath $(lastword $(MAKEFILE_LIST)))
 PIPELINE_DIR := $(patsubst %/,%,$(dir $(THIS)))
 
-# Socle partagé : polices et jetons :root, lus par toutes les sorties. Toujours celui du
-# toolkit, même quand la revue porte son propre styles/print.css — une feuille locale hérite
-# ainsi des jetons sans les redéclarer, et ne peut pas dériver. Empilé en premier.
+# Polices et variables :root communes à toutes les sorties. Toujours celle du toolkit, même
+# quand la revue a son propre styles/print.css, qui hérite ainsi des variables. Chargée en
+# premier.
 SOCLE      := $(PIPELINE_DIR)/styles/socle.css
 SOCLE_ABS  := $(abspath $(SOCLE))
 
@@ -37,81 +32,58 @@ SOCLE_ABS  := $(abspath $(SOCLE))
 STYLE      := $(firstword $(wildcard styles/print.css) $(PIPELINE_DIR)/styles/print.css)
 STYLE_ABS  := $(abspath $(STYLE))
 
-# Mise en forme du balisage posé par les filtres Lua communs à la revue et au livre (une
-# grille d'images, une image décorative, un appel de citation, une description longue…) :
-# voir l'en-tête de ce fichier pour ce qui y vit et pourquoi. Empilée après print.css : ses
-# règles complètent des composants que les filtres posent et doivent l'emporter sur les
-# règles génériques de la maquette à spécificité égale (mesuré : `a.szh-orcid::after` et
-# `a[href]::after`, même spécificité, la seconde écrasait la première quand partage-filtres
-# précédait print.css — l'icône ORCID sortait avec la flèche de lien externe en trop).
+# Styles du balisage posé par les filtres Lua communs à la revue et au livre (grille
+# d'images, image décorative, appel de citation…). Chargée après print.css pour l'emporter à
+# spécificité égale : sinon `a[href]::after` de la maquette ajoute une flèche de lien
+# externe à l'icône ORCID (`a.szh-orcid::after`).
 PARTAGE     := $(PIPELINE_DIR)/styles/partage-filtres.css
 PARTAGE_ABS := $(abspath $(PARTAGE))
 
-# Template pandoc de la couverture ; szh-maquette.lua, en tête de FILTRES_ARTICLE, en
-# dérive les métadonnées de couverture et d'en-tête (étiquette de dossier, nom et ISSN).
+# Gabarit pandoc de l'article. szh-maquette.lua, en tête de FILTRES_ARTICLE, en dérive les
+# métadonnées de couverture et d'en-tête (étiquette de dossier, nom et ISSN).
 TEMPLATE     := $(PIPELINE_DIR)/templates/szh-article.html
 TEMPLATE_ABS := $(abspath $(TEMPLATE))
-# Tous les filtres Lua sont prerequis des rendus : en modifier un doit recompiler.
+# Tous les filtres Lua sont prérequis des rendus : en modifier un recompile.
 FILTRES      := $(wildcard $(PIPELINE_DIR)/filters/*.lua)
-# Les chaînes de filtres, communes à la revue et au livre : inclus avant profils/livre.mk,
-# qui s'en sert.
+# Inclus avant profils/livre.mk, qui s'en sert.
 include $(PIPELINE_DIR)/filtres.mk
 
-# Convertisseur de la Documentation Kirby (arborescence -> markdown intermédiaire) et le
-# contrat qu'il lit avec szh-ressource.lua et szh-rubrique.lua — voir DOC_SLUGS plus bas.
+# Convertisseur de la Documentation Kirby (arborescence -> markdown) et la description des
+# champs qu'il partage avec szh-ressource.lua et szh-rubrique.lua.
 DOC_CONVERTISSEUR := $(PIPELINE_DIR)/documentation-kirby.py
 DOC_CHAMPS_JSON   := $(PIPELINE_DIR)/kirby/champs-documentation.json
 
-# Bibliothèque partagée _NewsUndActu\Fiches (docs/FORMAT-DOCUMENTATION-KIRBY.md) : les
-# fiches d'une Documentation vivent hors du numéro, donc hors de tout $(wildcard articles/…)
-# — il faut la racine pour les mettre en dépendance make (voir DOC_FICHES, prérequis de la
-# cible Documentation plus bas). SZH_NEWS_RACINE (surcharge explicite : banc, tests — make
-# importe déjà les variables d'environnement) sinon la racine que documentation-kirby.py
-# découvre lui-même depuis le répertoire courant (numéro réel, sous Revue/, Zeitschrift/ ou
-# _Archive/…/<num>) ; --imprimer-racine-news ne convertit rien, ne sert qu'à ce $(shell).
-# ⚠ Make NE SAIT PAS quelles fiches de la bibliothèque sont rattachées à CE numéro (seul
-# documentation-kirby.py lit leur champ Ausgabe) : DOC_FICHES prend donc TOUTE la
-# bibliothèque en prérequis de la Documentation — une fiche éditée ailleurs recompile cette
-# page même si elle ne la concerne pas, plus sûr qu'un oubli silencieux qui ne recompile
-# rien. Racine indécouvrable (numéro hors Revue/Zeitschrift/_Archive, ni SZH_NEWS_RACINE) :
-# le $(shell) rend une chaîne vide, DOC_FICHES est vide, et il faudra alors forcer la
-# recompilation à la main (toucher l'article, ou `make clean`) après une fiche éditée.
-# Fiches\<dossier du type>\<slug>\… (types[].dossier, docs/FORMAT-DOCUMENTATION-KIRBY.md,
-# §Une fiche, 23.09.2026) : un cran de plus qu'avant — DOC_FICHES suit cette profondeur.
+# Les fiches d'une Documentation vivent hors du numéro, dans la bibliothèque partagée
+# _NewsUndActu/Fiches/<dossier du type>/<slug>/ (docs/FORMAT-DOCUMENTATION-KIRBY.md).
+# Sa racine vient de SZH_NEWS_RACINE (tests), sinon de documentation-kirby.py, qui la
+# trouve depuis le dossier courant.
+# Seul documentation-kirby.py sait quelles fiches concernent ce numéro (champ Ausgabe) :
+# toute la bibliothèque est donc prérequis de la Documentation. Si la racine est
+# introuvable, DOC_FICHES est vide, et une fiche modifiée ne recompile rien : toucher
+# l'article ou faire `make clean`.
 NEWS_RACINE := $(strip $(or $(SZH_NEWS_RACINE),$(shell python3 "$(DOC_CONVERTISSEUR)" --imprimer-racine-news 2>/dev/null)))
 DOC_FICHES  := $(wildcard $(NEWS_RACINE)/_NewsUndActu/Fiches/*/*/*.txt) $(wildcard $(NEWS_RACINE)/_NewsUndActu/Fiches/*/*/*.png) $(wildcard $(NEWS_RACINE)/_NewsUndActu/Fiches/*/*/*.jpg) $(wildcard $(NEWS_RACINE)/_NewsUndActu/Fiches/*/*/*.jpeg) $(wildcard $(NEWS_RACINE)/_NewsUndActu/Fiches/*/*/*.gif) $(wildcard $(NEWS_RACINE)/_NewsUndActu/Fiches/*/*/*.svg)
 
 # ---------------------------------------------------------------------------
 # Profil de compilation du dossier, lu dans ausgabe.yaml par szh-lire-config.lua (pandoc
-# lua, sans dépendance) : l'image WSL n'embarque pas PyYAML, et cette lecture — un seul
-# petit analyseur, réutilisé par livre.mk et par exiger_titre plus bas — remplace le sed +
-# head d'origine, qui ne comprenait que la forme la plus simple de chaque clé.
+# lua : l'image n'a pas PyYAML). Le même lecteur sert à livre.mk et à exiger_titre.
 LIRE_CONFIG := $(PIPELINE_DIR)/filters/szh-lire-config.lua
-# ⚠ Le script rend une chaîne vide dans deux cas opposés : clé `profil:` absente (dossier
-#   historique, à compiler comme avant ; code de sortie 1) ou clé présente sans valeur
-#   (choix du rédacteur : aucun document ; code de sortie 0). La présence se lit donc à
-#   part, sur ce code de sortie.
+# Le script rend une chaîne vide dans deux cas : clé `profil:` absente (code 1, compiler
+# en article) ou présente sans valeur (code 0, aucun document). La présence se lit donc
+# sur le code de sortie.
 PROFIL_PRESENT := $(shell $(PANDOC) lua $(LIRE_CONFIG) ausgabe.yaml profil >/dev/null 2>&1 && echo 1 || echo 0)
-# La valeur : guillemets d'un sérialiseur tolérés, arrêt au premier caractère hors
-# [a-zA-Z-] (espace, commentaire de fin de ligne, CR de Windows). Une valeur exotique
-# est donc tronquée et tombe dans la branche « profil inconnu », qui échoue avec un
-# message clair : pas de repli silencieux sur un autre profil.
+# La valeur s'arrête au premier caractère hors [a-zA-Z-] (espace, commentaire, CR). Une
+# valeur inattendue tombe dans « profil inconnu », qui échoue avec un message.
 PROFIL_LU      := $(shell $(PANDOC) lua $(LIRE_CONFIG) ausgabe.yaml profil 2>/dev/null | sed -E 's/^([a-zA-Z-]*).*/\1/')
 PROFIL         := $(strip $(PROFIL_LU))
 # Vide si la clé est absente (ou 0 occurrence) ; non vide sinon.
 PROFIL_DECLARE := $(filter-out 0,$(PROFIL_PRESENT))
 
-# Un dossier qui porte buch.yaml est un livre. La détection se fait sur la présence du
-# fichier, et non sur une clé de configuration : un livre n'a pas d'ausgabe.yaml, donc
-# aucune clé `profil:` à y lire. C'est aussi ce qui garde les règles de la revue
-# intactes — elles ne s'exécutent que dans un dossier de revue, et leur littéral
-# « ausgabe.yaml » n'a pas à devenir une variable.
+# Un dossier qui contient buch.yaml est un livre (un livre n'a pas d'ausgabe.yaml).
 LIVRE_CONFIG := $(wildcard buch.yaml)
 
-# Routage de la cible `all`, résolu à la lecture du Makefile : `make -n all` montre
-# la route prise sans exécuter pandoc.
-# Un livre prime sur la clé `profil:` d'un ausgabe.yaml qui traînerait dans le même
-# dossier : buch.yaml présent, la route est « livre », point final.
+# Route de la cible `all`, résolue à la lecture : `make -n all` la montre sans rien
+# exécuter. buch.yaml l'emporte sur un éventuel ausgabe.yaml.
 ifneq ($(LIVRE_CONFIG),)
 PROFIL_ROUTE := livre
 else ifeq ($(PROFIL_DECLARE),)
@@ -125,62 +97,46 @@ endif
 
 # Articles : un dossier par article, articles/<slug>/<slug>.md.
 SLUGS_MD   := $(sort $(foreach d,$(wildcard articles/*),$(if $(wildcard $(d)/$(notdir $(d)).md),$(notdir $(d)))))
-# Article Documentation : arborescence Kirby (docs/FORMAT-DOCUMENTATION-KIRBY.md), reconnue
-# à la présence de documentation.fr.txt ou documentation.de.txt dans le dossier — jamais à
-# la clé `type: documentation` de la fiche, plus coûteuse à lire ici (elle demanderait un
-# appel à szh-lire-config.lua par dossier, avant même de savoir si ce dossier en a besoin) et
-# c'est exactement le marqueur que le format donne comme identité de l'arborescence.
+# Article Documentation (arborescence Kirby, docs/FORMAT-DOCUMENTATION-KIRBY.md) : reconnu à
+# la présence de documentation.fr.txt ou documentation.de.txt dans son dossier.
 DOC_SLUGS  := $(sort $(foreach d,$(wildcard articles/*),$(if $(or $(wildcard $(d)/documentation.fr.txt),$(wildcard $(d)/documentation.de.txt)),$(notdir $(d)))))
 SLUGS      := $(sort $(SLUGS_MD) $(DOC_SLUGS))
 OUT        := out
 PDFS       := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).pdf)
 HTMLS      := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).html)
-# Aperçu HTML cliquable : rendu séparé en commonmark_x+sourcepos. Ce reader ajoute
-# des divs « wrapper » : il ne doit pas nourrir WeasyPrint, le PDF reste sur
-# -f markdown.
+# Aperçu HTML cliquable, compilé à part en commonmark_x+sourcepos. Ce lecteur ajoute des
+# div d'enveloppe : il ne nourrit pas WeasyPrint, le PDF reste en -f markdown.
 APERCUS    := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).apercu.html)
-# Galleys DOCX de l'export OJS : régénérés depuis le HTML autonome, à la demande
-# seulement (cible `docx`) — ni `all` ni `tout-exporter` ne les produisent.
+# Galleys DOCX de l'export OJS, produits seulement par la cible `docx`.
 DOCXS      := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).docx)
 
-# Accent des tableaux (.szh-tableau) : accent-css.py lit la couleur annuelle
-# d'ausgabe.yaml et écrit un :root qui surcharge les gris de repli de print.css.
-# Aucune couleur -> fichier « commentaire seul » -> gris de repli, PDF inchangé.
-# Prérequis des HTML : le changer recompile les articles.
+# Couleur d'accent des tableaux : accent-css.py lit la couleur annuelle d'ausgabe.yaml et
+# écrit un :root qui remplace les gris de print.css. Sans couleur, le fichier ne contient
+# qu'un commentaire et les gris restent. Prérequis des HTML.
 ACCENT_CSS := $(OUT)/.szh-accent.css
 ACCENT_ABS := $(abspath $(ACCENT_CSS))
 
-# Pagination continue du numéro. `.szh-pagination.json` vit dans le dossier du numéro et
-# NON dans out/ : il porte un état éditorial — le départ et le nombre de pages de chaque
-# article — et doit survivre à `make clean` comme à l'archivage. Les feuilles de folio, elles,
-# en découlent : le jalon ci-dessous les régénère en un seul appel dès que cet état change.
-# Sans cet aller-retour, un `clean` suivi d'une recompilation rendrait tous les folios à 1 —
-# et EN SILENCE, car la péremption se détecte en comparant des nombres de pages, or un article
-# recompilé en a exactement autant qu'avant. Mesuré.
+# Pagination continue du numéro. `.szh-pagination.json` (départ et nombre de pages de
+# chaque article) vit dans le dossier du numéro, hors de out/, pour survivre à `make clean`
+# et à l'archivage. Les feuilles de folio en découlent et sont régénérées dès qu'il change.
+# Sans cela, un `clean` remettrait tous les folios à 1 sans que rien ne le signale : le
+# nombre de pages d'un article recompilé ne change pas.
 PAGINATION      := $(PIPELINE_DIR)/pagination.py
 PAGINATION_ETAT := $(wildcard .szh-pagination.json)
-# L'interprète de pagination.py pour ce qui compte des pages : celui du venv WeasyPrint, le
-# seul de l'image qui porte pypdf. Lu sur la première ligne du script `weasyprint` lui-même,
-# pour suivre toute réinstallation. python3 en repli : pagination.py sait alors retrouver pypdf
-# seul, mais sept fois plus lentement — mesuré sur un numéro de dix articles, 840 ms contre
-# 114 ms par appel, et ce contrôle tourne après chaque compilation d'un numéro bouclé.
-# `weasyprint` en toutes lettres, et non la variable qui le surcharge : on ne l'appelle pas,
-# on cherche seulement un python qui porte pypdf. Surchargé ailleurs, le repli sur python3
-# reste juste ; et le garde-fou de contrats.test.js ne prend pas cette lecture pour un appel
-# dont personne ne lirait le code de sortie.
+# Python du venv WeasyPrint, le seul de l'image qui a pypdf, lu sur la première ligne du
+# script `weasyprint`. Repli sur python3 : pagination.py retrouve alors pypdf lui-même,
+# environ sept fois plus lentement.
 PYTHON_PAGINATION := $(or $(shell sed -n '1s/^\#!//p' "$$(command -v weasyprint 2>/dev/null)" 2>/dev/null),python3)
-# Vide tant que le numéro n'a jamais été paginé : la compilation d'un numéro ordinaire ne
-# dépend alors de rien de tout ceci.
+# Vide tant que le numéro n'a jamais été paginé.
 FOLIOS          := $(if $(PAGINATION_ETAT),$(OUT)/.szh-folios)
 
 # Sans ceci, make considérerait les .html comme intermédiaires et les supprimerait.
 .SECONDARY: $(HTMLS) $(APERCUS)
 
-# .szh-apercu : fichier d'une ligne écrit par le cockpit, qui nomme l'article que le
-# rédacteur a sous les yeux (slug + html|pdf). La cible qui en sort passe en tête des
-# prérequis de `pdf` : sous -j, l'ordre des prérequis décide de l'ordre de lancement.
-# Slug filtré sur $(SLUGS) : ce fichier vient d'un autre programme, rien de son contenu
-# ne doit devenir une cible make arbitraire. Absent ou non reconnu -> ne priorise rien.
+# .szh-apercu : une ligne écrite par le cockpit, « <slug> html|pdf », qui nomme l'article
+# affiché. Sa cible passe en tête des prérequis de `pdf` : sous -j, c'est l'ordre de
+# lancement. Le slug est filtré sur $(SLUGS) pour qu'aucun contenu de ce fichier ne
+# devienne une cible arbitraire.
 APERCU_ETAT := $(shell head -n 1 .szh-apercu 2>/dev/null)
 APERCU_SLUG := $(filter $(SLUGS),$(word 1,$(APERCU_ETAT)))
 ifeq ($(filter pdf,$(word 2,$(APERCU_ETAT))),pdf)
@@ -189,9 +145,8 @@ else
 PRIORITAIRE ?= $(if $(APERCU_SLUG),$(OUT)/$(APERCU_SLUG)/$(APERCU_SLUG).apercu.html)
 endif
 
-# Dossiers des unités (articles ou chapitres d'un livre) : articles/ par défaut, chapitres/
-# pour un livre. Variables portables à livre.mk, où UNITES_DIR := chapitres.
-# WORD_DIR est spécifique à chaque profil : articles-word (défaut) ou chapitres-word (livre).
+# Dossiers des unités et des Word déposés. livre.mk les remplace par chapitres et
+# chapitres-word.
 UNITES_DIR := articles
 WORD_DIR   := articles-word
 
@@ -200,27 +155,24 @@ WORD_DIR   := articles-word
         profil-book-sans-fichier \
         profil-inconnu
 .SECONDEXPANSION:
-# Une recette qui échoue ne doit pas laisser une cible à moitié écrite et plus récente que ses prérequis.
+# Une recette qui échoue ne laisse pas de cible à moitié écrite.
 .DELETE_ON_ERROR:
 
-# Cible du build (Ctrl+S, Ctrl+E) : importe les Word déposés puis régénère les sorties, en
-# deux sous-make pour que les articles fraîchement convertis soient vus par la passe pdf.
-# Les `ifeq` sont résolus à la lecture, donc une seule recette `all` existe. Le code de
-# sortie compte autant que la route : dans l'éditeur, tout code non nul s'affiche en erreur
-# rouge — on n'échoue donc que si la configuration ne peut pas être honorée.
-# L'appel à `import` n'est plus précédé d'un `-` : un Word resté sur le carreau doit
-# arrêter la compilation, sans quoi le numéro se publie sans lui et sans un mot.
+# Cible de Ctrl+S et Ctrl+E : importe les Word déposés, puis compile. Deux sous-make, pour
+# que la compilation voie les articles qui viennent d'être convertis.
+# Dans l'éditeur, tout code de sortie non nul s'affiche en erreur : on n'échoue que si la
+# configuration ne peut pas être honorée. Un Word qui n'a pas pu être importé en fait
+# partie : sans lui, le numéro serait incomplet.
 ifeq ($(PROFIL_ROUTE),article)
-# Clé `profil:` absente ou `profil: article` : comportement historique, inchangé.
+# Clé `profil:` absente ou `profil: article`.
 all:
 	@$(MAKE) --no-print-directory -f $(THIS) import
 	@$(MAKE) --no-print-directory -f $(THIS) pdf
 else ifeq ($(PROFIL_ROUTE),rien)
 all: profil-rien
 else ifeq ($(PROFIL_ROUTE),livre)
-# Comme la route article : les Word deposes entrent d'abord, puis le livre se compose.
-# Sans ce premier appel, un chapitre depose dans chapitres-word/ resterait invisible et
-# le livre sortirait sans lui, sans un mot.
+# Comme pour un article : les Word de chapitres-word/ entrent d'abord, puis le livre se
+# compose.
 all:
 	@$(MAKE) --no-print-directory -f $(THIS) import
 	@$(MAKE) --no-print-directory -f $(THIS) livre
@@ -230,46 +182,38 @@ else
 all: profil-inconnu
 endif
 
-# `profil:` présent et vide : choix explicite, pas une panne -> sortie 0 et message
-# doux. Aucune erreur rouge dans l'éditeur, aucun dossier out/ créé.
+# `profil:` présent et vide : aucun document voulu. Sortie 0, pas de dossier out/.
 profil-rien:
 	@echo "[pipeline] profil vide dans ausgabe.yaml : ce dossier ne produit volontairement aucun document. Rien à compiler."
 
-# `profil: book` dans un ausgabe.yaml : le moteur livre existe désormais, mais il se
-# déclenche sur la présence de buch.yaml, pas sur cette clé. Un dossier resté sur
-# l'ancien réglage se voit dire ce qui lui manque — et non « non implémenté », qui
-# n'est plus vrai.
+# `profil: book` dans ausgabe.yaml : un livre se reconnaît à buch.yaml, pas à cette clé.
+# Le message dit ce qui manque.
 profil-book-sans-fichier:
 	@echo "[pipeline] Ce dossier déclare « profil: book » mais n'a pas de buch.yaml."
 	@echo "[pipeline] Le moteur livre se reconnaît à ce fichier : créez le livre depuis le lanceur « Books SZH/CSPS », ou déposez un buch.yaml à côté d'ausgabe.yaml."
 	@echo "[pipeline] [de] Dieser Ordner deklariert « profil: book », hat aber keine buch.yaml. Die Buchmaschine erkennt sich an dieser Datei."
 	@exit 1
 
-# Valeur non reconnue : on nomme la valeur reçue et les valeurs acceptées, la faute
-# de frappe étant de loin le cas le plus probable. Code non nul.
+# Valeur non reconnue, souvent une faute de frappe : on nomme la valeur reçue et les
+# valeurs acceptées.
 profil-inconnu:
 	@echo "[pipeline] profil inconnu dans ausgabe.yaml : « $(PROFIL) »"
 	@echo "[pipeline] Valeurs acceptées : article (défaut) | book (différé) | vide (aucun document)."
 	@exit 1
 
-# Rebuild forcé de toute la revue : clean puis all, sans regarder les dates. Le « - »
-# sur clean : un PDF verrouillé côté Windows ne doit pas empêcher la régénération.
-# Puis la porte PDF/UA : ce qui sort d'ici part chez l'imprimeur et dans OJS, la
-# conformité y est une promesse publique. `all` et `pdf` restent tolérants.
+# Recompilation complète (clean puis all), puis validation PDF/UA : ces PDF partent chez
+# l'imprimeur et dans OJS. Le « - » sur clean : un PDF verrouillé par Windows n'empêche
+# pas la recompilation.
 tout-exporter:
 	-@$(MAKE) --no-print-directory -f $(THIS) clean
 	@$(MAKE) --no-print-directory -f $(THIS) all
 	@$(MAKE) --no-print-directory -f $(THIS) verifier-ua
 
 # ---------------------------------------------------------------------------
-# Deux langues d'un même article : les figures et les tableaux y portent-ils les mêmes
-# numéros ? szh-numerotation.lua ne consomme un numéro que pour un objet légendé ; si la
-# version traduite ajoute ou retire une légende, « voir Figure 2 » désigne deux objets
-# différents selon la langue. Rien ne le disait.
-# Les deux chemins se donnent à la main : la Revue et la Zeitschrift sont deux numéros
-# distincts, et aucune clé de fiche ne relie un article à sa traduction — c'est la
-# rédaction qui désigne la paire. Hors des cibles d'export : une divergence se corrige
-# à la rédaction, pas au moment d'exporter.
+# Vérifie que les deux langues d'un article numérotent figures et tableaux de la même façon.
+# szh-numerotation.lua ne numérote que les objets légendés : une légende ajoutée ou retirée
+# dans la traduction décale les numéros. Les deux HTML se donnent à la main, rien ne reliant
+# un article à sa traduction.
 #   make -f <toolkit>/pipeline/Makefile verifier-numerotation \
 #        A=out/mon-article/mon-article.html \
 #        B="../Zeitschrift 2026-03/out/mein-artikel/mein-artikel.html"
@@ -282,47 +226,27 @@ verifier-numerotation:
 	@PYTHONIOENCODING=utf-8 python3 "$(PIPELINE_DIR)/verifier-numerotation.py" "$(A)" "$(B)"
 
 # ---------------------------------------------------------------------------
-# Porte PDF/UA-1 : veraPDF valide les PDF du numéro, verifier-ua.sh (à côté de ce Makefile)
-# porte la logique — garde-fous d'outillage, appel de veraPDF, traduction par rapport-ua.py.
-# Bloquante — et volontairement absente de `pdf` et de `all` : le rédacteur doit pouvoir
-# relire l'épreuve d'un article encore imparfait. Elle garde ce qui s'exporte.
+# Validation PDF/UA-1 par veraPDF ; la logique est dans verifier-ua.sh (contrôle des
+# outils, appel de veraPDF, rapport par rapport-ua.py). Bloquante, mais absente de `pdf` et
+# de `all` : on doit pouvoir relire l'épreuve d'un article imparfait.
 #
-# ⚠ Le code de sortie de veraPDF dit deux choses différentes : 0 conforme, 1 non conforme,
-#   mais 4 (fichier introuvable), 7 (fichier illisible) et 127 (veraPDF absent) sont des
-#   pannes d'outillage — verifier-ua.sh les distingue (code > 1) et sort alors en 2, pas en
-#   1 : sans quoi un validateur manquant se lirait comme un PDF conforme, et une panne
-#   d'outillage se lirait comme un verdict de non-conformité.
-# ⚠ Un cas échappe pourtant à ce test, et c'est le pire : un JAVA_HOME qui ne pointe sur
-#   rien fait sortir le lanceur de veraPDF en code 1 — le code qui veut dire « PDF non
-#   conforme ». La porte accuserait des PDF parfaits. D'où le garde-fou posé avant l'appel :
-#   le runtime est vérifié avant d'être invoqué, jamais après coup — et sort lui aussi en 2.
-# Ce que la porte PDF/UA valide. Pour une revue, les PDF des articles ; pour un livre, le
-# PDF de l'ouvrage — profils/livre.mk réaffecte cette variable, et c'est le seul endroit
-# où le profil décide de la liste.
+# Codes de veraPDF : 0 conforme, 1 non conforme ; 4, 7 et 127 sont des pannes d'outil, que
+# verifier-ua.sh rend en code 2. Un JAVA_HOME invalide fait sortir veraPDF en 1, comme un
+# PDF non conforme : verifier-ua.sh contrôle donc le runtime avant l'appel.
 #
-# ⚠ `$$(PDFS_UA)` et non `$(PDFS_UA)` : les prérequis d'une règle explicite sont développés
-#   à la lecture du Makefile, or livre.mk est inclus tout à la fin. Sans la seconde
-#   expansion (`.SECONDEXPANSION`), la liste serait figée à sa valeur d'ici — celle de la
-#   revue — et un livre validerait une liste vide.
-#
-# PDFS_UA reste $(PDFS) ici : dans un dossier de livre, profils/livre.mk la réaffecte au
-# PDF de l'ouvrage (voir plus haut) — sans quoi cette porte ne validerait jamais un livre,
-# un dossier sans articles/ n'ayant aucun PDF à lui proposer.
+# PDFS_UA : les PDF des articles ; profils/livre.mk la remplace par le PDF du livre.
+# `$$(PDFS_UA)` en seconde expansion : livre.mk est inclus à la fin, et une expansion
+# immédiate figerait la liste de la revue.
 PDFS_UA    := $(PDFS)
 
 verifier-ua: $$(PDFS_UA)
 	@test -n "$(PDFS_UA)" || { echo "[pipeline] Aucun PDF à valider."; exit 1; }
 	@VERAPDF="$(VERAPDF)" VERAPDF_JAVA="$(VERAPDF_JAVA)" PIPELINE_DIR="$(PIPELINE_DIR)" bash "$(PIPELINE_DIR)/verifier-ua.sh" "$(OUT)/.szh-pdfua.xml" $(PDFS_UA)
 
-# Refus de compiler un article dont la fiche <slug>.meta.yaml manque ou n'a pas de titre.
-# Sans titre, szh-maquette.lua pose un `titre-affiche` vide : le gabarit sort un <title>
-# vide et un <h1> vide, et WeasyPrint estampille tout de même le PDF « PDF/UA-1 » — un
-# document sans titre, ce que la norme interdit. Seul témoin auparavant : un avertissement
-# pandoc que rien ne lisait.
+# Refuse de compiler un article dont la fiche <slug>.meta.yaml manque ou n'a pas de titre.
+# Sans titre, le PDF aurait un <title> et un <h1> vides tout en se déclarant PDF/UA-1, ce
+# que la norme interdit.
 # $(1) = liste de slugs (un seul pour la cible HTML, tous pour verifie-dossier).
-# Le titre est cherché sans PyYAML, absent de l'image WSL : on isole le bloc `title:`
-# jusqu'à la prochaine clé de premier niveau, on garde la valeur des lignes `cle: valeur`,
-# puis on retire guillemets, accolades et espaces. S'il ne reste rien, il n'y a pas de titre.
 define exiger_titre
 @for slug in $(1); do \
   fiche="articles/$$slug/$$slug.meta.yaml"; \
@@ -347,40 +271,28 @@ verifie-dossier:
 	fi
 	$(call exiger_titre,$(SLUGS))
 
-# (Re)génère out/.szh-accent.css depuis la couleur annuelle d'ausgabe.yaml ; sans
-# couleur, un fichier « commentaire seul » laisse jouer les gris de print.css.
 CONFIG_COULEUR := $(firstword $(LIVRE_CONFIG) ausgabe.yaml)
 $(ACCENT_CSS): $(CONFIG_COULEUR) $(PIPELINE_DIR)/styles/couleurs.css \
               $(PIPELINE_DIR)/accent-css.py $(PIPELINE_DIR)/apca.py
 	@mkdir -p "$(OUT)"
 	@python3 "$(PIPELINE_DIR)/accent-css.py" $(CONFIG_COULEUR) > "$@"
 
-# Les feuilles de folio, engendrées depuis l'état de pagination et lui seul : `feuilles` ne
-# regarde aucun PDF, donc rien ne boucle. C'est `rafraichir-pagination` — et, en production,
-# le bouton du cockpit — qui MESURE les PDF et met l'état à jour ; la compilation ordinaire ne
-# fait qu'en dériver les feuilles.
-# Un seul appel écrit toutes les feuilles, d'où le jalon : une règle de motif par feuille
-# rappellerait le script une fois par article pour le même travail.
+# Feuilles de folio, calculées depuis l'état de pagination seul : `feuilles` ne lit aucun
+# PDF, donc pas de boucle. C'est `rafraichir-pagination` (le bouton du cockpit) qui mesure
+# les PDF et met l'état à jour. Un seul appel écrit toutes les feuilles, d'où ce fichier
+# témoin plutôt qu'une règle par feuille.
 $(OUT)/.szh-folios: .szh-pagination.json $(PAGINATION)
 	@mkdir -p "$(OUT)"
 	@python3 "$(PAGINATION)" feuilles --dossier . >/dev/null
 	@touch $@
 
-# .md -> HTML autonome (--embed-resources : images et CSS en base64). Exécuté dans le
-# dossier de l'article, pour que media/ et tables/ soient relatifs au .md. Les tableaux
-# extraits (tables/*.html) sont des prérequis : en éditer un recompile l'article.
-# szh-citations.lua ferme la chaîne : il réinsère la bibliographie détachée à l'import
-# (<slug>.biblio.md, prérequis lui aussi), lui pose son titre, ancre chaque référence et
-# transforme les appels du corps en liens internes. Le texte des références n'est jamais
-# réécrit.
-# $$* varie selon l'article : ordinaire (articles/<slug>/<slug>.md, prérequis dur devenu
-# $$(wildcard) plus bas) ou Documentation Kirby (articles/<slug>/documentation.<lang>.txt,
-# ses fiches venant désormais de la bibliothèque partagée _NewsUndActu\Fiches — DOC_FICHES,
-# posé plus haut, gardée en dépendance faute de savoir laquelle est la nôtre sans les lire).
-# Les deux routes partagent CETTE règle et CETTE chaîne de filtres — une seule, jamais deux
-# copies — et se distinguent au dernier moment, dans la recette : si <slug>.md existe, c'est
-# la source ; sinon documentation-kirby.py engendre out/<slug>/<slug>.md (jamais écrit dans
-# articles/, qui reste la propriété de Pronto) et c'est LUI qui nourrit pandoc.
+# .md -> HTML autonome (--embed-resources : images et CSS incorporées en base64). Pandoc
+# tourne dans le dossier de l'article, pour que media/ et tables/ soient relatifs au .md.
+# szh-citations.lua, en fin de chaîne, réinsère la bibliographie lue dans <slug>.biblio.md,
+# ancre chaque référence et lie les appels du corps.
+# Une même règle et une même chaîne de filtres pour les deux sortes d'articles : si
+# <slug>.md existe, c'est la source ; sinon (Documentation Kirby) documentation-kirby.py
+# écrit out/<slug>/<slug>.md, qui nourrit pandoc.
 $(OUT)/%.html: $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).md) $$(wildcard articles/$$(notdir $$*)/documentation.*.txt) $$(wildcard articles/$$(notdir $$*)/*/*) ausgabe.yaml $(SOCLE) $(STYLE) $(PARTAGE) $(ACCENT_CSS) $(TEMPLATE) $(FILTRES) $(DOC_CHAMPS_JSON) $(DOC_CONVERTISSEUR) $$(if $$(wildcard articles/$$(notdir $$*)/documentation.*.txt),$(DOC_FICHES)) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).biblio.md)
 	@mkdir -p "$(dir $@)"
 	$(call exiger_titre,$(notdir $*))
@@ -404,33 +316,23 @@ $(OUT)/%.html: $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).md) $$(wildcar
 	  --output="$(abspath $@)"
 	$(call reordonner_appels_de_note,$@)
 
-# Appel de note : pandoc écrit <a class="footnote-ref"><sup>n</sup></a>, et un <a> ne doit
-# contenir aucun élément. WeasyPrint pose une annotation de lien par boîte descendante du
-# <a> (anchors.py : la propriété `link` est héritée), et une seule est rattachée au /Link
-# de l'arbre de structure — les autres pendent sous /NonStruct, ce que PDF/UA-1 interdit
-# (règle 7.18.5). On réordonne en <sup><a>n</a></sup> : rendu identique au pixel (mesuré),
-# un seul lien.
-# Pourquoi ici et pas dans un filtre Lua : ce balisage-là est écrit par le writer HTML,
-# donc après tous les filtres. Dissoudre les notes en amont priverait szh-citations.lua
-# des appels de citation qu'elles contiennent.
-# `@` en séparateur de sed : le motif contient une alternative « ref|back ».
+# Appel de note : pandoc écrit <a class="footnote-ref"><sup>n</sup></a>. WeasyPrint pose
+# une annotation de lien par boîte contenue dans le <a>, et une seule est rattachée au /Link
+# de l'arbre de structure : les autres finissent sous /NonStruct, ce que PDF/UA-1 interdit
+# (7.18.5). On réordonne en <sup><a>n</a></sup>, au rendu identique.
+# Fait ici et non dans un filtre Lua : ce balisage est écrit par le writer HTML, après les
+# filtres. `@` sépare le sed, le motif contenant « ref|back ».
 define reordonner_appels_de_note
 @sed -i -E 's@<a ([^>]*class="footnote-(ref|back)"[^>]*)><sup>([^<]*)</sup></a>@<sup><a \1>\3</a></sup>@g' "$(abspath $(1))"
 endef
 
-# .md -> HTML d'aperçu : mêmes filtres, CSS et métadonnées que la sortie PDF, mais
-# reader commonmark_x+sourcepos -> chaque bloc porte data-pos, ce qui permet le clic
-# vers le texte source dans la webview. Consommé par le cockpit seulement.
-# ⚠ szh-sourcepos.lua vient EN PREMIER, et n'est dans aucune autre recette : sourcepos
-# enveloppe aussi chaque mot dans un Span et découpe les mots à chaque signe, ce qui
-# rendait szh-typographie.lua et le liage de szh-citations.lua entièrement inertes ici,
-# sans rien dire. Les mesures sont en tête de ce filtre.
-# Même route à deux entrées que la règle .html ci-dessus (voir son commentaire) : un
-# article Documentation n'a pas de sourcepos (documentation-kirby.py ne pose aucune
-# position source), donc son aperçu perd le clic-vers-le-texte — dégradation propre, le
-# reader passe alors de commonmark_x+sourcepos à markdown ordinaire pour cette seule route,
-# szh-sourcepos.lua et szh-ancres.lua n'ayant plus rien à faire sur un texte qu'ils n'ont
-# pas engendré à partir du .md du rédacteur.
+# .md -> HTML d'aperçu pour le cockpit : mêmes filtres, CSS et métadonnées que le PDF, mais
+# lu en commonmark_x+sourcepos. Chaque bloc porte data-pos, ce qui permet le clic vers le
+# texte source.
+# szh-sourcepos.lua passe en premier : sourcepos enveloppe chaque mot dans un Span, ce qui
+# rendrait inertes szh-typographie.lua et le liage de szh-citations.lua.
+# Un article Documentation est lu en markdown ordinaire, sans sourcepos : son aperçu n'a
+# pas le clic vers le texte.
 $(OUT)/%.apercu.html: $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).md) $$(wildcard articles/$$(notdir $$*)/documentation.*.txt) $$(wildcard articles/$$(notdir $$*)/*/*) ausgabe.yaml $(SOCLE) $(STYLE) $(PARTAGE) $(ACCENT_CSS) $(FILTRES) $(DOC_CHAMPS_JSON) $(DOC_CONVERTISSEUR) $$(if $$(wildcard articles/$$(notdir $$*)/documentation.*.txt),$(DOC_FICHES)) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).biblio.md)
 	@mkdir -p "$(dir $@)"
 	@slug="$(notdir $*)"; \
@@ -455,35 +357,25 @@ $(OUT)/%.apercu.html: $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).md) $$(
 	  --output="$(abspath $@)" || \
 	printf '%s' '<!DOCTYPE html><html lang="fr"><body><p>Aperçu HTML indisponible pour cet article (le PDF, lui, est compilé) : voir le panneau de compilation.</p></body></html>' > "$(abspath $@)"
 
-# HTML -> PDF (CSS Paged Media), balisé PDF/UA-1 : la seule cascade WeasyPrint du dépôt,
-# appelée par le PDF d'un article et, dans profils/livre.mk, par le PDF numérique du livre,
-# le PDF imprimeur, la couverture numérique et le chapitre seul. WeasyPrint 69 :
-# --pdf-variant pdf/ua-1 pose /StructTreeRoot, /MarkInfo /Marked true, /Lang et les
-# StructElem.
-# Repli automatique si la variante stricte échoue (--pdf-tags, puis PDF nu) : le
-# balisage ne doit pas faire échouer le build — un rédacteur doit pouvoir sortir
-# l'épreuve d'un article imparfait. La porte dure est ailleurs : `make verifier-ua`,
-# appelée par les cibles d'export.
-# Plus de `2>/dev/null` : la sortie d'erreur de WeasyPrint (image sans description,
-# propriété CSS ignorée, police manquante) est le seul endroit où ces défauts se
-# disent. Les envoyer au néant, c'était les rendre invisibles.
-# Elle passe par un journal puis par ABREGER_BASE64 : --embed-resources ayant remplacé les
-# chemins d'image par des data: URI, WeasyPrint nomme l'image fautive par 10 ko de base64.
-# On en garde 16 caractères — assez pour distinguer deux images, assez peu pour rester
-# lisible.
-# Temporaire « ~$… » dans le même dossier : rename local, ignoré par la synchro
-# OneDrive, donc pas de PDF partiel. Un rename refusé est presque toujours un PDF ouvert
-# côté Windows : le constat pdf-verrouille le dit au cockpit.
-# Quotes simples : $0 et $notdir ne doivent pas être substitués par make.
+# HTML -> PDF balisé PDF/UA-1 : la seule cascade WeasyPrint du dépôt. Elle sert au PDF
+# d'un article et, dans profils/livre.mk, aux PDF du livre, de la couverture et d'un
+# chapitre seul.
+# Si la variante pdf/ua-1 échoue, repli sur --pdf-tags, puis sur un PDF sans balisage :
+# l'épreuve d'un article imparfait doit sortir. La validation bloquante est `verifier-ua`.
+# La sortie d'erreur de WeasyPrint (image sans description, propriété CSS ignorée, police
+# manquante) est gardée dans un journal. ABREGER_BASE64 y coupe les data: URI à 16
+# caractères : sinon une image fautive est nommée par des kilo-octets de base64.
+# Le PDF s'écrit d'abord dans un temporaire « ~$… » du même dossier, que OneDrive ne
+# synchronise pas, puis est renommé. Un renommage refusé signifie presque toujours un PDF
+# ouvert sous Windows : le message pdf-verrouille le dit au cockpit.
+# Guillemets simples : make ne doit pas substituer $0 ni $notdir.
 #
-# $(1) étiquette des messages, `pipeline` ou `livre` : elle choisit aussi l'affichage du
-#      journal (weasy_journal_<étiquette>, weasy_echec_<étiquette>). La revue le rend tel
-#      quel sur la sortie d'erreur, où le cockpit lit les « WARNING: » de WeasyPrint ; le
-#      livre en montre vingt lignes préfixées et garde le fichier (profils/livre.mk) ;
+# $(1) étiquette des messages, `pipeline` ou `livre`. Elle choisit aussi weasy_journal_<…>
+#      et weasy_echec_<…> : la revue rend le journal sur la sortie d'erreur, où le cockpit
+#      lit les « WARNING: » ; le livre en montre vingt lignes et garde le fichier ;
 #   $(2) options de WeasyPrint placées en tête (la feuille de folio d'un article) ;
 #   $(3) chemin du journal.
-# La recette qui l'appelle le place en fin de ligne continuée, après ses propres
-# affectations.
+# S'appelle en fin de ligne continuée, après les affectations de la recette.
 ABREGER_BASE64 := sed -E 's@(data:[a-z/+.-]+;base64,[A-Za-z0-9+/=]{16})[A-Za-z0-9+/=]+@\1… (image incorporée)@g'
 
 define weasy_ua
@@ -517,52 +409,34 @@ $(ABREGER_BASE64) "$$jrnl" >&2; \
 rm -f "$$jrnl";
 endef
 
-# Folio de départ de l'article dans le numéro : out/<slug>/.szh-folio.css, une ligne
-# `@page :first { counter-reset: page N; }` écrite par pipeline/pagination.py et passée à
-# WeasyPrint en feuille UTILISATEUR (-s). Trois raisons à cette forme :
-#   * en -s plutôt que dans le HTML : le folio ne regarde que le PDF, alors que le HTML
-#     autonome sert aussi au galley DOCX et à l'aperçu. Un article qui change de place dans
-#     le numéro ne repasse donc pas par pandoc et ses vingt filtres, seulement par WeasyPrint ;
-#   * `@page :first` et non `@page` : sans le `:first`, le compteur est remis à N à CHAQUE
-#     page et tout le document affiche N (mesuré, WeasyPrint 69). Et `counter-reset: page 11`
-#     affiche 11 sur la première page, puis 12, 13 : la valeur écrite est le départ lui-même,
-#     pas départ - 1. Mesuré aussi sur le patron réel de la maquette, pied courant en
-#     `position: running()` et folio en `::after { content: counter(page) }`, où le décalage
-#     aurait pu se perdre ;
-#   * prérequis en $(wildcard ...) et non cible : la feuille se calcule à partir du nombre de
-#     pages des PDF déjà compilés, donc en faire une cible fermerait un cycle. C'est
-#     `rafraichir-pagination` — et, en production, le bouton du cockpit — qui la produit ; la
-#     compilation ordinaire ne fait que la consommer, et se refait si elle a changé.
-# Le jalon $(FOLIOS) est un prérequis d'ORDRE SEUL (après la barre) : les feuilles doivent
-# exister avant qu'une recette ne tourne, mais un état de pagination plus récent que les PDF ne
-# doit pas tous les refaire — seule la feuille réellement modifiée le doit.
-# Deux chemins, et il en faut deux : sur un arbre neuf la feuille n'existe pas encore quand
-# make évalue le $(wildcard), et c'est le test `[ -f ]` de la recette, fait au dernier moment,
-# qui la ramasse ; sur un arbre déjà compilé c'est le $(wildcard) qui force la recompilation
-# quand elle change.
-# ⚠ RETIRER une feuille ne ramène pas le PDF au folio 1 : plus aucun prérequis n'a bougé, le
-# PDF reste plus récent que son HTML, et il garde le folio de la dernière compilation (mesuré).
-# C'est pourquoi pagination.py écrit une feuille pour TOUS les articles, y compris celui dont
-# le départ vaut 1.
+# Folio de départ de l'article : out/<slug>/.szh-folio.css, une ligne
+# `@page :first { counter-reset: page N; }` écrite par pagination.py et passée à WeasyPrint
+# en feuille utilisateur (-s).
+#   * en -s et non dans le HTML : le HTML sert aussi au galley DOCX et à l'aperçu, et un
+#     article déplacé dans le numéro ne repasse que par WeasyPrint ;
+#   * `@page :first` : sur `@page`, le compteur serait remis à N à chaque page. N est le
+#     folio de la première page (11 donne 11, 12, 13…) ;
+#   * prérequis en $(wildcard) et non cible : la feuille dépend du nombre de pages des PDF,
+#     en faire une cible créerait un cycle. Elle n'est produite que par
+#     `rafraichir-pagination`.
+# $(FOLIOS) est un prérequis d'ordre seul : les feuilles doivent exister, mais un état plus
+# récent ne refait que les PDF dont la feuille a changé.
+# Sur un arbre neuf, la feuille n'existe pas quand make évalue le $(wildcard) : le test
+# `[ -f ]` de la recette la prend au dernier moment.
+# Retirer une feuille ne ramène pas le PDF au folio 1 (aucun prérequis n'a bougé) : c'est
+# pourquoi pagination.py écrit une feuille pour chaque article, même au départ 1.
 $(OUT)/%.pdf: $(OUT)/%.html $$(wildcard $(OUT)/$$(dir $$*).szh-folio.css) | $(FOLIOS)
 	@folio='$(dir $@).szh-folio.css'; sfolio=""; \
 	if [ -f "$$folio" ]; then sfolio="-s $$folio"; fi; \
 	$(call weasy_ua,pipeline,$$sfolio,$(dir $@)~weasyprint.err)
 
-# Rafraîchir la pagination continue du numéro : compiler ce qui manque, relire le nombre de
-# pages de chaque PDF, recalculer les folios de départ, puis ne recompiler que les articles
-# dont le départ a bougé.
-# Deux passes, et c'est voulu : le départ d'un article ne se connaît qu'une fois les
-# précédents compilés. Deux suffisent, il n'y a pas de point fixe à chercher — le nombre de
-# pages d'un article ne dépend PAS de son folio de départ, le folio vivant dans le pied
-# courant, hors du flux. En régime stationnaire la seconde passe ne fait rien : pagination.py
-# n'écrit une feuille que si sa valeur change, donc aucun mtime ne bouge et make n'a rien à
-# refaire.
-# ORDRE=slug1,slug2 est OBLIGATOIRE : c'est l'ordre de lecture, et seul le cockpit le connaît.
-# Il ne se déduit pas d'ausgabe.yaml : le cockpit trie le disque par collation française et
-# ramène en fin de numéro les articles sans DOI — ceux de la clé `articles-sans-doi`, mais
-# aussi ceux dont le type n'en reçoit pas selon la configuration OJS. Le reproduire ici, ce
-# serait garantir qu'un jour le folio ne suive plus le DOI.
+# Pagination continue du numéro : compiler ce qui manque, lire le nombre de pages de chaque
+# PDF, recalculer les folios de départ, puis recompiler les articles dont le départ a bougé.
+# Deux passes suffisent : le nombre de pages d'un article ne dépend pas de son folio, qui
+# est dans le pied de page. pagination.py n'écrit une feuille que si elle change, donc la
+# seconde passe ne refait que le nécessaire.
+# ORDRE=slug1,slug2 est obligatoire : seul le cockpit connaît l'ordre de lecture (tri
+# français, articles sans DOI en fin de numéro selon ausgabe.yaml et la configuration OJS).
 rafraichir-pagination:
 	@test -n "$(ORDRE)" || { \
 	  echo "[pipeline] ✖ ORDRE manquant : seul le cockpit connaît l'ordre de lecture du numéro. Rafraîchissez la pagination depuis le cockpit, ou passez ORDRE=a,b,c."; \
@@ -572,96 +446,58 @@ rafraichir-pagination:
 	@$(PYTHON_PAGINATION) "$(PAGINATION)" rafraichir --dossier . --ordre "$(ORDRE)"
 	@$(MAKE) --no-print-directory -f $(THIS) pdf
 
-# L'état de la pagination, en JSON sur une seule ligne : ce que le cockpit lit après chaque
-# compilation d'un numéro déjà paginé (pour poser l'avertissement sur les articles
-# décalés) et juste avant l'export OJS (pour la porte et le champ <pages>). Ne compile
-# rien, n'écrit rien. ORDRE est celui du cockpit ; sans lui, pagination.py relit l'ordre de
-# la dernière pagination, ce qui suffit au diagnostic mais ne voit pas un article déplacé.
+# État de la pagination en JSON sur une ligne, lu par le cockpit après la compilation d'un
+# numéro paginé (articles décalés) et avant l'export OJS (champ <pages>). Ne compile ni
+# n'écrit rien. Sans ORDRE, pagination.py reprend l'ordre de la dernière pagination et ne
+# voit donc pas un article déplacé.
 etat-pagination:
 	@$(PYTHON_PAGINATION) "$(PAGINATION)" etat --dossier . $(if $(ORDRE),--ordre "$(ORDRE)")
 
-# HTML autonome -> DOCX : galley Word de l'export OJS, régénéré depuis le HTML final
-# et non depuis le .md — le reader html de pandoc comprend les tableaux réinjectés en
-# HTML brut (colspan/rowspan) et les images data:, que le writer docx nourri au .md
-# perdrait. Produit à la demande, hors de `all` et de `tout-exporter`.
-# szh-galley-docx.lua retire les blocs purement techniques (.szh-description, cible
-# des aria-describedby) : le reader html ne voit pas le CSS, et ce que print.css
-# masque réapparaîtrait en clair sous chaque tableau du galley.
+# HTML autonome -> DOCX : galley Word de l'export OJS. Fait depuis le HTML et non depuis le
+# .md, pour garder les tableaux en HTML brut (colspan/rowspan) et les images data:.
+# szh-galley-docx.lua retire les blocs techniques (.szh-description, cibles des
+# aria-describedby), que print.css masque mais que le DOCX afficherait.
 $(OUT)/%.docx: $(OUT)/%.html $(PIPELINE_DIR)/filters/szh-galley-docx.lua
 	@echo "pandoc $< -> $@ (docx)"
 	@$(PANDOC) "$<" --from=html --to=docx \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-galley-docx.lua" --output="$@"
 
-# Les galleys de l'export OJS : la porte PDF/UA d'abord. Un numéro dont le PDF n'est pas
-# conforme ne doit pas partir dans OJS avec l'étiquette « accessible ».
+# Galleys de l'export OJS, après validation PDF/UA.
 docx: verifie-dossier verifier-ua $(DOCXS)
 
-# Conversion des .docx et .odt déposés dans articles-word/ (un .odt est converti en .docx
-# par import-docx.sh, tout au début de sa chaîne — voir conversion_odt.py). Les anciens
-# articles « à plat » sont migrés au passage vers articles/<slug>/ ; un article existant
-# n'est jamais écrasé ; une conversion réussie supprime le Word source (.docx ou .odt), un
-# échec le laisse en place et déclenche le rollback rm -rf articles/<slug> ci-dessous.
-# Un réimport tué en pleine bascule laisse le dossier de l'article sous
-# articles/.szh-bascule-<slug>, donc hors de SLUGS : le numéro se publierait sans lui et
-# sans un mot. `reimporter.py --reprise` le remet d'aplomb, d'abord, à chaque compilation.
-# Slug : le nombre de tête d'un nom comme « 4_Titre » (l'ordre voulu par le rédacteur au
-# moment de l'import) est retiré du slug plutôt que complété à deux chiffres (B1, demande
-# de Robin : un dossier numéroté ne survit pas à un déplacement dans l'ordre). Ce nombre ne
-# nomme donc plus le dossier ; il doit être capté ailleurs pour peupler `ordre-articles`
-# dans ausgabe.yaml — voir lib/slug.js:numeroOrdreArticle() côté cockpit, et le repère
-# qu'il laisse dans extension.js pour le brancher. Longueur bornée à 39 caractères, parce
-# que le slug nomme le dossier et son .md homonyme et compte donc quatre fois dans un
-# chemin de sortie : sans borne, un titre réel dépasse la limite Windows de 260 caractères
-# et la synchronisation SharePoint trébuche. La coupe tombe sur le dernier mot entier, les
-# fragments d'élision d'une lettre (« -d », « -l ») sont retirés à leur tour, et la coupe
-# sèche sert de repli sans tiret.
-# Un nom de dossier déjà pris a deux causes opposées, et les confondre coûte cher dans les
-# deux sens. Le champ `source:` de la fiche, écrit à l'import par docx-meta.py, les sépare :
-#   * même fichier Word -> l'auteur a corrigé son article et l'a redéposé. Ce n'est pas un
-#     homonyme : rien n'est créé, le Word reste en attente, et le journal dit que la version
-#     publiée est encore l'ancienne. Créer un « -2 » ici mettrait un doublon dans le
-#     sommaire et dans l'export OJS. Le remplacement du corps est le travail de la cible
-#     `reimporter` ci-dessous, et ce champ est l'ancre par laquelle elle apparie les deux.
-#   * fichier Word différent -> deux articles distincts que la borne à 39 caractères écrase
-#     en un seul slug (« … Teil 1 », « … Teil 2 », « … Teil 3 »). Le second reçoit « -2 »,
-#     le troisième « -3 », jusqu'à 99. La place du suffixe est prise au caractère près sur
-#     la fin du slug : le « -2 » dit déjà que le nom est coupé.
-#   * origine inconnue (fiche antérieure à `source:`, ou article sans fiche) -> on ne
-#     tranche pas et on ne crée rien : un doublon est plus difficile à défaire qu'un Word
-#     resté en attente. Le message dit quoi faire dans les deux cas.
-# « Déjà pris » se juge par dossier_existant() (définie dans la recette, juste après
-# dire()), jamais par un simple test [ -e ] sur le slug nu : depuis que le cockpit préfixe
-# le dossier d'un article nouvellement importé sur son rang (lib/import-hote.js, « 00-
-# inclusion »), le slug deviné ici n'a jamais ce préfixe, et un import qui ne verrait que
-# le nom nu créerait un second dossier pour le même titre à côté du premier. La fonction
-# imprime le nom du dossier trouvé (nu, ou préfixé) et réussit ; elle échoue sans rien
-# imprimer si aucun des deux n'existe — les deux gardes qui suivent (redépôt d'origine
-# inconnue, désambiguïsation des homonymes) s'en servent chacune à sa façon.
-# Le redépôt a son propre compteur au bilan : caché dans « ignoré », il redeviendrait le
-# silence que cette recette corrige.
-# À garder aligné avec slugifierArticle() et slugifierArticleUnique() de
-# vscodium-extension/szh-cockpit/lib/slug.js : le cockpit devine le slug d'un Word (.docx
-# ou .odt, slugifier() retire l'extension sans distinguer) en
-# attente pour dire « déjà converti ».
-# Code de sortie : tout fichier Word resté sur le carreau fait échouer la recette. Sans
-# cela un article disparaissait du numéro avec une sortie 0, personne n'étant averti.
+# Import des .docx et .odt déposés dans articles-word/ (un .odt est d'abord converti en
+# .docx par import-docx.sh). Les anciens articles « à plat » sont déplacés dans
+# articles/<slug>/. Un article existant n'est pas écrasé. Une conversion réussie supprime
+# le Word ; un échec le laisse en place et supprime articles/<slug>.
+# `reimporter.py --reprise` répare d'abord un réimport interrompu, dont l'article serait
+# resté dans articles/.szh-bascule-<slug>, hors de SLUGS.
 #
-# ⚠ Livre seulement — scission automatique. Juste après avoir converti un .docx de
-# chapitres-word/ en chapitre unique (ci-dessus), on compte ses titres de niveau 1 : 2 ou
-# plus, et livre-scinder.py le redécoupe aussitôt en autant de chapitres, dans le même
-# geste que la conversion — aucun geste séparé à apprendre. Un seul titre de niveau 1 (le
-# titre du chapitre lui-même, comme le pose Modele-chapitre-SZH.docx) n'est pas un
-# manuscrit à scinder : c'est déjà un chapitre, on le laisse tel quel. Cette règle vient de
-# chapitres-word/LISEZ-MOI.txt (« Un manuscrit en UN SEUL fichier… se découpe ensuite, aux
-# titres de niveau 1 ») et de lire_chapitre() dans livre-scinder.py, qui ne coupe qu'à ces
-# titres-là. Idempotent par construction : le déclencheur est la conversion du .docx qui
-# vient d'avoir lieu — le .docx est déjà supprimé (rm -f "$$f" ci-dessus) avant qu'on y
-# arrive, donc relancer `import` ne rappelle jamais la scission sur le même manuscrit. Le
-# script porte son propre garde-fou si un rappel devait pourtant survenir : voir le
-# constat « chapitre-cible-existe » dans livre-scinder.py.
-# Une ressource manquante à la scission (image, tableau) n'efface pas le dossier d'origine
-# — voir livre-scinder.py, avertir('source-non-supprimee') — et ne fait pas non plus
-# échouer la conversion déjà réussie : le compteur $$scission_rate le distingue de $$rate.
+# Slug : le nombre en tête d'un nom comme « 4_Titre » est retiré (l'ordre des articles est
+# tenu ailleurs, voir lib/slug.js:numeroOrdreArticle()). Longueur limitée à 39 caractères :
+# le slug apparaît quatre fois dans un chemin de sortie, et la limite Windows de 260
+# caractères casse la synchronisation SharePoint. La coupe tombe sur le dernier mot entier
+# et retire les élisions d'une lettre (« -d », « -l »).
+# À garder aligné avec slugifierArticle() et slugifierArticleUnique() de
+# vscodium-extension/szh-cockpit/lib/slug.js, qui devinent le slug d'un Word en attente.
+#
+# Nom de dossier déjà pris : le champ `source:` de la fiche (écrit par docx-meta.py) dit
+# d'où vient l'article existant :
+#   * même fichier Word : c'est une version corrigée. Rien n'est créé, le Word reste en
+#     attente et le journal propose « Réimporter cet article » (cible `reimporter`) ;
+#   * autre fichier Word : deux articles distincts que la coupe à 39 caractères confond. Le
+#     second reçoit « -2 », puis « -3 »… jusqu'à 99, en raccourcissant la fin du slug ;
+#   * origine inconnue (fiche sans `source:` ou absente) : rien n'est créé, pour ne pas
+#     risquer un doublon. Le message dit quoi faire.
+# dossier_existant() cherche le slug nu et le slug préfixé par un rang (« 00-<slug> », que
+# pose le cockpit, lib/import-hote.js). Elle imprime le nom trouvé, ou échoue sans rien
+# imprimer.
+# Tout Word non importé fait échouer la recette.
+#
+# Livre seulement : un chapitre converti qui contient au moins deux titres de niveau 1 est
+# aussitôt découpé par livre-scinder.py, un chapitre par titre. Un seul titre de niveau 1
+# est le titre du chapitre. Le .docx étant déjà supprimé, relancer `import` ne redécoupe
+# pas. Une ressource manquante (image, tableau) garde le dossier d'origine et compte dans
+# $$scission_rate, distinct de $$rate.
 import:
 	@set -u; \
 	shopt -s nullglob; \
@@ -788,24 +624,20 @@ import:
 	  exit 1; \
 	fi
 
-# Word corrigé d'un article déjà importé : le corps est remplacé, la fiche, les tâches, le
-# suivi de traduction et les portraits survivent, et l'état d'avant est gardé de côté.
-# Tout le raisonnement — les tableaux retravaillés, les images, la fiche que le Word aurait
-# écrite, la bascule atomique — est dans reimporter.py, qui l'explique en tête.
+# Word corrigé d'un article déjà importé : le corps est remplacé ; la fiche, les tâches, le
+# suivi de traduction et les portraits sont gardés, et l'état précédent est conservé.
+# Détails en tête de reimporter.py.
 #
 #   make -f … reimporter ARTICLE=<slug>            le Word est celui du champ `source:`
 #   make -f … reimporter WORD="<nom>.docx"         l'article est celui du champ `source:`
 #   make -f … reimporter ARTICLE=<slug> WORD=…     appariement forcé
 #   make -f … annuler-reimport ARTICLE=<slug>      retour à l'état d'avant
 #
-# ⚠ make répond 2 dès qu'une recette sort non nulle : les cinq codes de reimporter.py ne
-# traversent pas cette cible. Le cockpit appelle donc le script directement et lit sa ligne
-# JSON ; cette cible est la porte d'entrée en ligne de commande. Une exception, pour suivre
-# la règle du dossier — n'échouer que si la configuration ne peut pas être honorée : le code
-# 3 (« rien à faire », le Word n'apportait rien) réussit ici. Rien n'est cassé, et une erreur
-# rouge dans l'éditeur mentirait. Les autres codes non nuls ressortent, aplatis en 2.
-# Pas de prérequis verifie-dossier : le script contrôle lui-même qu'il est dans une revue,
-# et un numéro dont un autre article ne compile pas ne doit pas empêcher ce remplacement.
+# make rend 2 pour tout échec de recette : les codes de reimporter.py ne traversent pas
+# cette cible. Le cockpit appelle donc le script directement et lit sa ligne JSON ; cette
+# cible sert en ligne de commande. Le code 3 (« rien à faire ») y devient un succès.
+# Pas de prérequis verifie-dossier : le script vérifie lui-même le dossier, et un autre
+# article qui ne compile pas ne doit pas bloquer le réimport.
 reimporter:
 	@PYTHONIOENCODING=utf-8 python3 "$(PIPELINE_DIR)/reimporter.py" \
 	  $(if $(ARTICLE),--article "$(ARTICLE)",) $(if $(WORD),--word "$(WORD)",); \
@@ -821,8 +653,7 @@ clean:
 	rm -rf "$(OUT)"
 
 # ---------------------------------------------------------------------------
-# Moteur livre. Inclus seulement dans un dossier qui porte buch.yaml : dans une revue,
-# aucune de ses règles n'existe, et rien de ce qui suit ne peut donc peser sur elle.
+# Moteur livre, inclus seulement dans un dossier qui contient buch.yaml.
 # ---------------------------------------------------------------------------
 ifneq ($(LIVRE_CONFIG),)
 include $(PIPELINE_DIR)/profils/livre.mk

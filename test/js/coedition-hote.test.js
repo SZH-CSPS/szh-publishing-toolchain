@@ -1,16 +1,13 @@
 // La co-édition vue de l'hôte : ce qu'un formulaire a le droit d'écrire.
 //
-// lib/coedition.js est éprouvé à part (coedition.test.js) : le bail, son expiration, son
-// renouvellement. Ici on éprouve la DÉCISION, celle de lib/coedition-hote.js — refuser
-// quand un autre poste tient le fichier, refuser quand la saisie a dormi ET que le fichier
-// a changé, laisser passer quand elle a dormi mais que personne n'y a touché.
+// Le bail, son expiration et son renouvellement sont vérifiés dans coedition.test.js. Ici,
+// la décision de lib/coedition-hote.js : refuser quand un autre poste tient le fichier,
+// refuser quand la saisie est restée inactive et que le fichier a changé, accepter quand
+// elle est restée inactive mais que personne n'y a touché.
 //
-// Ce dernier point est un écart assumé sur la règle « après cinq minutes, refais ta
-// saisie » : faire refaire une saisie que personne n'a contredite serait une punition sans
-// objet, et le formulaire garde de toute façon sa saisie en attente. Le test le fixe pour
-// que l'écart soit un choix et non une dérive.
+// Ce dernier cas est une exception voulue à la règle « après cinq minutes, refais ta
+// saisie » : une saisie que personne n'a contredite n'a pas à être refaite.
 //
-// Exécution : depuis la racine du dépôt,
 //   node --test test/js/coedition-hote.test.js
 'use strict';
 
@@ -32,7 +29,7 @@ const SLUG = '01-essai';
 const META = path.join(REVUE, 'articles', SLUG, SLUG + '.meta.yaml');
 
 // Un collègue sur un autre poste. Le nôtre vient du nom de session Windows (szh.nomUtilisateur
-// est vide dans l'hôte factice), donc jamais celui-ci.
+// est vide dans l'hôte factice), donc il diffère de celui-ci.
 const VOISIN = { utilisateur: 'Anne Voisine', poste: 'PC-VOISIN' };
 
 const ext = require(path.join(COCKPIT, 'extension.js'));
@@ -42,8 +39,8 @@ const P = ext._pur;
 // avoir tourné avant de l'interroger.
 const pret = new Promise((r) => setTimeout(r, 30));
 
-// Un panneau n'est pour la co-édition qu'une clé d'identité : n'importe quel objet fait
-// l'affaire, et un objet neuf par test garantit qu'aucun état ne fuit d'un test à l'autre.
+// Pour la co-édition, un panneau n'est qu'une clé d'identité : n'importe quel objet convient,
+// et un objet neuf par test évite qu'un état passe d'un test à l'autre.
 function panneauFactice() { return {}; }
 
 function poserBailVoisin(chemin) {
@@ -79,7 +76,7 @@ test('libre : l’écriture passe, et le bail devient le nôtre', async () => {
   const refus = P.ecrireSousMain(panneau, REVUE, AUSGABE, () => { ecrit = true; return null; });
   assert.strictEqual(refus, null, 'un fichier libre a été refusé');
   assert.strictEqual(ecrit, true, 'l’écriture n’a pas eu lieu');
-  // Le bail est bien posé : un troisième poste le verrait.
+  // Le bail est posé : un troisième poste le verrait.
   const titulaire = coedition.titulaireAutre(REVUE, AUSGABE, VOISIN);
   assert.ok(titulaire, 'aucun bail n’a été posé par l’écriture');
 
@@ -89,9 +86,9 @@ test('libre : l’écriture passe, et le bail devient le nôtre', async () => {
     'le bail survit à la fermeture du formulaire');
 });
 
-// Deux fenêtres de la même personne partagent un seul fichier de bail — c'est le même
-// « qui ». Fermer l'une ne doit donc pas désarmer l'autre : sans cette précaution, refermer
-// la vue « Articles » retirerait la main du formulaire des métadonnées resté ouvert.
+// Deux fenêtres de la même personne partagent un seul fichier de bail. Fermer l'une ne doit
+// pas libérer l'autre : refermer la vue « Articles » ne retire pas la main au formulaire des
+// métadonnées resté ouvert.
 test('fermer un formulaire ne retire pas la main d’un autre du même poste', async () => {
   await pret;
   const premier = panneauFactice();
@@ -121,8 +118,8 @@ test('saisie endormie ET fichier changé : refus, et rien n’est écrasé', asy
   const panneau = panneauFactice();
   const temoin = path.join(REVUE, 'articles', SLUG, SLUG + '.taches.yaml');
   fs.writeFileSync(temoin, 'faites: []\n');
-  // Le formulaire a lu le fichier il y a six minutes — au-delà des cinq minutes
-  // d'inactivité — puis quelqu'un d'autre l'a changé entre-temps.
+  // Le formulaire a lu le fichier il y a six minutes, au-delà des cinq minutes
+  // d'inactivité, et quelqu'un d'autre l'a changé entre-temps.
   P.noterLectureCoedition(panneau, REVUE, temoin, Date.now() - 6 * 60 * 1000);
   fs.writeFileSync(temoin, 'faites: [relire]\n');
 
@@ -151,15 +148,14 @@ test('saisie endormie mais fichier intact : l’écriture passe, sans punition',
   P.libererCoedition(panneau);
 });
 
-// Le piège que ce test garde : ausgabe.yaml est écrit par le formulaire, mais AUSSI par les
-// boutons de l'arbre et par les commandes du numéro. Si l'empreinte du formulaire ne suivait
-// pas ces écritures-là, un « Monter » suffirait à faire croire au conflit — sur notre propre
-// poste, et sans que personne d'autre ne soit en cause.
+// ausgabe.yaml est écrit par le formulaire, mais aussi par les boutons de l'arbre et les
+// commandes du numéro. L'empreinte du formulaire suit ces écritures, sinon un « Monter » sur
+// notre propre poste ferait croire à un conflit.
 test('une écriture faite ailleurs sur ce poste ne passe pas pour un conflit', async () => {
   await pret;
   const panneau = panneauFactice();
   P.noterLectureCoedition(panneau, REVUE, AUSGABE, Date.now() - 6 * 60 * 1000);
-  // Le geste de l'arbre : il passe par le point d'écriture unique du fichier du numéro.
+  // L'action de l'arbre passe par le point d'écriture unique du fichier du numéro.
   const erreur = P.ecrireClesAusgabe(REVUE, { title: 'Titre changé par un geste' });
   assert.strictEqual(erreur, null, 'l’écriture du geste a échoué, le test ne prouve rien');
 
@@ -186,7 +182,7 @@ test('fiches : la fiche tenue par un autre est seule refusée, les autres passen
     const message = P.messageCartes(res);
     assert.ok(message && message.indexOf('Anne Voisine') !== -1,
       'le message rendu au formulaire perd le refus : ' + message);
-    // La fiche refusée n'a pas bougé, l'autre a bien été écrite.
+    // La fiche refusée est intacte, l'autre a été écrite.
     assert.strictEqual(fs.readFileSync(META, 'utf8').indexOf('Refusé'), -1,
       'la fiche tenue par un autre poste a été écrasée');
     assert.ok(fs.existsSync(path.join(REVUE, 'articles', '02-sans-fiche', '02-sans-fiche.meta.yaml')),
@@ -210,9 +206,9 @@ test('archiver refuse tant que quelqu’un écrit quelque part dans le numéro',
     'le numéro reste bloqué alors que plus personne n’y écrit');
 });
 
-// L'avertissement de dernier recours : le bail voyage par le synchroniseur et n'arrive pas
-// toujours à temps. Quand une copie en conflit est quand même apparue, elle ne doit pas
-// rester invisible — c'est une version du travail qui n'est plus dans le numéro.
+// Avertissement de dernier recours : le bail voyage par le synchroniseur et n'arrive pas
+// toujours à temps. Une copie en conflit apparue malgré tout est signalée : c'est une
+// version du travail qui n'est pas dans le numéro.
 test('une copie en conflit déjà déposée est signalée, une seule fois', async () => {
   await pret;
   const copie = path.join(REVUE, 'ausgabe-Copie en conflit.yaml');
@@ -226,9 +222,9 @@ test('une copie en conflit déjà déposée est signalée, une seule fois', asyn
     assert.ok(nouveaux[0].indexOf('ausgabe-Copie en conflit.yaml') !== -1,
       'l’avertissement ne nomme pas le fichier : ' + nouveaux[0]);
 
-    // Deux fois le même avertissement serait vite ignoré. Deux gardes s'en chargent : le
-    // délai entre deux balayages, et le jeu des fichiers déjà signalés. rafraichirTout
-    // passe ici à chaque geste — sans elles, la fenêtre reviendrait en boucle.
+    // Le même avertissement ne revient pas : deux gardes s'en chargent, le délai entre deux
+    // balayages et la liste des fichiers déjà signalés. rafraichirTout passe ici à chaque
+    // action, sans elles la fenêtre reviendrait en boucle.
     const encore = HOTE.avertissements.length;
     P.avertirCopiesConflit(REVUE);
     assert.strictEqual(HOTE.avertissements.length, encore,

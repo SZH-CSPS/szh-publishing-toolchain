@@ -1,6 +1,6 @@
 // Le Bureau que la personne voit : celui que Windows rend, redirection OneDrive comprise, et
 // le Bureau du profil quand le système ne dit rien. La lecture du système est remplacée : le
-// test ne lance jamais PowerShell.
+// test ne lance pas PowerShell.
 'use strict';
 
 const test = require('node:test');

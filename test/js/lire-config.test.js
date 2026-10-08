@@ -1,14 +1,12 @@
 // pipeline/filters/szh-lire-config.lua : lit une clé de premier niveau d'un YAML « maison »
-// (ausgabe.yaml, buch.yaml, une fiche <slug>.meta.yaml) sans PyYAML ni lyaml — ce que le
-// Makefile et livre.mk faisaient jusqu'ici par sed/grep, chacun à sa façon, une seule forme
-// comprise à la fois (PROFIL_LU, exiger_titre, ORDRE_LU).
+// (ausgabe.yaml, buch.yaml, une fiche <slug>.meta.yaml) sans PyYAML ni lyaml, pour le
+// Makefile et livre.mk (PROFIL_LU, exiger_titre, ORDRE_LU).
 //
 //   node --test "test/js/*.test.js"
 //
-// Ce fichier vit sous test/js/ (le job `contrats` de la CI, sans chaîne PDF) : contrairement
-// à test/filtres-pandoc.test.js, un pandoc absent se SAUTE, il ne fait pas échouer la suite —
-// SZH_PANDOC_OBLIGATOIRE en fait des échecs : ce fichier lance le pandoc du PATH (`pandoc lua`),
-// pas celui de la WSL.
+// Ce fichier tourne dans le job `contrats` de la CI, sans chaîne PDF : un pandoc absent fait
+// sauter les tests, sauf sous SZH_PANDOC_OBLIGATOIRE. Il lance le pandoc du PATH
+// (`pandoc lua`), pas celui de la WSL.
 'use strict';
 
 const test = require('node:test');

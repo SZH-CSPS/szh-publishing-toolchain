@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-szh_commun.py — ce que docx-meta.py, docx-tables.py, livre-scinder.py, reimporter.py,
-couverture.py, portraits.py et cmyk-rgb.py refaisaient chacun de leur côté : le constat au
-rédacteur (avertir), la lecture plate de buch.yaml/ausgabe.yaml (lire_yaml), la slugification
-d'un nom de fichier (slugifier, alignée sur le Makefile) et l'écriture atomique d'un fichier
-(ecrire_atomique). Stdlib uniquement : la WSL de production n'a pas PyYAML, et
-portraits.py/cmyk-rgb.py tournent dans un venv séparé (/opt/portraits) qui n'a pas non plus
-accès aux dépendances du reste du pipeline.
+Fonctions communes aux scripts Python du pipeline : avertissement à la rédaction
+(avertir), lecture simple de buch.yaml et ausgabe.yaml (lire_yaml), slug d'un nom de
+fichier (slugifier, identique au Makefile), écriture atomique (ecrire_atomique), texte d'un
+run Word, requête HTTP et chargement d'un module à tiret. Bibliothèque standard seule : la
+WSL n'a pas PyYAML, et portraits.py et cmyk-rgb.py tournent dans un venv séparé
+(/opt/portraits).
 
 Chaque script importe ce module en s'ajoutant lui-même au chemin de recherche :
 
@@ -24,25 +23,20 @@ import unicodedata
 import urllib.request
 
 # ---------------------------------------------------------------------------------------
-# Constat au rédacteur : une ligne, préfixe fixe (propre à l'appelant), deuxième champ un
-# code stable, français puis allemand. Sur stderr et dans SZH_IMPORT_LOG si la variable est
-# posée (append utf-8, LF, une OSError d'écriture est avalée — un journal illisible ne doit
-# jamais faire échouer l'appelant). Recopiée avant ce module dans docx-meta.py (~l.716),
-# docx-tables.py (~l.259), livre-scinder.py (~l.250) et, en méthode, dans reimporter.py
-# (~l.194) : les quatre versions faisaient exactement la même chose, seul le préfixe changeait
-# ('[import-avertissement]' pour les trois premiers, également pour reimporter.py).
+# Avertissement à la rédaction : une ligne « préfixe code | champs… | fr | [de] de », le
+# préfixe venant de l'appelant et le code étant stable. Écrite sur stderr, et ajoutée à
+# SZH_IMPORT_LOG si la variable est posée ; une erreur d'écriture du journal est ignorée.
 # ---------------------------------------------------------------------------------------
 
 def formater_avertissement(prefixe, code, champs, fr, de):
-    """La ligne elle-même, sans l'écrire nulle part : reimporter.py s'en sert aussi pour
-    garder sa propre liste de lignes (Voix.lignes) sans dupliquer ce format."""
+    """La ligne seule, sans l'écrire (reimporter.py la garde dans Voix.lignes)."""
     return ' | '.join([prefixe + ' ' + code] + list(champs) + [fr, '[de] ' + de])
 
 
 def journaliser(ligne, journal):
-    """Ajoute `ligne` à `journal` si un chemin est donné ; absent ou illisible, ne fait
-    rien. Une erreur d'écriture (dossier disparu, droits, OneDrive...) est avalée : le
-    journal est un confort de diagnostic, jamais une condition de réussite de l'appelant."""
+    """Ajoute `ligne` à `journal` si un chemin est donné. Une erreur d'écriture (dossier
+    disparu, droits, OneDrive…) est ignorée : le journal ne doit pas faire échouer
+    l'appelant."""
     if not journal:
         return
     try:
@@ -53,12 +47,9 @@ def journaliser(ligne, journal):
 
 
 def avertir(prefixe, code, champs, fr, de, journal=None, flush=False):
-    """Écrit le constat sur stderr et le journalise. `journal` : chemin explicite (c'est ce
-    que passe reimporter.py, qui résout son propre journal indépendamment de la variable
-    d'environnement) ; omis ou None, le journal est SZH_IMPORT_LOG (comportement des trois
-    scripts d'origine). `flush` : reimporter.py imprime ses lignes avec flush=True, les
-    trois autres non — un détail de tampon qui ne change jamais ce qui finit par s'afficher,
-    gardé pour ne rien changer d'observable. Rend la ligne, que l'appelant peut garder."""
+    """Écrit l'avertissement sur stderr et dans le journal, et rend la ligne. `journal` :
+    chemin explicite (reimporter.py) ; à défaut, SZH_IMPORT_LOG. `flush` : vidage immédiat
+    de stderr."""
     if journal is None:
         journal = os.getenv('SZH_IMPORT_LOG')
     ligne = formater_avertissement(prefixe, code, champs, fr, de)
@@ -68,11 +59,8 @@ def avertir(prefixe, code, champs, fr, de, journal=None, flush=False):
 
 
 # ---------------------------------------------------------------------------------------
-# Lecture plate d'un YAML « maison » (buch.yaml, ausgabe.yaml) : une clé par ligne, listes
-# en tirets ou en ligne, sous-blocs indentés d'un niveau. Ce n'est pas un analyseur YAML et
-# ça n'essaie pas de l'être — voir lire_yaml() ci-dessous pour ce qu'il couvre.
-# Recopiée de livre-assembler.py (~l.44-123), que couverture.py importait par chemin pour
-# cette seule fonction (~l.51-52).
+# Lecture simple d'un YAML de la maison (buch.yaml, ausgabe.yaml) : une clé par ligne,
+# listes en tirets ou en ligne, sous-blocs indentés d'un niveau (voir lire_yaml()).
 # ---------------------------------------------------------------------------------------
 
 def _valeur(brut):
@@ -95,16 +83,15 @@ def _valeur_ou_liste(brut):
 
 
 def lire_yaml(chemin):
-    """Rend un dict. Une passe, trois formes, et rien d'autre :
+    """Rend un dict. Trois formes sont lues :
 
         cle: valeur              -> chaîne, booléen
         cle: [a, b]              -> liste sur une ligne (aussi sous un tiret ou en sous-clé)
         cle:                     -> bloc, suivi soit de « - item » (liste), soit de
           sous-cle: valeur          lignes indentées (dict)
 
-    Ce n'est pas un analyseur YAML et cela n'essaie pas de l'être : c'est le lecteur du
-    fichier que le cockpit écrit. Une construction qu'il ne connaît pas est ignorée en
-    silence plutôt qu'inventée.
+    Ce n'est pas un analyseur YAML : il lit les fichiers qu'écrit le cockpit et ignore les
+    autres constructions.
     """
     racine = {}
     try:
@@ -119,10 +106,9 @@ def lire_yaml(chemin):
         indent = len(ligne) - len(ligne.lstrip())
         nu = ligne.strip()
 
-        # ⚠ Un item de liste s'écrit au fer à gauche dans les fiches de la maison —
-        # `auteurs:` puis `- prenom: …` en colonne 0, comme dans les <slug>.meta.yaml de
-        # la revue. Le tiret se teste donc avant l'indentation, sans quoi « - prenom »
-        # passerait pour une clé de premier niveau et la liste des auteur·e·s se perdrait.
+        # Dans les fiches de la maison, un item de liste commence en colonne 0 (`author:`
+        # puis `- prenom: …`). Le tiret se teste donc avant l'indentation, sinon
+        # « - prenom » serait pris pour une clé de premier niveau.
         if indent == 0 and not nu.startswith('- '):
             if ':' not in nu:
                 continue
@@ -164,11 +150,10 @@ def lire_yaml(chemin):
 
 
 # ---------------------------------------------------------------------------------------
-# Slugification, alignée sur celle de la cible `import` du Makefile (~l.598-605) :
+# Slug, identique à celui de la cible `import` du Makefile :
 #   nom sans extension | iconv ASCII//TRANSLIT | minuscules | [^a-z0-9]+ -> '-' | trim '-'
-# Recopiée de livre-scinder.py (~l.33-76). La garder alignée sur le Makefile est un invariant
-# du projet, pas une préférence : un chapitre et un article doivent porter le même nom pour
-# le même titre, quel que soit le maillon qui l'a créé.
+# Les deux doivent rester alignés : un même titre donne le même nom de dossier, quel que
+# soit le script qui l'a créé.
 # ---------------------------------------------------------------------------------------
 
 def slugifier(nom_fichier: str) -> str:
@@ -215,28 +200,22 @@ def borner_slug(s: str) -> str:
 
 
 def slugifier_chapitre(titre: str) -> str:
-    """Slug d'un chapitre : slugifier puis borner. Pas de complément de deux chiffres
-    (c'est pour les articles, pas les chapitres)."""
+    """Slug d'un chapitre : slugifier puis borner, sans le complément de deux chiffres des
+    articles."""
     return borner_slug(slugifier(titre))
 
 
 # ---------------------------------------------------------------------------------------
-# Écriture atomique : jamais de fichier visible à moitié écrit (OneDrive, cockpit qui relit
-# en même temps). Le contenu passe par un temporaire du même dossier — os.replace est
-# atomique sur un même volume — supprimé si l'écriture échoue.
-# Recopiée de portraits.py (~l.178-186, PNG) et cmyk-rgb.py (~l.63-74, JPEG+EXIF), qui
-# diffèrent par le format écrit et par le préfixe du nom temporaire (« .~ » / « ~$ ») : ce
-# n'est donc pas le contenu qui est partagé ici, mais le mécanisme (nom temporaire, écriture,
-# remplacement, nettoyage sur exception). livre-scinder.py (ecrire_buch_yaml) écrit du texte,
-# pas une image : `binaire=False` couvre ce cas.
+# Écriture atomique : OneDrive et le cockpit ne voient jamais un fichier à moitié écrit. Le
+# contenu passe par un temporaire du même dossier, remplacé par os.replace (atomique sur un
+# même volume) et supprimé si l'écriture échoue.
 # ---------------------------------------------------------------------------------------
 
 def ecrire_atomique(chemin, ecrire, binaire=True, encoding=None, newline=None,
                      prefixe_tmp='.~'):
     """`ecrire(flux)` reçoit le fichier temporaire déjà ouvert et y écrit le contenu voulu.
     `binaire` choisit le mode d'ouverture ('wb' ou 'w', avec `encoding`/`newline` dans ce
-    second cas). `prefixe_tmp` distingue portraits.py (« .~ ») de cmyk-rgb.py (« ~$ »),
-    repris tels quels pour ne rien changer d'observable."""
+    second cas). `prefixe_tmp` : préfixe du nom temporaire (cmyk-rgb.py passe « ~$ »)."""
     dossier = os.path.dirname(chemin) or '.'
     tmp = os.path.join(dossier, '%s%s.%d.tmp' % (prefixe_tmp, os.path.basename(chemin),
                                                   os.getpid()))
@@ -255,10 +234,10 @@ def ecrire_atomique(chemin, ecrire, binaire=True, encoding=None, newline=None,
 
 
 # ---------------------------------------------------------------------------------------
-# Texte d'un run Word : les deux éléments qui portent un caractère sans passer par w:t.
-# Commun à pronto_docx.py et docx-meta.py ; manuscrit_docx.py a sa version, qui en plus
-# recense les polices de symboles. Sans eux, « Jean<w:noBreakHyphen/>Éric » devenait
-# « JeanÉric » dans la fiche (mesuré le 30.09.2026).
+# Texte d'un run Word : les deux éléments qui portent un caractère hors de w:t
+# (w:noBreakHyphen, w:sym). Sans eux, « Jean<w:noBreakHyphen/>Éric » devient « JeanÉric ».
+# Servent à pronto_docx.py et docx-meta.py ; manuscrit_docx.py a sa propre version, qui
+# recense aussi les polices de symboles.
 # ---------------------------------------------------------------------------------------
 
 TRAIT_UNION_INSECABLE = '\u2011'
@@ -312,8 +291,7 @@ def requete_http(url, delai, user_agent):
 
 # ---------------------------------------------------------------------------------------
 # Module à tiret (docx-meta.py, docx-titres.py) : pas importable par son nom, donc chargé
-# par chemin. Une seule instance par processus, rangée dans sys.modules : avant, entête,
-# noms et biblio chargeaient chacun leur copie de docx-meta.py.
+# par chemin, une seule fois par processus (rangé dans sys.modules).
 # ---------------------------------------------------------------------------------------
 
 def charger_module_a_tiret(nom_fichier):

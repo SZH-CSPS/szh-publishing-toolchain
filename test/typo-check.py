@@ -1,27 +1,19 @@
 #!/usr/bin/env python3
-# typo-check.py — vérifie la typographie des textes visibles par l'équipe et par le
-# lectorat, dans les deux langues de la revue.
+# Vérifie la typographie des textes que voient l'équipe et le lectorat, en français, en
+# allemand et en italien.
 #
 #   python3 test/typo-check.py              -> rapport ; sortie 0 si tout passe, 1 sinon
 #   python3 test/typo-check.py --corriger   -> applique les corrections sûres
 #   python3 test/typo-check.py --liste      -> les règles, sans rien lire
 #
-# Les règles ne sont pas inventées ici. Elles viennent de deux normes — le Guide du
-# typographe (Groupe de Lausanne de l'AST) pour le français, le Duden et l'usage suisse
-# alémanique pour l'allemand — et chacune a été confrontée aux 421 galleys DOCX réellement
-# publiées sur ojs.szh.ch (2,4 M caractères en français, 6,1 M en allemand). docs/
-# TYPOGRAPHIE.md donne le détail des mesures et tranche les deux points où la norme et
-# l'usage maison divergeaient.
+# Les règles suivent le Guide du typographe (AST) pour le français, le Duden et l'usage
+# suisse pour l'allemand ; docs/TYPOGRAPHIE.md les détaille. Français et allemand
+# s'opposent sur l'espacement : le français met une insécable avant la ponctuation haute
+# et à l'intérieur des guillemets, l'allemand suisse colle tout.
 #
-# Le fait dominant : français et allemand ont des règles OPPOSÉES sur l'espacement. Le
-# français sépare la ponctuation haute et l'intérieur des guillemets par une insécable ;
-# l'allemand suisse colle tout. Une règle appliquée aux deux langues est donc fausse pour
-# l'une d'elles, et c'était le défaut de départ du programme.
-#
-# ⚠ Ce contrôle ne touche QUE les chaînes visibles. Les commentaires de code gardent
-# l'apostrophe droite — c'est la convention du dépôt, délibérée — et les clés d'API (celles
-# d'OJS en particulier) sont comparées octet pour octet à l'import : les retoucher casserait
-# l'appariement. Voir la liste SURFACES pour ce qui est lu, et rien d'autre ne l'est.
+# Seules les chaînes visibles sont lues (liste SURFACES). Les commentaires de code gardent
+# l'apostrophe droite, et les clés d'API (celles d'OJS) doivent rester identiques à
+# l'octet près.
 """Contrôle et correction de la typographie des chaînes visibles."""
 
 import io
@@ -38,16 +30,14 @@ DEMI = "–"      # demi-cadratin, tiret d'incise
 CAD = "—"       # cadratin : proscrit
 ELL = "…"       # points de suspension
 
-# Les langues « collées » : allemand suisse et italien suivent la même mécanique
-# d'espacement, opposée à celle du français.
+# Langues sans espace avant la ponctuation haute ni dans les guillemets.
 COLLEES = ("de", "it")
 
 
 # --------------------------------------------------------------------------- les règles
 #
-# Chaque règle sait se détecter et se corriger. `corriger` reçoit une valeur et rend la
-# valeur corrigée ; quand elle vaut None, la règle signale sans réparer — c'est le cas des
-# guillemets droits, qu'on ne peut pas apparier sans risque de casser une chaîne de code.
+# Chaque règle détecte ses fautes et, si elle a une fonction `corriger`, les répare. Sans
+# elle, la règle signale seulement (les guillemets, qu'on ne peut pas apparier sans risque).
 
 class Regle:
     def __init__(self, code, langues, titre_fr, titre_de, detecter, corriger=None):
@@ -72,14 +62,13 @@ class Regle:
         return self._corriger is not None
 
 
-# A1 — apostrophe. L'élision seule : une apostrophe entre deux lettres. Celle qui ouvre ou
-# ferme (l'anglais « '90s ») ne se devine pas et n'apparaît pas dans le corpus.
+# A1, apostrophe : seulement l'élision, une apostrophe entre deux lettres.
 RE_ELISION = re.compile(r"([A-Za-zÀ-ÿ])'([A-Za-zÀ-ÿ])")
 
 
 def _apostrophes(v):
-    # Plusieurs passes : « l'enfant d'ici » a deux élisions qui se chevauchent par la
-    # lettre qu'elles partagent, une seule passe n'en prend qu'une sur deux.
+    # Plusieurs passes : deux élisions séparées par une seule lettre se chevauchent, et une
+    # passe n'en prend qu'une sur deux.
     for _ in range(4):
         neuf = RE_ELISION.sub(r"\1" + APO + r"\2", v)
         if neuf == v:
@@ -88,13 +77,11 @@ def _apostrophes(v):
     return v
 
 
-# E1/E2 — espacement. On ne fait que NORMALISER une espace déjà présente ; jamais en
-# insérer une absente. Sans quoi « https://ror.org » et « 10:30 » deviendraient faux, et
-# une chaîne allemande citant « Fehler: » se verrait couper en deux. Et une SUITE
-# d'espaces est un alignement de colonne, pas de la ponctuation : « Detail   : {0} » se
-# lit en face de « Schritt  : {0} », et la garde la laisse tranquille : elle bloque
-# un espace PRÉCÉDÉ d'un espace, pas un fragment qui commence par une espace. Les
-# messages des filtres Lua sont concaténés, et « »: keine » porte le sien en tête.
+# E1/E2, espacement : on remplace une espace déjà présente, on n'en insère jamais (sinon
+# « https://ror.org » et « 10:30 » seraient modifiés). Une suite d'espaces est un
+# alignement de colonne (« Detail   : {0} ») et reste telle quelle : le lookbehind écarte
+# une espace précédée d'une autre. Une espace en tête de fragment reste visée, car les
+# messages des filtres Lua sont concaténés.
 RE_FR_HAUTE = re.compile(r"(?<![ \t   ])[   ]([;:!?])")
 RE_FR_GUILL_O = re.compile(r"«[   ]")
 RE_FR_GUILL_F = re.compile(r"(?<![ \t   ])[   ]»")
@@ -103,11 +90,11 @@ RE_DE_GUILL_O = re.compile(r"«[    ]")
 RE_DE_GUILL_F = re.compile(r"(?<![ \t   ])[    ]»")
 RE_POURCENT = re.compile(r"(?<=[0-9])[   ](%)(?![A-Za-z0-9%])")
 
-# T1 — tiret d'incise. Le cadratin est proscrit dans les deux langues ; en français il est
-# précédé d'une insécable, pour qu'il ne commence pas une ligne.
+# T1, tiret d'incise : demi-cadratin, jamais de cadratin. En français, une insécable le
+# précède pour qu'il ne commence pas une ligne.
 RE_INCISE_FR = re.compile(r"(?<![ \t   ])[   ](" + DEMI + r"|" + CAD + r")(?=[  ])")
 
-# E4 — abréviations soudées par une insécable, des deux côtés de la Sarine.
+# E4 : abréviations soudées par une insécable.
 ABREV_FR = [(re.compile(r"\bp\.[   ]?ex\."), "p." + NBSP + "ex.")]
 ABREV_DE = [
     (re.compile(r"\bz\.[   ]?B\."), "z." + NBSP + "B."),
@@ -115,7 +102,7 @@ ABREV_DE = [
     (re.compile(r"\bS\.[   ]?(?=\d)"), "S." + NBSP),
 ]
 
-# S2 — ordinaux français. « 2ème » est fautif : la norme écrit « 2e ».
+# S2, ordinaux français : « 2e », pas « 2ème ».
 RE_ORDINAL = re.compile(r"\b(\d+)(?:ème|ième|eme)\b")
 
 RE_GUILL_COURBES = re.compile(r"[„“”‚‘]")
@@ -230,8 +217,8 @@ REGLES = [
           lambda v: RE_ORDINAL.sub(r"\1e", v)),
 ]
 
-# Un code peut porter DEUX entrées — le français et les langues collées prescrivent
-# l'inverse l'un de l'autre sur E1, E2 et T1 —, et c'est la langue qui les départage.
+# E1, E2 et T1 ont deux entrées, l'une pour le français, l'autre pour les langues
+# collées ; la langue choisit.
 REGLES_PAR_CODE = {}
 for _r in REGLES:
     REGLES_PAR_CODE.setdefault(_r.code, []).append(_r)
@@ -267,13 +254,12 @@ def fautes_valeur(valeur, langue):
 # ------------------------------------------------------------------ lecture des surfaces
 #
 # Un extracteur rend [(no_ligne, langue, valeur, remplacer)] où `remplacer(valeur, ligne)`
-# reconstruit la ligne autour d'une valeur corrigée. Séparer ainsi le repérage de la
-# réécriture évite la faute classique : toucher une clé au lieu de sa valeur.
+# reconstruit la ligne autour d'une valeur corrigée : seule la valeur est réécrite, jamais
+# la clé.
 #
-# `remplacer` reçoit la ligne COURANTE et non celle d'origine, parce qu'une ligne porte
-# parfois plusieurs fragments à corriger — « fr = '…', de = '…' » sur une seule ligne. Ils
-# sont appliqués de droite à gauche par parcourir(), ce qui garde valides les décalages
-# relevés à l'extraction.
+# `remplacer` reçoit la ligne courante, car une ligne peut porter plusieurs fragments
+# (« fr = '…', de = '…' »). parcourir() les applique de droite à gauche pour que les
+# décalages relevés à l'extraction restent valides.
 
 RE_CLE_JS = re.compile(r"^(\s*'[^']+':\s*')((?:[^'\\]|\\.)*)('\s*,?\s*)$")
 RE_BLOC_LANGUE = re.compile(r"^\s*(fr|de|en|it):\s*\{\s*$")
@@ -320,16 +306,16 @@ def extraire_ps(lignes, _langue):
             continue
         m = RE_CLE_PS.match(l)
         if m:
-            # PowerShell 5.1 traite ’ comme un délimiteur de chaîne au même titre que ' :
-            # dans le fichier elle est doublée. On la déplie pour juger, on la redouble
-            # pour écrire — sinon le script cesse de compiler.
+            # PowerShell 5.1 traite ’ comme un délimiteur de chaîne, comme ' : elle est
+            # doublée dans le fichier. On la dédouble pour juger et on la redouble pour
+            # écrire, sinon le script ne se charge plus.
             valeur = m.group(2).replace(APO + APO, APO)
             yield i, courante, valeur, (
                 lambda v, _l, p=m.group(1), s=m.group(3):
                     p + v.replace(APO, APO + APO) + s)
 
 
-# Des clés de package.json dont la valeur est une expression de VS Code, pas du texte.
+# Clés de package.json dont la valeur est une expression de VS Code, pas du texte.
 RE_CLE_CODE_JSON = re.compile(r'^\s*"(when|enablement)":')
 
 
@@ -347,10 +333,10 @@ RE_LITTERAL = re.compile(r"'((?:[^'\\\n]|\\.)*)'|\"((?:[^\"\\\n]|\\.)*)\"")
 
 
 def _est_prose(v):
-    """Une chaîne de code n'a ni espace ni accent ; une phrase a l'un ou l'autre.
+    """Vrai pour une phrase : elle a une espace ou un caractère non ASCII.
 
-    Le tri compte : les filtres mêlent des phrases à des motifs Lua (« %s », « ... »,
-    « %w+ ») et à des noms de classe. Les toucher casserait un gsub sans rien dire.
+    Les motifs Lua (« %w+ », « ... ») et les noms de classe n'en ont pas ; les corriger
+    casserait un gsub sans erreur visible.
     """
     if not v:
         return False
@@ -358,13 +344,11 @@ def _est_prose(v):
 
 
 def extraire_lua(lignes, _langue):
-    """Les blocs de langue des filtres : tables plates ET fonctions de message.
+    """Filtres Lua : les formes « fr = '…' » et les blocs « fr = { … } ».
 
-    Les diagnostics de szh-maquette.lua ne sont pas des tables de chaînes mais des
-    fonctions qui concatènent des fragments sur plusieurs lignes. Ne lire que la forme
-    « fr = '…' » les laissait tous de côté — et ce sont exactement les phrases que la
-    rédaction voit à chaque compilation. On suit donc l'indentation du bloc de langue et
-    on prend tout littéral de prose qu'il contient, fragment par fragment.
+    Dans un bloc de langue (des fonctions de message qui concatènent des fragments sur
+    plusieurs lignes, comme dans szh-maquette.lua), on suit l'indentation et on prend
+    chaque littéral de prose.
     """
     pile = []
     for i, l in enumerate(lignes):
@@ -379,22 +363,20 @@ def extraire_lua(lignes, _langue):
         if RE_LUA_COMMENT.match(l):
             continue
         if pile:
-            # dans un bloc de langue : tous les fragments de la ligne
             for m in RE_LITTERAL.finditer(l):
                 v = m.group(1) if m.group(1) is not None else m.group(2)
                 if _est_prose(v):
                     yield i, pile[-1][0], v, _remplacant_intervalle(
                         *(m.span(1) if m.group(1) is not None else m.span(2)))
             continue
-        # hors bloc : la forme d'une ligne, « fr = '…', de = '…' »
+        # Hors bloc : « fr = '…', de = '…' » sur une ligne.
         for m in RE_LUA_LANGUE.finditer(l):
             if _est_prose(m.group(2)):
                 yield i, m.group(1), m.group(2), _remplacant_intervalle(*m.span(2))
 
 
-# Les libellés bilingues du cockpit qui ne passent pas par i18n.js : les tâches
-# éditoriales de lib/articles.js, les types d'article de lib/yaml.js. Même forme partout,
-# « fr: '…', de: '…', it: '…' », et souvent plusieurs langues sur une ligne.
+# Libellés du cockpit hors i18n.js (tâches de lib/articles.js, types d'article de
+# lib/yaml.js) : « fr: '…', de: '…', it: '…' », souvent sur une seule ligne.
 RE_JS_LANGUE = re.compile(r"\b(fr|de|it)\s*:\s*'((?:[^'\\]|\\.)*)'")
 
 
@@ -407,15 +389,13 @@ def extraire_js_bilingue(lignes, _langue):
                 yield i, m.group(1), m.group(2), _remplacant_intervalle(*m.span(2))
 
 
-# nouveautes.json : la note que « Quoi de neuf » montre à la rédaction après une mise à
-# jour, livrée à la racine du toolkit. C'est du texte lu par les deux rédactions, dans les
-# deux langues, et personne ne le relit avant qu'une fenêtre ne s'ouvre dessus — d'où sa
-# place ici. Le fichier est plat et régulier (JSON.stringify à deux espaces) : un automate
-# de lignes suffit, et il garde l'intervalle exact que `--corriger` doit réécrire.
+# nouveautes.json : la note « Quoi de neuf » montrée après une mise à jour, en fr et en de.
+# Le fichier suit la mise en forme de JSON.stringify à deux espaces, ce qui permet de le
+# lire ligne à ligne et de garder l'intervalle exact à réécrire.
 #
-# La langue vient du bloc englobant, "fr" ou "de" ; les clés de service ("_lisez-moi") et
-# les en-têtes de medium ("1.1") la remettent à zéro, pour qu'une prose de service ne soit
-# jamais jugée dans la langue du bloc précédent.
+# La langue vient du bloc englobant, "fr" ou "de". Toute autre clé ("_lisez-moi", un
+# numéro de version "1.1") l'efface, pour qu'un texte de service ne soit pas jugé dans la
+# langue du bloc précédent.
 RE_JSON_LANGUE = re.compile(r'^\s*"(fr|de)"\s*:\s*\{')
 RE_JSON_TITRE = re.compile(r'^\s*"titre"\s*:\s*"((?:[^"\\]|\\.)*)"')
 RE_JSON_POINTS = re.compile(r'^\s*"points"\s*:')
@@ -436,10 +416,7 @@ def extraire_json_nouveautes(lignes, _langue):
             if langue and _est_prose(m.group(1)):
                 yield i, langue, m.group(1), _remplacant_intervalle(*m.span(1))
             continue
-        # « points » ouvre un tableau : la langue court jusqu'à la clé suivante. C'est le
-        # défaut qui a failli livrer quatre phrases sur cinq sans contrôle — seul le titre
-        # était lu, parce que « "points": [ » remettait la langue à zéro comme n'importe
-        # quelle autre clé.
+        # « points » ouvre un tableau de phrases : la langue est gardée.
         if RE_JSON_POINTS.match(l):
             continue
         if RE_JSON_AUTRE_CLE.match(l):
@@ -452,13 +429,9 @@ def extraire_json_nouveautes(lignes, _langue):
             yield i, langue, m.group(1), _remplacant_intervalle(*m.span(1))
 
 
-# Les 18 webviews de vscodium-extension/szh-cockpit/media/*.js. Forme différente de
-# lib/articles.js et lib/yaml.js : pas de structure fr:/de: (vérifié par grep sur les 18
-# fichiers — RE_JS_LANGUE n'y trouve que des codes courts sans espace ni accent, `fr:
-# 'FR'`, jamais une phrase), donc extraire_js_bilingue NE CONVIENT PAS. Le plus gros du
-# texte visible de ces webviews vient de TXT.xxx, déjà couvert par lib/i18n.js ; ce qui
-# reste ici, ce sont les rares littéraux tapés en clair (repli, libellé de secours) —
-# une seule langue par chaîne, celle du fichier (fr, comme le reste du cockpit).
+# Webviews du cockpit (media/*.js). Leur texte vient surtout de TXT.xxx, donc de
+# lib/i18n.js ; on lit ici les quelques littéraux écrits en clair, tous en français. Ces
+# fichiers n'ont pas de structure fr:/de:, d'où un extracteur à part.
 RE_JS_STRING = re.compile(r"'((?:[^'\\]|\\.)*)'")
 
 
@@ -478,10 +451,8 @@ def _code_sans_commentaire(l):
 def extraire_js_media(lignes, langue):
     """media/*.js : littéraux JS visibles, hors ce que lib/i18n.js porte déjà.
 
-    Les lignes commentées en entier et les fins de ligne en `// …` sont écartées avant
-    d'y chercher un littéral : sans ça, la prose française des commentaires de code (qui
-    GARDE l'apostrophe droite par convention du dépôt, voir l'en-tête de ce fichier)
-    contamine le repérage — un commentaire n'est jamais un message affiché.
+    Les commentaires `//` sont écartés d'abord : ils gardent l'apostrophe droite et ne
+    s'affichent pas.
     """
     for i, l in enumerate(lignes):
         if l.lstrip().startswith('//'):
@@ -496,8 +467,8 @@ def extraire_js_media(lignes, langue):
 def _remplacant_intervalle(debut, fin):
     """Recompose la ligne autour d'un seul fragment.
 
-    Plusieurs langues cohabitent souvent sur la même ligne : remplacer par recherche de
-    texte y écraserait la mauvaise. On tient les décalages.
+    Par décalages et non par recherche de texte : une ligne porte souvent plusieurs
+    langues, et une recherche pourrait remplacer la mauvaise.
     """
     return lambda v, ligne: ligne[:debut] + v + ligne[fin:]
 
@@ -510,9 +481,8 @@ JETON = ""
 def extraire_texte(lignes, langue):
     """Markdown, YAML, texte brut : de la prose, hors blocs et segments de code.
 
-    Les `segments entre accents graves` sont masqués par un jeton plutôt que découpés :
-    découper coupe les mots à la frontière et « d'`articles-word` : » perdait à la fois son
-    apostrophe et son insécable.
+    Le code entre accents graves est remplacé par un marqueur, pas retiré : la ponctuation
+    qui l'entoure reste ainsi contrôlée (« d'`articles-word` : »).
     """
     dans_code = False
     for i, l in enumerate(lignes):
@@ -541,23 +511,14 @@ RE_TWIG_LANGUE = re.compile(r"\{#\s*langue\s*:\s*(\w+)\s*#\}")
 
 
 def extraire_twig(lignes, langue):
-    """mail-templates/*.twig, export-templates/*.twig : texte brut d'un gabarit, hors
-    constructions Twig.
+    """Gabarits Twig : le texte brut, hors constructions Twig.
 
-    {{ expr }}, {% tag %} et {# commentaire #} sont masqués avant contrôle : ce ne sont
-    pas des messages. `langue` vient du nom de fichier (.fr./.de.) quand il le dit, sinon
-    de la surface (export-templates/ n'a pas ce suffixe, voir plus bas).
+    {{ expr }}, {% tag %} et {# commentaire #} sont masqués. La langue vient du nom de
+    fichier (.fr., .de.) ou, à défaut, de la surface.
 
-    Un `{# ... #}` peut s'étendre sur PLUSIEURS lignes (export-templates/ : un bloc de
-    documentation de variables en tête de fichier, 20 lignes ou plus) — RE_TWIG_TAG seul
-    ne le voit pas, il ne matche que dans une ligne. Sans suivi d'état, ces lignes
-    intérieures passeraient pour du texte de gabarit et seraient contrôlées comme si
-    elles s'affichaient à un lectorat, alors que ce sont des commentaires pour
-    développeurs. Une ligne qui OUVRE un commentaire sans le refermer est donc sautée en
-    entier (jusqu'ici, toujours vide de tout sauf `{#` et sa prose) ; toutes les lignes
-    tant que le commentaire n'est pas refermé le sont aussi ; la ligne qui referme l'est
-    encore, sous la même hypothèse (vérifiée sur les 9 fichiers d'export-templates/ :
-    aucun `{#`/`#}` multi-lignes ne partage sa ligne avec autre chose).
+    Un commentaire {# … #} sur plusieurs lignes est sauté en entier, de la ligne qui
+    l'ouvre à celle qui le ferme comprise. On suppose que ces deux lignes ne portent rien
+    d'autre, ce qui est vrai dans les gabarits actuels.
     """
     dans_commentaire = False
     for i, l in enumerate(lignes):
@@ -569,8 +530,8 @@ def extraire_twig(lignes, langue):
         if o != -1 and '#}' not in l[o:]:
             dans_commentaire = True
             continue
-        # Un gabarit à deux langues (newsletter-intro.twig) marque chaque paragraphe par
-        # `{# langue : de #}` ; la marque vaut jusqu'à la suivante.
+        # Dans un gabarit à deux langues, `{# langue : de #}` fixe la langue jusqu'à la
+        # marque suivante.
         marque = RE_TWIG_LANGUE.search(l)
         if marque:
             langue = marque.group(1)
@@ -588,11 +549,9 @@ RE_PY_CODE = re.compile(r"\{[^{}]*\}")
 
 
 def extraire_py(lignes, langue):
-    """moissonneurs/*.py : les littéraux de prose d'une ligne de code.
+    """moissonneurs/*.py : les littéraux de prose, hors docstrings et commentaires.
 
-    Ce que console.py affiche, et ce que moisson.py et evenements.py envoient au cockpit
-    (avertissements, détails d'un refus). Les docstrings et les commentaires ne s'affichent
-    pas ; le code d'une f-string ({…}) est masqué par un jeton, comme le code du Markdown.
+    Le code d'une f-string ({…}) est masqué comme le code du Markdown.
     """
     dans_doc = False
     for i, l in enumerate(lignes):
@@ -621,59 +580,47 @@ def extraire_py(lignes, langue):
             yield i, langue, masque, (lambda neuve, ligne, d=demasquer, p=placer: p(d(neuve, ligne), ligne))
 
 
-# Ce qui est lu, et rien d'autre. Chaque entrée : (chemin, extracteur, langue par défaut).
-# La langue par défaut ne sert qu'aux surfaces monolingues ; les autres la portent dans
-# leur structure.
+# Fichiers lus : (chemin, extracteur, langue par défaut). La langue par défaut sert aux
+# fichiers monolingues ; les autres la portent dans leur structure.
 SURFACES = [
     ("vscodium-extension/szh-cockpit/lib/i18n.js", extraire_js_i18n, None),
     ("vscodium-extension/szh-cockpit/package.nls.json", extraire_json, "fr"),
     ("vscodium-extension/szh-cockpit/package.nls.de.json", extraire_json, "de"),
     ("vscodium-extension/szh-cockpit/package.json", extraire_json, "fr"),
-    # La table $SzhTextes vit dans windows/szh-textes.ps1, dot-sourcée par szh-common.ps1
-    # (voir test/js/controles.test.js) : ce dernier ne porte plus aucun texte à contrôler.
+    # La table $SzhTextes du lanceur.
     ("windows/szh-textes.ps1", extraire_ps, None),
-    # Les deux jeux de libellés bilingues qui ne passent pas par i18n.js, parce qu'ils
-    # sont des données du modèle et non des messages : les tâches éditoriales et les types
-    # d'article. Ils s'affichent malgré tout dans les panneaux.
+    # Tâches éditoriales et types d'article : des données du modèle, affichées dans les
+    # panneaux.
     ("vscodium-extension/szh-cockpit/lib/articles.js", extraire_js_bilingue, None),
     ("vscodium-extension/szh-cockpit/lib/yaml.js", extraire_js_bilingue, None),
     ("revue-template/BIENVENUE.md", extraire_texte, "fr"),
     ("revue-template/ausgabe.yaml", extraire_texte, "fr"),
     ("revue-template/articles-word/LISEZ-MOI.txt", extraire_texte, "fr"),
     ("userdoc.md", extraire_texte, "fr"),
-    # Bilingue dans un seul fichier : la langue vient du bloc, pas de cette colonne.
     ("nouveautes.json", extraire_json_nouveautes, None),
-    # La note qui pose les règles s'y tient elle-même : c'est le seul document de docs/
-    # sous contrôle, les autres suivent la convention développeur du dépôt.
+    # Les notes de typographie suivent leurs propres règles ; le reste de docs/ n'est pas lu.
     ("docs/TYPOGRAPHIE.md", extraire_texte, "fr"),
-    # Les deux notes de la rédaction : chacune est écrite dans sa langue et se compose
-    # donc selon ses propres règles — c'est le meilleur exemple qu'elles puissent donner.
     ("docs/TYPOGRAPHIE-FR.md", extraire_texte, "fr"),
     ("docs/TYPOGRAPHIE-DE.md", extraire_texte, "de"),
-    # Les messages des moissonneurs : la console du poste de développement, et ce que le cockpit
-    # affiche tel quel (avertissements d'une passe, détail d'un refus). Français seulement.
+    # Messages des moissonneurs, affichés en console ou dans le cockpit.
     ("moissonneurs/console.py", extraire_py, "fr"),
     ("moissonneurs/moisson.py", extraire_py, "fr"),
     ("moissonneurs/evenements.py", extraire_py, "fr"),
 ]
 
-# Les filtres Lua portent les libellés imprimés dans le PDF : licence, titres de rubrique,
-# « Résumé »/« Zusammenfassung ». Ils sont ajoutés en bloc, chacun avec l'extracteur de
-# tables bilingues.
+# Les filtres Lua, qui portent les libellés imprimés dans le PDF.
 for _nom in sorted(os.listdir(os.path.join(RACINE, "pipeline", "filters"))):
     if _nom.endswith(".lua"):
         SURFACES.append(("pipeline/filters/" + _nom, extraire_lua, None))
 
-# Les gabarits de courriel : un fichier par langue, déduite du nom (envoi-auteur.fr.twig,
-# envoi-auteur.de.twig, …).
+# Gabarits de courriel du cockpit : la langue se lit dans le nom (envoi-auteur.de.twig).
 for _nom in sorted(os.listdir(os.path.join(RACINE, "vscodium-extension/szh-cockpit/mail-templates"))):
     if _nom.endswith(".twig"):
         _langue_gabarit = "de" if ".de." in _nom else "fr"
         SURFACES.append(("vscodium-extension/szh-cockpit/mail-templates/" + _nom, extraire_twig, _langue_gabarit))
 
-# Le lanceur Windows a les siens (support.fr.twig, support.de.twig, support.en.twig) :
-# même règle de nom, mais avec un .en. en plus, jamais contrôlé (voir LANGUES_CONTROLEES,
-# le même sort que l'anglais des .ps1 lus par extraire_ps ci-dessus).
+# Gabarits de courriel du lanceur : même règle de nom, plus .en., qui n'est pas contrôlé
+# (voir LANGUES_CONTROLEES).
 for _nom in sorted(os.listdir(os.path.join(RACINE, "windows/mail-templates"))):
     if _nom.endswith(".twig"):
         if ".de." in _nom:
@@ -684,23 +631,17 @@ for _nom in sorted(os.listdir(os.path.join(RACINE, "windows/mail-templates"))):
             _langue_gabarit = "fr"
         SURFACES.append(("windows/mail-templates/" + _nom, extraire_twig, _langue_gabarit))
 
-# Les gabarits d'export du secrétariat (CSV edudoc, rapports de métadonnées, newsletters
-# Mailchimp) : un seul fichier par usage, pas de suffixe de langue dans le nom — écrits
-# en français (vérifié : aucun `locale == 'de'` ni bloc bilingue dans le corps des 9
-# fichiers, seule la documentation de tête en tête mentionne la locale, jamais un texte
-# affiché dans les deux langues).
+# Gabarits d'export du secrétariat : sans suffixe de langue, écrits en français.
 for _nom in sorted(os.listdir(os.path.join(RACINE, "vscodium-extension/szh-cockpit/export-templates"))):
     if _nom.endswith(".twig"):
         SURFACES.append(("vscodium-extension/szh-cockpit/export-templates/" + _nom, extraire_twig, "fr"))
 
-# Les 18 webviews du cockpit (voir extraire_js_media ci-dessus pour ce qu'elles portent
-# encore en clair, le reste passant par TXT.xxx/lib/i18n.js).
+# Webviews du cockpit (voir extraire_js_media).
 for _nom in sorted(os.listdir(os.path.join(RACINE, "vscodium-extension/szh-cockpit/media"))):
     if _nom.endswith(".js"):
         SURFACES.append(("vscodium-extension/szh-cockpit/media/" + _nom, extraire_js_media, "fr"))
 
-# L'anglais n'a pas de règle ici : il ne sert qu'au repli des raccourcis Windows, où seuls
-# comptent les caractères ASCII.
+# L'anglais n'est pas contrôlé : il ne sert qu'au repli des raccourcis Windows.
 LANGUES_CONTROLEES = ("fr", "de", "it")
 
 
@@ -740,7 +681,7 @@ def parcourir(corriger=False):
                 neuve = corriger_valeur(valeur, langue)
                 if neuve != valeur:
                     a_faire.setdefault(no, []).append((neuve, remplacer))
-        # De droite a gauche : les decalages releves a l'extraction restent valides.
+        # De droite à gauche : les décalages relevés à l'extraction restent valides.
         for no, travaux in a_faire.items():
             for neuve, remplacer in reversed(travaux):
                 lignes[no] = remplacer(neuve, lignes[no])

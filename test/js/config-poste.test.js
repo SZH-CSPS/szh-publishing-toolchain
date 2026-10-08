@@ -1,15 +1,11 @@
 // config.json du poste (C:\ProgramData\SZH\config.json) : un seul couple lecture/écriture
 // dans lib/archivage.js, que lib/export-ojs.js et le reste du cockpit doivent partager.
 //
-//   node --test "test/js/*.test.js"
+//   node --test test/js/config-poste.test.js
 //
-// Avant ce lot, lib/export-ojs.js portait sa PROPRE copie de lireConfigPoste(), avec son
-// propre override d'environnement (SZH_CONFIG_OJS) ; lib/archivage.js lisait toujours
-// C:\ProgramData\SZH\config.json en dur, sans override. Un test qui posait SZH_CONFIG_OJS
-// et passait par archivage.js (l'emplacement des revues, par exemple) touchait donc
-// encore le vrai fichier du poste, en silence. Ce fichier éprouve la version centralisée :
-// un seul override, une seule écriture atomique, une lecture-modification-écriture qui ne
-// perd jamais ce qu'un autre appelant vient de ranger.
+// Vérifie : une seule variable de détournement (SZH_CONFIG_OJS) pour la lecture et
+// l'écriture, une seule écriture atomique, et une lecture-modification-écriture qui ne perd
+// pas ce qu'un autre appelant vient d'écrire.
 'use strict';
 
 const test = require('node:test');
@@ -21,8 +17,8 @@ const path = require('path');
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 
-// Un config.json de travail par test, jamais celui du poste — même principe que
-// export-ojs.test.js : SZH_CONFIG_OJS détourne la lecture ET l'écriture.
+// Un config.json de travail par test, pas celui du poste : SZH_CONFIG_OJS détourne la
+// lecture et l'écriture.
 function fichierEssai() {
   return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'szh-config-poste-')), 'config.json');
 }
@@ -43,9 +39,8 @@ test('lireConfigPoste/ecrireConfigPoste respectent SZH_CONFIG_OJS, comme export-
   }
 });
 
-// Le contrat central : deux écritures successives, chacune ne connaissant qu'UN bloc, ne
-// doivent jamais s'écraser l'une l'autre — c'est exactement ce que faisait mal l'ancien
-// export-ojs.js (writeFileSync nu, sans le passage par une lecture fraîche partagée).
+// Deux écritures successives, chacune ne connaissant qu'un bloc, ne s'écrasent pas l'une
+// l'autre : chaque écriture part d'une lecture fraîche du fichier.
 test('deux écritures successives de blocs différents conservent les deux (lecture-modification-écriture atomique)', () => {
   const chemin = fichierEssai();
   process.env.SZH_CONFIG_OJS = chemin;
@@ -63,9 +58,8 @@ test('deux écritures successives de blocs différents conservent les deux (lect
 });
 
 test('ecrireConfigPoste garde la forme historique : un objet direct s’écrit tel quel', () => {
-  // extension.js appelle encore ecrireConfigPoste(objet) à trois endroits (lecture et
-  // fusion faites par l'appelant) : cette forme ne doit pas casser quand fn est un objet
-  // et non une fonction.
+  // extension.js appelle ecrireConfigPoste(objet) à trois endroits (lecture et fusion faites
+  // par l'appelant) : un objet est accepté à la place d'une fonction.
   const chemin = fichierEssai();
   process.env.SZH_CONFIG_OJS = chemin;
   delete require.cache[require.resolve(path.join(COCKPIT, 'lib', 'archivage.js'))];
@@ -93,7 +87,7 @@ test('ecrireEmplacementRevues écrit désormais atomiquement, et garde le reste 
     assert.strictEqual(relu.devMode, false);
     assert.strictEqual(relu.repo, 'z', 'le reste du fichier a été écrasé');
     assert.deepStrictEqual(relu.ojs, { revues: {} }, 'la config OJS a été écrasée');
-    // Aucun temporaire oublié à côté : ecrireAtomique nettoie toujours le sien.
+    // Aucun temporaire ne reste : ecrireAtomique nettoie le sien.
     const fichiers = fs.readdirSync(path.dirname(chemin));
     assert.ok(!fichiers.some((f) => f.startsWith('~$')), 'un temporaire est resté : ' + fichiers);
   } finally {
@@ -101,9 +95,8 @@ test('ecrireEmplacementRevues écrit désormais atomiquement, et garde le reste 
   }
 });
 
-// Le test ci-dessus n'exerce que la valeur PRODUCTION : ce fichier prétendait garantir
-// ecrireEmplacementRevues() dans son ensemble, mais dépendait en fait de
-// emplacements.test.js pour prouver l'autre branche (TEST) — jamais vérifiée ICI.
+// Le test ci-dessus n'exerce que la valeur « production » ; celui-ci couvre l'autre branche
+// d'ecrireEmplacementRevues(), « test ».
 test('ecrireEmplacementRevues : l’autre valeur (test) écrit aussi atomiquement, et garde le reste', () => {
   const chemin = fichierEssai();
   process.env.SZH_CONFIG_OJS = chemin;

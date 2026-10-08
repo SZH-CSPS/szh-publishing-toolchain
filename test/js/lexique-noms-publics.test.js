@@ -1,22 +1,18 @@
-// outils-dev/lexique/moissonner-noms-publics.py : construit les DEUX index de fréquence
-// publics du lexique — pipeline/lexique/noms-frequents.txt et prenoms-frequents.txt — lus par
-// manuscrit_noms.BaseNoms en renfort de la base OJS du poste. Contrat :
-// docs/ARCHITECTURE-nettoyeur-manuscrit.md, §5.5 quater.
+// outils-dev/lexique/moissonner-noms-publics.py : construit les deux index de fréquence
+// publics du lexique, pipeline/lexique/noms-frequents.txt et prenoms-frequents.txt, lus par
+// manuscrit_noms.BaseNoms en renfort de la base OJS du poste. Voir
+// docs/ARCHITECTURE-nettoyeur-manuscrit.md.
 //
-// ⚠ Ce que ces tests gardent avant tout, c'est une contrainte de PROVENANCE, pas une
-// contrainte de forme. `prenoms.txt` a été supprimé le 22.09.2026 au matin parce qu'il
-// dérivait de C:\ProgramData\SZH\auteurs.json, la base d'auteurs de la maison, dans un dépôt
-// destiné à devenir public. `prenoms-frequents.txt` est demandé par Robin le même jour, mais
-// de SOURCE PUBLIQUE et de source publique seulement. Un fichier bien trié dont les jetons
-// viendraient d'auteurs.json passerait toutes les vérifications de forme et violerait
-// pourtant la seule chose qui compte ici — d'où les deux tests de provenance plus bas, qui
-// regardent le script et non le fichier.
+// Le point essentiel est la provenance : le dépôt est public, et ces fichiers ne viennent
+// que de sources publiques, jamais de C:\ProgramData\SZH\auteurs.json (la base d'auteurs de
+// la maison). Un fichier bien formé tiré d'auteurs.json passerait les contrôles de forme :
+// les deux tests de provenance regardent donc le script, pas le fichier.
 //
 //   node --test "test/js/lexique-noms-publics.test.js"     (guillemets obligatoires)
 //
-// Aucun test ne touche au réseau : le moissonneur ne télécharge que sur --telecharger, et
-// aucun test ne le lui demande. Les CSV bruts (38 Mo) vivent dans tmp/lexique-sources/, hors
-// dépôt ; les tests qui en auraient besoin sont sautés quand ils sont absents.
+// Aucun test ne touche au réseau : le moissonneur ne télécharge qu'avec --telecharger. Les
+// CSV bruts (38 Mo) vivent dans tmp/lexique-sources/, hors dépôt ; les tests qui en ont
+// besoin sont sautés quand ils sont absents.
 'use strict';
 
 const test = require('node:test');
@@ -43,11 +39,10 @@ function lireJetons(chemin) {
 }
 
 // ---------------------------------------------------------------------------------------
-// 1. Les deux fichiers LIVRÉS — forme, et surtout confidentialité.
+// 1. Les deux fichiers livrés : forme et confidentialité.
 
-// Mêmes garanties que verifierFichierLexique() de lexique-noms.test.js, redite ici plutôt
-// qu'importée : ce fichier-ci doit pouvoir être lancé seul, et la vérification tient en
-// quinze lignes.
+// Mêmes garanties que verifierFichierLexique() de lexique-noms.test.js, recopiée pour que
+// ce fichier se lance seul.
 function verifierIndex(chemin) {
   assert.ok(fs.existsSync(chemin), 'fichier attendu absent : ' + chemin);
   const brut = fs.readFileSync(chemin, 'utf8');
@@ -63,9 +58,8 @@ function verifierIndex(chemin) {
   assert.deepStrictEqual(suspects, [],
     chemin + ' : jeton(s) avec @, chiffre ou espace (un couple prénom+nom resté accolé '
     + 'trahirait une donnée personnelle) : ' + suspects.slice(0, 10));
-  // Les jetons sont DÉJÀ pliés : c'est ce que _charger_fichier_lexique() suppose pour son
-  // chemin rapide (manuscrit_noms.py). Une majuscule ou un accent ici ne casserait rien
-  // (le repli par _plier() reste branché) mais ferait mentir l'en-tête du fichier.
+  // Les jetons sont déjà pliés, comme le suppose le chemin rapide de
+  // _charger_fichier_lexique() (manuscrit_noms.py) et comme l'annonce l'en-tête du fichier.
   const malPlies = jetons.filter((j) => j !== j.toLowerCase()
     || j.normalize('NFD') !== j.normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
   assert.deepStrictEqual(malPlies.slice(0, 10), [],
@@ -108,15 +102,13 @@ test('l\'en-tête de chaque index cite ses sources et leur licence (obligation d
 });
 
 // ---------------------------------------------------------------------------------------
-// 2. PROVENANCE — le cœur du lot. Deux gardes, sur le script plutôt que sur le fichier :
-// c'est le script qui pourrait un jour se remettre à lire la base de la maison, et un
-// fichier propre produit par un script fautif est exactement ce qu'on cherche à empêcher.
+// 2. Provenance. Deux contrôles sur le script, qui est ce qui pourrait lire la base de la
+// maison.
 
 test('le moissonneur ne connaît pas auteurs.json : ni le chemin de la base OJS, ni son nom, '
   + 'nulle part dans le script (§5.4 du brief)', () => {
   const source = fs.readFileSync(MOISSONNEUR, 'utf8');
-  // Le nom du fichier peut apparaître dans un commentaire qui EXPLIQUE qu'on ne le lit pas ;
-  // ce qui est interdit, c'est de l'ouvrir. On cherche donc les formes exécutables.
+  // Un commentaire peut nommer le fichier ; on cherche les formes qui l'ouvrent.
   const lignesDeCode = source.split('\n')
     .filter((l) => !l.trim().startsWith('#'));
   const fautives = lignesDeCode.filter((l) => /auteurs\.json|ProgramData|base_auteurs/i.test(l));
@@ -150,8 +142,7 @@ test('toutes les sources déclarées du moissonneur sont publiques (OFS, INSEE) 
 });
 
 // ---------------------------------------------------------------------------------------
-// 3. Le filtre de discrimination, sur des compteurs FABRIQUÉS — aucune source réelle, donc
-// aucun besoin du cache tmp/ ni du réseau.
+// 3. Le filtre de discrimination, sur des compteurs fabriqués, sans source réelle.
 
 test('discriminer() : un jeton va du côté qui domine, jamais des deux ; la zone neutre se '
   + 'tait', { skip: sansPython }, () => {
@@ -160,8 +151,8 @@ test('discriminer() : un jeton va du côté qui domine, jamais des deux ; la zon
     'from collections import Counter',
     'spec = importlib.util.spec_from_file_location("mo", sys.argv[1])',
     'm = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)',
-    // muller : nom franc. peter : prenom largement dominant. ahmed : les deux, au coude a
-    // coude -> zone neutre des que le rapport depasse 1,1.
+    // muller : nom net. peter : prénom largement dominant. ahmed : les deux, à égalité, donc
+    // en zone neutre dès que le rapport dépasse 1,1.
     'pn = Counter({"muller": 48000, "peter": 7000, "ahmed": 2875})',
     'pp = Counter({"edith": 9000, "peter": 52000, "ahmed": 2898})',
     'sortie = {}',
@@ -182,8 +173,8 @@ test('discriminer() : un jeton va du côté qui domine, jamais des deux ; la zon
     + 'c\'est précisément ce jeton-là qui fabrique les inversions décrites au §3 du brief');
   assert.ok(!s['1.0'].noms.includes('peter'), 'peter ne doit pas rester du côté des noms');
 
-  // rapport 2 : « ahmed » (2875 contre 2898, aucun des deux ne domine deux fois l'autre)
-  // sort des DEUX index — « en cas de doute, rien ».
+  // rapport 2 : « ahmed » (2875 contre 2898, aucun ne domine deux fois l'autre) sort des
+  // deux index : en cas de doute, rien.
   assert.ok(s['2.0'].neutres.includes('ahmed'), 'ahmed doit tomber en zone neutre à rapport 2');
   assert.ok(!s['2.0'].noms.includes('ahmed') && !s['2.0'].prenoms.includes('ahmed'),
     'un jeton en zone neutre n\'entre dans AUCUN des deux index');
@@ -207,7 +198,7 @@ test('moissonner-noms-publics.py refuse d\'écrire quand une famille de sources 
 
 // ---------------------------------------------------------------------------------------
 // 4. Le banc de mesure. Il a besoin de la base OJS du poste (C:\ProgramData\SZH\auteurs.json),
-// absente d'un runner CI : sauté sans elle, jamais en échec.
+// absente d'un runner CI : sauté sans elle.
 
 const BASE_OJS = process.platform === 'win32'
   ? path.join(process.env.PROGRAMDATA || 'C:\\ProgramData', 'SZH', 'auteurs.json') : '';
@@ -243,9 +234,9 @@ test('banc-noms.py sur le lexique livré : les deux index font baisser « muet �
     assert.ok(livre.juste > temoin.juste + 200,
       'le lexique livré doit faire gagner beaucoup de décisions justes : ' + temoin.juste
       + ' -> ' + livre.juste);
-    // Le critère DUR du §6 : une inversion se propage et retourne un article entier, un
-    // silence ne coûte qu'une convention par défaut. Le plafond est le chiffre mesuré sur
-    // l'état du 22.09.2026 (10 fiches sur 1152, 0,9 %), jamais un pourcentage rond.
+    // Une inversion prénom/nom se propage à tout l'article, alors qu'un silence ne coûte
+    // qu'une convention par défaut. Le plafond est le chiffre mesuré (10 fiches sur 1152,
+    // 0,9 %), pas un pourcentage rond.
     assert.ok(livre.envers <= 10,
       'colonne « à l\'envers » au-dessus du plafond mesuré du contrat (10 fiches) : '
       + livre.envers + ' — un palier qui paie des inversions ne s\'adopte pas en silence');
@@ -253,9 +244,8 @@ test('banc-noms.py sur le lexique livré : les deux index font baisser « muet �
 
 // ---------------------------------------------------------------------------------------
 // 5. Le chemin rapide de chargement (manuscrit_noms._charger_fichier_lexique) : un fichier
-// DÉJÀ plié saute la normalisation NFD. Ce qui doit être prouvé n'est pas le gain de temps,
-// c'est que le raccourci ne change RIEN au résultat — y compris sur un fichier mal plié,
-// édité à la main contre la consigne.
+// déjà plié saute la normalisation NFD. Le raccourci ne change pas le résultat, même sur un
+// fichier mal plié, édité à la main.
 
 test('_charger_fichier_lexique : le chemin rapide donne exactement le même résultat que le '
   + 'pliage complet, y compris sur des lignes non pliées', { skip: sansPython }, () => {
@@ -283,7 +273,7 @@ test('_charger_fichier_lexique : le chemin rapide donne exactement le même rés
 });
 
 // ---------------------------------------------------------------------------------------
-// 6. Le moissonneur sur les VRAIES sources (tmp/lexique-sources, hors dépôt) — sauté quand
+// 6. Le moissonneur sur les vraies sources (tmp/lexique-sources, hors dépôt), sauté quand
 // le cache est absent, comme lexique-noms.test.js le fait pour tmp/docx-dev.
 
 test('moissonner-noms-publics.py --statistiques sur le cache réel : n\'écrit rien et annonce '

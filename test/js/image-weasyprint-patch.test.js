@@ -1,14 +1,11 @@
 // Les correctifs SZH de WeasyPrint (image/patches/weasyprint-<version>/, un fichier par
-// sujet) : qu'ils existent pour la version épinglée, qu'ils restent indépendants les uns des
-// autres, et que l'image ET la CI les appliquent au même moment — juste après
-// l'installation épinglée. Contrat de texte, sans outil : le comportement (veraPDF
-// avant/après) est éprouvé par test/weasyprint-patch-check.py dans le job pdf-ua.
+// sujet) : ils existent pour la version épinglée, restent indépendants les uns des autres,
+// et l'image comme la CI les appliquent juste après l'installation épinglée. Contrôle de
+// texte seulement ; le comportement (veraPDF avant/après) est vérifié par
+// test/weasyprint-patch-check.py dans le job pdf-ua.
 //
-// Pourquoi ce contrat : sans les patchs, un th colspan=2 laisse sa seconde colonne en
-// /Headers [] (PDF/UA-1 7.5-1), une image alt="" + role="presentation" sort en /Figure
-// sans /Alt (7.3-1), le copier-coller rend « ensei-gnants » et « lamarche », et l'en-tête
-// courant sort en MCID rattachés à rien. Un Containerfile qui oublierait de les appliquer
-// produirait une flotte non conforme sans qu'aucune ligne du pipeline ait bougé.
+// Sans ces patchs, les PDF ne sont plus conformes PDF/UA-1 (en-têtes de tableau, images
+// décoratives, en-tête courant) et le copier-coller casse les mots coupés.
 'use strict';
 
 const test = require('node:test');
@@ -26,7 +23,7 @@ function versionEpinglee() {
   return m[1];
 }
 
-// nom du patch : fichiers visés, et une ligne que chacun introduit.
+// Par patch : les fichiers visés, et une ligne que chacun introduit.
 const PATCHS = {
   '10-tableaux-entetes': {
     cibles: ['weasyprint/pdf/tags.py'],

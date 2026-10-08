@@ -3,37 +3,31 @@
   Crée une nouvelle revue à partir du gabarit du toolkit, sans administrateur :
     powershell -ExecutionPolicy Bypass -File new-revue.ps1 -Dossier "$env:OneDrive\Revues\2026-01"
 
-  Le lanceur passe en plus -Annee, -Numero et -Volume : c'est lui qui les fait saisir, et le
-  nom du dossier en découle. Sans eux, ils se relisent dans le nom du dossier.
+  L'Accueil passe en plus -Produit, -Annee, -Numero et -Volume. Sans -Annee ni -Numero, ils
+  se lisent dans le nom du dossier (« AAAA-NN »).
 
-  Copie le gabarit, pose « Ouvrir la revue.lnk » dans le dossier pour qu'il voyage avec la
-  revue, et enregistre l'emplacement pour le lanceur du menu Démarrer.
+  Copie le gabarit, écrit l'identité du numéro dans ausgabe.yaml et pose « Ouvrir la
+  revue.lnk » dans le dossier. Un dossier hors de l'arborescence officielle est enregistré
+  dans la configuration.
 
   Compatibilité : Windows PowerShell 5.1.
 #>
 [CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)][string]$Dossier,
-  # Produit du numéro : écrit le jeton `revue:` d'ausgabe.yaml, dont découlent le nom de
-  # la revue, son ISSN, sa langue par défaut et le lanceur qui l'affichera. Vide : on
-  # laisse ce que dit le gabarit.
+  # Produit du numéro, écrit dans la clé `revue:` d'ausgabe.yaml. Il décide du nom de la
+  # revue, de son ISSN, de sa langue et de l'onglet qui l'affiche. Vide : valeur du gabarit.
   [string]$Produit = '',
-  # Identité du numéro, telle que le lanceur l'a fait saisir : c'est d'elle que vient le nom
-  # du dossier (« AAAA-NN »), et non l'inverse. À 0, elles se relisent dans le nom du
-  # dossier, pour un appel en ligne de commande sur un dossier déjà nommé.
+  # À 0 : lus dans le nom du dossier (« AAAA-NN »).
   [int]$Annee = 0,
   [int]$Numero = 0,
-  # Volume annuel de la revue. À 0, il se calcule d'après l'année (Get-SzhVolumePour).
+  # À 0 : calculé d'après l'année (Get-SzhVolumePour).
   [int]$Volume = 0
 )
 
 . "$PSScriptRoot\szh-common.ps1"
 
-# Le produit ne décide plus de la langue des messages. Il le faisait : créer une Zeitschrift
-# basculait tout l'outil en allemand, pour tous les comptes du poste, et le rédacteur
-# francophone qui rendait service à sa collègue retrouvait son lanceur en allemand. La langue
-# est un réglage, fait dans l'onglet « Paramètres » du lanceur et rangé par compte — ce
-# script s'exprime donc dans la langue déjà résolue par szh-common.ps1, comme tout le reste.
+# Les messages suivent la langue réglée pour le compte (szh-common.ps1), pas le produit.
 Write-SzhTitre 'Nouvelle revue'
 
 $template = Join-Path $SzhToolkit 'revue-template'
@@ -46,8 +40,7 @@ New-Item -ItemType Directory -Force -Path $Dossier | Out-Null
 if ($existait) {
   Write-SzhInfo 'Ce dossier contient déjà une revue : rien n''est écrasé, seul le raccourci est (re)créé.'
 } else {
-  # -Force sur Get-ChildItem, pas seulement sur Copy-Item : un gabarit caché (.gitkeep,
-  # .gitattributes) suit désormais la copie, là où le joker '*' seul le sautait.
+  # -Force sur Get-ChildItem pour copier aussi les fichiers cachés (.gitkeep, .gitattributes).
   # L'article d'exemple et les modèles d'article Pronto restent dans le toolkit, où le
   # nettoyeur et les tests les lisent : un numéro neuf part avec « articles » vide.
   Get-ChildItem -LiteralPath $template -Force |
@@ -57,9 +50,8 @@ if ($existait) {
 }
 $chemin = (Resolve-Path -LiteralPath $Dossier).Path
 
-# Ce jeton décide dans quel lanceur le numéro apparaîtra. Sans lui, un numéro créé dans
-# le dossier de la Zeitschrift garderait le « revue: revue » du gabarit et serait listé
-# du mauvais côté.
+# Le jeton `revue:` décide de l'onglet où le numéro apparaît. Sans lui, un numéro de la
+# Zeitschrift garderait le « revue: revue » du gabarit.
 if (-not $existait) {
   $jeton = Get-SzhJetonRevue $Produit
   if ($jeton) {
@@ -69,20 +61,16 @@ if (-not $existait) {
   }
 }
 
-# Identité du numéro : année, numéro et volume, et le titre de démonstration du gabarit
-# vidé. Sans cela, un numéro neuf porterait les valeurs d'exemple, en contradiction avec le
-# nom que montrent le lanceur, les liens et les archives.
+# Identité du numéro : année, numéro, volume et couleur remplacent les valeurs d'exemple du
+# gabarit, et le titre est vidé.
 #
-# `date:` reste vide, et ce n'est pas un oubli : c'est la date de publication du numéro,
-# que personne ne connaît le jour où le dossier est créé. Y écrire l'année du dossier
-# faisait paraître le champ rempli alors qu'il ne l'était pas — l'export OJS refuse une
-# année seule, et le rédacteur ne voyait pas pourquoi. La couverture, elle, n'a pas besoin
-# de cette clé : szh-maquette.lua reprend l'année du nom du dossier quand `date:` est vide.
-# La vraie date se saisit dans « Métadonnées du numéro », qui a un sélecteur pour cela.
+# `date:` reste vide : c'est la date de publication, inconnue à la création. Elle se saisit
+# dans « Métadonnées du numéro » ; l'export OJS la demande complète. La couverture prend
+# l'année du nom du dossier quand `date:` est vide (szh-maquette.lua).
 if (-not $existait) {
   $leaf = Split-Path $chemin -Leaf
   [void](Set-SzhAusgabeCle $chemin 'date' '' $true $true)
-  # Les valeurs passées gagnent ; sans elles, le nom du dossier est relu.
+  # Les valeurs passées priment sur le nom du dossier.
   $annee = $Annee
   $rang = $Numero
   if (($annee -le 0) -or ($rang -le 0)) {
@@ -91,10 +79,8 @@ if (-not $existait) {
       if ($rang -le 0) { $rang = [int]$Matches[2] }
     }
   }
-  # Le volume s'imprime sur la couverture et part dans OJS en <volume>. Le laisser au
-  # « 44 » du gabarit étiquetait faux tous les numéros neufs, sans qu'aucun message le dise :
-  # il est donc posé ici, calculé si on ne l'a pas dit, et vidé si l'année manque — un champ
-  # vide se voit, un faux volume non.
+  # Le volume s'imprime sur la couverture et part dans OJS. Il est calculé s'il n'est pas
+  # donné, et vidé si l'année manque : un champ vide se remarque, un faux volume non.
   $jetonVolume = Get-SzhJetonRevue $Produit
   if (-not $jetonVolume) {
     $deja = Get-SzhAusgabe (Join-Path $chemin 'ausgabe.yaml')
@@ -104,9 +90,8 @@ if (-not $existait) {
   if (($vol -le 0) -and ($annee -gt 0)) { $vol = Get-SzhVolumePour $jetonVolume $annee }
   if ($vol -gt 0) { [void](Set-SzhAusgabeCle $chemin 'volume' ([string]$vol) $true $false) }
   else { [void](Set-SzhAusgabeCle $chemin 'volume' '' $true $true) }
-  # Couleur annuelle : avance d'un cran chaque année (Get-SzhCouleurPour), posée ici comme le
-  # volume juste au-dessus. Revue ou année inconnues -> '' -> rien n'est posé, et le gabarit
-  # (revue-template/ausgabe.yaml, couleur: "#5F9FBC") garde la main.
+  # Couleur annuelle (Get-SzhCouleurPour). Revue ou année inconnue : la couleur du gabarit
+  # reste.
   if ($annee -gt 0) {
     $couleur = Get-SzhCouleurPour $jetonVolume $annee
     if ($couleur) {
@@ -127,8 +112,8 @@ if (-not $existait) {
   [void](Set-SzhAusgabeCle $chemin 'title' '' $true $true)
 }
 
-# Version du logiciel qui crée ce numéro : de quoi le recomposer plus tard à l'identique,
-# et ce que le cockpit compare à la version installée. Posée à la création seulement.
+# Version du logiciel qui crée le numéro, pour pouvoir le recomposer à l'identique. Le
+# cockpit la compare à la version installée.
 if (-not $existait) {
   $version = Get-SzhVersionInstallee
   if (Set-SzhAusgabeVersion $chemin $version) {
@@ -136,24 +121,20 @@ if (-not $existait) {
   }
 }
 
-# Identifiant fixe du numéro (`id:`) : posé UNE FOIS ici, jamais recalculé ensuite — c'est
-# lui que porteront le raccourci et tout lien szh:// envoyé pour ce numéro (docs/EMPLACEMENTS.md).
+# Identifiant fixe du numéro (`id:`), posé à la création seulement. Le raccourci et les
+# liens szh:// le portent (docs/EMPLACEMENTS.md).
 if (-not $existait) {
   [void](Set-SzhAusgabeIdSiAbsent $chemin)
 }
 
-# Raccourci dans le dossier : il voyage avec la revue sur OneDrive, et depuis le 15.09.2026
-# il survit au voyage — il vise le lanceur commun de C:\ProgramData et porte un lien
-# « szh:// », non plus deux chemins truffés du nom du compte Windows.
-# Aucun produit à faire remonter : le jeton vient d'être écrit dans ausgabe.yaml juste
-# au-dessus, et Set-SzhRaccourciRevue l'y relit (Get-SzhJetonDossier). Le repasser ici
-# serait une seconde vérité à tenir à jour.
+# Raccourci dans le dossier, qui voyage avec la revue sur OneDrive : il vise le lanceur
+# commun de C:\ProgramData et porte un lien « szh:// ». Set-SzhRaccourciRevue relit le
+# produit dans ausgabe.yaml.
 if (-not (Get-VSCodiumExe)) { throw 'VSCodium introuvable — lancer d''abord bootstrap.ps1.' }
 Set-SzhRaccourciRevue $chemin | Out-Null
 
-# On n'enregistre le dossier parent que s'il est hors de l'arborescence officielle : le
-# lanceur liste les emplacements de Get-SzhEmplacements, et cette clé ne sert plus qu'à
-# signaler une revue restée dehors.
+# Le dossier parent n'est enregistré (revuesRoots) que s'il est hors de l'arborescence
+# officielle (Get-SzhEmplacements), pour que le lanceur signale la revue.
 $parent = Split-Path $chemin -Parent
 $emp = Get-SzhEmplacements
 $officiel = $false

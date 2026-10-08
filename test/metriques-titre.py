@@ -1,31 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Génère la table de largeurs du titre de couverture — l'entrée de L3 (effet d'escalier).
+"""Génère la table de largeurs du titre de couverture, utilisée pour la règle L3 (escalier).
 
     python test/metriques-titre.py              -> réécrit la table et le dit
     python test/metriques-titre.py --verifier   -> ne réécrit rien ; sortie 1 si la table
                                                    ne correspond plus à la police livrée
 
-La règle L3 demande que la première ligne du titre soit plus courte que la deuxième. Pour
-la tenir, `pipeline/filters/szh-titre-lignes.lua` doit savoir OÙ le titre passera à la
-ligne, donc mesurer du texte — ce qu'un filtre pandoc ne peut pas faire seul. Ce script
-extrait les largeurs d'avance de la face qui compose le titre et les dépose dans une table
-Lua que le filtre lit. La mesure est ainsi faite une fois, versionnée et relisible, plutôt
-qu'estimée à chaque compilation.
+La règle L3 veut que la première ligne du titre soit plus courte que la deuxième. Pour
+cela, `pipeline/filters/szh-titre-lignes.lua` doit savoir où le titre passera à la ligne,
+donc mesurer du texte, ce qu'un filtre pandoc ne sait pas faire. Ce script extrait les
+largeurs d'avance de la face du titre et les écrit dans une table Lua, versionnée, que le
+filtre lit.
 
-⚠ Sans dépendance : ni fontTools ni WeasyPrint. Les deux outils du dépôt qui lisent les
-polices (test/polices-check.py, pipeline/fonts/glyphes-manquants.py) demandent fontTools,
-absent de la machine de rédaction ; ce script-ci doit pouvoir se relancer partout, puisque
-c'est lui qui garantit que la table suit la police. Il ne lit donc que trois tables du
-format TrueType — head, hhea/hmtx et cmap —, ce qui tient en soixante lignes de `struct`.
+Sans dépendance (ni fontTools ni WeasyPrint), pour pouvoir se relancer sur tout poste. Il
+lit seulement trois tables TrueType : head, hhea/hmtx et cmap.
 
-Ce qui n'est PAS modélisé, et l'erreur que cela laisse :
-  * le crénage (GPOS/kern) — Open Sans crène « Ta », « Vo », « Wa » de quelques millièmes
-    de cadratin ; sur une ligne de titre l'écart cumulé reste sous 0,5 %, et L3 garde une
-    marge de sécurité bien plus large ;
+Non modélisé :
+  * le crénage (GPOS/kern) : sur une ligne de titre, l'écart reste sous 0,5 %, bien en deçà
+    de la marge que garde L3 ;
   * les ligatures optionnelles, que WeasyPrint n'active pas sur ce titre ;
-  * la substitution de police : un caractère absent de la face est signalé ici même, et
-    test/polices-check.py est la porte qui interdit qu'il arrive jusqu'au PDF.
+  * la substitution de police : un caractère absent de la face est signalé ici, et
+    test/polices-check.py empêche qu'il arrive dans le PDF.
 """
 
 import os
@@ -33,16 +28,14 @@ import struct
 import sys
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# La face du titre : .szh-title est en font-weight 600, et socle.css §1 relie ce poids à
-# cette face-là. La changer ici sans la changer dans socle.css ferait mesurer la mauvaise.
+# La face du titre : .szh-title est en font-weight 600, que socle.css relie à cette face.
+# Les deux fichiers changent ensemble.
 POLICE = os.path.join(RACINE, 'pipeline', 'fonts', 'OpenSans-SemiCondensed-SemiBold.ttf')
 SORTIE = os.path.join(RACINE, 'pipeline', 'filters', 'szh-titre-metriques.lua')
 
-# Ce qu'un titre de la revue peut contenir : l'ASCII imprimable, tout le supplément
-# Latin-1, et les signes que la typographie maison pose elle-même (chevrons, apostrophe
-# courbe, demi-cadratin, ligatures, insécables, pour mille, euro).
-# 0x7F à 0x9F sont les codes de contrôle : aucune police ne leur donne de glyphe, et les
-# lister ferait crier le contrôle des manquants à chaque relance.
+# Ce qu'un titre peut contenir : l'ASCII imprimable, le supplément Latin-1 et les signes
+# que pose la typographie maison (chevrons, apostrophe courbe, demi-cadratin, ligatures,
+# insécables, pour mille, euro). 0x7F à 0x9F, codes de contrôle sans glyphe, sont exclus.
 CODES = list(range(0x20, 0x7F)) + list(range(0xA0, 0x100)) + [
     0x0152, 0x0153,                          # Œ œ
     0x2013, 0x2014, 0x2018, 0x2019, 0x201C, 0x201D, 0x2026,
@@ -151,7 +144,7 @@ def rendre(upem, lignes, taille):
         '-- toujours la police livrée).',
         '--',
         '-- Police  : pipeline/fonts/%s (%d octets)' % (os.path.basename(POLICE), taille),
-        '-- Poids   : 600, celui de .szh-title — voir socle.css §1',
+        '-- Poids   : 600, celui de .szh-title — voir socle.css',
         '-- Lecteur : test/metriques-titre.py, qui dit aussi ce qui n’est pas modélisé',
         '--           (crénage, ligatures optionnelles).',
         '',

@@ -1,22 +1,19 @@
 ﻿<#
 .SYNOPSIS
-  État d'un poste, dit en une page. À lancer SANS administrateur, DANS LA SESSION de la
+  État d'un poste, en une page. À lancer sans administrateur, dans la session de la
   personne dont on diagnostique le poste :
 
     powershell -ExecutionPolicy Bypass -File C:\ProgramData\SZH\toolkit\windows\diagnostic.ps1
 
-  Ne modifie rien : il lit, il compare, il nomme ce qui manque et le geste qui répare.
+  Ne modifie rien : il nomme ce qui manque et l'action qui répare.
 
-  Pourquoi ce script existe. L'essentiel de l'outil est posé PAR UTILISATEUR — distribution
-  WSL, extensions de l'éditeur, réglages, raccourcis, associations de fichiers — alors que
-  le toolkit est commun au poste. Un poste peut donc être « à jour » et parfaitement
-  inutilisable pour la personne qui s'en sert, sans qu'aucune ligne n'échoue. C'est arrivé
-  le 26 août 2026, et il a fallu lire quatre journaux pour le voir. Une commande suffit
-  maintenant.
+  Le toolkit est commun au poste, mais l'essentiel de l'outil est installé par compte
+  (distribution WSL, extensions, réglages, raccourcis, associations de fichiers). Un poste
+  « à jour » peut donc être inutilisable pour un compte donné.
 
   Code de sortie : 0 si tout est en place pour ce compte, 1 sinon.
 
-  Compatibilité : Windows PowerShell 5.1 (proscrire ?. ?? ?: && ||).
+  Compatibilité : Windows PowerShell 5.1.
 #>
 [CmdletBinding()]
 param()
@@ -26,8 +23,8 @@ param()
 
 $script:Bilan = New-Object System.Collections.ArrayList
 
-# Trois états seulement, parce qu'un diagnostic qui nuance ne décide de rien : « ok »,
-# « manque » (ce qui doit être réparé) et « note » (ce qui se lit sans rien exiger).
+# Trois états : « ok », « manque » (à réparer, compte dans le verdict) et « note »
+# (information seule).
 function Dire([string]$Etat, [string]$Sujet, [string]$Detail) {
   [void]$Bilan.Add([ordered]@{ etat = $Etat; sujet = $Sujet; detail = $Detail })
   $couleur = 'Gray'
@@ -46,8 +43,8 @@ $session = Get-SzhSessionUtilisateur
 Dire 'note' 'Compte qui exécute' ('{0} (admin : {1})' -f $moi.nom, $moi.admin)
 Dire 'note' 'SID' $moi.sid
 if ($session) {
-  # L'écart entre les deux est la cause du 26 août 2026 : une installation élevée avec le
-  # compte du support pose tout dans le profil du support, et la rédactrice n'a rien.
+  # Une installation lancée avec un autre compte (support, administrateur) s'installe dans
+  # le profil de ce compte-là, pas dans celui de la session.
   if ($session -eq $moi.nom) {
     Dire 'ok' 'Session ouverte pour' $session
   } else {
@@ -80,9 +77,8 @@ if ($libre -lt 0) { Dire 'note' 'Place libre' 'non mesurable' }
 elseif ($libre -lt 5) { Dire 'manque' 'Place libre' ('{0} Go — il en faut 5 pour installer l''environnement' -f $libre) }
 else { Dire 'ok' 'Place libre' ('{0} Go' -f $libre) }
 
-# Les deux applications, comparées aux versions figées dans apps.lock : c'est ce qui rend un
-# écart de flotte visible sans ouvrir dix postes. Une montée de version est un geste
-# volontaire (windows/APPS.md), donc un écart n'est pas une faute — mais il doit se lire.
+# Les applications, comparées aux versions figées dans apps.lock. Un écart de version est
+# une note, pas un défaut : la montée de version se fait à la main (windows/APPS.md).
 $verrouApps = Join-Path $PSScriptRoot 'apps.lock'
 $apps = @()
 try { $apps = @((Get-Content $verrouApps -Raw -Encoding UTF8 | ConvertFrom-Json).applications) } catch { $apps = @() }
@@ -96,9 +92,8 @@ foreach ($app in $apps) {
   $sujet = $app.nom
   if (-not $chemin) {
     $etat = 'manque'
-    # SumatraPDF porte `"requis": false` dans apps.lock : son absence se lit, mais ne doit
-    # pas compter dans le verdict final (voir plus bas, seul le ton 'manque' y est retenu).
-    # Sans cette ligne, un poste sans SumatraPDF — pourtant conforme — sortait en exit 1.
+    # Une application `"requis": false` (SumatraPDF) absente est une note : elle ne compte
+    # pas dans le verdict.
     if (-not $app.requis) { $etat = 'note' }
     Dire $etat $sujet ('absent — version épinglée {0}, à poser par un administrateur (bootstrap.ps1)' -f $app.version)
     continue
@@ -114,8 +109,8 @@ foreach ($app in $apps) {
   }
 }
 
-# wscript.exe porte les deux lanceurs, les tâches planifiées et l'association des .md : une
-# stratégie qui l'interdit rend tout cela muet, sans message.
+# wscript.exe porte les deux lanceurs, les tâches planifiées et l'association des .md :
+# sans lui, tout cela échoue sans message.
 $wscript = Join-Path $env:WINDIR 'System32\wscript.exe'
 if (Test-Path $wscript) { Dire 'ok' 'Hôte de scripts (wscript)' 'présent' }
 else { Dire 'manque' 'Hôte de scripts (wscript)' 'absent — raccourcis et tâches planifiées inopérants' }
@@ -127,7 +122,7 @@ $dossierDistro = Get-SzhDossierDistro
 $distroPresente = ((Get-SzhDistrosEnregistrees) -contains $SzhDistro)
 if ($distroPresente) {
   $rootfsPose = Get-SzhEtatUtilisateurChamp $etatUtil 'rootfs'
-  # Poste d'avant l'état par utilisateur : la version ne se lisait que dans l'état commun.
+  # Repli sur l'état commun du poste quand l'état du compte ne porte pas la version.
   if (-not $rootfsPose) {
     $etatPoste = Get-SzhState
     if ($etatPoste -and $etatPoste.rootfs) { $rootfsPose = [string]$etatPoste.rootfs }
@@ -145,7 +140,7 @@ if ($distroPresente) {
 }
 Dire 'note' 'Disque de la distribution' $dossierDistro
 
-# Les extensions, telles que l'éditeur les liste pour ce compte.
+# Les extensions que l'éditeur liste pour ce compte, comparées au manifeste.
 $reelles = Get-SzhExtensionsInstallees
 if ($null -eq $reelles) {
   Dire 'note' 'Extensions de l''éditeur' 'CLI de l''éditeur sans réponse — mesure impossible'
@@ -167,7 +162,7 @@ if ($null -eq $reelles) {
   Dire 'note' 'Extensions de l''éditeur' ('{0} posées (rien à comparer, Release injoignable)' -f $reelles.Count)
 }
 
-# Réglages de l'éditeur : ils vivent dans le profil, donc chaque compte a les siens.
+# Réglages de l'éditeur, propres à chaque compte.
 $dstReglages = Join-Path $env:APPDATA 'VSCodium\User'
 $manquants = New-Object System.Collections.ArrayList
 foreach ($f in 'settings.json', 'keybindings.json', 'tasks.json') {
@@ -178,10 +173,9 @@ else { Dire 'manque' 'Réglages de l''éditeur' ('manquent : ' + ($manquants -jo
 
 # ---- Réglages protégés de la chaîne de publication ----
 #
-# La configuration de l'export OJS, les titres de bibliographie et les tâches éditoriales
-# valent pour toute la rédaction. Un poste qui les a modifiés localement — c'est possible, après déverrouillage
-# explicite dans « Réglages SZH » — publiera autrement que les autres jusqu'à la prochaine
-# mise à jour, et personne ne le saura si on ne le dit pas ici.
+# L'export OJS, les titres de bibliographie et les tâches éditoriales valent pour toute la
+# rédaction. Un poste qui les a modifiés (après déverrouillage dans « Réglages SZH »)
+# publierait autrement que les autres : on compare sa config à settings-protected.json.
 Write-SzhTitre 'Réglages de la rédaction'
 
 $protegesFichier = Join-Path $SzhBase 'settings-protected.json'
@@ -197,9 +191,7 @@ $configPoste = Get-SzhConfig
 if (-not $reference) {
   Dire 'note' 'Réglages de la rédaction' ('pas encore déployés sur ce poste — ' + $protegesFichier)
 } else {
-  # Comparaison sur le JSON réordonné : l'ordre des clés d'un objet n'a pas de sens, et la
-  # table des rubriques OJS en porte des dizaines. Une comparaison brute aurait fait
-  # diverger un poste qui n'avait rien changé.
+  # Comparaison sur un JSON aux clés triées : l'ordre des clés ne compte pas.
   function Get-SzhJsonCanonique($Valeur) {
     if ($null -eq $Valeur) { return 'null' }
     if ($Valeur -is [array]) {
@@ -235,18 +227,14 @@ if (-not $reference) {
 
 # ---- Langue de l'interface ----
 #
-# Deux moitiés d'écran, deux sources, et rien ne les oblige à s'accorder : les menus de
-# l'éditeur suivent argv.json et le pack de langue installé, les textes du cockpit suivent
-# leur propre cascade (voir l'en-tête de lib/i18n.js). Un poste s'est retrouvé avec les
-# menus en allemand et les formulaires en français, et il a fallu deviner pourquoi. Cette
-# section pose les six sources côte à côte, dans l'ordre où le cockpit les interroge, et
-# nomme celle qui a tranché.
+# Les menus de l'éditeur suivent argv.json et le pack de langue installé ; les textes du
+# cockpit suivent leur propre ordre de sources (lib/i18n.js). Les deux peuvent diverger.
+# Cette section affiche les six sources dans l'ordre où le cockpit les consulte, et celle
+# qui a décidé.
 Write-SzhTitre 'Langue de l''interface'
 
-# Lectures tolérantes : ces fichiers sont écrits par plusieurs mains, parfois avec un BOM,
-# parfois avec des commentaires (argv.json et settings.json en portent). On ne les analyse
-# donc pas en JSON, on y cherche la seule clé qui nous intéresse. Un diagnostic lit ; il ne
-# doit jamais échouer sur la forme de ce qu'il lit.
+# Lit une clé texte par expression régulière plutôt qu'en JSON : argv.json et settings.json
+# peuvent porter un BOM ou des commentaires. Rend '' en cas de doute.
 function Get-SzhCleTexte([string]$Chemin, [string]$Cle) {
   try {
     if (-not (Test-Path $Chemin)) { return '' }
@@ -274,36 +262,30 @@ $localeArgv = Get-SzhLangueSaine (Get-SzhCleTexte $argvJson 'locale')
 $srcWindows = ''
 try { $srcWindows = Get-SzhLangueSaine (Get-UICulture).TwoLetterISOLanguageName } catch { }
 
-# Le pack de langue décide si la locale demandée s'applique vraiment : sans lui, l'éditeur
-# retombe en anglais sans le dire, et sa langue d'affichage n'est plus celle d'argv.json.
+# Sans son pack de langue, l'éditeur affiche ses menus en anglais, quelle que soit la
+# locale d'argv.json.
 #
-# ⚠ Un pack manquant n'est un DÉFAUT que si nous le livrons. Seul l'allemand est épinglé —
-#   le pack français n'est plus à jour depuis 2021 et n'est volontairement pas livré. Une
-#   locale « fr » qui laisse les menus en anglais est donc l'état VOULU d'un poste
-#   francophone, et le dire en défaut ferait ressortir tout poste sain en « exit 1 ». Même
-#   piège que SumatraPDF, non requis, dans la section des applications.
+# Un pack manquant n'est un défaut que s'il est livré. Seul le pack allemand l'est : le pack
+# français n'est plus maintenu. Des menus en anglais sur un poste francophone sont donc
+# normaux.
 $packsLangue = @{ de = 'MS-CEINTL.vscode-language-pack-de'; fr = 'MS-CEINTL.vscode-language-pack-fr' }
 $packAttendu = ''
 if ($localeArgv -and $packsLangue.ContainsKey($localeArgv)) { $packAttendu = $packsLangue[$localeArgv] }
-# Épinglé, c'est-à-dire livré par la version installée. Le manifest peut manquer (Release
-# injoignable) : on ne conclut alors rien sur ce qui devrait être là.
+# Pack livré par la version publiée. Sans manifeste (Release injoignable), on ne conclut rien.
 $packEpingle = $false
 if ($manifest -and $packAttendu) {
   foreach ($ext in @($manifest.vsix)) { if ([string]$ext.id -eq $packAttendu) { $packEpingle = $true } }
 }
-# $reelles vient de la section des extensions, plus haut : la table des extensions posées,
-# obtenue en interrogeant la CLI de l'éditeur. On la relit plutôt que d'appeler la CLI une
-# seconde fois, qui coûte une à deux secondes pour la même réponse. $null quand la CLI n'a
-# pas répondu — le pack est alors dit inconnu, et non absent.
+# $reelles (section des extensions) évite un second appel à la CLI de l'éditeur, qui coûte
+# une à deux secondes. $null si la CLI n'a pas répondu : le pack est alors inconnu.
 $packPose = $false
 if ($reelles -and $packAttendu) { $packPose = $reelles.ContainsKey($packAttendu) }
-# La langue RÉELLE des menus : celle du fichier seulement si son pack est là. C'est cette
-# valeur, et non la locale demandée, qui entre dans la cascade et dans le verdict.
+# Langue réelle des menus : la locale d'argv.json si son pack est installé. C'est elle qui
+# entre dans l'ordre des sources et dans le verdict.
 $langueMenus = ''
 if ($localeArgv -and $packPose) { $langueMenus = $localeArgv }
 
-# La cascade du cockpit, dans l'ordre exact de sourceLangue() (lib/i18n.js). Toute
-# divergence entre les deux se paierait ici en diagnostic qui ment.
+# Même ordre que sourceLangue() (lib/i18n.js) : les deux doivent rester alignés.
 $langueCockpit = 'fr'
 $sourceCockpit = 'repli'
 foreach ($paire in @(
@@ -336,9 +318,8 @@ if ($null -eq $reelles) {
 Show-SzhSourceLangue '6. Affichage de Windows' $srcWindows 'langue d''affichage du compte'
 Dire 'note' 'Langue des formulaires' ($langueCockpit + ' — ' + $sourceCockpit)
 
-# Le verdict : les deux moitiés de l'écran parlent-elles la même langue ? Des menus en
-# anglais ne sont pas une discordance — c'est l'état ordinaire d'un poste sans pack de
-# langue, et personne ne s'en plaint.
+# Verdict : menus et formulaires dans la même langue. Des menus en anglais (pas de pack)
+# ne comptent pas comme un écart.
 if ($null -eq $reelles) {
   Dire 'note' 'Interface cohérente' 'non mesurable : la langue des menus n''est pas connue sans la CLI de l''éditeur'
 } elseif ($langueMenus -and ($langueMenus -ne $langueCockpit)) {
@@ -350,14 +331,10 @@ if ($null -eq $reelles) {
 # Raccourcis du menu Démarrer, dans le profil de ce compte.
 $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
 $absents = New-Object System.Collections.ArrayList
-# L'identité de barre des tâches se contrôle à part : un raccourci qui l'a perdue est
-# bien là et s'ouvre, mais son bouton reprend l'icône de PowerShell — un symptôme qu'on
-# ne rattache à rien sans ce diagnostic. C'est le cas de tout raccourci posé avant que
-# ces identités existent, et une seule mise à jour le répare.
+# L'identité de barre des tâches (AppUserModelID) se contrôle à part : sans elle, le
+# raccourci fonctionne mais son bouton prend l'icône de PowerShell. Une mise à jour la repose.
 $sansId = New-Object System.Collections.ArrayList
-# Le compte se déduit de la liste elle-même : elle a déjà changé de longueur une fois
-# (l'arrivée de « Books SZH-CSPS »), et un chiffre écrit en dur dans ces deux textes
-# redeviendrait faux à la prochaine entrée sans qu'aucun test ne le voie.
+# Le nombre d'entrées vient de la liste elle-même, pas d'un chiffre écrit en dur.
 $raccourcisMenu = @(Get-SzhRaccourcisMenu)
 foreach ($r in $raccourcisMenu) {
   $chemin = Join-Path $menu ($r.nom + '.lnk')
@@ -371,12 +348,10 @@ if ($absents.Count -eq 0) {
   else { Dire 'manque' 'Icône dans la barre des tâches' (($sansId -join ', ') + ' : sans identité, le bouton reprend l''icône de PowerShell — une mise à jour la repose') }
 }
 
-# ⚠ Ces deux chemins de registre sont dupliqués en littéral : update.ps1 en est
-# propriétaire et les nomme (Set-SzhProgIdMarkdown, update.ps1:63-116, et
-# Set-SzhProtocoleSzh, update.ps1:124-151). Aucune variable ni fonction de szh-common.ps1
-# ne les expose aujourd'hui — une centralisation reste à faire, pour qu'un renommage du
-# ProgId SZH.Markdown ou du schéma szh se répercute ici automatiquement. En l'état, un tel
-# renommage fait annoncer « non enregistré » par ce diagnostic sur un poste pourtant sain.
+# ⚠ Ces deux chemins de registre sont recopiés de Set-SzhProgIdMarkdown (update.ps1:51-102)
+# et de Set-SzhProtocoleSzh (update.ps1:109-135). Une centralisation reste à faire ; d'ici
+# là, un renommage du ProgId SZH.Markdown ou du schéma szh se reporte ici à la main.
+# test/js/diagnostic.test.js lit ce commentaire et vérifie les numéros de ligne.
 if (Test-Path 'HKCU:\Software\Classes\SZH.Markdown\shell\open\command') {
   Dire 'ok' 'Ouvrir un .md avec Pronto' 'enregistré (HKCU)'
 } else {

@@ -1,24 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# manuscrit_biblio.py — vérification de bibliographie APA 7 (contrôle, DOI, mise en forme).
-# Contrat : docs/ARCHITECTURE-nettoyeur-manuscrit.md, §7 bis.
+# Vérification de la bibliographie APA 7 : croisement citations-références, DOI, mise en
+# forme. Voir docs/ARCHITECTURE-nettoyeur-manuscrit.md.
 #
-# Module PUR : ne sait rien de Word ni d'OpenDocument. Il reçoit du texte déjà extrait
-# (paragraphes de corps et de bibliographie, sous la forme {'texte':.., 'source':..} — le même
-# schéma que la Contexte de manuscrit_regles.py) et rend des alertes au même format que le
-# reste du nettoyeur : rule, severity, action, para, span, found, suggested, message.
+# Le module ne connaît ni Word ni OpenDocument. Il reçoit du texte déjà extrait (paragraphes
+# {'texte', 'source'}, comme le Contexte de manuscrit_regles.py) et rend des alertes au format
+# du nettoyeur : rule, severity, action, para, span, found, suggested, message.
 #
-# Le réseau est FACULTATIF et borné à Crossref, et seules des métadonnées de référence y
-# partent (auteur, année, titre, DOI) — jamais le texte de l'article. `_requete()` est le seul
-# point qui touche réellement le réseau : les tests l'injectent pour ne jamais appeler
-# api.crossref.org.
+# Le réseau est facultatif et limité à Crossref ; seules des métadonnées de référence y
+# partent (auteur, année, titre, DOI), jamais le texte de l'article. `_requete()` est le seul
+# point d'accès au réseau, et les tests le remplacent. Le délai court (4 s par défaut) évite
+# qu'un Crossref lent bloque le nettoyage.
 #
-# Réutilisé, jamais recopié : pronto_modele.normaliser()/aplatir()/lire_titres_bib()/
-# titre_est_biblio() ; heritage_meta.py, la bibliothèque de docx-meta.py, pour
-# nettoyer_doi()/RE_DOI/langue_du_doi()/decouper_prenom_nom()/nom_plausible().
-#
-# stdlib seule : re, json, difflib, urllib. Délai réseau court (défaut 4 s) — un
-# Crossref lent ne doit jamais bloquer le nettoyage d'un manuscrit.
+# Fonctions reprises de pronto_modele (normaliser, aplatir, lire_titres_bib,
+# titre_est_biblio) et de heritage_meta.py (nettoyer_doi, RE_DOI, langue_du_doi,
+# decouper_prenom_nom, nom_plausible). Bibliothèque standard seule.
 
 import difflib
 import json
@@ -37,9 +33,8 @@ import szh_commun
 import heritage_meta as hm
 
 # ---------------------------------------------------------------------------------
-# Contact générique du dépôt pour le User-Agent Crossref (poli et identifiable, comme le
-# demande leur documentation). Ni lib/export-ojs.js ni secretariat.js n'en portent un : repli
-# sur l'adresse de rédaction commune, déjà publique (guide Revue, §"Envoi").
+# Contact du User-Agent Crossref, que leur documentation demande identifiable : l'adresse
+# publique de la rédaction.
 CONTACT_DEPOT = 'redaction@csps.ch'
 USER_AGENT = 'SZH-Publishing-manuscrit-biblio/1.0 (mailto:%s)' % CONTACT_DEPOT
 
@@ -51,16 +46,10 @@ SEUIL_TITRE_RETROUVE = 0.9       # retrouver_doi() : plus strict, on va PROPOSER
 
 
 # ---------------------------------------------------------------------------------
-# Normalisation de nom — tolérante aux particules (« de », « van der »...), pour apparier une
-# citation du corps (qui omet souvent la particule : « Chambrier, 2020 ») à une entrée de
-# bibliographie qui la porte (« de Chambrier, A.-F. »). PARTICULES vient de docx-meta.py : une
-# seule liste pour tout le dépôt.
-#
-# Même tolérance pour un suffixe générationnel (« Jr », « Jr. », « Sr », « II », « III » —
-# mesuré sur un manuscrit réel : « Bullough Jr, R. V. (2002) » en bibliographie contre
-# « Bullough et al., 2002 » dans le texte, qui n'a jamais de raison de le répéter). Il se
-# retire à la fin du nom, jamais en tête — un « Jr » de tête ne serait qu'un nom de famille
-# comme un autre.
+# Normalisation de nom pour apparier une citation à une référence. Les particules de tête
+# sont retirées, car le corps les omet souvent (« Chambrier, 2020 » pour « de Chambrier,
+# A.-F. »). Les suffixes générationnels de fin aussi (« Bullough Jr, R. V. » en
+# bibliographie, « Bullough et al. » dans le texte) ; en tête, « Jr » serait un nom.
 SUFFIXES_GENERATIONNELS = {'jr', 'sr', 'ii', 'iii', 'iv'}
 
 
@@ -75,18 +64,10 @@ def _normaliser_nom(nom):
 
 
 def _cle_tri(nom, langue):
-    """Clé d'ALPHABÉTISATION d'un nom — DIFFÉRENTE de _normaliser_nom() (celle-ci sert à
-    APPARIER une citation, pas à trier). Les deux guides donnent une règle opposée pour la
-    particule :
-      - Revue, §3.2.1 : « Les noms avec particule sont ordonnés avec la première lettre de
-        la particule écrite en majuscule » — la particule COMPTE dans le tri
-        (« Le Prévost » se classe en L, avant « Leroux », jamais en P) ;
-      - Zeitschrift, Literaturverzeichnis/Anordnung : « Namen mit Namenszusatz werden unter
-        dem ersten Buchstaben des Namens eingeordnet » — la particule est IGNORÉE, seul le
-        nom qui suit compte (convention des bibliothèques allemandes : « von Arx » se classe
-        en A).
-    aplatir() ne retire ni espace ni particule : le nom entier, particule comprise, devient
-    la clé pour le français ; seule la version allemande la retire d'abord."""
+    """Clé de tri alphabétique d'un nom (_normaliser_nom() sert à apparier, pas à trier).
+    Les deux consignes s'opposent sur la particule :
+      - Revue : la particule compte (« Le Prévost » se classe en L) ;
+      - Zeitschrift : la particule est ignorée (« von Arx » se classe en A)."""
     n = nom or ''
     if langue == 'de':
         mots = n.split()
@@ -106,15 +87,11 @@ def _ressemble_initiales(segment):
 
 
 # ---------------------------------------------------------------------------------
-# Langue DE LA RÉFÉRENCE — distincte de `_langue` (la langue du PRODUIT). Un titre anglais
-# cité dans une bibliographie française ne prend jamais l'insécable française devant son
-# propre « : » interne ; l'éditeur d'un ouvrage collectif porte « (Ed.) »/« (Eds.) » ou
-# « (Hrsg.) » selon la langue DE L'OUVRAGE CITÉ, pas celle du produit (révision du 21.09.2026
-# quinquies, vérifiée dans les deux PDF Redaktionsrichtlinien). `_langue` reste seule à piloter
-# ce qui dépend du STYLE DE CITATION suivi par l'article citant (espacement volume/numéro,
-# « pp. » contre « S. »). Détection par mots-outils, jamais un détecteur de langue général
-# (stdlib seule, §2 du contrat) : anglais d'abord, allemand ensuite, sinon la langue du
-# document — le seul repli qui ait un sens pour un titre sans aucun mot-outil reconnu.
+# Langue de la référence citée, distincte de `_langue` (celle du produit). Elle décide de
+# l'espace avant le « : » d'un titre et du marqueur d'éditeur (« (Ed.) », « (Eds.) »,
+# « (Hrsg.) »). `_langue` décide de ce qui suit le style de l'article citant (espacement
+# volume/numéro, « pp. » ou « S. »). Détection par mots-outils : anglais, puis allemand,
+# sinon la langue du document.
 _MOTS_OUTILS_ANGLAIS = ('the', 'of', 'and', 'for', 'in')
 _MOTS_OUTILS_ALLEMAND = ('der', 'die', 'das', 'und', 'für')
 RE_MOTS_OUTILS_ANGLAIS = re.compile(
@@ -132,15 +109,10 @@ def _detecter_langue_reference(titre, conteneur, langue_doc):
     return langue_doc or 'fr'
 
 
-# Séparateur titre/sous-titre ':' À L'INTÉRIEUR d'un titre cité : insécable devant en
-# français (même convention que le pont typographique, §6 du contrat), AUCUNE espace devant
-# en allemand ET en anglais. Le filtre Lua ne connaît que fr/de (`-M lang=` ne vaut jamais
-# 'en') : un titre anglais cité dans une bibliographie française ou allemande n'est donc
-# JAMAIS couvert par lui — mesuré : il pose au contraire une insécable À TORT devant ce
-# ':'-là, puisqu'il traite tout le document comme français (voir le rapport de chantier,
-# « ce que fait le pont typographique sur les paragraphes de bibliographie »). La CASSE qui
-# suit le séparateur n'est jamais forcée ici : un titre cité garde sa casse d'origine, seul
-# l'espacement du signe est composé.
+# Séparateur « : » dans un titre cité : espace insécable devant en français, pas d'espace en
+# allemand ni en anglais. Le filtre typographique ne connaît que fr et de, et poserait à tort
+# une insécable dans un titre anglais d'une bibliographie française. La casse qui suit n'est
+# pas touchée.
 _RE_SEPARATEUR_TITRE = re.compile(r'[   ]*:[   ]*')
 
 
@@ -152,30 +124,21 @@ def _composer_separateur_titre(titre, langue_ref):
 
 
 # ---------------------------------------------------------------------------------
-# Garde-fou « aucun jeton significatif perdu » (révision du 21.09.2026 quinquies, demande de
-# Robin) : une forme canonique qui a PERDU une information — un nom propre, une année, un
-# nombre, un mot du titre — de l'original ne doit JAMAIS être proposée comme révision. Mesuré
-# sur le défaut réel (deux éditeurs « E. Guyton et J. Ranier » disparus, voir
-# RE_EDITEUR_INITIALES_NOM) : ce garde-fou est ce qui aurait dû empêcher la proposition fautive
-# de partir, quelle qu'en soit la cause exacte — un filet, pas un correctif ciblé.
+# Garde-fou : une forme mise en forme qui a perdu un nom propre, une année, un nombre ou un
+# mot du titre de l'original n'est pas proposée comme révision, quelle que soit la cause de
+# la perte.
 RE_JETON_SIGNIFICATIF = re.compile(r"[\wÀ-ÿ]+")
 
-# Mots STRUCTURELS que la mise en forme réécrit DÉLIBÉRÉMENT (§7 bis, révision du 21.09.2026
-# quinquies) : « Dans » (toujours capitalisé — début de clause après un point) devient « In »
-# dans les deux langues, c'est la correction elle-même, jamais une perte. Mesuré : sans cette
-# exclusion, le garde-fou bloquait à tort une référence par ailleurs correctement réécrite,
-# rien que parce que « Dans » disparaissait au profit d'« In ». Les marqueurs d'éditeur en
-# sortent aussi (« (Ed.) »/« (Eds.) »/« (Hrsg.) »/« (dir.) ») : leur forme change de choix,
-# jamais leur absence ne signale une information perdue.
+# Mots que la mise en forme remplace exprès, et dont l'absence n'est pas une perte : « Dans »
+# devient « In », et les marqueurs d'éditeur changent de forme (« (Ed.) », « (Eds.) »,
+# « (Hrsg.) », « (dir.) »).
 _JETONS_STRUCTURELS_IGNORES = {'dans', 'in', 'ed', 'eds', 'hrsg', 'dir'}
 
 
 def _jetons_significatifs(texte):
-    """Les mots qui commencent par une majuscule (noms propres, mots de titre en début de
-    phrase) et les nombres (années, volume, pages, DOI) — jamais les mots-outils, jamais une
-    simple initiale (« E. » seule ne prouve rien), jamais un marqueur structurel que la mise en
-    forme réécrit exprès (voir _JETONS_STRUCTURELS_IGNORES). Liste sans doublon, dans l'ordre
-    d'apparition (le jeton annoncé ne doit pas dépendre de PYTHONHASHSEED)."""
+    """Les mots à majuscule initiale et les nombres (années, volume, pages, DOI), sans
+    initiale isolée ni mot de _JETONS_STRUCTURELS_IGNORES. Liste sans doublon, dans l'ordre
+    d'apparition, pour que le jeton signalé ne dépende pas de PYTHONHASHSEED."""
     jetons = {}
     for t in RE_JETON_SIGNIFICATIF.findall(texte or ''):
         if len(t) < 2:
@@ -199,9 +162,7 @@ def _jeton_manquant(original, rendu):
 
 
 def _texte_suggere_sans_italique(suggested):
-    """`suggested` sans le marquage *…* — pour un usage en TEXTE PLAT (rapport HTML, §7 du
-    contrat point 4) : des astérisques littéraux n'y signifient rien pour une relectrice, ils
-    y sont lus comme des astérisques, pas comme de l'italique."""
+    """`suggested` sans les astérisques *…*, pour le texte brut du rapport HTML."""
     if not suggested or '*' not in suggested:
         return suggested
     return re.sub(r'\*([^*]+)\*', r'\1', suggested)
@@ -215,9 +176,8 @@ MARQUEUR_EDITEUR_RE = re.compile(
     re.UNICODE)
 
 RE_ANNEE = re.compile(r'\((\d{4})([a-z]?)[^)]*\)')
-# « en préparation »/« sous presse »/« in press » (Revue, §3.2.2.4/.3.2.3.3) et « im
-# Erscheinen » (Zeitschrift, Spezialfälle) valent « pas encore d'année » — pas un échec de
-# lecture, une forme prévue par les deux guides.
+# « en préparation », « sous presse », « in press » et « im Erscheinen » valent « pas encore
+# d'année », une forme prévue par les deux consignes.
 RE_SANS_DATE = re.compile(
     r'\((?:s\.?\s?d\.?|n\.?d\.?|o\.?\s?[jJ]\.?|sans\s+date|ohne\s+Jahr|'
     r'en\s+pr[ée]paration|sous\s+presse|in\s+press|im\s+Erscheinen)\)', re.IGNORECASE)
@@ -225,45 +185,35 @@ RE_SANS_DATE = re.compile(
 RE_ET_AL_FIN = re.compile(r'\bet\s*al\.?\s*$', re.IGNORECASE)
 RE_CONNECTEUR_SANS_VIRGULE = re.compile(r'([A-ZÀ-ÞŒ]\.?)\s+(?:&|et|und)\s+')
 
-# La forme sans schéma (« www.zeitschriftfürumweltfragen.ch », exemple du guide allemand)
-# est aussi une URL : la reconnaître évite qu'elle échoue dans le titre faute de schéma.
+# Une URL sans schéma (« www.zeitschriftfürumweltfragen.ch ») en est une aussi ; sinon elle
+# finirait dans le titre.
 RE_URL = re.compile(r'(?:https?://\S+|\bwww\.[^\s,;]+)')
-# Le titre finit sur '.', mais aussi sur '?' ou '!' — fréquent en français (« Quelle
-# inclusion ? Revue X, 12(3), 45-67. »). ':' n'est PAS dans ce jeu principal : un titre à
-# sous-titre (très fréquent ici, « Titre : sous-titre ? Revue, 12(3), 45-67. ») porte
-# lui-même un ':', et comme .+? est non gourmand, le premier ':' rencontré l'emporterait à
-# tort sur le VRAI séparateur qui suit (mesuré : « Hétérogénéité […] différences : Vers
-# quelle égalité des élèves ? Nouvelle revue de … » coupait sur le ':' et avalait le
-# sous-titre entier dans le conteneur). ':' ne sert qu'en REPLI, seulement si .?! échouent
-# partout — c'est le cas, plus rare, d'une revue qui a oublié toute ponctuation entre le
-# titre et le nom de la revue (vu sur le corpus : «… adapté : La nouvelle revue - Éducation
-# et société inclusives, 97(1), 203-221. »).
+# Le titre finit sur '.', '?' ou '!' (« Quelle inclusion ? Revue X, 12(3), 45-67. »). ':'
+# ne sert qu'en repli, si les trois autres échouent : un titre à sous-titre porte lui-même
+# un ':', et la recherche non gourmande couperait dessus. Le repli couvre une référence sans
+# ponctuation entre le titre et la revue (« … adapté : La nouvelle revue, 97(1), 203-221. »).
 _SEP_TITRE = r'[.?!]'
 _SEP_TITRE_REPLI = r'[.?!:]'
 RE_CHAPITRE = re.compile(_SEP_TITRE + r'\s+(?:Dans|In)\s+(.+)$', re.S)
 RE_CHAPITRE_REPLI = re.compile(_SEP_TITRE_REPLI + r'\s+(?:Dans|In)\s+(.+)$', re.S)
-# Le marqueur de pages peut porter une mention d'édition devant lui DANS la même parenthèse
-# (« (2e éd., pp. 307-328) », exemple du guide Revue lui-même) : le motif n'exige donc plus
-# que « pp. »/« p. »/« S. » ouvre la parenthèse, seulement qu'il s'y trouve.
+# Le marqueur de pages peut suivre une mention d'édition dans la même parenthèse
+# (« (2e éd., pp. 307-328) ») : « pp. », « p. » ou « S. » n'a pas à ouvrir la parenthèse.
 RE_PAGES_PARENTHESE = re.compile(
     r'\((?:[^()]*,\s*)?(?:pp?\.|S\.)\s*([\d–‒\-]+(?:\s*[–‒\-]\s*\d+)?)\s*\)')
 PAGES = r'[\d–‒\-]+(?:\s*[–‒\-]\s*\d+)?'
 
 
 def _regles_article(sep):
-    # Le nombre après la revue peut être suivi d'AUTRE CHOSE que la fin de la chaîne — un
-    # éditeur commercial oublié après les pages, vu sur le corpus réel (« …, 95, 91-109.
-    # Editions Inshea » : sans ce groupe optionnel, la référence entière était rejetée comme
-    # article et retombait en « ouvrage », titre et conteneur confondus).
+    # Les pages peuvent être suivies d'un reste, par exemple un éditeur ajouté à tort
+    # (« …, 95, 91-109. Editions Inshea ») ; sans le groupe `extra`, l'article passerait pour
+    # un ouvrage.
     avec_vol = re.compile(
         r'^(?P<titre>.+?)' + sep + r'\s+(?P<conteneur>[^,]+?),\s*(?:[Nn]°\s*)?(?P<vol>\d+)\s*'
         r'\((?P<num>[^)]+)\)\s*,\s*'
         r'(?P<pages>' + PAGES + r')\.?\s*(?:(?P<extra>\S.*))?$')
-    # Un seul nombre avant les pages : « (3) » entre parenthèses dans le texte d'origine EST
-    # un numéro (sans volume, forme que les deux guides montrent) ; un nombre NU, sans
-    # parenthèses dans l'original, est le plus souvent un volume SEUL — le garder bare (pas de
-    # parenthèses ajoutées) évite de reformuler une entrée déjà conforme (mesuré : « Revue X,
-    # 22, 64-72 » devenait à tort « Revue X, *(22)*, 64-72 »).
+    # Un seul nombre avant les pages : entre parenthèses, « (3) » est un numéro ; nu, c'est en
+    # général un volume, qu'on laisse sans parenthèses pour ne pas réécrire une entrée
+    # conforme (« Revue X, 22, 64-72 »).
     sans_vol = re.compile(
         r'^(?P<titre>.+?)' + sep + r'\s+(?P<conteneur>[^,]+?),\s*(?:[Nn]°\s*)?(?:'
         r'\((?P<num_paren>\d+[a-zA-Z]?)\)|(?P<num_nu>\d+[a-zA-Z]?)'
@@ -279,10 +229,9 @@ RE_GENRE_ENTRE_CROCHETS = re.compile(
 
 
 def _preparer_entete_auteurs(entete_brute):
-    """(entête préparée pour le découpage, et_al) : « et al. » de tête est ôté et signalé
-    (rare en bibliographie, mais vu sur des manuscrits mal formatés) ; un connecteur
-    (« & »/« et »/« und ») posé sans virgule devant (« M. et Rebetez ») en reçoit une, pour
-    que le découpage sur la virgule, plus bas, traite tous les cas pareil."""
+    """Rend (en-tête d'auteurs préparé, et_al). Un « et al. » final est retiré et signalé.
+    Un connecteur (« & », « et », « und ») sans virgule devant (« M. et Rebetez ») en
+    reçoit une, pour que le découpage sur la virgule traite tous les cas de la même façon."""
     e = (entete_brute or '').strip()
     et_al = False
     m = RE_ET_AL_FIN.search(e)
@@ -299,15 +248,13 @@ def _preparer_entete_auteurs(entete_brute):
 
 
 def _decouper_initiales_et_particule(segment):
-    """« A.-F. de », « H. van der » : la particule d'un nom composé écrite APRÈS les
-    initiales (convention APA de classement des noms néerlandais/allemands — « Van der Berg »
-    classé sous B, cité « Berg, A. van der »). (initiales, particule) ou (None, None) si le
-    segment ne s'y prête pas."""
+    """« A.-F. de », « H. van der » : particule écrite après les initiales (convention APA
+    pour « Berg, A. van der »). Rend (initiales, particule), ou (None, None)."""
     mots = segment.split()
     particule = []
     while mots and mots[-1].strip('.,').lower() in hm.PARTICULES:
-        # strip('.,') RETIRÉ du mot gardé, pas seulement testé : sinon le point final d'une
-        # référence (« … A.-F. de. ») se retrouve collé au milieu du nom reconstruit.
+        # Ponctuation retirée du mot gardé, sinon le point final (« … A.-F. de. ») se
+        # retrouverait au milieu du nom reconstruit.
         particule.insert(0, mots.pop().strip('.,'))
     reste = ' '.join(mots)
     if particule and _ressemble_initiales(reste):
@@ -316,7 +263,7 @@ def _decouper_initiales_et_particule(segment):
 
 
 def _parser_auteurs(entete_brute):
-    """[{nom, initiales}], et_al — découpage par paires (Nom, Initiales) sur la virgule.
+    """Rend ([{nom, initiales}], et_al) : découpage en paires (Nom, Initiales) sur la virgule.
     Un auteur institutionnel (« OCDE », « Ministère de l'Éducation nationale & DEPP ») ne
     porte pas d'initiales : le segment entier devient son nom."""
     entete, et_al = _preparer_entete_auteurs(entete_brute)
@@ -347,9 +294,8 @@ def _parser_auteurs(entete_brute):
 
 
 def _trouver_annee(texte):
-    """(annee|None, suffixe, debut, fin) du PREMIER « (YYYY[x]…) » ou repli « (s.d.) »/« (n.d.) »
-    — même logique que annee_de_reference() de szh-citations.lua, réécrite ici (elle est en
-    Lua, pas partageable telle quelle)."""
+    """(annee ou None, suffixe, debut, fin) du premier « (AAAA[x]…) », ou à défaut de
+    « (s.d.) » ou « (n.d.) ». Même logique que annee_de_reference() de szh-citations.lua."""
     m = RE_ANNEE.search(texte)
     if m:
         return int(m.group(1)), m.group(2) or '', m.start(), m.end()
@@ -360,11 +306,8 @@ def _trouver_annee(texte):
 
 
 def _segmenter_hors_parentheses(texte, sep):
-    """Découpe `texte` sur le caractère `sep` (',' ou '.') suivi d'une espace ou de la fin de
-    la chaîne, JAMAIS à l'intérieur d'une parenthèse — sinon « (p. 396) » ou « (2e éd., pp.
-    307-328) » se scindent sur leur propre ponctuation interne. Mesuré : cassait un titre
-    d'ouvrage juste avant sa mention de page (« […] la recherche [RERS 2006] (p » / «. 396). »
-    au lieu d'un seul segment)."""
+    """Découpe `texte` sur `sep` (',' ou '.') suivi d'une espace ou de la fin, hors des
+    parenthèses, pour ne pas couper « (p. 396) » ou « (2e éd., pp. 307-328) »."""
     segments = []
     debut = 0
     profondeur = 0
@@ -388,28 +331,16 @@ def _segmenter_hors_parentheses(texte, sep):
     return segments
 
 
-# Un éditeur d'ouvrage collectif, dans la clause « In … (Ed.), » : écrit INITIALES puis NOM
-# (l'ordre INVERSE de la bibliographie elle-même, qui écrit NOM, INITIALES) — c'est ce que
-# montrent les deux guides dans leur propre exemple de chapitre (« In E. E. Editor (Ed.),
-# Titre du livre… »). Jusqu'à deux éditeurs joints par « & » DANS le même segment (pas de
-# virgule avant un « & » à deux éditeurs, mesuré sur le corpus : « In C. Delorme & K.
-# Millon-Fauré (Ed.), … »).
-#
-# ⚠ Révision du 21.09.2026 quinquies, défaut réel signalé par Robin : « E. Guyton et J.
-# Ranier » (deux éditeurs joints par « et », jamais une virgule devant, donc UN SEUL segment
-# pour `_consommer_editeurs_de_tete()`) ne matchait PAS — le connecteur interne n'acceptait
-# que « & », jamais « et »/« und » — et les deux éditeurs disparaissaient ENTIÈREMENT de la
-# forme canonique (pris à tort pour le début du titre de l'ouvrage). Le connecteur interne
-# accepte désormais les trois formes, comme le repli en tête de segment le fait déjà pour un
-# éditeur de TROP (`_consommer_editeurs_de_tete`, la ligne du dessous).
+# Un éditeur d'ouvrage collectif, dans « In … (Ed.), », s'écrit initiales puis nom, à
+# l'inverse de la bibliographie (« In E. E. Editor (Ed.), Titre du livre… »). Un segment peut
+# porter deux éditeurs joints sans virgule par « & », « et » ou « und » (« In C. Delorme &
+# K. Millon-Fauré (Ed.), … », « E. Guyton et J. Ranier »).
 RE_EDITEUR_INITIALES_NOM = re.compile(
     r"^(?:[A-ZÀ-ÞŒ]\.-?){1,3}\s+[A-ZÀ-ÞŒ][\w'’\-]*"
     r"(?:\s*(?:&|et|und)\s*(?:[A-ZÀ-ÞŒ]\.-?){1,3}\s+[A-ZÀ-ÞŒ][\w'’\-]*)?$")
 
-# Nombre d'éditeurs dans `editeurs_ouvrage` (déjà isolé par _consommer_editeurs_de_tete()) —
-# chaque occurrence « Initiales Nom » comptée, quel que soit le séparateur (virgule, &, et,
-# und) : compter les CONNECTEURS sous-estimerait une liste « A, B, & C » (une seule occurrence
-# de « & », deux virgules, trois éditeurs).
+# Nombre d'éditeurs dans `editeurs_ouvrage` : on compte les « Initiales Nom », pas les
+# connecteurs, qui sous-estimeraient « A, B, & C ».
 RE_UN_EDITEUR = re.compile(r"(?:[A-ZÀ-ÞŒ]\.-?){1,3}\s+[A-ZÀ-ÞŒ][\w'’\-]*")
 
 
@@ -418,12 +349,10 @@ def _compter_editeurs(texte):
 
 
 def _consommer_editeurs_de_tete(apres):
-    """Le nombre de segments (virgule, hors parenthèses) de tête qui listent les éditeurs
-    d'un ouvrage collectif — jamais leurs noms eux-mêmes, seulement COMBIEN en retirer pour
-    atteindre ce qui reste : le titre de l'ouvrage, ses pages, son éditeur commercial. Mesuré
-    sans cette consommation : une liste de 3 éditeurs (« G. Pelgrims, T. Assude, & J.-M.
-    Perez ») faisait prendre le TROISIÈME NOM D'ÉDITEUR pour le titre du livre, perdant à la
-    fois les vrais éditeurs et le vrai titre."""
+    """Rend (segments, n) : les segments de `apres` (découpés sur la virgule, hors
+    parenthèses) et le nombre de segments de tête qui listent les éditeurs. Le reste donne le
+    titre de l'ouvrage, les pages et l'éditeur commercial. Sans ce retrait, le dernier
+    éditeur de « G. Pelgrims, T. Assude, & J.-M. Perez » passerait pour le titre."""
     segments = _segmenter_hors_parentheses(apres, ',')
     i = 0
     while i < len(segments):
@@ -439,24 +368,18 @@ def _nettoyer_titre(t):
 
 
 def _nettoyer_pages(t):
-    """Espaces compactés, mais le demi-cadratin GARDÉ : pronto_modele.normaliser() le rabat sur
-    le trait d'union, et la remise en forme APA réécrivait alors « 152–160 » en « 152-160 »
-    (mesuré, 30.09.2026) — faux en allemand, où la plage prend le Halbgeviertstrich. Le
-    cadratin et le tiret numérique, tapés à sa place, y sont ramenés."""
+    """Espaces compactés, demi-cadratin conservé : en allemand, une plage de pages le
+    demande (« 152–160 »), alors que pronto_modele.normaliser() le changerait en trait
+    d'union. Le cadratin et le tiret numérique deviennent des demi-cadratins."""
     t = re.sub(r'[‒—]', '–', t or '').replace('‑', '-')
     return ' '.join(t.replace(' ', ' ').replace(' ', ' ').replace(' ', ' ')
                     .split())
 
 
-# Contrôle de PLAUSIBILITÉ d'un champ réécrit (titre, conteneur, éditeur) — révision du
-# 22.09.2026 : `_calculer_confiance()` accordait 'haute' sur la seule NON-VACUITÉ de ces
-# champs, jamais sur la FORME de leur contenu. Mesuré sur `United Nations, 2016. General
-# Comment No. 4 (2016), Article 24…` : ce texte porte, par hasard, une SECONDE parenthèse à 4
-# chiffres (celle du titre du texte cité) ; `_trouver_annee()` s'y arrête, `analyser_reference()`
-# découpe dessus, et l'« éditeur » qui en ressort vaut `1-24` — une plage de pages égarée par ce
-# découpage, jamais un éditeur. Un champ non vide n'est donc plausible que s'il contient au
-# moins une LETTRE : un titre, un conteneur (revue/ouvrage) ou un éditeur en portent toujours
-# une, une plage de pages ou un numéro de volume égarés n'en portent jamais.
+# Un titre, un conteneur ou un éditeur est plausible s'il contient au moins une lettre. Un
+# découpage raté peut y mettre une plage de pages : dans « United Nations, 2016. General
+# Comment No. 4 (2016), Article 24… », la seconde parenthèse à quatre chiffres donne
+# l'« éditeur » `1-24`.
 RE_CONTIENT_LETTRE = re.compile(r'[^\W\d_]', re.UNICODE)
 
 
@@ -489,17 +412,14 @@ def _calculer_confiance(champs, annee, auteurs, entete_brute):
 
 
 def analyser_reference(texte, langue_doc='fr'):
-    """Découpe une entrée APA 7 (fr/de) en dict structuré — voir l'en-tête du module pour les
-    champs. Jamais d'exception : une entrée illisible rend une confiance 'basse', pas un
-    plantage — le rapport doit pouvoir lister TOUTES les références, même ratées.
+    """Découpe une entrée APA 7 (fr ou de) en dict de champs. Ne lève pas : une entrée
+    illisible rend la confiance 'basse', pour que le rapport liste toutes les références.
 
-    `langue_doc` : langue du PRODUIT (jamais document.langue, §8 du contrat) — sert
-    uniquement de REPLI à la détection de `langue_ref` (voir _detecter_langue_reference) quand
-    le titre ne porte aucun mot-outil reconnu ; elle ne pilote rien d'autre ici."""
+    `langue_doc` : langue du produit, qui ne sert que de repli à la détection de
+    `langue_ref` (voir _detecter_langue_reference)."""
     brut = texte or ''
-    # Le demi-cadratin survit à la normalisation (le cadratin et le tiret numérique y sont
-    # ramenés) : aplati en trait d'union, il ressortait de la remise en forme APA en « 152-160 »
-    # et en « titre - suite », une révision que personne n'avait demandée.
+    # Le demi-cadratin échappe à la normalisation (le cadratin et le tiret numérique y sont
+    # ramenés) : sinon la mise en forme APA proposerait « 152-160 » ou « titre - suite ».
     texte_n = pronto_modele.normaliser(
         re.sub(r'[‒–—]', '\x00', brut)).replace('\x00', '–')
     champs = {'auteurs': [], 'nb_auteurs': 0, 'annee': None, 'suffixe': '', 'titre': '',
@@ -517,10 +437,8 @@ def analyser_reference(texte, langue_doc='fr'):
             entete_brute = texte_n[:deb]
             reste = texte_n[fin:].strip()
         else:
-            # Aucune année ni forme « s.d. » repérable (référence tronquée, ou un cas que ce
-            # module ne couvre pas — un acte législatif, par exemple) : pas de frontière
-            # fiable pour découper les auteurs. Se limiter au premier segment évite de
-            # fabriquer une liste d'« auteurs » absurde à partir de 120 caractères de prose.
+            # Sans année ni « s.d. » (référence tronquée, acte législatif…), rien ne borne
+            # les auteurs : on se limite au premier segment.
             entete_brute = texte_n.split(',', 1)[0]
             reste = ''
 
@@ -534,8 +452,7 @@ def analyser_reference(texte, langue_doc='fr'):
         if m_doi:
             champs['doi'] = 'https://doi.org/' + hm.nettoyer_doi(reste)
             reste = (reste[:m_doi.start()] + reste[m_doi.end():])
-            # Ce qui précède le DOI (« doi: », « DOI :», « dx.doi.org/ »…) est du bruit,
-            # déjà repris dans le champ 'doi' ci-dessus : on l'ôte du texte restant.
+            # Retire le préfixe du DOI (« doi: », « DOI : », « dx.doi.org/ »…).
             reste = re.sub(
                 r'(?:https?://(?:dx\.)?doi\.org/|doi\s*:?\s*)?\s*$', '', reste,
                 flags=re.IGNORECASE).strip()
@@ -554,17 +471,14 @@ def analyser_reference(texte, langue_doc='fr'):
             champs['type'] = 'chapitre'
             champs['titre'] = _nettoyer_titre(reste[:m_chap.start() + 1])
             apres = MARQUEUR_EDITEUR_RE.sub('', m_chap.group(1))
-            # La liste des éditeurs (« G. Pelgrims, T. Assude, & J.-M. Perez ») se retire de
-            # tête AVANT de chercher le titre de l'ouvrage : sans ça, son dernier nom se
-            # faisait prendre pour le titre (voir _consommer_editeurs_de_tete()).
+            # La liste des éditeurs se retire avant de chercher le titre de l'ouvrage (voir
+            # _consommer_editeurs_de_tete()).
             segments_apres, n_editeurs = _consommer_editeurs_de_tete(apres)
             apres_editeurs = ', '.join(segments_apres[n_editeurs:]).strip(' ,')
             if n_editeurs:
                 editeurs_bruts = _nettoyer_titre(', '.join(segments_apres[:n_editeurs]))
-                # « & » entre deux éditeurs, jamais « et »/« und » — c'est ce que les DEUX
-                # guides montrent dans leurs propres exemples à deux éditeurs (« M. G. P.
-                # Hessels & C. Hessels-Schlatter (Eds.) », « T. Meier & H. Schneider (Hrsg.) »),
-                # que le manuscrit d'origine ait tapé l'un ou l'autre.
+                # « & » entre deux éditeurs, comme dans les exemples des deux consignes
+                # (« T. Meier & H. Schneider (Hrsg.) »), quel que soit le mot tapé.
                 champs['editeurs_ouvrage'] = re.sub(r'\s+(?:et|und)\s+', ' & ', editeurs_bruts)
                 champs['nb_editeurs_ouvrage'] = _compter_editeurs(champs['editeurs_ouvrage'])
             m_pages = RE_PAGES_PARENTHESE.search(apres_editeurs)
@@ -572,9 +486,8 @@ def analyser_reference(texte, langue_doc='fr'):
                 champs['pages'] = _nettoyer_pages(m_pages.group(1))
                 avant, apres_pages = apres_editeurs[:m_pages.start()], apres_editeurs[m_pages.end():]
             else:
-                # Pages données SANS « (pp. x-x) » — juste « …, 151-167. Éditeur. » : forme
-                # non prescrite par les guides mais vue sur le corpus réel. Repli sur la
-                # première virgule suivie d'un nombre de pages plausible.
+                # Pages sans « (pp. x-x) » (« …, 151-167. Éditeur. ») : forme non prescrite
+                # mais rencontrée. On prend la première virgule suivie d'une plage de pages.
                 m_pages_nues = re.search(
                     r',\s*(' + PAGES + r')\s*\.?\s*(.*)$', apres_editeurs, re.S)
                 if m_pages_nues:
@@ -597,10 +510,7 @@ def analyser_reference(texte, langue_doc='fr'):
                 champs['titre'] = _nettoyer_titre(gd['titre'])
                 champs['conteneur'] = _nettoyer_titre(gd['conteneur'])
                 champs['volume'] = gd.get('vol') or ''
-                # Un numéro déjà entre parenthèses dans l'original (« (3) ») reste un numéro ;
-                # un nombre NU (« , 22, » sans volume distinct) est le plus souvent un simple
-                # volume — la forme d'origine décide, jamais un ajout de parenthèses qui
-                # reformaterait une entrée déjà conforme (voir _regles_article()).
+                # « (3) » reste un numéro, un nombre nu un volume (voir _regles_article()).
                 if gd.get('num') is not None:
                     champs['numero'] = gd['num']
                 elif gd.get('num_paren') is not None:
@@ -620,9 +530,9 @@ def analyser_reference(texte, langue_doc='fr'):
                         champs['genre'] = _nettoyer_titre(m_genre.group(1))
                         champs['editeur'] = apres_crochet
                     else:
-                        # Rien après le crochet : l'institution est DEDANS
-                        # (« [Thèse de doctorat, Université de Reims] ») — le genre lui-même
-                        # (avant la première virgule) n'est pas un éditeur, le reste l'est.
+                        # Rien après le crochet : l'institution est dedans
+                        # (« [Thèse de doctorat, Université de Reims] »). Avant la première
+                        # virgule, le genre ; après, l'éditeur.
                         morceaux_genre = m_genre.group(1).split(',', 1)
                         champs['genre'] = _nettoyer_titre(morceaux_genre[0])
                         if len(morceaux_genre) == 2:
@@ -636,11 +546,9 @@ def analyser_reference(texte, langue_doc='fr'):
                         champs['editeur'] = _nettoyer_titre(morceaux[-1])
                 elif reste:
                     champs['type'] = 'ouvrage'
-                    # Le DERNIER segment est l'éditeur commercial (toujours en fin de
-                    # référence APA) ; tout ce qui précède — titre ET sous-titre écrit avec un
-                    # point plutôt qu'un ':' — reste ensemble, italicisé comme un seul titre
-                    # (mesuré : « Titre. Sous-titre. Éditeur. » perdait le sous-titre, pris à
-                    # tort pour l'éditeur).
+                    # Le dernier segment est l'éditeur commercial. Tout ce qui précède forme
+                    # le titre, sous-titre compris quand il suit un point
+                    # (« Titre. Sous-titre. Éditeur. »).
                     morceaux = _segmenter_hors_parentheses(reste, '.')
                     if len(morceaux) > 1:
                         champs['titre'] = _nettoyer_titre('. '.join(morceaux[:-1]))
@@ -650,10 +558,7 @@ def analyser_reference(texte, langue_doc='fr'):
                 else:
                     champs['type'] = 'inconnu'
 
-        # Langue DE LA RÉFÉRENCE et séparateur titre/sous-titre composé en conséquence
-        # (point 1 du lot du 21.09.2026) : après que titre/conteneur sont fixés, quel que soit
-        # le type de référence — un titre anglais cité dans une bibliographie française ne
-        # doit jamais porter l'insécable française devant son ':' interne.
+        # Langue de la référence, puis séparateur « : » du titre selon cette langue.
         champs['langue_ref'] = _detecter_langue_reference(
             champs['titre'], champs['conteneur'], langue_doc)
         champs['titre'] = _composer_separateur_titre(champs['titre'], champs['langue_ref'])
@@ -669,45 +574,33 @@ def analyser_reference(texte, langue_doc='fr'):
 # ---------------------------------------------------------------------------------
 # 2. citations_du_corps() — chaque appel de citation dans le texte.
 #
-# Deux formes, jamais confondues : narrative (« Tremblay (2023b) », le nom est HORS
-# parenthèse) et parenthétique (« (Bacharach et al., 2010) », « (Bullough et al., 2003 ;
-# Wenzlaff, 2002) »). Une fois qu'un appel narratif a consommé son « (année) », le passage en
-# parenthèse n'est plus repris comme une citation supplémentaire.
+# Deux formes : narrative (« Tremblay (2023b) », nom hors de la parenthèse) et
+# parenthétique (« (Bacharach et al., 2010) », « (Bullough et al., 2003 ; Wenzlaff, 2002) »).
+# La parenthèse d'un appel narratif n'est pas relue comme une citation de plus.
 
 _PARTICULE_ALTERNATIVE = '|'.join(sorted(hm.PARTICULES, key=len, reverse=True))
 
-# Le contenu de la parenthèse est capturé EN ENTIER (pas juste une année) : une citation
-# narrative peut porter plusieurs années pour le même auteur (« Pelgrims (2001, 2006) »),
-# exactement comme en bibliographie — chaque année de `contenu` devient sa propre citation,
-# voir citations_du_corps(). Le préfixe de particule est comparé sans égard à la casse
-# ((?i:...) scopé, pas re.IGNORECASE global) : « De Chambrier (2020) » en tête de phrase
-# ne doit pas perdre son « D » majuscule.
-#  \b devant la particule : sans lui, un mot ORDINAIRE finissant par une des lettres seules
-# de PARTICULES (« e », « a », « y » — portugais/espagnol : « Silva e Costa ») déclenchait un
-# faux départ de nom AU MILIEU du mot qui précède (« comme le montre Tremblay » a été vu
-# amorcer un nom sur le « e » de « montre »). \b n'existe qu'entre un caractère de mot et un
-# non-mot : impossible entre deux lettres d'un même mot.
-# ⚠ Le contenu de la parenthèse DOIT COMMENCER par l'année (espaces mis à part), pas
-# n'importe où la contenir : mesuré sur le corpus réel, « … du MPA (Booms et al., 2023) »
-# faisait passer l'acronyme « MPA » (une majuscule, suivie d'une parenthèse à année) pour le
-# nom cité, alors que la parenthèse est sa PROPRE citation parenthétique, sans rapport avec
-# le mot qui la précède. Un contenu qui commence par un nom (« Booms et al., 2023 ») n'est
-# JAMAIS narratif : il est laissé à la passe B (parenthétique), qui lit le bon premier auteur.
+# Citation narrative.
+#  - La parenthèse est capturée en entier, car elle peut porter plusieurs années
+#    (« Pelgrims (2001, 2006) ») ; chacune devient une citation (citations_du_corps()).
+#  - La particule se compare sans égard à la casse par un (?i:...) local, pour garder la
+#    majuscule de « De Chambrier (2020) ».
+#  - \b devant la particule empêche de lancer un nom au milieu d'un mot : les particules
+#    d'une lettre (« e », « a », « y ») se trouvent à la fin de mots ordinaires (« montre »).
+#  - La parenthèse doit commencer par l'année. Sinon « … du MPA (Booms et al., 2023) »
+#    ferait de « MPA » le nom cité ; une parenthèse qui commence par un nom relève de la
+#    passe parenthétique.
 RE_NARRATIF = re.compile(
     r'(\b(?:(?i:' + _PARTICULE_ALTERNATIVE + r')\s+)?'
     r'[A-ZÀ-ÞŒ][\w\'’\-]*(?:\s+et\s*al\.?)?'
     r'(?:\s*(?:&|,|et|und)\s*[A-ZÀ-ÞŒ][\w\'’\-]*)*)'
     r'\s*\(\s*((?:19|20)\d{2}[^()]*)\)')
 
-# Petits mots qui ouvrent une parenthèse de citation sans en faire partie (« voir »,
-# « cf. », l'allemand « vgl. »/« siehe ») — un sous-ensemble minimal d'OUVREURS de
-# szh-citations.lua, suffisant pour ne pas prendre un nombre en prose (« voir tableau 2020 »)
-# pour une citation : le nom qui suit doit de toute façon commencer par une majuscule.
-# Des FRAGMENTS de regex, pas des mots littéraux : les abréviations à point interne (« z. B. »,
-# « e. g. », « p. ex. ») s'écrivent avec ou sans espace. Plusieurs ouvreurs peuvent se suivre
-# (« vgl. z. B. », « voir aussi ») : RE_OUVREUR les consomme tous. Mesuré sur gzdf_Huttner :
-# « (z. B. Kristen, 2005; …) » laissait « z. B. Kristen » en tête de zone, sans majuscule
-# initiale, et la citation disparaissait — Kristen 2005 était alors déclarée non citée.
+# Mots qui ouvrent une parenthèse de citation sans en faire partie (« voir », « cf. »,
+# « vgl. », « z. B. »…), repris des OUVREURS de szh-citations.lua. Ce sont des fragments de
+# regex, car « z. B. », « e. g. » ou « p. ex. » s'écrivent avec ou sans espace. RE_OUVREUR
+# les retire tous à la suite (« vgl. z. B. ») ; sinon « (z. B. Kristen, 2005) » ne
+# commencerait pas par une majuscule et la citation serait perdue.
 _OUVREURS_LOCAUX = ('voir', 'cf', 'vgl', 'siehe', 'selon', 'nach', 'gemäss', 'see',
                     'auch', 'aussi', 'also', 'notamment', 'insbesondere', 'etwa',
                     'beispielsweise', 'bspw', r'z\.\s?B', 'zB', r'zum\s+Beispiel',
@@ -718,8 +611,8 @@ RE_OUVREUR = re.compile(r'^\s*(?:(?:' + '|'.join(_OUVREURS_LOCAUX) + r')\.?,?\s+
 
 def _premier_auteur(zone):
     """Le premier nom d'une zone d'auteurs (« Bullough et al. », « de Chambrier & Nom »),
-    particule comprise. Vide si la zone ne commence pas par une majuscule (donc pas un nom) —
-    exclut « voir tableau », « en 2010 », etc."""
+    particule comprise. Vide si la zone ne commence pas par une majuscule (« voir tableau »,
+    « en 2010 »)."""
     z = re.sub(r'\bet\s*al\.?', '', zone or '', flags=re.IGNORECASE).strip(' ,;&')
     if not z:
         return ''
@@ -728,7 +621,7 @@ def _premier_auteur(zone):
 
 
 def _citations_du_fragment(frag, source, decalage_absolu):
-    """Une citation parenthétique peut porter PLUSIEURS années pour le même auteur
+    """Une citation parenthétique peut porter plusieurs années pour le même auteur
     (« Pelgrims, 2001, 2006 ») : chaque année devient sa propre citation, même premier
     auteur. Un fragment sans nom reconnaissable (pas de majuscule en tête) est ignoré."""
     out = []
@@ -743,14 +636,9 @@ def _citations_du_fragment(frag, source, decalage_absolu):
     premier = _premier_auteur(zone_brute)
     if not premier:
         return out
-    # `span` doit viser EXACTEMENT `texte` (= frag.strip(), ce que porte l'alerte comme
-    # `found`), jamais seulement l'année : sinon `manuscrit_annoter._localizar()` refuse le
-    # span (`texto[d:f] != found`) et retombe sur son repli « found unique dans le
-    # paragraphe » — qui échoue à son tour dès que la MÊME citation apparaît deux fois dans
-    # le même paragraphe (mesuré sur le corpus réel : « Akerson et Montgomery, 2017 » cité
-    # deux fois dans le même paragraphe, APA.CitationAbsente retombait alors sur un
-    # commentaire du paragraphe entier, faute de pouvoir désambiguïser). Position absolue du
-    # texte STRIPPÉ (espaces de tête exclus, jamais recalculée depuis l'année).
+    # `span` couvre exactement `texte` (frag.strip(), le `found` de l'alerte), pas seulement
+    # l'année : sinon manuscrit_annoter._localizar() refuse le span et cherche `found`, ce qui
+    # échoue quand la même citation figure deux fois dans le paragraphe.
     texte = frag.strip()
     debut_texte = decalage_absolu + (len(frag) - len(frag.lstrip()))
     span_texte = [debut_texte, debut_texte + len(texte)]
@@ -762,11 +650,10 @@ def _citations_du_fragment(frag, source, decalage_absolu):
 
 
 def _noms_a_gauche(avant):
-    """Les mots à majuscule collés juste AVANT un nom narratif, trois au plus, dans l'ordre du
-    texte. RE_NARRATIF ne capture qu'un seul mot de nom (« Lozano » dans « Sahli Lozano et al.
-    (2021) ») : croiser() se sert de ces mots pour retrouver un nom composé CONNU de la
-    bibliographie (« Sahli Lozano »), jamais pour en deviner un — « Nach Sahli » ne s'apparie
-    à rien, « Sahli Lozano » oui."""
+    """Les mots à majuscule juste avant un nom narratif, trois au plus, dans l'ordre du
+    texte. RE_NARRATIF ne capture qu'un mot (« Lozano » dans « Sahli Lozano et al.
+    (2021) ») ; croiser() s'en sert pour retrouver un nom composé que la bibliographie
+    connaît. « Nach Sahli » ne s'apparie à rien, « Sahli Lozano » oui."""
     mots = []
     for mot in reversed(avant.split()):
         if len(mots) == 3 or not re.match(r"^[A-ZÀ-ÞŒ][\w'’\-]*$", mot):
@@ -788,9 +675,7 @@ def citations_du_corps(paragraphes):
             if not premier:
                 continue
             trouve = False
-            # `span` = l'étendue du match ENTIER (m.start()/m.end()), pas seulement l'année :
-            # `found`/`texte` ci-dessous est TOUJOURS m.group(0) (nom narratif + parenthèse
-            # d'année), même raison et même correctif que _citations_du_fragment() ci-dessus.
+            # `span` couvre tout le match, comme `texte` (voir _citations_du_fragment()).
             span_texte = [m.start(), m.end()]
             gauche = _noms_a_gauche(texte[:m.start(1)])
             for am in re.finditer(r'(?:19|20)\d{2}([a-z]?)', contenu):
@@ -816,9 +701,8 @@ def citations_du_corps(paragraphes):
 # ---------------------------------------------------------------------------------
 # 3. croiser() — citations vs bibliographie.
 #
-# `references` : une liste de dicts, chacun le résultat de analyser_reference() AUGMENTÉ d'un
-# champ 'para' (le Paragraphe.source de l'entrée) — c'est analyser_bibliographie() qui fait
-# cet ajout, cette fonction-ci reste générale.
+# `references` : des résultats de analyser_reference() auxquels analyser_bibliographie() a
+# ajouté 'para' (le Paragraphe.source de l'entrée).
 
 def _cle(nom, annee):
     return (_normaliser_nom(nom), annee)
@@ -832,14 +716,16 @@ RE_CONNECTEUR_AUTEURS = re.compile(r'\s*(?:[,;&]|\b(?:et|und|and)\b|\bu\.\s?a\.)
 
 def _noms_candidats(c):
     """Les noms de premier auteur à essayer contre la bibliographie, du plus précis au plus
-    court. `nom_premier_auteur` est UN mot (« Sahli » pour « Sahli Lozano et al. », « Lozano »
-    pour la même forme narrative) : un nom composé ne s'apparie alors jamais à sa référence
-    (« Sahli Lozano, C. »). Les candidats, dans l'ordre : les mots à majuscule qui précèdent
-    un nom narratif, collés au premier segment (« Sahli » + « Lozano »), le premier segment
-    de la zone d'auteurs jusqu'au premier « , », « & », « et » ou « und » (« Sahli Lozano »
-    dans « Sahli Lozano & Crameri »), le premier mot, puis la zone entière sans « et al. »
-    (auteur institutionnel sans virgule). Seul un nom que la bibliographie CONNAÎT s'apparie :
-    un candidat fautif (« Nach Sahli ») ne produit rien."""
+    court. `nom_premier_auteur` n'est qu'un mot, et un nom composé (« Sahli Lozano, C. »)
+    ne s'apparierait pas. Dans l'ordre :
+      - les mots à majuscule qui précèdent un nom narratif, suivis du premier segment
+        (« Sahli » + « Lozano ») ;
+      - le premier segment de la zone d'auteurs, jusqu'au premier « , », « & », « et » ou
+        « und » (« Sahli Lozano » dans « Sahli Lozano & Crameri ») ;
+      - le premier mot ;
+      - la zone entière sans « et al. » (auteur institutionnel).
+    Seul un nom que la bibliographie connaît s'apparie : un mauvais candidat ne produit
+    rien."""
     brut = RE_ET_AL_MILIEU.sub('', c.get('nom_brut') or '').strip(' ,;&')
     premier = c['nom_premier_auteur']
     segment = RE_CONNECTEUR_AUTEURS.split(brut, maxsplit=1)[0].strip() if brut else ''
@@ -879,21 +765,20 @@ def _indexer_sans_annee(references):
 
 
 def _appariee_sans_annee(c, index):
-    """Une citation que rien n'apparie, retrouvée dans une référence SANS année lue : son
-    premier mot est un mot du texte de la référence ET son année y est écrite. Sert les textes
-    juridiques cités par leur sigle (« Behindertengleichstellungsgesetz [BehiG], 2002 » pour
-    une entrée « Bundesgesetz … (Behindertengleichstellungsgesetz, BehiG) vom 13. Dezember
-    2002 »). Jamais un appariement sûr : croiser() la signale à part (voir
+    """Vrai si une citation sans correspondance se retrouve dans une référence sans année
+    lue : son premier mot figure dans le texte de la référence, et son année aussi. Sert aux
+    textes juridiques cités par leur sigle (« Behindertengleichstellungsgesetz [BehiG],
+    2002 » pour « Bundesgesetz … (Behindertengleichstellungsgesetz, BehiG) vom 13. Dezember
+    2002 »). L'appariement n'est pas sûr : il est signalé à part (voir
     signaler_references_non_verifiees())."""
     nom = _normaliser_nom(c['nom_premier_auteur'])
     return any(nom in mots and c['annee'] in annees for mots, annees in index)
 
 
 # ---------------------------------------------------------------------------------
-# Catalogue des messages : un identifiant de règle -> {'fr': ..., 'de': ...}. Tout message émis
-# par ce module passe par _msg() ; la langue est celle du PRODUIT (la Zeitschrift lit de
-# l'allemand), jamais celle de l'ouvrage cité. Une langue inconnue retombe sur le français.
-# Un identifiant « Regle.Variante » désigne une variante de message de la même règle.
+# Catalogue des messages : identifiant → {'fr': ..., 'de': ...}. Tout message de ce module
+# passe par _msg(), dans la langue du produit (pas celle de l'ouvrage cité) ; une langue
+# inconnue donne le français. « Regle.Variante » est une variante de message d'une règle.
 
 MESSAGES = {
     'APA.CitationAbsente': {
@@ -1014,11 +899,8 @@ def croiser(citations, references, langue='fr'):
     for c in citations or []:
         cle, correspondances = _trouver_references(c, refs_par_cle)
         if not correspondances and c.get('nom_brut'):
-            # Repli pour un auteur institutionnel multi-mots (« Ministère de l'Éducation
-            # nationale & DEPP ») : le premier mot seul ('Ministère') ne suffit pas à
-            # retrouver la référence, qui porte le nom ENTIER (aucune virgule interne ne le
-            # découpe en « auteurs » côté bibliographie). Essayé seulement si la clé courte a
-            # échoué, jamais à sa place : un nom de personne, lui, EST son premier mot.
+            # Auteur institutionnel de plusieurs mots (« Ministère de l'Éducation nationale &
+            # DEPP ») : la référence porte le nom entier. Essayé seulement après la clé courte.
             nom_large = RE_ET_AL_MILIEU.sub('', c['nom_brut']).strip(' ,;&')
             cle_large = _cle(nom_large, c['annee'])
             if cle_large != cle:
@@ -1030,9 +912,8 @@ def croiser(citations, references, langue='fr'):
             continue
         if not correspondances:
             message = _msg('APA.CitationAbsente', langue, c.get('texte'))
-            # Même nom, autre année : c'est presque toujours une coquille d'année, pas une
-            # référence manquante — le dire (mesuré sur gzdf_Huttner : « Beukelman &
-            # Mirenda, 1993 » dans le texte, 2013 dans la bibliographie).
+            # Même nom, autre année : presque toujours une coquille d'année, que le message
+            # signale (« Beukelman & Mirenda, 1993 » pour une référence de 2013).
             nom_indice, annees_meme_nom = c['nom_premier_auteur'], []
             for nom in _noms_candidats(c):
                 annees_meme_nom = sorted({a for (n, a) in refs_par_cle
@@ -1064,8 +945,7 @@ def croiser(citations, references, langue='fr'):
         # « et al. » : manquant dès trois auteurs, posé à tort pour un ou deux.
         ref = correspondances[0]
         nb = ref.get('nb_auteurs') or 0
-        # Le nom de la RÉFÉRENCE, pas le premier mot de la citation : « Sahli Lozano », pas
-        # « Sahli ».
+        # Le nom de la référence (« Sahli Lozano »), pas le premier mot de la citation.
         nom_affiche = ref['auteurs'][0]['nom'] if ref.get('auteurs') else c['nom_premier_auteur']
         if nb >= 3 and not c.get('et_al'):
             suggere = '%s et al. (%d%s)' % (nom_affiche, c['annee'],
@@ -1107,41 +987,27 @@ def croiser(citations, references, langue='fr'):
 
 
 # ---------------------------------------------------------------------------------
-# 3 bis. signaler_references_non_verifiees() — l'appel, dans le corps, d'une référence de
-# confiance non haute (§7 bis, révision du 22.09.2026, décision de Robin).
+# 3 bis. signaler_references_non_verifiees() : signale, dans le corps, l'appel d'une
+# référence de confiance non haute.
 #
-# `mise_en_forme_apa()` refuse déjà de RÉÉCRIRE une référence de confiance non haute — c'est
-# voulu, mieux vaut aucune proposition qu'une réécriture fautive. Mais la relectrice lit le
-# TEXTE, pas la liste des références : une référence qu'on n'a pas pu analyser complètement
-# doit donc recevoir un signal sur son APPEL dans le corps, jamais sur l'entrée de
-# bibliographie elle-même.
+# mise_en_forme_apa() ne réécrit pas une telle référence. Mais la relectrice lit le texte,
+# pas la liste des références : le signal va donc sur l'appel.
 #
-# La confiance nécessaire pour RETROUVER une référence (nom + année, pour l'apparier à un
-# appel) est bien plus faible que celle nécessaire pour la RÉÉCRIRE (une analyse complète de
-# tous ses champs) : extraire « UNESCO » et « 2017 » d'une entrée non-APA est facile, largement
-# suffisant pour retrouver l'appel — c'est réécrire l'ENTRÉE qui exige l'analyse complète que
-# `_calculer_confiance()` sanctionne. Le code d'origine confondait les deux exigences et
-# perdait les deux à la fois : `croiser()` (ci-dessus) exclut de `refs_par_cle` toute référence
-# dont `annee` est None (ligne « if not r.get('auteurs') or r.get('annee') is None: continue »)
-# — c'est le cas de 4 des 5 entrées non-APA du corpus réel (année écrite SANS parenthèses, que
-# `_trouver_annee()` n'y voit donc jamais). `_extraire_repli_appariement()` ci-dessous est un
-# second chemin, VOLONTAIREMENT séparé de celui de `croiser()` : il ne sert JAMAIS à construire
-# `champs['annee']`/`champs['auteurs']` (qui restent sous la seule autorité de
-# `analyser_reference()`), seulement à retrouver un appel pour LE SIGNALER. Cette frontière ne
-# doit jamais se brouiller : rien ici n'alimente jamais `mise_en_forme_apa()`.
+# Retrouver l'appel demande peu (un nom et une année), réécrire l'entrée demande l'analyse
+# complète que mesure _calculer_confiance(). croiser() ignore les références sans année lue,
+# par exemple une année écrite sans parenthèses. _extraire_repli_appariement() est donc un
+# second chemin, plus lâche, qui sert seulement à retrouver un appel pour le signaler : il
+# ne remplit jamais les champs de analyser_reference() et n'alimente pas
+# mise_en_forme_apa().
 
 RE_ANNEE_REPLI = re.compile(r'(?:19|20)\d{2}')
 
 
 def _extraire_repli_appariement(texte_brut):
-    """(nom, annee) au sens le plus LÂCHE possible : la première année plausible du texte
-    (4 chiffres, PARENTHÈSES OU NON — contrairement à `_trouver_annee()`, strict), et ce qui la
-    précède comme nom du premier auteur (« et al. » et connecteur de tête ôtés, mêmes règles
-    que `_preparer_entete_auteurs()`). (None, None) si aucune année n'est trouvée.
-
-    ⚠ RÉSERVÉE à l'appariement (voir l'en-tête de section ci-dessus) : jamais utilisée par
-    `analyser_reference()` ni `mise_en_forme_apa()` — un nom/une année trouvés ici ne deviennent
-    jamais un champ structuré, seulement une clé de recherche pour `signaler_...` ci-dessous."""
+    """(nom, annee) lus largement : la première année plausible (quatre chiffres, avec ou
+    sans parenthèses, à la différence de _trouver_annee()), et ce qui la précède comme nom du
+    premier auteur, sans « et al. » ni connecteur de tête. (None, None) sans année.
+    Réservée à l'appariement (voir l'en-tête de section)."""
     t = pronto_modele.normaliser(texte_brut or '')
     m = RE_ANNEE_REPLI.search(t)
     if not m:
@@ -1156,28 +1022,20 @@ def _extraire_repli_appariement(texte_brut):
 
 
 def _cle_appariement_repli(ref):
-    """(nom, annee) d'une référence de confiance NON haute, pour l'apparier à un appel du
-    corps — la clé STRICTE (`auteurs[0].nom`, `annee`) si `analyser_reference()` a pu les lire
-    normalement (cas de `United Nations, 2016…` : sa LECTURE reste correcte, seule sa
-    CONFIANCE tombe — la seconde parenthèse à 4 chiffres du titre a fait dérailler la découpe
-    des champs, pas celle de l'année elle-même) ; sinon `_extraire_repli_appariement()` (cas
-    des références où `annee` vaut None, la lecture formelle exigeant des parenthèses).
-    (None, None) si même ce repli échoue."""
+    """(nom, annee) d'une référence de confiance non haute, pour l'apparier à un appel : la
+    clé stricte (`auteurs[0].nom`, `annee`) si analyser_reference() a pu les lire (la
+    confiance peut tomber pour d'autres champs), sinon _extraire_repli_appariement().
+    (None, None) si rien n'est lu."""
     if ref.get('auteurs') and ref.get('annee') is not None:
         return ref['auteurs'][0]['nom'], ref['annee']
     return _extraire_repli_appariement(ref.get('texte') or '')
 
 
 def _appels_en_ordre_texte(citations):
-    """`citations` (voir citations_du_corps()) reclassées dans l'ordre RÉEL du texte.
-    citations_du_corps() traite, POUR CHAQUE PARAGRAPHE, d'abord toutes les citations
-    narratives puis toutes les parenthétiques : l'ordre ENTRE paragraphes est donc déjà correct
-    (un seul passage sur la liste donnée), mais PAS forcément celui, à l'intérieur d'un même
-    paragraphe, entre les deux formes si elles s'y mélangent. Ne réordonne donc QUE l'intérieur
-    de chaque paragraphe (sur `span[0]`), sans jamais permuter deux paragraphes entre eux —
-    nécessaire pour que « le premier appel » (policy ci-dessous) désigne réellement le premier
-    dans le texte, pas le premier que citations_du_corps() a rencontré dans son propre
-    parcours."""
+    """`citations` dans l'ordre du texte. citations_du_corps() rend, pour chaque paragraphe,
+    les narratives puis les parenthétiques : on retrie donc l'intérieur de chaque paragraphe
+    sur `span[0]`, sans déplacer les paragraphes. Ainsi « le premier appel » est bien le
+    premier du texte."""
     groupes = []
     for c in citations or []:
         if groupes and groupes[-1][0] == c.get('para'):
@@ -1191,16 +1049,11 @@ def _appels_en_ordre_texte(citations):
 
 
 def signaler_references_non_verifiees(citations, references, langue):
-    """Alertes `APA.ReferenceNonVerifiee` : une référence de confiance non haute, mais dont
-    l'appel a pu être retrouvé dans le corps (voir `_cle_appariement_repli()`), reçoit un
-    commentaire SUR CET APPEL — jamais sur l'entrée de bibliographie.
-
-    Deux règles de policy (décidées, jamais rediscutées ici) :
-      - citée plusieurs fois -> commentaire sur le PREMIER appel SEULEMENT (le plafond de
-        `manuscrit_annoter.py` est de 5 commentaires PAR RÈGLE, §7 du contrat : une référence
-        citée six fois ne doit pas, seule, épuiser tout le budget) ;
-      - jamais citée -> AUCUN commentaire ici : `APA.ReferenceNonCitee` (croiser(), ci-dessus)
-        couvre déjà ce cas en se posant sur l'entrée — pas de doublon."""
+    """Alertes `APA.ReferenceNonVerifiee` : une référence de confiance non haute dont
+    l'appel est retrouvé (voir _cle_appariement_repli()) reçoit un commentaire sur cet appel.
+      - Citée plusieurs fois : seul le premier appel est commenté, pour qu'une référence ne
+        consomme pas à elle seule les 5 commentaires par règle de manuscrit_annoter.py.
+      - Jamais citée : rien ici, APA.ReferenceNonCitee (croiser()) le dit déjà."""
     alertes = []
     signales = set()
     premier_appel_par_cle = {}
@@ -1216,7 +1069,7 @@ def signaler_references_non_verifiees(citations, references, langue):
             continue
         appel = premier_appel_par_cle.get(_cle(nom, annee))
         if appel is None:
-            continue  # jamais citée : APA.ReferenceNonCitee s'en charge déjà, pas de doublon
+            continue  # jamais citée : APA.ReferenceNonCitee s'en charge
         signales.add(_cle(nom, annee))
         alertes.append({
             'rule': 'APA.ReferenceNonVerifiee', 'severity': 'warning', 'action': 'comment',
@@ -1225,7 +1078,7 @@ def signaler_references_non_verifiees(citations, references, langue):
             'message': _msg('APA.ReferenceNonVerifiee', langue, '%s, %d' % (nom, annee)),
         })
 
-    # Un appel que croiser() n'a retrouvé que dans une référence SANS année lue (texte
+    # Un appel que croiser() n'a retrouvé que dans une référence sans année lue (texte
     # juridique cité par son sigle) : même commentaire, sur le premier appel de chaque clé.
     for c in _appels_en_ordre_texte(citations):
         cle = _cle(c['nom_premier_auteur'], c['annee'])
@@ -1255,16 +1108,10 @@ def verifier_ordre(references, langue='fr'):
         annee = r.get('annee') if r.get('annee') is not None else 9999
         avec_cle.append((nom, annee, r.get('suffixe') or '', r))
 
-    # Une alerte par ENTRÉE déplacée, pas par voisinage — et pas non plus une comparaison
-    # POSITION PAR POSITION entre l'ordre lu et l'ordre trié : comparer les positions absolues
-    # fait qu'UNE SEULE entrée mal rangée décale la position attendue de TOUTES celles qui la
-    # suivent, et déclenche une alerte en cascade sur un bloc entier déjà correctement trié
-    # ENTRE LUI (mesuré : une entrée isolée, annee=None, glissée au milieu d'une liste de 25
-    # références par ailleurs impeccables, en faisait signaler 25 — au lieu d'1). La bonne
-    # question n'est pas « cette entrée est-elle à la bonne position ? » mais « existe-t-il un
-    # sous-ensemble déjà dans le bon ordre, aussi long que possible, qui la contient ? » —
-    # c'est la plus longue sous-suite croissante (LIS) : toute entrée qui n'en fait pas partie
-    # est celle qu'il faut déplacer, les autres sont déjà bien rangées ENTRE ELLES.
+    # Une alerte par entrée à déplacer. Comparer les positions lues aux positions triées
+    # ferait signaler toutes les entrées qui suivent une seule entrée mal rangée. On calcule
+    # donc la plus longue sous-suite croissante : les entrées qui n'en font pas partie sont
+    # celles à déplacer.
     cles = [t[:3] for t in avec_cle]
     n = len(cles)
     longueur = [1] * n
@@ -1343,9 +1190,8 @@ def doi_normaliser(ref):
 
 
 # ---------------------------------------------------------------------------------
-# 6. resoudre_crossref() / retrouver_doi() — le seul endroit qui touche le réseau.
-#
-# `_requete` est le point d'injection : les tests le remplacent, jamais un vrai appel.
+# 6. resoudre_crossref() et retrouver_doi() : accès au réseau. Les tests remplacent
+# `_requete`.
 
 # Crossref hors service (pas de connexion, délai dépassé) : plus aucune requête jusqu'à la fin
 # de l'analyse. Sans cela, un service muet coûte le délai à chaque référence. Un code HTTP
@@ -1428,9 +1274,9 @@ def resoudre_crossref(ref, delai=DELAI_RESEAU_DEFAUT):
 
 
 def retrouver_doi(ref, delai=DELAI_RESEAU_DEFAUT):
-    """(doi, score) pour une référence SANS DOI (article/chapitre), ou None. N'accepte que si
-    titre très proche (>= 0.9) ET auteur ET année concordent — un DOI deviné à tort est pire
-    qu'aucun DOI, ce module ne l'insère de toute façon jamais tout seul (action='comment')."""
+    """(doi, score) pour un article ou un chapitre sans DOI, ou None. Retenu seulement si le
+    titre est très proche (0,9 au moins) et que l'auteur et l'année concordent : un faux DOI
+    est pire qu'aucun. Le DOI trouvé reste à confirmer par la rédaction."""
     if ref.get('doi') or ref.get('type') not in ('article', 'chapitre'):
         return None
     if not ref.get('titre') or not ref.get('auteurs') or ref.get('annee') is None:
@@ -1469,31 +1315,18 @@ def retrouver_doi(ref, delai=DELAI_RESEAU_DEFAUT):
 # ---------------------------------------------------------------------------------
 # 7. mise_en_forme_apa() — la chaîne APA 7 canonique, fr et de.
 #
-# Différences relevées dans les deux PDF Redaktionsrichtlinien (extraits par pypdf, faute de
-# pdftotext dans la WSL — voir le rapport de chantier) :
+# Différences entre les consignes de rédaction des deux revues :
 #   - volume(numéro) : collé en français « 12(3) », espacé en allemand « 12 (3) » ;
-#   - éditeur d'ouvrage collectif : « (Ed.) »/« (Eds.) » (jamais accentué, jamais « (dir.) »)
-#     pour un ouvrage cité en anglais OU EN FRANÇAIS, « (Hrsg.) » pour un ouvrage cité en
-#     allemand — décidé par LA LANGUE DE L'OUVRAGE CITÉ (`langue_ref`), pas celle du produit ni
-#     du produit citant : révision du 21.09.2026 quinquies, vérifiée dans le guide Zeitschrift
-#     (Sammelwerke/Herausgeberschaft, texte explicite) et confirmée par les propres exemples du
-#     guide Revue, qui écrit « (Ed.) »/« (Eds.) » même dans un article français ;
-#   - « pp. » (Revue) contre « S. » (Zeitschrift, vu tel quel dans son propre exemple de
-#     chapitre, « S. 113–156 ») pour la plage de pages d'un CHAPITRE : un choix de style de
-#     citation, donc la langue du PRODUIT ; un article, lui, ne porte jamais ce préfixe ;
-#   - le chapitre s'introduit par « In » dans les DEUX langues (bien que le corps du texte
-#     français reste rédigé en français — c'est ce que les Lignes directrices Revue montrent
-#     dans leurs propres exemples, page 13 — et « Dans » n'apparaît nulle part dans ce contexte
-#     dans aucun des deux guides).
-# Rendue seulement si la confiance est haute ou si Crossref a confirmé — une référence
-# 'moyenne'/'basse' n'est jamais reformulée à la place de la rédaction.
+#   - éditeur d'ouvrage collectif : « (Ed.) » ou « (Eds.) » (sans accent, pas « (dir.) »)
+#     pour un ouvrage en anglais ou en français, « (Hrsg.) » pour un ouvrage en allemand. La
+#     langue de l'ouvrage cité (`langue_ref`) décide, pas celle du produit ;
+#   - pages d'un chapitre : « pp. » (Revue) ou « S. » (Zeitschrift), selon la langue du
+#     produit. Un article ne préfixe pas ses pages ;
+#   - un chapitre s'introduit par « In » dans les deux langues, jamais « Dans ».
+# Rendue seulement si la confiance est haute ou si Crossref a confirmé la référence.
 
-# Même règle T2 que le pont typographique (szh-typographie.lua, §6 du contrat) — mais
-# SEULEMENT dans le contexte « pp. » qui la rend sûre (un chapitre, ici : un article APA 7 ne
-# préfixe jamais ses pages, la règle ne s'applique donc jamais à lui, voir le rapport de
-# chantier — « la plage de pages ne prend le demi-cadratin que dans ce contexte »). Trait
-# d'union en français, demi-cadratin en allemand : même sens que le filtre (mesuré ligne 269
-# de szh-typographie.lua, « depuis, vers = ... ; if not COLLEE then ... »).
+# Règle T2 du filtre typographique (szh-typographie.lua) appliquée aux plages de pages :
+# trait d'union en français, demi-cadratin en allemand.
 def _t2_plage_pages_chapitre(pages, langue):
     if not pages:
         return pages
@@ -1529,42 +1362,23 @@ def mise_en_forme_apa(ref, metadonnees_crossref=None):
         numero_paren = ''
         if ref.get('numero'):
             numero_paren = (' (' if langue == 'de' else '(') + ref['numero'] + ')'
-        # APA 7 : seul le VOLUME est en italique, jamais le numéro entre parenthèses qui le
-        # suit — « *37*(3) », pas « *37(3)* » (défaut réel mesuré : la forme précédente
-        # italicisait les deux ensemble).
+        # APA 7 : seul le volume est en italique, pas le numéro (« *37*(3) »).
         volnum = ('*%s*' % volume if volume else '') + numero_paren
         conteneur = '*%s*' % ref['conteneur'] if ref.get('conteneur') else ''
-        # Un article APA ne préfixe jamais ses pages de « p./pp. » : en français elles restent
-        # telles que l'entrée les porte (le guide Revue montre les deux, « 1-35 » et
-        # « 119–141 »). En allemand, le guide Zeitschrift écrit « 27 (3), 56–78 » : le trait
-        # d'union entre deux nombres devient le demi-cadratin.
+        # Pages d'un article sans « p. » ni « pp. ». En français, telles que l'entrée les
+        # porte (la Revue admet « 1-35 » et « 119–141 ») ; en allemand, demi-cadratin
+        # (« 27 (3), 56–78 »).
         pages_article = ref.get('pages') or ''
         if langue == 'de':
             pages_article = _t2_plage_pages_chapitre(pages_article, 'de')
         queue = ', '.join(x for x in (conteneur, volnum, pages_article) if x)
         corps = '%s. %s.' % (titre, queue) if queue else '%s.' % titre
     elif t == 'chapitre':
-        # Marqueur d'éditeur : vérifié dans les deux PDF Redaktionsrichtlinien (§7 bis, révision
-        # du 21.09.2026 quinquies). Le guide Zeitschrift (Sammelwerke/Herausgeberschaft) le dit
-        # explicitement : « (Hrsg.) » pour un ouvrage collectif EN ALLEMAND, « (Ed.) »/« (Eds.) »
-        # (jamais accentué, jamais « (dir.) ») pour un ouvrage collectif anglais OU FRANÇAIS —
-        # c'est la langue DE L'OUVRAGE CITÉ (`langue_ref`, §7 bis point 1) qui décide, pas celle
-        # du produit : le guide Revue lui-même (§3.2.2.2, ses propres exemples) écrit
-        # systématiquement « In N. Rousseau (Ed.), » même dans un article français. Singulier vs
-        # pluriel distingué par `nb_editeurs_ouvrage` (jamais fixe : « (Ed.) » pour un seul
-        # éditeur, « (Eds.) » dès deux, comme « M. G. P. Hessels & C. Hessels-Schlatter (Eds.) »
-        # dans l'exemple du guide Revue).
-        # Les noms des éditeurs de l'ouvrage collectif (« In E. E. Editor (Ed.), … ») ne sont
-        # repris que si _consommer_editeurs_de_tete() a pu les isoler à la lecture — sinon on
-        # ne les invente pas, on garde la forme sans eux plutôt qu'une fausse liste vide.
-        #
-        # ⚠ Défaut réel corrigé (22.09.2026) : le marqueur « (Ed.) »/« (Eds.) »/« (Hrsg.) »
-        # était posé INCONDITIONNELLEMENT, même quand AUCUN éditeur n'avait pu être isolé —
-        # mesuré sur `Alves, I., & Fernandes, D. (2022)…`, une entrée par ailleurs bien formée
-        # et légitimement en confiance haute, qui rendait « In (Ed.), … » : un marqueur
-        # d'éditeur sans nom n'est jamais correct, dans aucun des deux guides. Le marqueur (et
-        # la virgule qui l'accompagne) ne s'écrit désormais que si `editeurs_ouvrage` a
-        # effectivement été trouvé.
+        # Marqueur d'éditeur selon la langue de l'ouvrage cité (voir l'en-tête de section) :
+        # « (Hrsg.) » en allemand ; sinon « (Ed.) » pour un éditeur, « (Eds.) » dès deux
+        # (`nb_editeurs_ouvrage`). Les noms et le marqueur ne s'écrivent que si
+        # _consommer_editeurs_de_tete() a isolé les éditeurs : « In (Ed.), … » sans nom serait
+        # faux.
         sait_editeurs = bool(ref.get('editeurs_ouvrage'))
         if not sait_editeurs:
             marqueur_editeur = ''
@@ -1577,24 +1391,19 @@ def mise_en_forme_apa(ref, metadonnees_crossref=None):
                                      else '(Ed.)')
         editeurs_ouvrage = ('%s ' % ref['editeurs_ouvrage']) if sait_editeurs else ''
         intro_editeurs = (editeurs_ouvrage + marqueur_editeur + ', ') if marqueur_editeur else ''
-        # « pp. » (Revue, APA) contre « S. » (Zeitschrift, DGPs — vu tel quel dans son propre
-        # exemple : « S. 113–156 ») : un choix de STYLE DE CITATION, donc la langue du PRODUIT
-        # (`langue`), pas celle de l'ouvrage cité — un chapitre anglais cité dans la Zeitschrift
-        # prend quand même « S. », comme le ferait n'importe quelle référence de cet article.
+        # « pp. » (Revue) ou « S. » (Zeitschrift) : style de l'article citant, donc langue du
+        # produit. Un chapitre anglais cité dans la Zeitschrift prend « S. ».
         etiquette_pages = 'S.' if langue == 'de' else 'pp.'
         pages = (' (%s %s)' % (etiquette_pages, _t2_plage_pages_chapitre(ref['pages'], langue))
                  if ref.get('pages') else '')
-        # Un titre de chapitre garde son « ? »/« ! » d'origine (voir plus haut, m_chap) : ne
-        # pas lui rajouter un point qui produirait « … ?. In … », une double ponctuation que
-        # personne n'a écrite.
+        # Pas de point après un « ? » ou un « ! » final (« … ?. In … »).
         fin_titre = titre if titre[-1:] in '?!' else titre + '.'
         corps = '%s In %s*%s*%s. %s.' % (
             fin_titre, intro_editeurs, ref.get('conteneur') or '', pages,
             ref.get('editeur') or '')
     elif t == 'rapport':
-        # Le genre entre crochets (« [Thèse de doctorat] », « [Mémoire de Master] »…) fait
-        # partie de la forme APA prescrite par les deux guides — le perdre a été mesuré comme
-        # un défaut réel (une thèse rendue comme un ouvrage ordinaire).
+        # Le genre entre crochets (« [Thèse de doctorat] », « [Mémoire de Master] ») fait
+        # partie de la forme APA prescrite.
         genre = ' [%s]' % ref['genre'] if ref.get('genre') else ''
         corps = ('*%s*%s. %s.' % (titre, genre, ref['editeur']) if ref.get('editeur')
                   else '*%s*%s.' % (titre, genre))
@@ -1602,9 +1411,8 @@ def mise_en_forme_apa(ref, metadonnees_crossref=None):
         corps = '*%s*. %s.' % (titre, ref['editeur']) if ref.get('editeur') else '*%s*.' % titre
     else:
         corps = '%s.' % titre if titre else ''
-    # rstrip de toute la ponctuation de fin, pas seulement le point : un éditeur qui finit par
-    # ':' (repli web, « Vu le … sur : ») produisait « sur :. https://... », un « :. » que
-    # personne n'a écrit.
+    # Toute la ponctuation de fin est retirée, pas seulement le point : un éditeur qui finit
+    # par ':' (« Vu le … sur : ») donnerait « sur :. https://... ».
     if ref.get('doi'):
         corps = corps.rstrip(' .:,;') + '. ' + ref['doi']
     elif ref.get('url'):
@@ -1613,12 +1421,9 @@ def mise_en_forme_apa(ref, metadonnees_crossref=None):
     return re.sub(r'\s+', ' ', rendu).strip()
 
 
-# Ancrage d'une INSERTION du DOI retrouvé (action='track', demande du 21.09.2026) : jamais
-# toute la référence, une pure addition EN FIN — le plus court suffixe de mots entiers qui
-# n'apparaît qu'une fois dans la référence. Jusqu'au 30.09.2026, l'ancre était les pages (le
-# DOI s'insérait alors AVANT leur point final : « 152–160 https://… . ») ou le point final
-# seul, qu'aucune localisation ne sait retrouver parmi tous les points de la référence : le
-# DOI partait en commentaire.
+# Ancrage de l'insertion d'un DOI retrouvé (action 'track') : une addition en fin de
+# référence, après le plus court suffixe de mots entiers qui n'apparaît qu'une fois dans la
+# référence. Le point final seul ne convient pas : on ne saurait pas lequel des points viser.
 def _segment_fin_reference(ref):
     texte = (ref.get('texte') or '').rstrip()
     mots = texte.split(' ')
@@ -1634,8 +1439,8 @@ def _message_doi_retrouve(doi, langue):
 
 
 def _alerte_insertion_doi(ref, doi):
-    """Insertion pure du DOI après le dernier segment sûr de la référence (§7 bis, demande du
-    21.09.2026) — jamais une réécriture. None si aucun segment n'est ancrable."""
+    """Insertion du DOI après le dernier segment sûr de la référence, sans réécriture. None
+    si aucun segment n'est ancrable."""
     segment = _segment_fin_reference(ref)
     if not segment:
         return None
@@ -1648,13 +1453,12 @@ def _alerte_insertion_doi(ref, doi):
 # ---------------------------------------------------------------------------------
 # 8. analyser_bibliographie() — enchaîne tout.
 
-# Une référence coupée sur plusieurs paragraphes (manuscrit issu d'un copier-coller de PDF : une
-# ligne = un paragraphe) : chaque morceau était lu comme une référence à part, le premier sans
-# conteneur (confiance non haute, donc « format non reconnu » sur l'appel), les suivants sans
-# auteur ni année (ordre alphabétique faussé). Un paragraphe en prolonge un autre quand il ne
-# PORTE PAS d'année entre parenthèses au début (toute référence APA en a une, même « (s. d.) »)
-# ET qu'il ne commence pas une entrée nouvelle : minuscule ou chiffre en tête, ou le précédent
-# finit sur un tiret, un deux-points, une virgule, une esperluette ou un mot minuscule nu (« and »).
+# Référence coupée sur plusieurs paragraphes (copier-coller d'un PDF : une ligne par
+# paragraphe). Lus séparément, les morceaux fausseraient l'analyse et l'ordre alphabétique.
+# Un paragraphe prolonge le précédent s'il ne porte pas d'année entre parenthèses au début
+# (toute référence APA en a une, même « (s. d.) ») et ne commence pas une entrée : il commence
+# par une minuscule ou un chiffre, ou le précédent finit par un tiret, un deux-points, une
+# virgule, une esperluette ou un mot en minuscules (« and »).
 RE_DEBUT_ANNEE = re.compile(r'\(\s*(?:(?:19|20)\d{2}[a-z]?\b|s\.?\s?d\.?\)|n\.?d\.?\)|o\.?\s?J\.?\)|'
                             r'en\s+pr[ée]paration|sous\s+presse|in\s+press|im\s+Erscheinen)',
                             re.IGNORECASE)
@@ -1677,7 +1481,7 @@ def _prolonge_la_precedente(texte, precedent):
 
 def _fusionner_continuations(paragraphes_biblio):
     """[{'source', 'texte', 'fragments': [paragraphe, ...]}] : les paragraphes de bibliographie,
-    réunis quand l'un prolonge l'autre. `source` est celui du PREMIER morceau ; `texte` joint les
+    réunis quand l'un prolonge l'autre. `source` est celui du premier morceau ; `texte` joint les
     morceaux (sans espace après un trait d'union ou un tiret collé au mot qui précède : « 1189-
     » + « 1204 » -> « 1189-1204 »)."""
     entrees = []
@@ -1703,9 +1507,9 @@ def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau
     global _hors_service
     _hors_service = False
 
-    # `references` : une entrée par RÉFÉRENCE (morceaux réunis) — croisement, appels non
-    # vérifiés, ordre. `par_paragraphe` : une entrée par PARAGRAPHE, seule ancre possible d'une
-    # révision (DOI, mise en forme) — comme avant la fusion.
+    # `references` : une entrée par référence (morceaux réunis), pour le croisement, les appels
+    # non vérifiés et l'ordre. `par_paragraphe` : une entrée par paragraphe, seule ancre
+    # possible d'une révision (DOI, mise en forme).
     references, par_paragraphe = [], []
     morceaux_de = {}
     for e in _fusionner_continuations(paragraphes_biblio):
@@ -1741,7 +1545,7 @@ def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau
 
     alertes.extend(verifier_ordre(references, langue))
 
-    # Une alerte posée sur une référence réunie porte le texte de son PREMIER morceau :
+    # Une alerte posée sur une référence réunie porte le texte de son premier morceau :
     # `found` doit se retrouver dans le paragraphe que désigne `para`.
     for a in alertes:
         if a.get('found') in morceaux_de:
@@ -1779,35 +1583,23 @@ def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau
             if trouve:
                 doi_retrouve, score = trouve
                 stats['doi_retrouves'] += 1
-                # Posé AVANT mise_en_forme_apa() (révision du 21.09.2026 quater, demande de
-                # Robin) : sinon la chaîne canonique se rend SANS le DOI, et une seconde
-                # alerte séparée (APA.DoiRetrouve, en 'suggestion' — la moins sévère du
-                # catalogue) se bat pour la MÊME référence contre `APA.MiseEnForme` ('warning',
-                # toujours plus sévère). Mesuré sur le manuscrit réel « coenseignement » :
-                # 10 DOI retrouvés, seulement 2 en révision, 5 en commentaire, 3 renvoyées au
-                # rapport — la mise en forme APA gagnait systématiquement le chevauchement et
-                # emportait le DOI avec elle, en commentaire, malgré `action='track'`. Avec le
-                # DOI déjà DANS `r['doi']`, la révision `APA.MiseEnForme` (ci-dessous) le porte
-                # directement : une seule révision par référence, jamais deux qui se disputent
-                # le même paragraphe.
+                # Posé avant mise_en_forme_apa(), pour que la révision APA.MiseEnForme porte
+                # le DOI. Sinon une alerte APA.DoiRetrouve séparée, moins sévère, perdrait le
+                # chevauchement contre la mise en forme et finirait en commentaire.
                 r['doi'] = doi_retrouve
 
         rendu = mise_en_forme_apa(r, meta_crossref)
         mef_emise = False
         if rendu:
-            # Retirer l'astérisque D'ABORD, séparément du tassement des espaces : le
-            # remplacer par une espace (comme le ferait un seul passage [\s*]+ -> ' ')
-            # introduit une espace parasite juste avant la virgule qui le suit souvent
-            # (« *Revue X*, » -> « Revue X , » à tort).
+            # Astérisques retirés avant de tasser les espaces : un seul passage [\s*]+ -> ' '
+            # donnerait « Revue X , » pour « *Revue X*, ».
             attendu = re.sub(r'\s+', ' ', rendu.replace('*', '')).strip()
             original = re.sub(r'\s+', ' ', (r.get('texte') or '').replace('*', '')).strip()
             if attendu and original and attendu != original:
                 jeton_manquant = _jeton_manquant(r.get('texte') or '', rendu)
                 if jeton_manquant:
-                    # Garde-fou (révision du 21.09.2026 quinquies) : une forme canonique qui a
-                    # perdu un nom propre/une année/un nombre de l'original n'est JAMAIS
-                    # proposée — mieux vaut ne rien suggérer qu'une révision qui efface une
-                    # information (mesuré : deux éditeurs disparus d'un chapitre réel).
+                    # Garde-fou : une forme qui a perdu un nom propre, une année ou un nombre
+                    # de l'original n'est pas proposée.
                     stats['non_proposees'].append({
                         'para': r.get('para'), 'raison': 'jeton_manquant',
                         'jeton': jeton_manquant, 'found': r.get('texte'),
@@ -1820,20 +1612,18 @@ def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau
                         'rule': 'APA.MiseEnForme', 'severity': 'warning', 'action': 'track',
                         'para': r.get('para'), 'span': None, 'found': r.get('texte'),
                         'suggested': rendu,
-                        # Sans marquage *…* (point 4 du lot du 21.09.2026) : pour un usage en
-                        # texte plat (rapport HTML) — `suggested` garde ses astérisques pour
-                        # l'annotation Word, qui sait les traduire en italique réel.
+                        # Sans astérisques, pour le rapport HTML. `suggested` les garde pour
+                        # l'annotation Word, qui en fait de l'italique.
                         'suggested_texte': _texte_suggere_sans_italique(rendu),
                         'message': message,
                     }
                     alertes.append(mef)
                     mef_emise = True
-                    # Le DOI retrouvé part TOUJOURS en révision (demande de Robin, 30.09.2026).
-                    # La mise en forme couvre toute la référence : qu'une révision plus sévère
-                    # la chevauche, ou qu'elle touche un lien, et elle finissait en commentaire
-                    # en emportant le DOI. Son repli, une simple insertion du DOI en fin de
-                    # référence, prend alors sa place ; manuscrit_annoter.py l'efface quand la
-                    # mise en forme passe, puisqu'elle porte déjà le DOI.
+                    # Le DOI retrouvé doit arriver en révision. Si la mise en forme devient
+                    # un commentaire (chevauchement avec une révision plus sévère, ou lien),
+                    # son repli, une simple insertion du DOI en fin de référence, prend sa
+                    # place. manuscrit_annoter.py écarte le repli quand la mise en forme
+                    # passe en révision, puisqu'elle porte déjà le DOI.
                     repli = _alerte_insertion_doi(r, doi_retrouve) if doi_retrouve else None
                     if repli is not None:
                         groupe = 'doi:%s' % (r.get('para'),)
@@ -1844,16 +1634,13 @@ def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau
                         alertes.append(repli)
 
         if doi_retrouve and not mef_emise:
-            # Aucune `APA.MiseEnForme` n'a été émise pour cette référence (confiance
-            # insuffisante pour une chaîne canonique complète, ou — cas limite — le texte
-            # rendu coïncidait déjà avec l'original malgré le DOI ajouté) : le DOI retrouvé
-            # reste sa propre insertion `track`, seule, comme avant ce correctif.
+            # Pas de APA.MiseEnForme pour cette référence (confiance insuffisante, ou rendu
+            # identique à l'original) : le DOI retrouvé est une insertion `track` seule.
             insertion = _alerte_insertion_doi(r, doi_retrouve)
             if insertion is not None:
                 alertes.append(insertion)
             else:
-                # Rien de fiable à ancrer (aucun segment de fin de référence n'y figure une
-                # seule fois) : repli commentaire, jamais une insertion à l'aveugle.
+                # Aucun segment de fin unique où ancrer l'insertion : un commentaire.
                 alertes.append({
                     'rule': 'APA.DoiRetrouve', 'severity': 'suggestion', 'action': 'comment',
                     'para': r.get('para'), 'span': None, 'found': None, 'suggested': doi_retrouve,
@@ -1864,10 +1651,10 @@ def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau
 
 
 # ---------------------------------------------------------------------------------
-# 9. CLI d'essai — manuscrit_biblio.py <fichier.docx> --langue fr [--sans-reseau]
+# 9. CLI d'essai : manuscrit_biblio.py <fichier.docx> --langue fr [--sans-reseau]
 #
-# Import de manuscrit_docx/manuscrit_modele fait ICI, pas en tête de module : les fonctions
-# pures ci-dessus s'importent et se testent sans lecteur .docx (consigne du chantier).
+# manuscrit_docx et manuscrit_modele s'importent ici, et non en tête : le reste du module
+# s'importe et se teste sans lecteur .docx.
 
 def _extraire_paragraphes(chemin):
     import manuscrit_docx as md

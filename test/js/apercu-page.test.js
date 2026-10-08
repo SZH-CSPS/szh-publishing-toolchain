@@ -2,17 +2,13 @@
 //
 //   node --test test/js/apercu-page.test.js
 //
-// apercu-hote.test.js éprouve l'hôte : il fabrique lui-même les messages « revele » et
-// « scrollSource » et vérifie ce que l'hôte en fait. Personne n'exécutait la PAGE qui les
-// émet — et le jour où media/apercu.js s'est mis à nommer le protocole par SZH.MSG, sans
-// que son socle `SZH` soit posé (l'aperçu n'emprunte pas construireHtml, qui pose
-// media/_messages.js dans les onze autres webviews), la page levait une ReferenceError au
-// premier clic et au premier défilement. Les deux fonctions étaient mortes, toute la suite
-// restait verte : le survol, lui, ne nomme aucun message et continuait de marcher, ce qui
-// donnait une page d'apparence vivante.
+// apercu-hote.test.js vérifie l'hôte, qui reçoit « revele » et « scrollSource ». Ici, c'est
+// la page qui les émet. media/apercu.js lit le protocole dans SZH.MSG ; l'aperçu ne passe
+// pas par construireHtml, qui pose media/_messages.js dans les autres webviews : si `SZH`
+// manque, la page lève une ReferenceError au premier clic ou défilement.
 //
-// Ici la page est prise telle que l'hôte l'injecte — le HTML du vrai panneau, script
-// compris — et jouée dans un DOM réduit à ce qu'elle utilise. Toute exception remonte.
+// La page est prise telle que l'hôte l'injecte (le HTML du vrai panneau, script compris) et
+// jouée dans un DOM réduit à ce qu'elle utilise. Toute exception remonte.
 'use strict';
 
 const test = require('node:test');
@@ -148,14 +144,14 @@ function jouerPage(script, blocs) {
     bouton: bouton,
     surDocument: (ev) => declencher(ecouteursDoc, ev),
     surFenetre: (ev) => declencher(ecouteursFen, ev),
-    // Le protocole tel que la page l'a chargé : ce que le socle manquant emportait.
+    // Le protocole tel que la page l'a chargé (SZH.MSG).
     protocole: () => contexte.SZH && contexte.SZH.MSG
   };
 }
 
 // Les trois blocs, avec le rectangle qu'ils occuperaient à l'écran : les deux premiers
-// au-dessus du seuil du bandeau (le second de peu — c'est lui, le bloc « au sommet »),
-// le troisième bien plus bas.
+// au-dessus du seuil du bandeau (le second de peu : c'est le bloc « au sommet »), le
+// troisième bien plus bas.
 function blocsDEssai() {
   const faire = (pos, top) => {
     const el = elementFactice('p', { 'data-pos': pos });
@@ -181,7 +177,7 @@ test('la page de l’aperçu se charge sans lever, protocole compris', async () 
   const panneau = HOTE.panneauDeType('szhApercuHtml');
   assert.ok(panneau, 'le panneau d’aperçu HTML ne s’est pas ouvert');
 
-  // Lève si le socle manque : SZH.MSG y est lu dès le chargement des gestionnaires.
+  // Lève si SZH manque : SZH.MSG est lu dès le chargement des gestionnaires.
   PAGE = jouerPage(scriptDe(panneau.html), blocsDEssai());
 
   const msg = PAGE.protocole();
@@ -234,8 +230,8 @@ test('un message « surligner » de l’hôte marque le bloc de la ligne visée'
   assert.ok(!blocs[2].classList.contains('szh-actif'), 'un autre bloc a été surligné');
 });
 
-// Une recompilation réassigne webview.html, ce qui recharge la page : sans la ligne de
-// l'éditeur transmise au chargement, l'aperçu repartait en haut à chaque pause de frappe.
+// Une recompilation réassigne webview.html, ce qui recharge la page : la ligne de l'éditeur
+// est transmise au chargement, sinon l'aperçu repartirait en haut à chaque pause de frappe.
 // Blocs placés bas dans la page, pour qu'un défilement se distingue du sommet.
 function blocsEtages() {
   const faire = (pos, top) => {

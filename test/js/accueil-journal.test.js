@@ -1,6 +1,6 @@
 // L'onglet Log de l'Accueil côté hôte (lib/accueil-journal-hote.js) : la liste et la fin des
-// journaux, l'éditeur, et le signalement en un geste, dans ses trois issues. Tout s'écrit
-// dans un dossier jetable ; aucun courriel ne part, le brouillon n'est que lu.
+// journaux, l'éditeur, et le signalement en un clic avec ses trois issues. Tout s'écrit dans
+// un dossier jetable ; aucun courriel ne part, le brouillon est seulement lu.
 //
 //   node --test test/js/accueil-journal.test.js
 'use strict';

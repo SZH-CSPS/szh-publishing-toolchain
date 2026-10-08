@@ -1,8 +1,7 @@
-// Ce que l'éditeur montre à la rédaction pendant et après une compilation : rien qui ne lui
-// serve. Les réglages qui font taire VSCodium et ses extensions, dans le gabarit et dans les
-// défauts du cockpit.
+// Les réglages qui font taire VSCodium et ses extensions pendant et après une compilation,
+// dans le gabarit du poste et dans les défauts du cockpit.
 //
-//   node --test "test/js/*.test.js"
+//   node --test test/js/bruit-editeur.test.js
 'use strict';
 
 const test = require('node:test');
@@ -38,8 +37,8 @@ test('le panneau de discussion (Chat) ne s’ouvre pas à côté de l’article'
 });
 
 // Les fichiers techniques que la chaîne et le cockpit écrivent à la racine d'un numéro ou
-// dans le dossier d'un article. Le nom est relu à sa source : s'il change là-bas, le
-// masquage le suit ou ce test le dit.
+// dans le dossier d'un article. Chaque nom est relu à sa source : s'il y change, ce test le
+// signale.
 const FICHIERS_TECHNIQUES = [
   { source: ['vscodium-extension', 'szh-cockpit', 'lib', 'pdfua-hote.js'], motif: /const NOM_CACHE = '([^']+)'/ },
   { source: ['pipeline', 'pagination.py'], motif: /^NOM_JSON = '([^']+)'/m },

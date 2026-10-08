@@ -1,5 +1,5 @@
-// Créer un numéro ou un livre depuis l'Accueil de l'éditeur (lib/accueil-nouveau.js) : les
-// refus et la création sont ceux du socle PowerShell, rejoués ici sur une arborescence jetable.
+// Créer un numéro ou un livre depuis l'Accueil (lib/accueil-nouveau.js). Refus et création
+// viennent des scripts PowerShell du toolkit, lancés ici sur une arborescence jetable.
 //
 //   node --test test/js/accueil-nouveau.test.js
 'use strict';
@@ -36,7 +36,7 @@ function numero(relatif, fichier, lignes) {
   return d;
 }
 numero(['Revue', '2026-01'], 'ausgabe.yaml', ['revue: revue', 'volume: 16', 'numero: "01"']);
-// Rangé sous un autre nom, mais il porte déjà le volume 16 et le numéro 2 : c'est lui qui bloque.
+// Rangé sous un autre nom, mais il porte le volume 16 et le numéro 2 : c'est lui qui bloque.
 numero(['_Archive', 'Revue', 'ancien-deux'], 'ausgabe.yaml', ['revue: revue', 'volume: "16"', 'numero: 2']);
 numero(['Books', '2025-B12-Leichte'], 'buch.yaml', ['titre: "Leichte Sprache"']);
 
@@ -83,7 +83,7 @@ test('nouveau : un numéro et un livre se créent depuis le gabarit, nommés par
   const ausgabe = fs.readFileSync(path.join(r.chemin, 'ausgabe.yaml'), 'utf8');
   assert.match(ausgabe, /^volume: "?16"?$/m);
   assert.match(ausgabe, /^numero: "04"$/m);
-  // L'article d'exemple et les modèles d'article Pronto restent dans le toolkit.
+  // Un numéro neuf ne reçoit ni l'article d'exemple ni les modèles d'article Pronto.
   assert.deepStrictEqual(fs.readdirSync(path.join(r.chemin, 'articles')), [],
     'le dossier « articles » d’un numéro neuf doit être vide');
   const modeles = fs.readdirSync(r.chemin).filter((n) => /^Pronto - /.test(n));

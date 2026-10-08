@@ -22,9 +22,8 @@ const OUVRIR_LIVRE = path.join(RACINE, 'windows', 'open-livre.ps1');
 const COMMUN_PS1 = path.join(RACINE, 'windows', 'szh-common.ps1');
 const TEXTES_PS1 = path.join(RACINE, 'windows', 'szh-textes.ps1');
 
-// Le nom définitif de l'application n'est pas arrêté (voir windows/szh-shell.ps1) : il vit à
-// UN seul endroit, $script:SzhNomApplication, et ce fichier le LIT plutôt que de le recopier
-// en dur -- sans quoi un futur baptême casserait ce test sans avoir rien cassé de réel.
+// Le nom de l'application est lu dans $script:SzhNomApplication (windows/szh-shell.ps1),
+// pas recopié : un changement de nom ne casse pas ce test.
 const SHELL = fs.readFileSync(path.join(RACINE, 'windows', 'szh-shell.ps1'), 'utf8');
 const mNom = SHELL.match(/\$script:SzhNomApplication\s*=\s*'([^']+)'/);
 assert.ok(mNom, 'szh-shell.ps1 ne déclare plus $script:SzhNomApplication');
@@ -32,23 +31,19 @@ const NOM_APPLICATION = mNom[1];
 
 const { POWERSHELL, sansPowerShell } = require('./gardes');
 
-// Échappe les caractères spéciaux d'une regex -- NOM_APPLICATION porte un « & », inoffensif
-// en regex, mais un futur nom pourrait porter autre chose.
+// Échappe les caractères spéciaux d'une regex : le nom de l'application peut en porter.
 function echapperRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 const TITRE_SUITE = new RegExp('^' + echapperRegex(NOM_APPLICATION));
 
-// ---- L'arborescence jetable : deux numeros de revue, une Zeitschrift, un livre ----
+// ---- L'arborescence jetable : deux numéros de revue, une Zeitschrift, un livre ----
 //
-// PROGRAMDATA tient lieu de C:\ProgramData\SZH (config.json, state.json, logs, toolkit) --
-// c'est ce que redirige $env:SZH_BASE (szh-common.ps1). BASE est un dossier distinct : la
-// racine des revues, Zeitschriften et livres -- separee de PROGRAMDATA, comme sur un vrai
-// poste (l'arbre de production n'est pas sous C:\ProgramData\SZH).
+// PROGRAMDATA tient lieu de C:\ProgramData\SZH (config.json, state.json, logs, toolkit),
+// par $env:SZH_BASE (szh-common.ps1). BASE est la racine des revues, Zeitschriften et
+// livres, distincte de PROGRAMDATA comme sur un vrai poste.
 //
-// Cette racine-la est posee par $env:SZH_RACINE_TEST, et c'est desormais le SEUL moyen de la
-// detourner vers un dossier jetable : la cle de config.json qui le permettait a ete
-// supprimee le 15.09.2026 (elle primait sur tout, y compris sur l'ancrage SharePoint). La
-// variable suit le modele de $env:SZH_ANCRAGE et $env:SZH_RAPPORTS -- reservee aux essais,
-// jamais ecrite nulle part. Voir Get-SzhBaseRevuesPour (windows/szh-produits.ps1).
+// Cette racine est détournée par $env:SZH_RACINE_TEST, seul moyen prévu. Comme
+// $env:SZH_ANCRAGE et $env:SZH_RAPPORTS, la variable est réservée aux essais et n'est
+// écrite nulle part. Voir Get-SzhBaseRevuesPour (windows/szh-produits.ps1).
 const TRAVAIL = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-lanceur-'));
 const PROGRAMDATA = path.join(TRAVAIL, 'ProgramData');
 const BASE = path.join(TRAVAIL, 'Base');
@@ -68,35 +63,34 @@ fs.mkdirSync(PROGRAMDATA, { recursive: true });
 fs.writeFileSync(path.join(PROGRAMDATA, 'config.json'), JSON.stringify({
   emplacementRevues: 'test',
 }), 'utf8');
-// La version installee : Get-SzhVersionInstallee lit d'abord <toolkit>\VERSION.
+// La version installée : Get-SzhVersionInstallee lit d'abord <toolkit>\VERSION.
 const VERSION_INSTALLEE = '2026.09.1-test';
 fs.mkdirSync(path.join(PROGRAMDATA, 'toolkit'), { recursive: true });
 fs.writeFileSync(path.join(PROGRAMDATA, 'toolkit', 'VERSION'), VERSION_INSTALLEE + '\n', 'utf8');
 
-// L'arborescence, dans sa forme arretee le 15.09.2026 : un numero EN COURS directement sous
-// son dossier produit, un numero ARCHIVE sous « _Archive\<Produit> ». Les deux etats n'ont
-// donc pas la meme profondeur, et c'est volontaire -- ce banc est le seul a les exercer tous
-// les deux par un vrai processus PowerShell.
+// Un numéro en cours vit directement sous son dossier produit, un numéro archivé sous
+// « _Archive\<Produit> » : les deux n'ont pas la même profondeur. Ce banc est le seul à
+// exercer les deux par un vrai processus PowerShell.
 //
-// Revue : un numero en cours, un numero archive.
+// Revue : un numéro en cours, un numéro archivé.
 const REVUE_ENCOURS = creerDossier('Revue', '2026-01');
 ecrireYaml(REVUE_ENCOURS, 'ausgabe.yaml', ['title: "Numero en cours"', 'revue: "revue"']);
 const REVUE_ARCHIVE = creerDossier('_Archive', 'Revue', '2020-05');
 ecrireYaml(REVUE_ARCHIVE, 'ausgabe.yaml', ['title: "Numero archive"', 'revue: "revue"']);
 
-// Zeitschrift : une seule, en cours -- jamais dans les listes de la revue, ni l'inverse.
+// Zeitschrift : une seule, en cours, absente des listes de la revue (et inversement).
 const ZS_ENCOURS = creerDossier('Zeitschrift', '2026-03');
 ecrireYaml(ZS_ENCOURS, 'ausgabe.yaml', ['title: "Ausgabe Test"', 'revue: "zeitschrift"']);
 
-// Livre : un seul, en cours -- affiche par son TITRE (buch.yaml), pas par le nom du dossier.
+// Livre : un seul, en cours, affiché par son titre (buch.yaml), pas par le nom du dossier.
 const LIVRE_ENCOURS = creerDossier('Books', '2026-B300-MonLivre');
 ecrireYaml(LIVRE_ENCOURS, 'buch.yaml', ['titre: "Mon Livre Test"', 'lang: "fr"']);
 
-// ---- Deuxieme arborescence jetable, en emplacement "production" cette fois : de quoi
-// verifier que `emplacement` et `modeTest` suivent config.json plutot que le defaut "test"
-// -- Resolve-SzhEmplacementRevues, Get-SzhBaseRevuesPour (szh-produits.ps1). La racine de
-// production vient de $env:SZH_RACINE_PROD : sans elle, Get-SzhBaseRevuesPour irait chercher
-// un ancrage SharePoint sur le vrai disque du poste qui fait tourner ces tests.
+// ---- Deuxième arborescence jetable, en emplacement "production" : `emplacement` et
+// `modeTest` suivent config.json plutôt que le défaut "test" (Resolve-SzhEmplacementRevues,
+// Get-SzhBaseRevuesPour, szh-produits.ps1). La racine de production vient de
+// $env:SZH_RACINE_PROD, sans quoi Get-SzhBaseRevuesPour chercherait l'ancrage SharePoint
+// du poste.
 const TRAVAIL_PROD = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-lanceur-prod-'));
 const PROGRAMDATA_PROD = path.join(TRAVAIL_PROD, 'ProgramData');
 const BASE_PROD = path.join(TRAVAIL_PROD, 'Base');
@@ -112,9 +106,9 @@ function executer(scriptPath, args, programData) {
   const env = Object.assign({}, process.env, {
     SZH_BASE: programData || PROGRAMDATA,
     SZH_LANCEUR_SIMULE: '1',
-    // Les deux racines, toujours posees toutes les deux : celle qui ne sert pas au scenario
-    // doit quand meme etre detournee, sinon un comptage de numeros (Measure-SzhNumeros, appele
-    // par Initialize-SzhEmplacementRevues) irait lire le vrai OneDrive du poste.
+    // Les deux racines sont toujours posées : celle qui ne sert pas au scénario est
+    // détournée aussi, sinon Measure-SzhNumeros (appelé par Initialize-SzhEmplacementRevues)
+    // lirait le vrai OneDrive du poste.
     SZH_RACINE_TEST: BASE,
     SZH_RACINE_PROD: BASE_PROD,
     // Un ancrage jetable : sans lui, le check-in du démarrage écrirait dans le vrai dossier
@@ -141,11 +135,10 @@ const livre = (function () { return executer(OUVRIR_LIVRE, []); })();
 const emplacementProd = emplacements(PROGRAMDATA_PROD);
 const emplacementEssai = emplacements(PROGRAMDATA);
 
-// ---- L'arbre que le lanceur a CREE dans la racine d'essai ----
-// Initialize-SzhEmplacementsTest ne tourne qu'en mode test, et il est la seule chose du
-// produit qui ecrive une arborescence : c'est donc ici, et nulle part ailleurs, qu'on peut
-// verifier la FORME de l'arbre plutot que la seule capacite a y retrouver un numero. Releve
-// AVANT la suppression du dossier jetable, puisque c'est lui qu'on inspecte.
+// ---- L'arbre que le lanceur a créé dans la racine d'essai ----
+// Initialize-SzhEmplacementsTest, en mode test, est la seule partie du produit qui écrive
+// une arborescence : on en vérifie ici la forme. Relevé avant la suppression du dossier
+// jetable.
 const ARBRE_CREE = (function () {
   const vus = {};
   for (const relatif of [
@@ -154,13 +147,13 @@ const ARBRE_CREE = (function () {
     path.join('_NewsUndActu', 'Fiches'), path.join('_NewsUndActu', '_Statuts', 'fr'),
     path.join('_NewsUndActu', '_Statuts', 'de'),
     'Exports', 'Secrétariat und Export',
-    // Ce qui ne doit PLUS exister : les niveaux supprimes le 15.09.2026.
+    // Les anciens niveaux, qui ne sont plus créés.
     path.join('Revue', '01_Redaction'), path.join('Zeitschrift', '01_Redaktion'),
     path.join('Books', '01_Redaktion'), path.join('Revue', '99_Archives'),
     path.join('Zeitschrift', '99_Archiv'), path.join('Books', '99_Archiv'),
-    // Ce qui ne doit JAMAIS etre cree sous la racine de test : _Systeme vit TOUJOURS sur
-    // SharePoint (Get-SzhDossierSysteme, depuis le 23.09.2026), et l'ancien magasin par
-    // revue, remplace par la bibliotheque ci-dessus.
+    // Ce qui n'est pas créé sous la racine de test : _Systeme, qui vit sur SharePoint
+    // (Get-SzhDossierSysteme), et l'ancien magasin par revue, remplacé par la
+    // bibliothèque ci-dessus.
     path.join('_Systeme', 'rapports'), path.join('_Systeme', 'journaux'),
     path.join('_Systeme', 'suggestions'), path.join('_Systeme', 'inventaire'),
     path.join('_NewsUndActu', 'Revue'), path.join('_NewsUndActu', 'Zeitschrift')
@@ -172,11 +165,10 @@ const ARBRE_CREE = (function () {
   return vus;
 })();
 
-// La GRAPHIE reellement ecrite sur le disque, releve a part et par lecture de repertoire.
-// Windows ne distingue pas la casse : ARBRE_CREE ci-dessus repondrait vrai pour
-// `_NewsUndActu\Revue` alors meme que le lanceur aurait cree `_newsundactu\revue`. Seul
-// readdirSync rend le nom tel qu'il a ete ecrit, et c'est lui qui prouve que le produit
-// cree des dossiers faits pour etre lus, et non ses jetons internes.
+// La graphie réellement écrite sur le disque, relevée par lecture de répertoire. Windows ne
+// distingue pas la casse : ARBRE_CREE répondrait vrai pour `_NewsUndActu\Revue` même si le
+// lanceur avait créé `_newsundactu\revue`. Seul readdirSync rend le nom tel qu'il a été
+// écrit.
 const NOMS_REELS = (function () {
   function lire(relatif) {
     try { return fs.readdirSync(path.join(BASE, relatif)).sort(); } catch (e) { return null; }
@@ -184,8 +176,7 @@ const NOMS_REELS = (function () {
   return { racine: lire('.'), magasin: lire('_NewsUndActu'), statuts: lire(path.join('_NewsUndActu', '_Statuts')) };
 })();
 
-// L'arborescence jetable n'est plus lue une fois les resultats captures ci-dessus : rien ne
-// doit rester sous le dossier temporaire du systeme apres coup.
+// Les résultats sont capturés : l'arborescence jetable est supprimée.
 try { fs.rmSync(TRAVAIL, { recursive: true, force: true }); } catch (e) { /* best effort */ }
 try { fs.rmSync(TRAVAIL_PROD, { recursive: true, force: true }); } catch (e) { /* best effort */ }
 
@@ -199,28 +190,26 @@ function verifierExecution(r, nom) {
 
 test('le lanceur cree l\'arbre d\'essai dans sa forme du 15.09.2026, et rien de l\'ancienne',
   { skip: sansPowerShell }, () => {
-    // Les trois produits a la RACINE : un numero en cours n'a plus de niveau de redaction
+    // Les trois produits à la racine : un numéro en cours n'a pas de niveau de rédaction
     // au-dessus de lui.
     for (const d of ['Revue', 'Zeitschrift', 'Books']) {
       assert.strictEqual(ARBRE_CREE[d], true, 'dossier produit manquant a la racine : ' + d);
     }
-    // Les archives REGROUPEES, un sous-dossier par produit, avec la capitale du dossier
-    // produit : ces trois-la se lisent a l'Explorateur, ce ne sont pas des jetons de code.
+    // Les archives regroupées, un sous-dossier par produit, avec la majuscule du dossier
+    // produit : ces noms se lisent dans l'Explorateur.
     for (const d of ['Revue', 'Zeitschrift', 'Books']) {
       assert.strictEqual(ARBRE_CREE[path.join('_Archive', d)], true,
         'archives manquantes sous _Archive : ' + d);
     }
-    // Le reste de l'arbre, qui suit la racine active : la bibliotheque de fiches, sous sa
-    // forme du 23.09.2026 (Fiches\, _Statuts\fr\, _Statuts\de\ -- plus l'ancien magasin par
-    // revue), et Exports, ou le cockpit range les sorties du secretariat.
+    // Le reste de l'arbre, qui suit la racine active : la bibliothèque de fiches (Fiches\,
+    // _Statuts\fr\, _Statuts\de\), et Exports, où le cockpit range les sorties du
+    // secrétariat.
     for (const d of [path.join('_NewsUndActu', 'Fiches'), path.join('_NewsUndActu', '_Statuts', 'fr'),
       path.join('_NewsUndActu', '_Statuts', 'de'), 'Exports']) {
       assert.strictEqual(ARBRE_CREE[d], true, 'dossier commun manquant : ' + d);
     }
-    // Et l'ancienne forme a bien disparu : sans ce controle, une table oubliee a moitie
-    // creerait les deux arborescences cote a cote, et personne ne verrait laquelle sert.
-    // _Systeme\, lui, n'a JAMAIS ete cree ici : il vit toujours sur SharePoint
-    // (Get-SzhDossierSysteme), meme quand le lanceur tourne en mode test.
+    // L'ancienne forme n'est pas créée à côté de la nouvelle. _Systeme\ non plus : il vit
+    // sur SharePoint (Get-SzhDossierSysteme), même en mode test.
     for (const d of [path.join('Revue', '01_Redaction'), path.join('Zeitschrift', '01_Redaktion'),
       path.join('Books', '01_Redaktion'), path.join('Revue', '99_Archives'),
       path.join('Zeitschrift', '99_Archiv'), path.join('Books', '99_Archiv'),
@@ -293,7 +282,7 @@ test('emplacementRevues "production" : emplacement et modeTest suivent, jamais l
 
 // ---- La cascade de la langue ----
 // Un pilote dédié, sur une arborescence minimale (un seul config.json, aucune revue) : la
-// cascade ne dépend que des réglages du poste et du compte. Chaque appel isole SON PROPRE
+// cascade ne dépend que des réglages du poste et du compte. Chaque appel a son propre
 // dossier jetable pour state.json (SZH_BASE) et etat-utilisateur.json (LOCALAPPDATA).
 
 function langueDuSocle(options) {
@@ -336,18 +325,16 @@ test('la cascade de $SzhLangue : cinq échelons, et le repli à « de », jamais
     assert.ok(r && r.status === 0 && r.langue, 'échelon 4 : pas de JSON -- ' + (r ? r.stderr : ''));
     assert.strictEqual(r.langue, 'de', 'le choix du compte ne l’emporte plus sur state.json');
 
-    // Échelon 3 : state.json (l'héritage, celui qu'écrivait l'ancien lanceur) l'emporte sur
-    // Windows et sur le repli, tant que le compte n'a rien choisi lui-même.
+    // Échelon 3 : state.json l'emporte sur Windows et sur le repli, tant que le compte n'a
+    // rien choisi lui-même.
     r = langueDuSocle({ stateJson: { langue: 'fr' } });
     assert.ok(r && r.status === 0 && r.langue, 'échelon 3 : pas de JSON -- ' + (r ? r.stderr : ''));
     assert.strictEqual(r.langue, 'fr', 'state.json ne l’emporte plus sur Windows/le repli');
 
-    // Échelons 1 et 2, ensemble : rien de plus explicite n'est fourni, donc le résultat suit
-    // Windows s'il parle fr ou de, sinon retombe sur 'de' -- jamais 'en'. L'attendu est
-    // calculé ici à partir de la VRAIE langue d'affichage de Windows sur cette machine,
-    // interrogée indépendamment (pas en rappelant Get-SzhLangueAutomatique, ce qui
-    // éprouverait la fonction contre elle-même) : ce test reste donc correct que le poste
-    // qui l'exécute soit lui-même en français, en allemand, ou dans une troisième langue.
+    // Échelons 1 et 2 : sans réglage plus explicite, le résultat suit Windows s'il parle fr
+    // ou de, sinon 'de'. L'attendu se calcule à partir de la langue d'affichage de Windows,
+    // interrogée directement (pas par Get-SzhLangueAutomatique, qu'on teste) : le test vaut
+    // quelle que soit la langue du poste.
     const sondeCulture = spawnSync(POWERSHELL, ['-NoProfile', '-Command',
       '(Get-UICulture).TwoLetterISOLanguageName'], { encoding: 'utf8', windowsHide: true, timeout: 30000 });
     const langueWindows = (sondeCulture.stdout || '').trim().toLowerCase();
@@ -357,13 +344,13 @@ test('la cascade de $SzhLangue : cinq échelons, et le repli à « de », jamais
     assert.strictEqual(r.langue, attendu,
       'sans aucune préférence, la langue devrait suivre Windows (fr/de) ou retomber sur « de »');
     assert.notStrictEqual(r.langue, 'en', 'le repli est retombé sur « en », pas sur « de »');
-    // Et le littéral source le confirme, indépendamment de la langue de CE poste-ci.
+    // Le littéral source le confirme, indépendamment de la langue du poste.
     const commun = fs.readFileSync(path.join(RACINE, 'windows', 'szh-common.ps1'), 'utf8');
     assert.match(commun, /\$script:SzhLangue = 'de'/,
       'le repli de $SzhLangue n’est plus la littérale \'de\'');
   });
 
-// ---- Le mode simule ne charge aucune classe WinForms ----
+// ---- Le mode simulé ne charge aucune classe WinForms ----
 
 test('SZH_LANCEUR_SIMULE=1 ne charge ni System.Windows.Forms ni System.Drawing',
   { skip: sansPowerShell }, () => {
@@ -372,7 +359,7 @@ test('SZH_LANCEUR_SIMULE=1 ne charge ni System.Windows.Forms ni System.Drawing',
     for (const [nom, r] of [['open-revue', accueil], ['open-livre', livre]]) {
       verifierExecution(r, nom);
     }
-    // Et la garde textuelle : le sélecteur de version (open-revue.ps1 -Versions) et le refus
+    // La garde textuelle : le sélecteur de version (open-revue.ps1 -Versions) et le refus
     // d'un cockpit trop ancien (Start-SzhAccueil) lisent la simulation avant de charger WinForms.
     const revue = fs.readFileSync(OUVRIR_REVUE, 'utf8');
     const iVersions = revue.indexOf('if ($Versions) {');
@@ -390,16 +377,15 @@ test('SZH_LANCEUR_SIMULE=1 ne charge ni System.Windows.Forms ni System.Drawing',
   });
 
 // ---- Node sous VSCodium : lecture non bloquante ----
-// Mesure du 15.09.2026 : une lecture bloquante de stdout figeait toute la fenêtre pendant
-// une moisson OAI-PMH, et les gestionnaires d'événements de Process ont tué le processus
-// entier sur ce poste, sans exception à attraper.
+// Mesure du 15.09.2026 : une lecture bloquante de stdout fige toute la fenêtre pendant une
+// moisson OAI-PMH, et les gestionnaires d'événements de Process font tomber le processus
+// entier, sans exception à attraper.
 
 test('Invoke-SzhNodeCockpit lit stdout sans bloquer, et aucune API interdite ne revient', () => {
   const dossierWindows = path.join(RACINE, 'windows');
   const sources = fs.readdirSync(dossierWindows).filter((n) => n.endsWith('.ps1'))
     .map((n) => [n, fs.readFileSync(path.join(dossierWindows, n), 'utf8')]);
-  // On ne cherche que l'APPEL -- un nom suivi d'une parenthèse : les noms seuls apparaissent
-  // à bon droit dans le commentaire qui explique l'interdiction.
+  // On cherche l'appel (un nom suivi d'une parenthèse) : un commentaire peut nommer ces API.
   for (const [nom, source] of sources) {
     for (const api of ['add_ErrorDataReceived', 'BeginErrorReadLine', 'add_OutputDataReceived']) {
       assert.ok(!new RegExp('\\.?' + api + '\\s*\\(', 'i').test(source),
@@ -413,8 +399,7 @@ test('Invoke-SzhNodeCockpit lit stdout sans bloquer, et aucune API interdite ne 
 });
 
 test('secretariat : le dossier des gabarits ne s\'affiche plus nulle part', () => {
-  // La clé ELLE-MÊME a disparu (pas seulement son affichage) : ni dans aucune des trois
-  // tables de texte, ni ailleurs dans windows/.
+  // La clé n'existe nulle part dans windows/, tables de texte comprises, ni dans userdoc.md.
   const dossierWindows = path.join(RACINE, 'windows');
   for (const nom of fs.readdirSync(dossierWindows)) {
     if (!nom.endsWith('.ps1')) { continue; }

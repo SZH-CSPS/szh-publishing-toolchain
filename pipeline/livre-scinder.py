@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Scinde un chapitre importé d'un docx en autant de chapitres qu'il porte de titres
-de niveau 1. Reproduit exactement les règles de slug du reste de la chaîne.
+Découpe un chapitre importé d'un docx en autant de chapitres qu'il a de titres de
+niveau 1, avec les mêmes règles de slug que le reste de la chaîne.
 
 Appel : python3 livre-scinder.py <dossier du livre> <slug du chapitre à scinder>
 
-Lanceur : la cible `import` de pipeline/Makefile appelle ce script automatiquement,
-juste après avoir converti un .docx de chapitres-word/ en chapitre unique — exactement
-comme le ferait quelqu'un à la main. Elle ne le fait que si le .md fraîchement produit
-porte 2 titres de niveau 1 ou plus : un seul (le titre du chapitre lui-même, comme le
-pose le modèle Modele-chapitre-SZH.docx) n'est pas un manuscrit à scinder, c'est déjà un
-chapitre. Voir chapitres-word/LISEZ-MOI.txt (« Un manuscrit en UN SEUL fichier... se
-découpe ensuite, aux titres de niveau 1 ») et le commentaire de la cible `import`.
+La cible `import` du Makefile l'appelle juste après la conversion d'un .docx de
+chapitres-word/, si le .md produit a au moins deux titres de niveau 1 (un seul est le
+titre du chapitre). Voir aussi chapitres-word/LISEZ-MOI.txt.
+
+Les nouveaux chapitres reçoivent leurs images et tableaux. Si une ressource manque, le
+chapitre d'origine est conservé et le code de sortie vaut 1.
 """
 
 import sys
@@ -27,7 +26,7 @@ import szh_commun
 
 
 def _charger_migreur():
-    """livre-migrer-meta.py (nom à tiret : pas d'import ordinaire)."""
+    """Charge livre-migrer-meta.py (nom à tiret, pas d'import ordinaire)."""
     import importlib.util
     chemin = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'livre-migrer-meta.py')
     spec = importlib.util.spec_from_file_location('livre_migrer_meta', chemin)
@@ -38,15 +37,11 @@ def _charger_migreur():
 
 migrer_meta = _charger_migreur()
 
-# Pas d'import yaml - la WSL de production n'a que la stdlib (voir lire_ordre_existant() :
-# buch.yaml se lit en texte brut pour cette raison, jamais avec un module absent en
-# production).
+# Pas de PyYAML dans l'image : buch.yaml se lit comme texte (lire_ordre_existant()).
 
 # --------------------------------------------------------------------------------------
-# Translittération et normalisation de slug — szh_commun.slugifier() reproduit exactement
-# celle de la cible « import » du Makefile (~l.598-605) ; slugifier_chapitre() n'ajoute que
-# le bornage, propre aux chapitres (pas de complément de deux chiffres, c'est pour les
-# articles).
+# Slugs : szh_commun.slugifier() reproduit celle de la cible `import` du Makefile ;
+# slugifier_chapitre() y ajoute la limite de longueur des chapitres.
 # --------------------------------------------------------------------------------------
 slugifier = szh_commun.slugifier
 slugifier_chapitre = szh_commun.slugifier_chapitre
@@ -56,18 +51,15 @@ slugifier_chapitre = szh_commun.slugifier_chapitre
 # --------------------------------------------------------------------------------------
 def lire_chapitre(chemin_md: str) -> tuple[str, list[tuple[str, str]]]:
     """
-    Lit le chapitre et le découpe aux titres # de niveau 1.
-    Retourne (liminaire, [(titre, contenu), ...])
+    Lit le chapitre et le découpe aux titres de niveau 1.
+    Rend (texte avant le premier titre, [(titre, contenu), ...]).
     """
     with open(chemin_md, 'r', encoding='utf-8') as f:
         texte = f.read()
 
-    # Découper aux « # titre » (ligne commençant par # suivi d'espace, pas ##)
-    # Pattern : début de ligne, exactement un #, puis espace, puis le titre
+    # « # titre » : un seul #, suivi d'une espace
     pattern = r'^#\s+(.+)$'
-    # Un bloc de code clôturé (```…```) n'est pas de la prose : un « # commentaire » qui
-    # s'y trouve (un script cité en exemple) n'est pas un titre de niveau 1, et ne doit
-    # pas scinder le chapitre en son milieu.
+    # Dans un bloc de code (```…```), un « # commentaire » n'est pas un titre.
     cloture = re.compile(r'^\s*```')
 
     sections = []
@@ -87,10 +79,8 @@ def lire_chapitre(chemin_md: str) -> tuple[str, list[tuple[str, str]]]:
         else:
             match = re.match(pattern, ligne)
         if match:
-            # C'est un titre de niveau 1
             titre = match.group(1).strip()
 
-            # Sauvegarder la section précédente
             if section_actuelle_titre is not None:
                 contenu = '\n'.join(section_actuelle_contenu)
                 sections.append((section_actuelle_titre, contenu))
@@ -99,20 +89,16 @@ def lire_chapitre(chemin_md: str) -> tuple[str, list[tuple[str, str]]]:
             section_actuelle_titre = titre
             section_actuelle_contenu = []
         else:
-            # Pas un titre de niveau 1
             if section_actuelle_titre is not None:
-                # On est dans une section
                 section_actuelle_contenu.append(ligne)
             else:
-                # On est dans le liminaire
                 liminaire.append(ligne)
 
-    # Sauvegarder la dernière section
     if section_actuelle_titre is not None:
         contenu = '\n'.join(section_actuelle_contenu)
         sections.append((section_actuelle_titre, contenu))
 
-    # Nettoyer le liminaire (retirer les lignes vides au début et à la fin)
+    # Lignes vides retirées au début et à la fin du texte de tête
     while liminaire and not liminaire[0].strip():
         liminaire.pop(0)
     while liminaire and not liminaire[-1].strip():
@@ -127,30 +113,17 @@ def lire_chapitre(chemin_md: str) -> tuple[str, list[tuple[str, str]]]:
 # --------------------------------------------------------------------------------------
 def extraire_references(contenu: str, dossier_source: Path = None) -> dict:
     """
-    Extrait les références aux médias et tableaux du contenu markdown.
-    Retourne {'images': [...], 'tables': [...]} avec les chemins.
+    Références aux médias et tableaux d'un texte markdown :
+    {'images': {...}, 'tables': {...}}, en chemins relatifs.
 
-    `dossier_source` — le dossier du chapitre d'origine — est ce qui permet de suivre un
-    tableau jusqu'aux images QU'IL cite : docx-tables.py écrit des « <img src="media/…" > »
-    dans tables/table-NN.html, et ces images-là n'apparaissent nulle part dans le .md. Sans
-    cette lecture, la scission copiait le tableau sans son image, et le chapitre partait
-    avec un trou. C'est arrivé au VN-FALC : le chapitre 09 citait fig-73 dans son tableau 05
-    et ne l'a jamais reçue — WeasyPrint le disait à chaque compilation, dans une ligne
-    d'erreur que rien ne remontait. import-medias.py connaît déjà cette règle (voir sa
-    fonction fichiers_de_texte, qui lit les tableaux au même titre que le corps) ; elle
-    manquait ici. Sans `dossier_source`, le comportement reste l'ancien.
+    Avec `dossier_source` (le dossier du chapitre d'origine), on lit aussi les tableaux
+    cités, pour y trouver leurs images : docx-tables.py écrit des <img src="media/…"> dans
+    tables/table-NN.html, absents du .md (même règle que fichiers_de_texte()
+    d'import-medias.py).
 
-    Deux formes d'image, pas une seule — mesuré en testant ce script de bout en bout sur
-    un vrai aller-retour pandoc plutôt qu'à la lecture : une image SANS texte alternatif
-    ressort en markdown ordinaire (`![](media/x.png)`), mais dès qu'elle en porte un,
-    pandoc en fait un Figure à légende que le writer markdown ne peut exprimer et rend en
-    HTML brut (`<figure><img src="./media/x.png" …></figure>`) — et c'est justement le cas
-    d'une image que szh-legendes.lua n'a pas su réduire à une légende de paragraphe. Ne
-    reconnaître que la première forme, comme avant ce correctif, faisait passer une telle
-    image pour absente : ni copiée vers le nouveau chapitre, ni comptée dans les orphelines,
-    simplement invisible. Les DEUX formes, en plus, peuvent porter un chemin préfixé
-    « ./ » (observé sur le même aller-retour, y compris en markdown ordinaire) : l'ancien
-    motif exigeait que « media/ » ouvre le chemin pile, et le loupait aussi.
+    Deux formes d'image : `![](media/x.png)`, et du HTML brut
+    (`<figure><img src="./media/x.png" …></figure>`) pour une image avec texte alternatif
+    que le writer markdown ne sait pas exprimer. Les deux peuvent avoir un préfixe « ./ ».
     """
     references = {'images': set(), 'tables': set()}
 
@@ -159,8 +132,7 @@ def extraire_references(contenu: str, dossier_source: Path = None) -> dict:
         references['images'].add(match.group(1))
 
     # Images en HTML brut : <img src="media/xxx"> ou <img src="./media/xxx">, seule ou
-    # dans un <figure>. Pandoc y recourt pour une image que le markdown ne peut pas
-    # exprimer telle quelle (une légende promue en Caption, par exemple).
+    # dans un <figure>.
     for match in re.finditer(r'<img\s[^>]*?src=["\'](?:\./)?(media/[^"\']+)["\']', contenu):
         references['images'].add(match.group(1))
 
@@ -168,8 +140,7 @@ def extraire_references(contenu: str, dossier_source: Path = None) -> dict:
     for match in re.finditer(r'::: \{\.szh-tabelle src="(tables/[^"]+)"\}', contenu):
         references['tables'].add(match.group(1))
 
-    # Puis les images citées DANS ces tableaux (voir la docstring). Un tableau illisible ou
-    # absent n'est pas traité ici : la copie du tableau le signalera d'elle-même.
+    # Puis les images citées dans ces tableaux. Un tableau absent est signalé à sa copie.
     if dossier_source is not None:
         for chemin_table in sorted(references['tables']):
             try:
@@ -186,16 +157,14 @@ def extraire_references(contenu: str, dossier_source: Path = None) -> dict:
 
 def copier_ressource(src: Path, dst: Path, nom_ressource: str, contexte: str) -> bool:
     """
-    Copie une ressource (image ou tableau). Retourne True si copié ou existant,
-    False si la source n'existe pas.
+    Copie une ressource (image ou tableau), en remplaçant la destination. Rend False si
+    la source n'existe pas.
     """
     if not src.exists():
         return False
 
-    # Créer le dossier parent si nécessaire
     dst.parent.mkdir(parents=True, exist_ok=True)
 
-    # Copier (ou remplacer si existe)
     if src.is_file():
         shutil.copy2(src, dst)
     else:
@@ -207,12 +176,9 @@ def copier_ressource(src: Path, dst: Path, nom_ressource: str, contexte: str) ->
     return True
 
 # --------------------------------------------------------------------------------------
-# Constats nommés — même forme que docx-meta.py, docx-tables.py et reimporter.py : un code
-# stable, des champs, une phrase française puis allemande, sur stderr et dans SZH_IMPORT_LOG
-# si le lanceur en a posé un. C'est l'absence de cette forme qui a rendu l'incident du
-# B329 indiagnosticable le 31.08 : un « ⚠ » perdu dans stderr, jamais bloquant, suivi d'un
-# rmtree. Le code est ce qu'un outil de surveillance doit
-# chercher ; les phrases ne sont qu'un repli d'affichage.
+# Avertissements, même forme que docx-meta.py, docx-tables.py et reimporter.py : un code
+# stable, des champs, une phrase en français puis en allemand, sur stderr et dans
+# $SZH_IMPORT_LOG s'il est posé. Un outil de suivi cherche le code.
 # --------------------------------------------------------------------------------------
 PREFIXE_AVERT = '[scission-avertissement]'
 
@@ -221,17 +187,12 @@ def avertir(code: str, champs: list, fr: str, de: str) -> None:
 
 def copier_medias_references(chemin_md: Path, dossier_source_medias: Path) -> tuple:
     """
-    Complète, à côté d'un fichier markdown écrit à la main (une pièce liminaire, ou le
-    texte de tête recueilli par lire_chapitre() et mis de côté par main()), les images et
-    tableaux qu'il référence mais qui n'y sont pas encore — en les cherchant dans
-    dossier_source_medias, le chapitre en cours de scission : c'est de là que vient le
-    plus souvent ce texte recopié à la main (impressum-du-livre.md du B329 citait sept
-    images sans avoir copié le media/ du manuscrit).
+    Copie à côté d'un fichier markdown (pièce liminaire, ou texte de tête mis de côté par
+    main()) les images et tableaux qu'il cite et qui manquent, en les prenant dans
+    dossier_source_medias, le chapitre en cours de découpe. Un texte recopié à la main
+    depuis le manuscrit cite souvent ses images sans les avoir.
 
-    Symétrique de la copie déjà faite pour les sections d'un chapitre : même forme de
-    chemin relatif (« media/xxx.png »), même copier_ressource().
-
-    Retourne (copiees, manquantes), deux listes de chemins relatifs.
+    Rend (copiees, manquantes), deux listes de chemins relatifs.
     """
     with open(chemin_md, 'r', encoding='utf-8') as f:
         contenu = f.read()
@@ -257,18 +218,10 @@ def copier_medias_references(chemin_md: Path, dossier_source_medias: Path) -> tu
 # --------------------------------------------------------------------------------------
 def lire_ordre_existant(chemin_buch: str) -> list:
     """
-    Lit la liste actuelle de « ordre-chapitres: » en texte brut, dans les deux formes que
-    pipeline/profils/livre.mk sait aussi lire (szh-lire-config.lua) — en ligne « [a, b] »
-    (celle qu'écrit serialiserAusgabe(), et la seule qu'ecrire_buch_yaml() plus bas sait
-    réécrire) et en blocs, un « - slug » par ligne au fer à gauche (celle qu'un humain
-    saisirait à la main dans buch.yaml) — volontairement, pour ne jamais dire une chose
-    différente de ce que le moteur de compilation va lire. Ne dépend PAS de PyYAML : sur la
-    WSL de production, `yaml` est absent (voir l'import en tête de ce fichier). L'ancien
-    code lisait buch.yaml avec PyYAML quand il était là et {} sinon, puis écrasait de toute
-    façon ordre-chapitres avec les seuls slugs de CETTE scission — perdant tous les autres
-    chapitres déjà listés (ceux d'une scission précédente, ou saisis à la main dans le
-    cockpit) dès qu'un livre en avait plus d'un. fusionner_ordre() ci-dessous corrige ça ;
-    encore faut-il d'abord lire ce qui existe, texte brut, jamais None ni {}.
+    Liste actuelle de « ordre-chapitres: », lue comme texte, dans les deux formes que lit
+    aussi la compilation (szh-lire-config.lua) : en ligne « [a, b] » (écrite par
+    serialiserAusgabe(), seule forme qu'ecrire_buch_yaml() réécrit) et en bloc, un
+    « - slug » par ligne au bord gauche (saisie à la main). [] si absente.
     """
     if not os.path.exists(chemin_buch):
         return []
@@ -298,12 +251,9 @@ def lire_ordre_existant(chemin_buch: str) -> list:
 
 def fusionner_ordre(ordre_existant: list, slug_remplace: str, slugs_nouveaux: list) -> list:
     """
-    Remplace, À SA PLACE, l'entrée `slug_remplace` (le manuscrit tel qu'il apparaissait
-    avant scission, s'il y était) par les chapitres qui en sortent, dans l'ordre où ils
-    sortent. Tout le reste d'ordre-chapitres — les chapitres d'une AUTRE scission, ceux
-    réordonnés à la main dans le cockpit (« Monter d'un rang » / « Descendre d'un rang ») — traverse intact : c'est précisément ce que
-    l'ancien code ne faisait pas, en réécrivant ordre-chapitres avec les seuls slugs de
-    cette scission-ci, quel que soit ce que buch.yaml portait déjà.
+    Remplace sur place l'entrée `slug_remplace` (le manuscrit découpé) par les nouveaux
+    chapitres, dans leur ordre. Le reste d'ordre-chapitres (autres découpes, ordre réglé
+    dans le cockpit) est gardé tel quel.
     """
     if slug_remplace in ordre_existant:
         resultat = []
@@ -313,31 +263,27 @@ def fusionner_ordre(ordre_existant: list, slug_remplace: str, slugs_nouveaux: li
             else:
                 resultat.append(s)
         return resultat
-    # Le manuscrit n'était pas encore nommé dans ordre-chapitres (livre qui n'en a pas
-    # encore, ou chapitre resté à l'ordre alphabétique des dossiers) : les nouveaux
-    # chapitres s'ajoutent à la suite de ce qui existe, rien n'est perdu.
+    # Manuscrit absent d'ordre-chapitres : les nouveaux chapitres s'ajoutent à la fin.
     return ordre_existant + slugs_nouveaux
 
 def ecrire_buch_yaml(chemin_buch: str, data: dict) -> None:
-    """Écrit buch.yaml avec les conventions du projet."""
+    """Réécrit la ligne `ordre-chapitres:` de buch.yaml (s'il existe), en forme
+    « ['a', 'b'] », en gardant le reste du fichier et ses fins de ligne."""
     if not os.path.exists(chemin_buch):
         return
 
-    # newline='' : les fins de ligne du fichier (CRLF compris) traversent sans conversion.
+    # newline='' : les fins de ligne (CRLF compris) sont lues telles quelles.
     with open(chemin_buch, 'r', encoding='utf-8', newline='') as f:
         lignes = f.readlines()
 
-    # Chercher et remplacer la ligne ordre-chapitres
     ordre_str = '[]'
     if 'ordre-chapitres' in data:
-        # Format YAML simple
         slugs = ', '.join(f"'{slug}'" for slug in data['ordre-chapitres'])
         ordre_str = f'[{slugs}]'
 
-    # La fin de ligne déjà en usage dans ce fichier, pour ne pas lui en imposer une autre.
+    # Même fin de ligne que le fichier.
     fin_ligne = '\r\n' if '\r\n' in ''.join(lignes) else '\n'
 
-    # Remplacer dans le contenu
     trouve = False
     nouvelles_lignes = []
     for ligne in lignes:
@@ -347,7 +293,7 @@ def ecrire_buch_yaml(chemin_buch: str, data: dict) -> None:
         else:
             nouvelles_lignes.append(ligne)
 
-    # La clé n'existait pas encore : l'ajouter en fin de fichier plutôt que la perdre.
+    # Clé absente : ajoutée en fin de fichier.
     if not trouve:
         if nouvelles_lignes and not nouvelles_lignes[-1].endswith(('\n', '\r')):
             nouvelles_lignes[-1] += fin_ligne
@@ -356,7 +302,7 @@ def ecrire_buch_yaml(chemin_buch: str, data: dict) -> None:
             nouvelles_lignes.append(fin_ligne)
         nouvelles_lignes.append(f'ordre-chapitres: {ordre_str}{fin_ligne}')
 
-    # Écrit dans un temporaire du même dossier puis os.replace : jamais visible à moitié écrit.
+    # Par un temporaire du même dossier : le fichier n'est jamais visible à moitié écrit.
     szh_commun.ecrire_atomique(
         os.path.abspath(chemin_buch), lambda f: f.writelines(nouvelles_lignes),
         binaire=False, encoding='utf-8', newline='')
@@ -365,7 +311,7 @@ def ecrire_buch_yaml(chemin_buch: str, data: dict) -> None:
 # Main
 # --------------------------------------------------------------------------------------
 def main():
-    try:  # console Windows en cp1252 : un accent combinant (nom venu du partage) y plante.
+    try:  # console Windows en cp1252 : un accent combinant y ferait planter print().
         sys.stdout.reconfigure(encoding='utf-8')
         sys.stderr.reconfigure(encoding='utf-8')
     except Exception:
@@ -377,7 +323,6 @@ def main():
     dossier_livre = Path(sys.argv[1]).resolve()
     slug_original = sys.argv[2]
 
-    # Vérifications préalables
     if not dossier_livre.is_dir():
         print(f"Erreur : {dossier_livre} n'est pas un dossier", file=sys.stderr)
         sys.exit(1)
@@ -393,7 +338,6 @@ def main():
     dossier_liminaires = dossier_livre / 'liminaires'
     langue_livre = str(szh_commun.lire_yaml(str(dossier_buch)).get('lang') or 'fr').strip().lower()[:2]
 
-    # Lire le chapitre et le découper
     print(f"Lecture de {chemin_md}...", file=sys.stderr)
     liminaire_texte, sections = lire_chapitre(str(chemin_md))
 
@@ -413,11 +357,11 @@ def main():
 
     print(f"Trouvé {len(sections)} chapitre(s) à créer", file=sys.stderr)
 
-    # Vérifier que les dossiers de destination n'existent pas (sauf le premier qui est l'original)
+    # Slugs des nouveaux chapitres, et contrôle que leurs dossiers n'existent pas encore.
     slugs_nouveaux = []
     for i, (titre, _) in enumerate(sections):
         slug = slugifier_chapitre(titre)
-        # Désambiguïser les homonymes
+        # Titres identiques : suffixe -2, -3…
         slug_final = slug
         compteur = 2
         while slug_final in slugs_nouveaux and slug_final != f"{slug}-{compteur}":
@@ -425,17 +369,12 @@ def main():
             compteur += 1
         slugs_nouveaux.append(slug_final)
 
-        # Numéroter : 01, 02, ...
         num_chapitre = str(i + 1).zfill(2)
         slug_numerote = f"{num_chapitre}-{slug_final}"
 
-        # Garde-fou d'idempotence : si l'import repasse sur un manuscrit déjà scindé — ou
-        # si un autre chapitre porte déjà, par coïncidence, le nom qu'un des nouveaux
-        # prendrait — on s'arrête ici, avant de créer ou de supprimer quoi que ce soit.
-        # dossier_original lui-même est exempté (c'est le cas normal d'une scission qui
-        # renomme le dossier qu'elle scinde en son premier chapitre). Sans ce garde-fou,
-        # un second passage sur le même manuscrit écraserait un chapitre déjà retravaillé
-        # par la rédaction, ou un chapitre sans rapport portant le même nom.
+        # Un dossier de destination existe déjà (manuscrit déjà découpé, ou homonyme) : on
+        # s'arrête avant de créer ou supprimer quoi que ce soit, pour ne pas écraser un
+        # chapitre retravaillé. Le dossier découpé lui-même est admis.
         dossier_nouveau = dossier_chapitres / slug_numerote
         if dossier_nouveau.exists() and dossier_nouveau != dossier_original:
             avertir(
@@ -457,16 +396,13 @@ def main():
                 % (dossier_nouveau, slug_original, dossier_nouveau))
             sys.exit(1)
 
-    # Traiter chaque section
     dossiers_crees = []
-    media_utilises = defaultdict(set)  # chaque image -> qui la référence
+    media_utilises = defaultdict(set)  # image -> qui la cite
     tables_utilisees = defaultdict(set)
-    # Toute ressource manquante ici interdit la suppression du chapitre d'origine : c'est
-    # dossier_original qui est censé la fournir (import-medias.py y a renommé les figures),
-    # donc une absence est suspecte et la détruire avant diagnostic est ce qui a rendu le
-    # B329 indiagnosticable. Un manque signalé dans une pièce liminaire déjà existante n'a
-    # pas cette garantie (le liminaire peut citer une image d'un tout autre chapitre, déjà
-    # scindé depuis longtemps) : il se dit, mais ne bloque pas une scission sans rapport.
+    # Une ressource manquante des nouveaux chapitres empêche de supprimer le chapitre
+    # d'origine, qui devait la fournir : on garde de quoi comprendre. Un manque dans une
+    # pièce liminaire existante (qui peut citer l'image d'un autre chapitre) est seulement
+    # signalé.
     ressources_manquantes = []
     liminaires_manquantes = []
 
@@ -479,14 +415,12 @@ def main():
 
             dossier_nouveau = dossier_chapitres / slug_numerote
 
-            # Créer le dossier du nouveau chapitre
             dossier_nouveau.mkdir(parents=True, exist_ok=True)
             dossiers_crees.append((slug_numerote, titre))
 
-            # Le titre du chapitre va dans sa fiche (title.<lang>), pas dans le .md ; la
-            # ligne d'auteur·e·s qui le suit, s'il y en a une, l'y rejoint juste après
-            # (livre-migrer-meta.py). Si la fiche ne peut pas recevoir le titre, il reste
-            # dans le .md : la compilation sait lire les deux, mais pas l'absence des deux.
+            # Le titre va dans la fiche (title.<lang>), puis livre-migrer-meta.py y range
+            # la ligne d'auteurs. Si la fiche refuse le titre, il reste dans le .md (la
+            # compilation lit les deux).
             chemin_fiche_nouveau = dossier_nouveau / f"{slug_numerote}.meta.yaml"
             titre_en_fiche = migrer_meta.ecrire_titre_fiche(
                 str(chemin_fiche_nouveau), langue_livre, titre)
@@ -503,11 +437,9 @@ def main():
 
             print(f"  Créé {slug_numerote}/{slug_numerote}.md", file=sys.stderr)
 
-            # Extraire les ressources référencées — y compris les images que citent les
-            # tableaux du chapitre, d'où le dossier d'origine en second argument.
+            # Ressources citées, y compris les images des tableaux.
             refs = extraire_references(contenu, dossier_original)
 
-            # Copier les médias
             dossier_media_original = dossier_original / 'media'
             for img_path in refs['images']:
                 media_utilises[img_path].add(slug_numerote)
@@ -530,7 +462,6 @@ def main():
                         'Text, nicht das Bild; der Ursprungsordner wird NICHT gelöscht: '
                         'zuerst klären, warum es fehlt.' % (slug_numerote, img_path, chemin_src))
 
-            # Copier les tableaux
             for table_path in refs['tables']:
                 tables_utilisees[table_path].add(slug_numerote)
 
@@ -551,15 +482,10 @@ def main():
                         'NICHT gelöscht: zuerst klären, warum sie fehlt.'
                         % (slug_numerote, table_path, chemin_src))
 
-        # Le texte de tête (avant le premier titre de niveau 1) n'entre dans aucun des
-        # nouveaux chapitres : lire_chapitre() le sépare, mais rien ne l'écrivait plus
-        # loin — jeté en silence par l'ancien main(). C'est ainsi qu'impressum-du-livre.md
-        # a vu le jour : quelqu'un l'a retrouvé en lisant le .md source, recopié à la main
-        # dans liminaires/, syntaxe d'image comprise, sans le media/ qui va avec. On ne l'écrit pas nous-même dans liminaires/ :
-        # les pièces liminaires sont éditoriales et écrites à la main (livre.mk:88), et un
-        # fichier posé là sans revue se ferait passer pour l'une d'elles à la prochaine
-        # compilation. On le met de côté, on le dit, et on lui évite de perdre ses images
-        # si jamais quelqu'un le recopie ensuite dans liminaires/ comme pour le B329.
+        # Le texte avant le premier titre de niveau 1 n'entre dans aucun chapitre. Il est
+        # mis de côté dans chapitres/_scission-<slug>-liminaire-non-repris.md avec ses
+        # images, et signalé. Il n'est pas écrit dans liminaires/ : les pièces liminaires
+        # s'écrivent à la main, et un fichier posé là serait compilé.
         if liminaire_texte.strip():
             chemin_rescape = dossier_chapitres / f'_scission-{slug_original}-liminaire-non-repris.md'
             with open(chemin_rescape, 'w', encoding='utf-8') as f:
@@ -607,12 +533,8 @@ def main():
                     'nicht gefunden. Der Ursprungsordner wird NICHT gelöscht: dieses '
                     'Medium zuerst wiederfinden.' % (chemin_rescape, chemin_relatif))
 
-        # La chaîne alimente déjà media/ pour les chapitres ; elle ne le faisait pour
-        # aucune pièce liminaire (« grep liminaires/media » sur tout pipeline/ ne rendait
-        # rien avant ce correctif), alors qu'une pièce liminaire suit la même convention de
-        # chemin relatif. On comble donc, depuis le chapitre en cours de scission, ce qui
-        # manque à côté de chaque liminaire déjà écrite à la main — sans jamais créer ou
-        # modifier le texte d'une liminaire, seulement ses médias.
+        # Pièces liminaires existantes : les médias qu'elles citent et qui manquent sont
+        # copiés depuis le chapitre découpé. Leur texte n'est pas modifié.
         if dossier_liminaires.is_dir():
             for chemin_liminaire in sorted(dossier_liminaires.glob('*.md')):
                 copiees_lim, manquantes_lim = copier_medias_references(
@@ -638,7 +560,7 @@ def main():
                         % (chemin_liminaire.name, chemin_relatif, slug_original,
                            dossier_liminaires))
 
-        # Signaler les ressources orphelines
+        # Ressources que personne ne cite
         if dossier_media_original.exists():
             for fichier_media in dossier_media_original.rglob('*'):
                 if fichier_media.is_file():
@@ -657,8 +579,7 @@ def main():
                 if chemin_relatif_str not in tables_utilisees:
                     print(f"  ⚠ Tableau orphelin : {chemin_relatif_str}", file=sys.stderr)
 
-        # Mettre à jour buch.yaml avec ordre-chapitres — fusionné, pas écrasé : voir
-        # fusionner_ordre() ci-dessus pour ce que ça corrige.
+        # ordre-chapitres de buch.yaml, fusionné (fusionner_ordre()).
         slugs_numerotes = [f"{i+1:02d}-{slugs_nouveaux[i]}" for i in range(len(sections))]
         ordre_existant = lire_ordre_existant(str(dossier_buch))
         nouvel_ordre = fusionner_ordre(ordre_existant, slug_original, slugs_numerotes)
@@ -666,12 +587,9 @@ def main():
         print(f"Écriture de buch.yaml avec ordre-chapitres...", file=sys.stderr)
         ecrire_buch_yaml(str(dossier_buch), {'ordre-chapitres': nouvel_ordre})
 
-        # Supprimer le chapitre d'origine — seulement si tout ce qu'il devait fournir a pu
-        # être copié. C'est le correctif du 31.08 : une copie qui échoue interdit désormais
-        # la destruction de la source, quelle que soit la ressource en cause (image ou
-        # tableau d'une section, ou média d'un texte de tête mis de côté ci-dessus). Un
-        # dossier orphelin à nettoyer à la main coûte moins cher qu'un média disparu sans
-        # trace, et c'est la disparition de cette trace qui a rendu le B329 indiagnosticable.
+        # Le chapitre d'origine n'est supprimé que si toutes ses ressources ont été copiées.
+        # Sinon il reste (à retirer à la main) : un dossier en trop vaut mieux qu'un média
+        # disparu sans trace.
         if ressources_manquantes:
             avertir(
                 'source-non-supprimee',
@@ -700,11 +618,9 @@ def main():
 
     except Exception as e:
         print(f"Erreur lors de la scission : {e}", file=sys.stderr)
-        # Ne pas nettoyer les dossiers partiellement créés pour éviter la perte de données,
-        # mais le signaler clairement : dossier_original n'a pas non plus été supprimé (ça
-        # n'arrive que plus bas, une fois le bloc try entièrement réussi), donc les deux sont
-        # maintenant des chapitres valides aux yeux du Makefile, et le livre les imprimera
-        # tous les deux tant que l'un des deux n'aura pas été retiré à la main.
+        # Les dossiers déjà créés sont gardés, et le chapitre d'origine aussi (sa
+        # suppression vient en fin de bloc) : le livre les compile tous jusqu'à ce qu'on
+        # retire les uns ou l'autre. On le dit.
         print("Les dossiers déjà créés ET le manuscrit d'origine restent tous deux sur le "
               "disque : ce sont désormais, les uns comme l'autre, des chapitres valides, et "
               "le livre sortira en double tant que l'un des deux n'est pas retiré à la main.",
@@ -717,16 +633,8 @@ def main():
         traceback.print_exc(file=sys.stderr)
         sys.exit(1)
 
-    # Échec franc si des ressources manquent, même si la scission elle-même n'a levé
-    # aucune exception. La cible `import` de pipeline/Makefile est désormais ce lanceur
-    # (elle ne l'était pas quand ce paragraphe a été écrit le 31.08 — voir git blame) : elle
-    # teste ce code de sortie et compte le manuscrit comme une scission incomplète, sans
-    # pour autant effacer quoi que ce soit ni faire disparaître les chapitres déjà écrits.
-    # Sortir non nul ici ne casse donc pas l'automatisation, il la renseigne : c'est ce qui
-    # permet de ne pas choisir entre « échouer » et « conserver la source en le disant » :
-    # les deux à la fois. Les chapitres et buch.yaml restent écrits (rien d'utile n'est
-    # perdu), le dossier d'origine reste sur le disque (ci-dessus), et le code de sortie
-    # interdit qu'on lise ce résultat comme un succès.
+    # Ressources manquantes : code 1, que la cible `import` compte comme découpe
+    # incomplète. Les chapitres et buch.yaml restent écrits, le dossier d'origine reste.
     if ressources_manquantes:
         sys.exit(1)
 

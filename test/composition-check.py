@@ -1,29 +1,28 @@
 #!/usr/bin/env python3
-# composition-check.py — mesure la composition des articles compilés d'un ou plusieurs
-# numéros, pour comparer deux versions d'outils ou deux réglages de print.css sur pièces.
+# Mesure la composition des articles compilés d'un ou plusieurs numéros, pour comparer
+# deux versions des outils ou deux réglages de print.css.
 #
 #   /opt/weasyprint/bin/python test/composition-check.py <numéro> [<numéro>…]
 #       [--json SORTIE.json] [--reference REF.json]
 #
-# Lit out/<slug>/<slug>.html (jamais *.apercu.html) et le recompose avec l'API de
-# WeasyPrint : un PDF ne dit pas où il a coupé un mot, les boîtes de ligne le disent.
+# Lit out/<slug>/<slug>.html (pas *.apercu.html) et le recompose avec l'API de
+# WeasyPrint, dont les boîtes de ligne disent où un mot est coupé.
 # Par article :
 #   pages, lignes
 #   cesures              lignes qui finissent par le trait de césure U+2010
 #   suites               suites de lignes coupées consécutives, par longueur « 2 », « 3 »,
-#                        « 4+ ». Le Guide en tolère trois ; aucune propriété CSS ne le tient.
+#                        « 4+ ». Le Guide du typographe en tolère trois ; aucune
+#                        propriété CSS ne permet de le garantir.
 #   cesures_bas_de_page  pages dont la dernière ligne du texte courant est coupée, ce que
 #                        le Guide proscrit aussi
 #   blanc                px ajoutés à chaque espace d'une ligne justifiée : médiane,
-#                        95e centile, max. C'est le prix d'une césure évitée.
+#                        95e centile, max. Il grandit quand on évite des césures.
 #   langue               le lang de <html>
 # Le total d'un numéro somme les articles ; seul le blanc est recalculé sur toutes les
-# lignes. Les suites ne se somment pas à travers deux articles : chaque article est un
-# document à part.
+# lignes. Une suite ne continue pas d'un article à l'autre.
 #
-# --json écrit les mesures ; --reference les compare à un JSON ainsi écrit et rend 1 au
-# premier écart, nommé. Un numéro sans HTML compilé rend 2 : ne rien mesurer n'est jamais
-# un succès.
+# --json écrit les mesures ; --reference les compare à un JSON ainsi écrit, liste les
+# écarts et rend 1 s'il y en a. Un numéro sans HTML compilé rend 2.
 
 import argparse
 import json
@@ -37,7 +36,7 @@ from weasyprint import HTML
 from weasyprint.formatting_structure import boxes
 
 sys.stdout.reconfigure(encoding='utf-8')
-# Les avertissements CSS de WeasyPrint sont ceux de la compilation, déjà lus là-bas.
+# Les avertissements CSS de WeasyPrint sont déjà affichés à la compilation.
 logging.getLogger('weasyprint').setLevel(logging.ERROR)
 
 COUPEE = re.compile(r'[A-Za-zÀ-ÿß]‐$')

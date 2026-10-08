@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
-# test/livre-assembler.test.py — deux mécanismes du chapitre 4 (« sommaire: non ») :
+# Teste l'assemblage d'un livre :
 #
-#   1. la lecture de `sommaire: non` / `false` dans un <slug>.meta.yaml, par
-#      szh-lire-config.lua, le lecteur que pipeline/profils/livre.mk appelle
-#      (CHAPITRES_HORS_SOMMAIRE) — le test vérifie aussi que livre.mk l'appelle bien ;
+#   1. la lecture de `sommaire: non` / `false` dans un <slug>.meta.yaml par
+#      szh-lire-config.lua, que pipeline/profils/livre.mk appelle
+#      (CHAPITRES_HORS_SOMMAIRE) ;
 #   2. pipeline/livre-assembler.py : extraction (couleur, hauteur de case, numéro de
-#      sommaire, retrait), le remplacement du numéro périmé (szh-num-section, posé par
-#      SZH_CHAPITRE = le rang) par le numéro DU SOMMAIRE dans le h1 d'un chapitre, et
-#      l'avertissement de case trop étroite.
+#      sommaire, retrait), remplacement dans le h1 du rang du chapitre (szh-num-section,
+#      posé d'après SZH_CHAPITRE) par son numéro de sommaire, avertissement de case trop
+#      étroite ; et les autres options du script (liminaires, titres, licence, images).
 #
 #   python3 test/livre-assembler.test.py
 #
-# ⚠ Comme test/liens-courts.test.py : aucun test ne s'abstient. Un import qui échoue est
-#   une ERREUR de collecte, jamais un succès silencieux.
+# Un import qui échoue est une erreur, pas un test sauté.
 
 import importlib.util
 import io
@@ -38,11 +37,11 @@ _spec.loader.exec_module(la)
 
 def _fragment(slug, niveau1_titre, rang=4, numero=None, couleur='#949A00',
               onglet_hauteur='22.857mm', hors_sommaire=False, h2_titre=None):
-    """Un fragment de chapitre minimal, dans la forme exacte que szh-livre-chapitre.html
-    écrit : la <section> porte --c-chapitre/--onglet-haut/--onglet-hauteur en style, et
+    """Fragment de chapitre minimal, dans la forme qu'écrit szh-livre-chapitre.html : la
+    <section> porte --c-chapitre/--onglet-haut/--onglet-hauteur en style, et
     data-sommaire="non" pour un chapitre retiré ; le h1 porte le span szh-num-section que
-    szh-sections.lua pose à partir du RANG (SZH_CHAPITRE), pas du numéro de sommaire —
-    c'est tout l'écart que ce test vérifie."""
+    szh-sections.lua pose d'après le rang (SZH_CHAPITRE), pas d'après le numéro de
+    sommaire."""
     style = '--c-chapitre: %s;' % couleur
     if not hors_sommaire:
         style += ' --onglet-haut: 30mm; --onglet-hauteur: %s;' % onglet_hauteur
@@ -166,9 +165,7 @@ class TitresDuFragment(unittest.TestCase):
         self.assertEqual(la.titres_du_fragment(frag), [])
 
     def test_h1_reprend_le_numero_du_sommaire_pas_le_rang(self):
-        # rang=4 (SZH_CHAPITRE, dans le span szh-num-section) mais numero=1 (devenu 1er
-        # chapitre du sommaire après retrait des trois précédents) : le texte de
-        # l'entrée doit dire « 1 », jamais « 4 ».
+        # rang=4 mais numero=1 (les trois chapitres précédents sont hors sommaire).
         frag = _fragment('c', 'Mit Mut und Zielstrebigkeit', rang=4, numero=1)
         entrees = la.titres_du_fragment(frag)
         self.assertEqual(len(entrees), 1)
@@ -177,8 +174,7 @@ class TitresDuFragment(unittest.TestCase):
         self.assertEqual(txt, '1 Mit Mut und Zielstrebigkeit')
 
     def test_h2_garde_sa_propre_numerotation_de_section(self):
-        # Un sous-titre (h2) n'a pas de --numero-chapitre : son szh-num-section (numéro
-        # de SECTION, pas de chapitre) doit traverser tel quel, comme avant ce chantier.
+        # Le szh-num-section d'un h2 est un numéro de section : il reste tel quel.
         frag = _fragment('c', 'Titre', rang=4, numero=1, h2_titre=
                           '<span class="szh-num-section">1.1 </span>Sous-partie')
         entrees = la.titres_du_fragment(frag)
@@ -187,8 +183,7 @@ class TitresDuFragment(unittest.TestCase):
         self.assertEqual(h2[2], '1.1 Sous-partie')
 
     def test_sans_numero_le_h1_garde_son_szh_num_section_tel_quel(self):
-        # Maquette/scénario sans métadonnée numero-chapitre (ex. un fragment isolé, hors
-        # chaîne) : comportement d'avant ce chantier, rien ne casse.
+        # Sans numero-chapitre (fragment isolé, hors chaîne), le h1 n'est pas touché.
         frag = _fragment('c', 'Titre', rang=2, numero=None)
         entrees = la.titres_du_fragment(frag)
         self.assertEqual(entrees[0][2], '2 Titre')
@@ -203,8 +198,7 @@ class TitresDuFragment(unittest.TestCase):
 
 
 class AvertissementCaseEtroite(unittest.TestCase):
-    """verifier_hauteur_sommaire : n'écrit rien qui ne soit vérifiable — capture stderr
-    plutôt que de supposer un format, et vérifie le code d'avertissement du dépôt."""
+    """verifier_hauteur_sommaire : stderr est capturé et le code d'avertissement vérifié."""
 
     def _avertissements(self, entrees):
         capture = io.StringIO()
@@ -253,7 +247,7 @@ class SommaireHtml(unittest.TestCase):
         html = la.sommaire_html(entrees, 'Sommaire')
         self.assertIn('<section class="szh-sommaire" id="szh-sommaire"'
                        ' style="--onglet-hauteur: 20.000mm">', html)
-        # --onglet-hauteur : une seule fois (sur la section), jamais répétée par <li>.
+        # --onglet-hauteur est posé une fois sur la section, pas sur chaque <li>.
         self.assertEqual(html.count('--onglet-hauteur'), 1)
 
     def test_chaque_li_porte_sa_propre_couleur(self):

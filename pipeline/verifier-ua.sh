@@ -1,12 +1,11 @@
 #!/bin/bash
-# Logique de la porte PDF/UA-1 (cible `verifier-ua` du Makefile) : garde-fous d'outillage,
-# appel de veraPDF, traduction du rapport par rapport-ua.py. Voir le commentaire du Makefile
-# pour le pourquoi des deux pièges de codes de sortie ; ici, seulement le comment faire.
+# Validation PDF/UA-1 (cible `verifier-ua` du Makefile) : vérifie l'outillage, lance
+# veraPDF, puis traduit le rapport par rapport-ua.py. Les pièges des codes de sortie sont
+# expliqués dans le Makefile.
 #
 # Usage : verifier-ua.sh <xml|-> <pdf>...
-#   <xml> : chemin du rapport XML de veraPDF à écrire (et à garder), ou « - » pour un
-#           fichier temporaire (mktemp) effacé à la fin — c'est ce que le cockpit demande
-#           quand il valide en tâche de fond, sans dossier out/ à salir.
+#   <xml> : chemin du rapport XML de veraPDF à écrire et garder, ou « - » pour un fichier
+#           temporaire effacé à la fin (validation en tâche de fond par le cockpit).
 #
 # Sortie : 0 tous les PDF sont conformes PDF/UA-1, 1 au moins un ne l'est pas (verdict),
 # 2 panne d'outillage (validateur ou runtime absent, veraPDF en échec, rapport illisible).

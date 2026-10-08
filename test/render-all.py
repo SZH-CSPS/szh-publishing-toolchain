@@ -2,9 +2,8 @@
 #
 #   ~/pdfvenv/bin/python render-all.py <pdf> <préfixe de sortie> [échelle]
 #
-# Appelé par build-render.sh, qui tourne dans WSL et lui passe l'interpréteur du venv
-# pypdfium2 (voir $SZH_RENDER, et outils-dev/venv-dev.sh qui le crée). Pour une seule page,
-# voir render.py.
+# Appelé par build-render.sh avec l'interpréteur du venv pypdfium2 ($SZH_RENDER, créé par
+# outils-dev/venv-dev.sh). Pour une seule page, voir render.py.
 import sys
 import pypdfium2 as pdfium
 

@@ -103,7 +103,7 @@ test('accueil : la page ouvre le produit que l’hôte désigne, sans règle de 
   assert.deepStrictEqual(coche(pFr, 'produit-nv'), ['revue']);
   assert.deepStrictEqual(coche(pFr, 'produit-sec'), ['revue']);
   assert.ok(parId(pFr, 'entree-0').textContent.includes('2026-02'));
-  // Une page en français sur la Zeitschrift : c'est l'hôte qui l'a dit, la langue n'y peut rien.
+  // Une page en français sur la Zeitschrift : le produit vient de l'hôte, pas de la langue.
   const pDe = page();
   pDe.envoyer(charger({ langue: 'fr', produit: 'zeitschrift' }));
   assert.deepStrictEqual(coche(pDe, 'produit-prod'), ['zeitschrift']);
@@ -268,15 +268,15 @@ test('préprocessing : le produit d’office vient de l’hôte, et choisir un m
   clic(parId(p, 'onglet-preproc'));
   assert.deepStrictEqual(visibles(p), ['panneau-preproc']);
   const panneau = parId(p, 'panneau-preproc');
-  // Le livre n'a pas de nettoyeur : deux produits seulement, la revue en attendant l'hôte.
+  // Le livre n'a pas de nettoyeur : deux produits, la revue cochée tant que l'hôte n'a rien dit.
   assert.deepStrictEqual(tous(p, 'input[name="produit-pp"]').map((r) => r.value), ['revue', 'zeitschrift']);
   assert.deepStrictEqual(coche(p, 'produit-pp'), ['revue']);
   p.envoyer(etatPp());
   assert.deepStrictEqual(coche(p, 'produit-pp'), ['zeitschrift']);
   // Le choix des autres onglets n'y change rien.
   assert.deepStrictEqual(coche(p, 'produit-prod'), ['revue']);
-  // Ni le dossier de départ de la fenêtre ni l'emplacement de la sortie ne s'écrivent sous le
-  // bouton (Robin, 02.10.2026) : la page reste au geste.
+  // Le dossier de départ de la fenêtre et l'emplacement de la sortie ne s'affichent pas sous
+  // le bouton.
   assert.ok(!panneau.textContent.includes('C:\\M\\Reçus'), panneau.textContent);
   assert.ok(!panneau.textContent.includes('Exports\\Préprocessing'), panneau.textContent);
   assert.strictEqual(TXT.ppDossier, undefined);
@@ -457,15 +457,15 @@ test('accueil : chaque TXT.x de la page est fourni et lu, et chaque clé existe 
   const bloc = src.slice(debut, src.indexOf('\n}', debut));
   const cles = [...bloc.matchAll(/\bTP?\('([^']+)'/g)].map((m) => m[1]);
   assert.strictEqual(cles.length, Object.keys(TXT).length);
-  // Les textes des réglages d'avant la fusion gardent leurs clés (regl., ojs., biblio., art.taches.).
+  // Les textes repris des réglages gardent leurs clés (regl., ojs., biblio., art.taches.).
   const reutilisees = /^(accueil|regl|ojs|biblio|art.taches)./;
   for (const c of cles) {
     assert.ok(reutilisees.test(c), c);
     assert.ok(c in TEXTES_COCKPIT.fr, 'clé sans texte français : ' + c);
     assert.ok(c in TEXTES_COCKPIT.de, 'clé sans texte allemand : ' + c);
   }
-  // Et aucune clé accueil.* orpheline dans lib/i18n.js : chacune va à la page, ou sert à l'hôte
-  // (l'Accueil, ses Paramètres et son Préprocessing).
+  // Chaque clé accueil.* de lib/i18n.js sert à la page ou à l'hôte (l'Accueil, ses Paramètres
+  // et son Préprocessing).
   const hote = ['accueil-hote.js', 'accueil-reglages-hote.js', 'accueil-preproc-hote.js']
     .map((f) => fs.readFileSync(path.join(COCKPIT, 'lib', f), 'utf8')).join('\n');
   const clesHote = [...hote.matchAll(/'(accueil\.[^']+)'/g)].map((m) => m[1]);

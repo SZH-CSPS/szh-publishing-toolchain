@@ -1,33 +1,27 @@
 // outils-dev/lexique/generer-noms.py : construit pipeline/lexique/noms-famille.txt, le
-// lexique PUBLIC que manuscrit_noms.BaseNoms (lot A, contrat §3.2) lit en renfort de la base
-// OJS du poste, absente sur les runners CI et sur un poste de développement sans
-// C:\ProgramData\SZH. Contrat : docs/ARCHITECTURE-nettoyeur-manuscrit.md, §5.
+// lexique public que manuscrit_noms.BaseNoms lit en renfort de la base OJS du poste,
+// absente sur les runners CI et sur un poste de développement sans C:\ProgramData\SZH.
+// Voir docs/ARCHITECTURE-nettoyeur-manuscrit.md.
 //
-// ⚠ prenoms.txt (le champ `prenom` de la base OJS) a été SUPPRIMÉ le 22.09.2026 — décision de
-// Robin : dérivé de C:\ProgramData\SZH\auteurs.json, il n'apportait rien de plus que cette
-// base quand elle est présente, et son seul rôle (un repli quand elle est absente) est
-// désormais couvert par le moissonnage déclenché au lancement de l'application. La base OJS
-// (--base-auteurs) reste lue par le générateur, mais UNIQUEMENT pour immuniser un jeton de
-// noms-famille.txt contre le seuil de bruit (§5.2, règle 4) — plus aucun fichier de prénoms
-// n'est écrit sur disque.
+// Le générateur lit la base OJS (--base-auteurs) dans un seul but : garder un jeton de
+// noms-famille.txt que le seuil de bruit écarterait (règle 4). Il n'écrit aucun fichier de
+// prénoms.
 //
 //   node --test "test/js/lexique-noms.test.js"     (guillemets obligatoires)
 //
-// Patron repris de test/js/lexique.test.js (même dossier, même forme : un générateur CLI
-// à tiret, un mini-corpus fabriqué plutôt que de dépendre d'une source hors dépôt) et de
-// test/js/docx-meta-titre.test.js pour la fabrication d'un .docx minimal (docx-meta.py, et
-// donc ce générateur, ne lisent que word/document.xml et word/styles.xml — un zip à deux
-// entrées suffit, pas besoin de [Content_Types].xml ni de _rels pour ces deux lectures).
+// Même forme que test/js/lexique.test.js (un générateur en ligne de commande, un
+// mini-corpus fabriqué). Le .docx minimal est fabriqué comme dans
+// test/js/docx-meta-titre.test.js : docx-meta.py, et donc ce générateur, ne lisent que
+// word/document.xml et word/styles.xml, un zip à deux entrées suffit.
 //
 // Quatre blocs, du plus petit au plus grand :
 //   1. les fonctions de pliage/extraction seules (plier, jeton de stockage, extraction APA) ;
-//   2. le fichier RÉELLEMENT LIVRÉ pipeline/lexique/noms-famille.txt (trié, sans doublon,
-//      sans ligne vide, sans jeton contenant @ ou un chiffre — la garde de confidentialité du
-//      §5.1 du contrat) ;
-//   3. le générateur sur un corpus FABRIQUÉ (2-3 .docx minimaux + un auteurs.json minimal),
-//      qui prouve les quatre règles de filtrage du §5.2 sans dépendre de tmp/docx-dev ;
-//   4. le générateur sur le VRAI corpus tmp/docx-dev (77 galleys, hors dépôt) — sauté via
-//      sauter.corpus(t, chemin) s'il est absent (poste sans ce corpus, ou CI).
+//   2. le fichier livré, pipeline/lexique/noms-famille.txt : trié, sans doublon, sans ligne
+//      vide, sans jeton contenant @ ou un chiffre (confidentialité) ;
+//   3. le générateur sur un corpus fabriqué (2-3 .docx minimaux et un auteurs.json
+//      minimal), qui vérifie les quatre règles de filtrage ;
+//   4. le générateur sur le vrai corpus tmp/docx-dev (77 galleys, hors dépôt), sauté par
+//      sauter.corpus(t, chemin) s'il est absent.
 'use strict';
 
 const test = require('node:test');
@@ -91,8 +85,8 @@ function lancerGenerer(args) {
 }
 
 // ---------------------------------------------------------------------------------------
-// 1. Les fonctions seules — chargées par chemin (generer-noms.py n'est pas un module
-// importable par son nom : convention à tiret du dépôt, comme docx-meta.py).
+// 1. Les fonctions seules, chargées par chemin : generer-noms.py, nommé avec un tiret, ne
+// s'importe pas par son nom.
 
 function appelerFonction(nomFonction, argsJson) {
   const programme = [
@@ -150,20 +144,20 @@ test('_noms_de_reference() : reconnaît « Nom, P. » (direct, particule, plusie
     assert.deepStrictEqual(
       appelerFonction('_noms_de_reference', ['von Arx, M.-C. (2021). Titre composé.']),
       ['arx']);
-    // « Bieling, T., Gollner, U. & Joost, G. » : trois auteurs, joints sans « & » avant
-    // les deux premiers (forme mesurée sur le corpus réel, voir le rapport de livraison).
+    // « Bieling, T., Gollner, U. & Joost, G. » : trois auteurs, sans « & » entre les deux
+    // premiers (forme relevée dans le corpus réel).
     assert.deepStrictEqual(
       appelerFonction('_noms_de_reference',
         ['Bieling, T., Gollner, U. & Joost, G. (2012). Titre. Revue, 1(2), 2-36.']),
       ['bieling', 'gollner', 'joost']);
-    // Un auteur institutionnel s'écrit « SIGLE (année). », jamais « SIGLE, X. (année) » —
-    // aucune virgule + initiale à trouver, donc aucun nom extrait (mesuré, voir le rapport).
+    // Un auteur institutionnel s'écrit « SIGLE (année). », sans virgule ni initiale : aucun
+    // nom n'en est extrait.
     assert.deepStrictEqual(
       appelerFonction('_noms_de_reference',
         ['OMS (2018). Rapport annuel sur la santé mondiale. OMS.']),
       []);
-    // Un éditeur cité en "In A. Untel (Ed.), ..." est écrit PRÉNOM NOM, pas "Nom, P." :
-    // jamais confondu avec un auteur.
+    // Un éditeur cité en "In A. Untel (Ed.), ..." est écrit prénom puis nom, pas
+    // "Nom, P." : il n'est pas pris pour un auteur.
     assert.deepStrictEqual(
       appelerFonction('_noms_de_reference',
         ['Dupont, M. (2020). Chapitre. In A. Untel (Ed.), Ouvrage collectif (pp. 3-20).']),
@@ -171,7 +165,7 @@ test('_noms_de_reference() : reconnaît « Nom, P. » (direct, particule, plusie
   });
 
 // ---------------------------------------------------------------------------------------
-// 2. Le fichier RÉELLEMENT LIVRÉ — pipeline/lexique/noms-famille.txt.
+// 2. Le fichier livré, pipeline/lexique/noms-famille.txt.
 
 function verifierFichierLexique(chemin) {
   if (!fs.existsSync(chemin)) {
@@ -192,8 +186,8 @@ function verifierFichierLexique(chemin) {
   assert.strictEqual(new Set(jetons).size, jetons.length, chemin + ' : aucun doublon');
   const suspects = jetons.filter((j) => j.includes('@') || /\d/.test(j));
   assert.deepStrictEqual(suspects, [], chemin + ' : jeton(s) contenant @ ou un chiffre : ' + suspects);
-  // confidentialité (§5.1) : un jeton de nom est UN mot, jamais une paire — aucune ligne ne
-  // doit porter d'espace (qui trahirait un couple prénom+nom resté accolé).
+  // Confidentialité : un jeton de nom est un seul mot. Une espace trahirait un couple
+  // prénom+nom resté accolé.
   const avecEspace = jetons.filter((j) => j.includes(' '));
   assert.deepStrictEqual(avecEspace, [], chemin + ' : jeton(s) avec un espace (couple non réduit) : ' + avecEspace);
 }
@@ -210,8 +204,7 @@ test('pipeline/lexique/prenoms.txt n\'est plus livré (supprimé le 22.09.2026, 
 });
 
 // ---------------------------------------------------------------------------------------
-// 3. Le générateur sur un corpus FABRIQUÉ — preuve des règles de filtrage du §5.2 sans
-// dépendre de tmp/docx-dev.
+// 3. Le générateur sur un corpus fabriqué : les règles de filtrage, sans tmp/docx-dev.
 
 function fabriquerCorpus(dossier) {
   // article1.docx : bibliographie stylée, un cas par règle de filtrage.
@@ -221,10 +214,10 @@ function fabriquerCorpus(dossier) {
     ['Bibliographie', 'Martin, J., & Bernard, L. (2019). Un autre titre. Revue X, 3-12.'],
     // institution : aucun nom ne doit en sortir (pas de virgule + initiale).
     ['Bibliographie', 'OMS (2018). Rapport annuel sur la santé mondiale. OMS.'],
-    // vu une seule fois dans tout le corpus ET < 4 lettres : écarté par la règle 3, SAUF
-    // que la base auteurs (fabriquée plus bas) porte « Wu » comme nom -> gardé (règle 4).
+    // vu une seule fois dans tout le corpus et < 4 lettres : écarté par la règle 3, mais la
+    // base auteurs (fabriquée plus bas) porte « Wu » comme nom, donc gardé (règle 4).
     ['Bibliographie', 'Wu, X. (2021). Un article très court.'],
-    // vu une seule fois ET < 4 lettres, ABSENT de la base auteurs -> écarté.
+    // vu une seule fois et < 4 lettres, absent de la base auteurs : écarté.
     ['Bibliographie', 'Ha, T. (2022). Encore un article court.'],
   ]);
   // article2.docx : nom de fichier « documentation » -> tout le fichier est écarté (voir
@@ -243,16 +236,15 @@ function fabriquerCorpus(dossier) {
 function fabriquerBaseAuteurs(chemin) {
   fs.writeFileSync(chemin, JSON.stringify({
     auteurs: [
-      // « Wu » comme NOM : exempte le jeton « wu » de la règle 3 (occurrence unique + court)
-      // pour noms-famille.txt (règle 4, "jamais écarter un jeton présent dans la base OJS").
-      // C'est désormais le SEUL usage de cette base par le générateur (voir l'en-tête) : le
-      // prénom des fiches n'est plus lu pour lui-même, il ne sert plus qu'à décider si la
-      // fiche compte comme « propre » (nom ET prénom non vides, non bruités).
+      // « Wu » comme nom : exempte le jeton « wu » de la règle 3 (occurrence unique et
+      // court) ; règle 4 : un jeton présent dans la base OJS n'est jamais écarté. Le prénom
+      // ne sert qu'à décider si la fiche est « propre » (nom et prénom non vides, non
+      // bruités).
       { prenom: 'Wei', nom: 'Wu', affiliation: '', email: '', orcid: '' },
       { prenom: 'Anne-Françoise', nom: 'de Chambrier', affiliation: '', email: '', orcid: '' },
       { prenom: 'Isabelle', nom: 'Martin', affiliation: '', email: '', orcid: '' },
-      // fiche bruitée (barre oblique) : écartée ENTIÈREMENT (§3.2 du contrat) — ne doit
-      // immuniser aucun jeton, ni « szh/csps » ni « edition ».
+      // fiche bruitée (barre oblique) : écartée entièrement, elle ne protège aucun jeton,
+      // ni « szh/csps » ni « edition ».
       { prenom: 'Edition', nom: 'SZH/CSPS', affiliation: '', email: '', orcid: '' },
       // fiche sans prénom : écartée (ne compte pas comme « propre », n'immunise rien).
       { prenom: '', nom: 'SansPrenom', affiliation: '', email: '', orcid: '' },
@@ -287,7 +279,7 @@ test('generer-noms.py sur un corpus fabriqué : les quatre règles de filtrage d
     // fichier "documentation" entièrement écarté.
     assert.ok(!noms.includes('should'), 'un fichier de type documentation ne doit rien fournir');
 
-    // plus aucun fichier de prénoms écrit sur disque (supprimé le 22.09.2026).
+    // aucun fichier de prénoms n'est écrit.
     assert.ok(!fs.existsSync(path.join(sortie, 'prenoms.txt')),
       'prenoms.txt ne doit plus être écrit par le générateur');
 
@@ -326,12 +318,12 @@ test('generer-noms.py : corpus absent -> pas de plantage, noms-famille.txt vide 
   });
 
 // ---------------------------------------------------------------------------------------
-// 4. Le VRAI corpus tmp/docx-dev (77 galleys, hors dépôt) — sauté s'il est absent.
+// 4. Le vrai corpus tmp/docx-dev (77 galleys, hors dépôt), sauté s'il est absent.
 
 test('generer-noms.py sur le corpus réel tmp/docx-dev : ne plante pas, produit un lexique '
-  // Python absent : le saut passe par l'option `skip` du test, la forme que la maison emploie
-  // partout ailleurs (docx-titres.test.js et consorts) — un `t.skip()` écrit à la main est
-  // refusé par la porte rapide de pré-push, qui veut un motif reconnaissable.
+  // Python absent : le saut passe par l'option `skip` du test, comme ailleurs
+  // (docx-titres.test.js…). Un `t.skip()` écrit à la main est refusé par la vérification
+  // de pré-push, qui veut un motif reconnaissable.
   + 'substantiel, tous les jetons sont valides', { skip: sansPython }, (t) => {
   if (!fs.existsSync(CORPUS_REEL)) { return sauter.corpus(t, CORPUS_REEL); }
   const sortie = dossierJetable('szh-lexique-noms-sortie-reel-');
@@ -339,9 +331,8 @@ test('generer-noms.py sur le corpus réel tmp/docx-dev : ne plante pas, produit 
   assert.strictEqual(r.status, 0, 'generer-noms.py a échoué sur le corpus réel : ' + r.stderr);
   const noms = fs.readFileSync(path.join(sortie, 'noms-famille.txt'), 'utf8')
     .split('\n').filter((l) => l && !l.startsWith('#'));
-  // mesuré le 22.09.2026 : 1282 jetons retenus sur ce corpus — une borne basse large (500)
-  // couvre une évolution future du corpus (plus de galleys moissonnées) sans re-figer un
-  // chiffre exact à chaque régénération.
+  // 1282 jetons retenus sur ce corpus ; une borne basse large (500) tolère l'évolution du
+  // corpus sans figer un chiffre exact.
   assert.ok(noms.length > 500, 'lexique de noms de famille anormalement petit : ' + noms.length);
   for (const j of noms) {
     assert.ok(!j.includes(' ') && !j.includes('@') && !/\d/.test(j),

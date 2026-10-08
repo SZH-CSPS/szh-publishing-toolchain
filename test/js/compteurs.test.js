@@ -2,15 +2,14 @@
 // journal du cockpit, et l'outil de synthèse (outils/compteurs-synthese.js).
 //
 //   node --test test/js/compteurs.test.js
-//   node --test "test/js/*.test.js"
 //
-// La propriété qui compte : AUCUN texte de manuscrit n'atteint un fichier de compteurs. Les
-// tests le prouvent avec des sentinelles (un slug, un nom de fichier, des noms, un e-mail
-// uniques, semés dans un journal et une fiche fabriqués) qu'on ne doit retrouver nulle part.
+// Aucun texte de manuscrit n'atteint un fichier de compteurs. Les tests le prouvent avec des
+// sentinelles (slug, nom de fichier, noms, e-mail uniques, semés dans un journal et une
+// fiche fabriqués) qu'on ne doit retrouver nulle part.
 //
-// ⚠ Rien ici n'écrit dans le vrai `_Systeme` : SZH_COMPTEURS, SZH_BASE, LOCALAPPDATA et
-// SZH_ANCRAGE sont détournés vers des dossiers jetables, et toute variable qui pourrait changer
-// le contexte ou la garde est remise à zéro avant chaque cas.
+// Rien n'écrit dans le vrai `_Systeme` : SZH_COMPTEURS, SZH_BASE, LOCALAPPDATA et
+// SZH_ANCRAGE sont détournés vers des dossiers jetables, et toute variable qui pourrait
+// changer le contexte ou la garde est remise à zéro avant chaque cas.
 'use strict';
 
 const test = require('node:test');
@@ -249,7 +248,7 @@ test('chaque source n’écrit que les mesures de sa liste blanche', () => {
 });
 
 // ---------------------------------------------------------------------------------------
-// 3. L'import : un fichier par conversion, jamais par compilation
+// 3. L'import : un fichier par conversion, pas par compilation
 // ---------------------------------------------------------------------------------------
 
 test('trois compilations avec un Word en attente : zéro fichier ; une conversion : exactement un', () => {
@@ -264,7 +263,7 @@ test('trois compilations avec un Word en attente : zéro fichier ; une conversio
     }
     assert.strictEqual(csvDe(p.compteurs).length, 0, 'un Word en attente a été compté');
 
-    // Un Word en attente ET un article converti dans la même tâche : les deux refus ne sont
+    // Un Word en attente et un article converti dans la même tâche : les deux refus ne sont
     // pas ceux de l'article converti.
     const n2 = poserNumero(p.travail, [{ slug: 'article-converti', fichier: 'nouveau.docx',
       avertissements: [redepose, '[import-avertissement] bloc-mal-forme | x | y | z'] }], [inconnu]);
@@ -346,7 +345,7 @@ test('le temporaire « ~$ » est supprimé même quand l’écriture échoue', (
     assert.throws(() => compteurs.ecrireFichierAtomique(p.compteurs, 'cible.csv', 'contenu'));
     assert.deepStrictEqual(fs.readdirSync(p.compteurs).filter((n) => n.startsWith('~$')), [],
       'un temporaire a été abandonné dans le dossier partagé');
-    // Et en succès, le temporaire n'existe plus non plus, le nom suit « ~$<nom>.<pid> ».
+    // En cas de succès non plus, le temporaire (« ~$<nom>.<pid> ») ne reste pas.
     compteurs.ecrireFichierAtomique(p.compteurs, 'ok.csv', 'x');
     assert.deepStrictEqual(fs.readdirSync(p.compteurs).sort(), ['cible.csv', 'ok.csv']);
   } finally { p.fin(); }
@@ -752,7 +751,7 @@ test('extension.js appelle les compteurs aux trois endroits prévus, et nulle pa
   assert.strictEqual(appels('enregistrerReimport'), 1);
   assert.strictEqual(appels('viderFileCompteurs'), 1);
   assert.strictEqual((src.match(/compteurs\.ecrireCompteurs\(/g) || []).length, 0);
-  // Les deux premiers sont sous garde : un compteur ne doit jamais faire échouer la compilation.
+  // Les deux premiers sont sous garde : un compteur ne fait pas échouer la compilation.
   assert.match(src, /try \{ compteurs\.enregistrerImportDepuisJournal\(racine\); \} catch/);
   assert.match(src, /try \{ compteurs\.enregistrerReimport\(r\.json\); \} catch/);
   // Le réimport annulé ne compte pas.

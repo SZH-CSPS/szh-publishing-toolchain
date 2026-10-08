@@ -1,20 +1,17 @@
-// La bibliographie devenue une donnée : détachée à l'import dans <slug>.biblio.md, réinsérée
-// à la compilation avec son titre, et lue telle quelle par l'export OJS.
+// La bibliographie comme donnée : détachée à l'import dans <slug>.biblio.md selon le style
+// des paragraphes du .docx, réinsérée à la compilation avec son titre, et lue telle quelle
+// par l'export OJS.
 //
-//   node --test "test/js/*.test.js"
+//   node --test test/js/biblio.test.js
 //
-// Pourquoi ce fichier. La chaîne DEVINAIT où commençait la bibliographie : un lexique de
-// dix-sept mots comparé par préfixe, et, faute de titre, un balayage de la seconde moitié du
-// document. Une section « Literaturhinweise für die Praxis » suivie de prose, et tout ce qui
-// suivait cessait d'être regardé — sans le moindre effet visible. Le remplaçant repose sur
-// une donnée, le STYLE du .docx, et sur un fichier. Ce qui doit être tenu ici :
-//
-//   1. la clé qui apparie un paragraphe du .docx au bloc de pandoc se calcule PAREIL des
-//      deux côtés — sinon l'étendue à détacher n'est pas retrouvée, et rien ne part ;
+// Ce que le fichier vérifie :
+//   1. la clé qui apparie un paragraphe du .docx au bloc de pandoc se calcule de la même
+//      façon des deux côtés, sinon l'étendue à détacher n'est pas retrouvée ;
 //   2. le lexique et les titres par défaut n'existent qu'à un endroit, le filtre ;
-//   3. un champ vidé dans les Réglages vaut « aucun titre », pas « reprends le défaut » ;
-//   4. le nom du fichier est le même partout — pipeline, cockpit, Makefile ;
-//   5. la devinette est partie, et le repli des articles anciens est nommé comme tel.
+//   3. un champ vidé dans les Réglages vaut « aucun titre », pas « reprendre le défaut » ;
+//   4. le nom du fichier est le même partout : pipeline, cockpit, Makefile ;
+//   5. le début de la bibliographie ne se devine pas par des mots-clés ; le repli des
+//      articles importés avec la bibliographie dans le corps avertit.
 'use strict';
 
 const test = require('node:test');
@@ -37,8 +34,7 @@ const DETACHEUR = path.join(RACINE, 'pipeline', 'filters', 'szh-biblio-detacher.
 const DOCX_META = path.join(RACINE, 'pipeline', 'docx-meta.py');
 const TRAVAIL = path.join(os.tmpdir(), 'szh-biblio-test');
 
-// Concatène extension.js et lib/ quand c'est ce fichier qui est demandé : préalable au
-// découpage d'extension.js, voir hote-factice.js.
+// Pour extension.js, rend la source d'extension.js et de lib/ réunies (voir hote-factice.js).
 function lire() {
   const chemin = path.join.apply(path, [RACINE].concat(Array.from(arguments)));
   if (chemin === path.join(COCKPIT, 'extension.js')) { return sourceExtensionEtLib(COCKPIT); }
@@ -47,10 +43,9 @@ function lire() {
 
 // ---- la clé d'appariement, des deux côtés -------------------------------------------
 //
-// Les textes qui ont fait échouer l'ancienne chaîne, relevés dans l'audit du corpus des
-// 421 galleys : ce que le .docx porte et ce que pandoc en fait ne sont pas la même chaîne.
-// Tiret insécable, tiret conditionnel, moins de police Symbole, guillemets courbes : la clé
-// ne doit voir aucun d'eux.
+// Textes relevés dans le corpus des 421 galleys : ce que le .docx porte et ce que pandoc en
+// fait diffèrent. Tiret insécable, tiret conditionnel, moins de police Symbole, guillemets
+// courbes : la clé les ignore tous.
 const TEXTES_CLE = [
   'Becker, H. (1997). Les variations, p. 257\u2011270. De Boeck.',
   'Becker, H. (1997). Les variations, p. 257270. De Boeck.',
@@ -132,8 +127,8 @@ test("bibliographie : la clé d’appariement est la même en Lua et en Python",
     }
   });
   assert.deepStrictEqual(ecarts, [], 'clés divergentes :\n' + ecarts.join('\n'));
-  // Et la clé fait bien ce qu'on attend d'elle : les deux formes du même paragraphe, celle
-  // du .docx et celle de pandoc, se retrouvent sous la même clé.
+  // Les deux formes du même paragraphe, celle du .docx et celle de pandoc, donnent la même
+  // clé.
   assert.strictEqual(luaCles[0], luaCles[1],
     'le tiret insécable sépare encore les deux lectures du même paragraphe');
 });
@@ -156,7 +151,7 @@ test('bibliographie : le fichier donne les mêmes entrées que le corps les donn
   fs.writeFileSync(path.join(article, '01-essai.biblio.md'), REFS.join('\n\n') + '\n');
 
   const duFichier = cit.referencesDuFichier(dossier, '01-essai');
-  // Le corps, tel qu'un article importé avant ce changement le porte encore.
+  // Un corps qui porte encore la bibliographie (ancien import).
   const duTexte = cit.referencesDuTexte(['# Titre', '', 'Un appel (Sen, 2001).', '',
     '# Références', ''].concat(REFS.map((r) => r + '\n')).join('\n'));
   assert.deepStrictEqual(duFichier.map((e) => e.id), duTexte.map((e) => e.id));
@@ -182,8 +177,8 @@ test('bibliographie : pas de fichier n’est pas une liste vide', () => {
 
 test('titre de la bibliographie : les défauts viennent du filtre, pas d’une copie', () => {
   const defauts = cit.titresBiblioDefaut();
-  // Les valeurs relevées sur le corpus des 421 galleys : « Literatur » dans les 230 articles
-  // à bibliographie de la Zeitschrift, « Références » dans 69 des 73 de la Revue.
+  // Valeurs relevées sur le corpus des 421 galleys : « Literatur » dans les 230 articles à
+  // bibliographie de la Zeitschrift, « Références » dans 69 des 73 de la Revue.
   assert.strictEqual(defauts.revue.fr, 'Références');
   assert.strictEqual(defauts.zeitschrift.de, 'Literatur');
   for (const revue of cit.REVUES_BIBLIO) {
@@ -192,10 +187,8 @@ test('titre de la bibliographie : les défauts viennent du filtre, pas d’une c
         'aucun titre par défaut pour ' + revue + '/' + langue);
     }
   }
-  // Et le cockpit n'en tient pas de copie : c'est la faute qui a déjà coûté un repli
-  // divergent entre les deux langages.
-  // Les commentaires ont le droit de nommer un titre — c'est le code qui n'a pas le droit
-  // d'en porter un.
+  // Le cockpit n'en tient pas de copie, qui finirait par diverger. On ignore les
+  // commentaires, qui peuvent nommer un titre.
   const src = lire('vscodium-extension', 'szh-cockpit', 'lib', 'citations.js')
     .split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
   for (const titre of ['Références', 'Literatur', 'Bibliografia']) {
@@ -212,7 +205,7 @@ test('titre de la bibliographie : un champ vidé vaut « aucun titre »', () => 
   });
   assert.strictEqual(pose.titres.revue.fr, 'Bibliographie');
   assert.strictEqual(pose.titres.revue.de, '', 'un champ vidé est revenu à son défaut');
-  // L'autre revue n'a pas bougé : la fusion est clé par clé.
+  // L'autre revue est intacte : la fusion se fait clé par clé.
   assert.strictEqual(pose.titres.zeitschrift.de, cit.titresBiblioDefaut().zeitschrift.de);
 });
 
@@ -226,13 +219,13 @@ test('titre de la bibliographie : l’écriture ne touche pas au reste de la con
   assert.deepStrictEqual(apres.ojs, avant.ojs);
   assert.strictEqual(apres.biblio.autreChose, 42);
   assert.strictEqual(apres.biblio.titres.revue.fr, 'Sources');
-  // Et l'objet d'origine n'est pas modifié : l'appelant relit config.json avant d'écrire.
+  // L'objet d'origine n'est pas modifié : l'appelant relit config.json avant d'écrire.
   assert.strictEqual(avant.biblio.titres, undefined);
 });
 
-// Même contrat pour l'interrupteur des liens de citation : seul pont entre le réglage
-// szh.desactiverLiensReferences de VSCodium et pipeline/filters/szh-citations.lua, qui relit
-// la même clé dans le même config.json (lire_config_poste), sans autre mémoire partagée.
+// Même contrat pour l'interrupteur des liens de citation : le réglage
+// szh.desactiverLiensReferences de VSCodium passe par config.json, où
+// pipeline/filters/szh-citations.lua relit la même clé (lire_config_poste).
 test('liens de références : l’écriture ne touche pas au reste de la configuration, et se lit en booléen strict', () => {
   const avant = { emplacementRevues: 'test', biblio: { titres: { revue: { fr: 'Sources' } } } };
   const actif = cit.configAvecLiensDesactives(avant, true);
@@ -243,18 +236,17 @@ test('liens de références : l’écriture ne touche pas au reste de la configu
   assert.strictEqual(avant.desactiverLiensReferences, undefined);
   const remis = cit.configAvecLiensDesactives(actif, false);
   assert.strictEqual(remis.desactiverLiensReferences, false);
-  // Une valeur qui n'est pas littéralement `true` ne doit jamais activer la coupure — la même
-  // règle que normaliserBooleenConfig applique déjà à emplacementRevues/devMode.
+  // Seul `true` littéral active la coupure, comme normaliserBooleenConfig pour
+  // emplacementRevues et devMode.
   assert.strictEqual(cit.configAvecLiensDesactives(avant, 'true').desactiverLiensReferences, false);
   assert.strictEqual(cit.configAvecLiensDesactives(null, true).desactiverLiensReferences, true);
 });
 
-// ---- la devinette est partie ---------------------------------------------------------
+// ---- pas de devinette ----------------------------------------------------------------
 
 test('la bibliographie ne se devine plus : ni préfixe, ni seconde moitié', () => {
   const filtre = lire('pipeline', 'filters', 'szh-citations.lua');
-  // Le balayage de la seconde moitié du document n'existe plus. Il se reconnaissait à sa
-  // borne, et c'est elle qu'on interdit de revenir.
+  // Pas de balayage de la seconde moitié du document : on en interdit la borne.
   assert.ok(!/#blocs \* 0%.5|math%.floor\(#blocs/.test(filtre.replace(/%/g, '%')),
     'le filtre balaie encore la seconde moitié du document');
   assert.ok(filtre.indexOf('math.floor(#blocs') === -1,
@@ -265,8 +257,8 @@ test('la bibliographie ne se devine plus : ni préfixe, ni seconde moitié', () 
   assert.strictEqual(cit.estTitreBib('Literaturhinweise'), true);
   assert.strictEqual(cit.estTitreBib('Références bibliographiques'), true);
   assert.strictEqual(cit.estTitreBib('Introduction'), false);
-  // Le repli sur le corps existe encore, pour les articles importés avant ce changement,
-  // mais il AVERTIT : ce n'est pas un chemin normal.
+  // Le repli sur le corps sert aux articles importés avec la bibliographie dans le texte ;
+  // il avertit.
   assert.match(filtre, /biblio-dans-le-corps/);
 });
 
@@ -283,14 +275,14 @@ test('la chaîne connaît le fichier de bibliographie de bout en bout', () => {
   const meta = lire('pipeline', 'docx-meta.py');
   assert.match(meta, /def etendue_biblio/);
   assert.match(meta, /'B\\t%s\\n'/);
-  // …le Makefile en fait un prérequis des deux rendus, sinon l'éditer ne recompilerait rien…
+  // …le Makefile en fait un prérequis des deux rendus, pour que l'éditer recompile…
   const mk = lire('pipeline', 'Makefile');
   assert.strictEqual((mk.match(/\.biblio\.md\)/g) || []).length, 2,
     'le fichier de bibliographie n’est pas prérequis des deux rendus');
-  // …et szh-citations le résout APRÈS la numérotation des sections : le titre d'une
-  // bibliographie ne porte pas de numéro. Entre les deux passe szh-auteurs, qui a besoin
-  // du marqueur .szh-biblio encore intact pour glisser le bloc auteurs juste devant —
-  // c'est l'ordre des trois qui compte, pas leur contiguïté.
+  // …et szh-citations le résout après la numérotation des sections : le titre d'une
+  // bibliographie ne porte pas de numéro. Entre les deux passe szh-auteurs, qui a besoin du
+  // marqueur .szh-biblio intact pour placer le bloc auteurs juste devant. L'ordre des trois
+  // compte, pas leur contiguïté.
   const article = require('./chaines-filtres-lire').lireChaines().CHAINE_ARTICLE;
   assert.match(mk, /\$\(FILTRES_ARTICLE\)/, 'le rendu ne prend plus la chaîne de filtres.mk');
   const rang = (f) => article.indexOf(f.replace(/^szh-/, ''));
@@ -308,8 +300,7 @@ test('arbre : la bibliographie est un enfant de l’article, sans description', 
   // Elle est rendue à côté des tableaux, par le même fournisseur d'enfants.
   assert.match(src, /_itemBiblio\(slug\)/);
   assert.match(src, /const biblio = this\._itemBiblio\(slug\);/);
-  // Aucune description : ni le poids d'un tableau, ni un compteur de références. La colonne
-  // reste vide, et ce qui s'y affichera un jour aura donc du sens.
+  // Aucune description : ni poids, ni compteur de références.
   const bloc = src.slice(src.indexOf('_itemsTables(slug) {'), src.indexOf('_itemBiblio(slug) {'));
   assert.ok(bloc.indexOf('it.description') === -1, 'le tableau porte encore une description');
   const blocBiblio = src.slice(src.indexOf('_itemBiblio(slug) {'),
@@ -318,7 +309,7 @@ test('arbre : la bibliographie est un enfant de l’article, sans description', 
     'l’entrée de bibliographie porte une description');
   // Sans fichier, pas d'entrée : une entrée morte ferait croire à une liste vide.
   assert.match(blocBiblio, /if \(!fs\.existsSync\(chemin\)\) \{ return null; \}/);
-  // Et l'article devient dépliable pour elle, même sans tableau.
+  // L'article devient dépliable pour elle, même sans tableau.
   assert.match(src, /\|\| fs\.existsSync\(cheminBiblio\(this\.racine, slug(?:, [^)]+)?\)\)/);
 });
 
@@ -349,10 +340,9 @@ test('réglages : une case par revue et par langue, et un champ vidé se voit', 
 
 // ---- l'arbre, réellement construit ---------------------------------------------------
 
-// L'hôte factice ne s'active qu'UNE FOIS par processus : extension.js est mis en cache par
-// require, et son `const vscode = require('vscode')` reste lié au premier stub. Une seconde
-// activation rendrait un objet sans arbre et sans panneaux, et les contrôles tomberaient
-// pour une raison qui n'a rien à voir avec ce qu'ils mesurent. D'où cet hôte partagé.
+// L'hôte factice ne s'active qu'une fois par processus : extension.js est mis en cache par
+// require, et son `require('vscode')` reste lié au premier stub. Une seconde activation
+// rendrait un objet sans arbre ni panneaux. D'où cet hôte partagé.
 let hotePartage = null;
 async function hoteBiblio() {
   if (hotePartage) { return hotePartage; }
@@ -361,8 +351,8 @@ async function hoteBiblio() {
   const hote = activerHote(revue);
   const arbre = hote.arbre();
   assert.ok(arbre, 'aucun fournisseur d’arbre');
-  // L'activation pose la racine sur une promesse : sans ce tour de boucle, l'arbre est
-  // encore vide et rien de ce qui suit ne mesurerait quoi que ce soit.
+  // L'activation pose la racine sur une promesse : sans ce tour de boucle, l'arbre serait
+  // encore vide.
   for (let i = 0; i < 20 && (await arbre.getChildren()).length === 0; i++) {
     await new Promise((r) => setImmediate(r));
   }
@@ -393,29 +383,28 @@ test('arbre : l’hôte activé montre la bibliographie sous son article, et rie
     for (const it of enfants) {
       assert.ok(!it.description, 'description inattendue sur « ' + it.label + ' »');
     }
-    // Un clic ouvre son texte ET son rendu, côte à côte : szh.apercuBiblio prend la colonne 2
-    // à l'aperçu de l'article, que l'on ne regarde pas pendant qu'on relit des références.
-    // L'item entier est passé à la commande, qui y lit le slug — comme les deux formulaires.
+    // Un clic ouvre son texte et son rendu côte à côte : szh.apercuBiblio prend la colonne 2
+    // à l'aperçu de l'article. L'item entier est passé à la commande, qui y lit le slug,
+    // comme pour les deux formulaires.
     assert.strictEqual(biblio.command.command, 'szh.apercuBiblio');
     assert.strictEqual(biblio.command.arguments[0], biblio);
     assert.strictEqual(biblio.slug, '01-essai');
     assert.strictEqual(biblio.cheminAsset,
       path.join(revue, 'articles', '01-essai', '01-essai.biblio.md'));
 
-    // L'article sans bibliographie : pas d'entrée, et rien qui laisse croire à une liste
-    // vide. Il n'a pas de tableau non plus, il n'est donc même pas dépliable.
+    // L'article sans bibliographie n'a pas d'entrée. Sans tableau non plus, il n'est pas
+    // dépliable.
     assert.deepStrictEqual(await arbre.getChildren(sans), []);
   });
 
 // ---- l'aperçu de la bibliographie ----------------------------------------------------
 //
-// Une référence se relit mise en forme : italiques, capitales, point final. Rien ne la
-// montrait ainsi — la maquette du numéro demande une compilation entière. C'est l'aperçu
-// Markdown de l'éditeur qui rend, et le cockpit ne fait que le placer et le basculer.
+// Une référence se relit mise en forme (italiques, capitales, point final) sans compiler
+// tout le numéro. L'aperçu Markdown de l'éditeur fait le rendu ; le cockpit le place et le
+// bascule.
 //
-// Ce qui doit tenir : la colonne 2 n'a qu'UN propriétaire — l'aperçu de l'article part
-// quand celui de la bibliographie arrive — et Ctrl+Alt+P (szh.basculerApercu) fait ici la
-// bascule de CE rendu, sans qu'un second raccourci soit à retenir.
+// La colonne 2 n'a qu'un occupant : l'aperçu de l'article part quand celui de la
+// bibliographie arrive. Ctrl+Alt+P (szh.basculerApercu) bascule ce rendu-ci.
 
 const MD_PREVIEW = 'mainThreadWebview-markdown.preview';
 
@@ -456,8 +445,8 @@ test('Ctrl+Alt+P sur une bibliographie bascule SON rendu, pas HTML ⇄ PDF', asy
   assert.ok(jouees.some((c) => c.id === 'markdown.showPreviewToSide'),
     'le rendu de la bibliographie ne s’ouvre pas : ' + jouees.map((c) => c.id).join(', '));
 
-  // Second appui, le rendu étant ouvert : il se ferme, et le mode d'aperçu de l'article
-  // n'a pas bougé — c'est là qu'un simple `if` mal placé aurait fait les deux.
+  // Second appui, le rendu étant ouvert : il se ferme, et le mode d'aperçu de l'article ne
+  // change pas.
   hote.poserOnglets([{ viewType: MD_PREVIEW }]);
   hote.oublierFermetures();
   hote.oublierCommandes();
@@ -471,8 +460,8 @@ test('Ctrl+Alt+P sur une bibliographie bascule SON rendu, pas HTML ⇄ PDF', asy
 
 test('Ctrl+Alt+P hors bibliographie rend la colonne 2 à l’aperçu de l’article', async () => {
   const { hote, revue } = await hoteBiblio();
-  // Le rendu d'une bibliographie traîne encore, mais on est revenu sur le texte d'un
-  // article : la colonne 2 lui revient, et la bascule HTML ⇄ PDF se fait quand même.
+  // Le rendu d'une bibliographie est encore ouvert, mais on est revenu sur le texte d'un
+  // article : la colonne 2 lui revient, et la bascule HTML ⇄ PDF se fait.
   hote.poserEditeurActif(path.join(revue, 'articles', '01-essai', '01-essai.md'));
   hote.poserOnglets([{ viewType: MD_PREVIEW }]);
   hote.oublierFermetures();
@@ -485,15 +474,13 @@ test('Ctrl+Alt+P hors bibliographie rend la colonne 2 à l’aperçu de l’arti
 
 // ---- l'intégrité, mesurée sur un vrai document ---------------------------------------
 //
-// Le contrôle qui compte : sur un .docx du corpus, le compte de références détachées est
-// celui que les styles annoncent. C'est la règle d'or de la chaîne — aucune référence
-// perdue — et elle se mesure, elle ne se raisonne pas.
+// Sur un .docx du corpus, le nombre de références détachées est celui que les styles
+// annoncent : aucune référence n'est perdue.
 const CORPUS = path.join(RACINE, 'tmp', 'corpus-ojs');
 
 test('intégrité : sur un .docx réel, tout ce que les styles annoncent est détaché', (t) => {
   if (!fs.existsSync(CORPUS)) {
-    // Le corpus vit hors du dépôt (750 Mo). Sans lui, ce contrôle ne peut pas se faire, et
-    // il le dit plutôt que de passer.
+    // Le corpus vit hors du dépôt (750 Mo). Sans lui, ce contrôle est sauté en le disant.
     return sauter.corpus(t, CORPUS);
   }
   if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
@@ -519,7 +506,7 @@ test('intégrité : sur un .docx réel, tout ce que les styles annoncent est dé
   assert.strictEqual(m[2], m[1], 'des paragraphes de bibliographie sont restés en arrière');
   const fichier = path.join(revue, 'articles', 'essai', 'essai.biblio.md');
   assert.ok(fs.existsSync(fichier), 'le fichier de bibliographie n’a pas été écrit');
-  // Le corps ne la porte plus, et il porte la référence à sa place.
+  // Le corps ne la porte plus ; il porte le marqueur à sa place.
   const corps = fs.readFileSync(path.join(revue, 'articles', 'essai', 'essai.md'), 'utf8');
   assert.match(corps, /::: \{\.szh-biblio src="essai\.biblio\.md"\}/);
   const entrees = cit.referencesDuFichier(revue, 'essai');

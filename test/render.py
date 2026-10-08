@@ -3,8 +3,7 @@
 #   ~/pdfvenv/bin/python test/render.py <pdf> <png> [page0] [échelle]
 #
 # À lancer dans la WSL, avec le venv de développement que crée outils-dev/venv-dev.sh
-# (pypdfium2 et Pillow) : c'est le chemin le plus court pour juger une retouche de
-# maquette. Pour toutes les pages d'un coup, voir render-all.py.
+# (pypdfium2 et Pillow). Pour toutes les pages, voir render-all.py.
 import sys
 import pypdfium2 as pdfium
 

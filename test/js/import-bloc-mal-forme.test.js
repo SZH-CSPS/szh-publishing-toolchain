@@ -3,14 +3,12 @@
 //
 //   node --test "test/js/*.test.js"
 //
-// Pourquoi une boîte de dialogue et pas une ligne de plus dans le panneau : ce tableau
-// s'imprimera tel quel, sa légende ne sera ni numérotée ni reprise comme texte alternatif, et
-// la seule réparation possible est dans le document Word — qu'il faut donc rouvrir. Un
-// avertissement qu'on lit trois jours plus tard ne fait rouvrir aucun Word.
+// Ce cas ouvre une boîte de dialogue : le tableau s'imprimera tel quel, sans numéro ni texte
+// alternatif, et seule une correction dans le Word le répare.
 //
-// C'est phrasesBlocMalForme() qu'on exerce ici (lib/journal.js) : pur, il prend le TEXTE du
-// journal et rend les phrases à afficher. lib/import-hote.js n'y ajoute que la lecture du
-// fichier et le showWarningMessage — d'où un contrôle qui n'a besoin d'aucun vscode factice.
+// On exerce phrasesBlocMalForme() (lib/journal.js), qui prend le texte du journal et rend
+// les phrases à afficher ; lib/import-hote.js n'ajoute que la lecture du fichier et la
+// boîte de dialogue. Aucun vscode factice n'est donc nécessaire.
 'use strict';
 
 const test = require('node:test');
@@ -54,8 +52,8 @@ test('import : la modale parle la langue du cockpit', () => {
 });
 
 test('import : un journal ordinaire ne lève aucune modale', () => {
-  // La modale doit rester rare pour se faire entendre : tout ce qui n'est pas ce garde-fou
-  // précis reste dans le panneau, y compris les autres avertissements du même lecteur.
+  // Seul ce cas ouvre la modale ; les autres avertissements, même du même lecteur, restent
+  // dans le panneau.
   assert.deepStrictEqual(phrasesBlocMalForme(journalAvec([
     '[import] converti : essai.docx -> articles/essai/essai.md',
     '[import-avertissement] bloc-ancienne-forme | article « essai » | tableau 3 | Forme '
@@ -66,8 +64,8 @@ test('import : un journal ordinaire ne lève aucune modale', () => {
 });
 
 test('import : deux fois le même tableau ne fait qu’une ligne dans la modale', () => {
-  // Le journal d'import n'est pas remis à zéro entre deux conversions : la même ligne peut
-  // s'y trouver deux fois. Une modale qui répéterait la même phrase se lirait mal.
+  // Le journal d'import n'est pas remis à zéro entre deux conversions : une même ligne peut
+  // y figurer deux fois, et la modale ne la répète pas.
   assert.strictEqual(
     phrasesBlocMalForme(journalAvec([LIGNE_MAL_FORME, LIGNE_MAL_FORME]), 'fr').length, 1);
 });

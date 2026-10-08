@@ -1,13 +1,9 @@
 // Formulaire « Métadonnées du livre », second volet : ce qui définit l'ouvrage lui-même.
 //
-// Robin : « je n'ai rien pour définir les métadonnées du livre (auteurs/éditeurs, titre,
-// layout/format…) ». Le formulaire existait, sans auteur·e·s ni éditeur·rice·s, et
-// CLES_METADONNEES (lib/yaml.js) ignore EN SILENCE toute clé qu'elle ne liste pas : un
-// `auteurs:` écrit à la main dans buch.yaml se lisait comme absent. Ce fichier éprouve
-// cinq choses :
+// CLES_METADONNEES (lib/yaml.js) ignore toute clé qu'elle ne liste pas. Ce fichier vérifie :
 //   1. l'aller-retour d'une liste de personnes (liste de dicts) dans buch.yaml, sans perte
 //      des autres clés ni de l'ordre ;
-//   2. les clés nouvelles de CLES_METADONNEES (et l'absence de impression.couverture-mm) ;
+//   2. les clés de CLES_METADONNEES (et l'absence de impression.couverture-mm) ;
 //   3. la validation côté hôte : couleur d'impression et fond dans la liste fermée de
 //      pipeline/styles/couleurs-reference.json, teinte de 1 à 100 ;
 //   4. le DOM du formulaire : cartes auteur·e·s et éditeur·rice·s (celles des articles),
@@ -187,8 +183,8 @@ async function ouvrirLivre(fichierBuch) {
   };
 }
 
-// Le TXT que l'hôte injecte dans la page : relu du HTML, pour que la page s'éprouve avec
-// les vrais libellés et la vraie liste de couleurs, jamais avec une copie écrite ici.
+// Le TXT que l'hôte injecte dans la page, relu du HTML : la page s'éprouve avec les vrais
+// libellés et la vraie liste de couleurs.
 function txtDuPanneau(html) {
   const debut = html.indexOf('const TXT = ');
   assert.notStrictEqual(debut, -1, 'TXT introuvable dans le HTML du panneau');
@@ -223,7 +219,7 @@ test('livre : la validation de l’hôte refuse une couleur hors de la liste de 
   assert.match(buch, /^ {2}fond-teinte: 9$/m);
   buch = await ecrire({ 'couverture.fond-teinte': '0' });
   assert.match(buch, /^ {2}fond-teinte: 9$/m, 'une teinte de 0 % a été écrite');
-  // Les réglages d'impression nouveaux passent, l'ancien n'existe plus.
+  // Les réglages d'impression connus passent, impression.couverture-mm est ignoré.
   buch = await ecrire({ 'impression.couverture-volume': '1.3', 'impression.couverture-grammage': '300',
     'impression.colle-mm': '0.5', 'impression.couverture-mm': '12' });
   assert.match(buch, /^ {2}couverture-volume: 1\.3$/m);
@@ -364,9 +360,9 @@ test('livre : le dos calculé se lit depuis out/<livre>-dos.json, ou dit qu’il
   const ligne = parCle(avec.formulaire, 'dos')[0];
   assert.strictEqual(ligne.textContent,
     '9,3' + NBSP + 'mm' + NBSP + '– 134' + NBSP + 'pages' + NBSP + '– couverture 250' + NBSP + 'g/m²');
-  // Lecture seule : un texte, jamais un champ qui pourrait repartir à l'enregistrement.
+  // Lecture seule : un texte, pas un champ qui repartirait à l'enregistrement.
   assert.strictEqual(ligne.balise, 'p');
-  // Un JSON illisible vaut « pas calculé », jamais une exception ni des NaN à l'écran.
+  // Un JSON illisible vaut « pas calculé », sans exception ni NaN à l'écran.
   const casse = await pageDuLivre('titre: "T"\nlang: fr\n', { '-dos.json': '{ pas du json' });
   assert.strictEqual(casse.valeurs().dos, null);
 });

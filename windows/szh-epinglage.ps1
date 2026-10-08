@@ -1,60 +1,41 @@
 ﻿# Épinglage hors ligne (OneDrive Files On-Demand) : marque « Toujours conserver sur cet
-# appareil » les dossiers que tout le monde doit avoir sans connexion, sans geste manuel
-# (demande de Robin, 24.09.2026) -- le numéro en cours de chaque revue, et la bibliothèque
-# partagée _NewsUndActu. Dot-sourcé par szh-common.ps1, après szh-migration.ps1 : réutilise
-# Get-SzhBaseRevuesPour, $SzhSousDossiers, $SzhNomDossierReserve (szh-produits.ps1) et
-# Get-SzhConfig/Write-SzhLog (szh-common.ps1), tous déjà définis à ce point de la chaîne.
-# Compatibilité : Windows PowerShell 5.1 (proscrire ?. ?? ?: && ||).
+# appareil » les dossiers qu'on doit avoir sans connexion. Dot-sourcé par szh-common.ps1,
+# après szh-migration.ps1. Compatibilité : Windows PowerShell 5.1.
 #
-# CE QUI EST ÉPINGLÉ.
-#   * Chaque numéro EN COURS des revues -- un dossier directement sous `Revue\` ou
-#     `Zeitschrift\` de la racine ACTIVE (test ou production, selon emplacementRevues),
-#     reconnu à son `ausgabe.yaml` comme partout ailleurs dans ce dépôt. Jamais `_Archive\`.
-#   * Chaque livre EN COURS, sous `Books\` de la racine active, reconnu à son `buch.yaml`.
-#   * La bibliothèque `_NewsUndActu\Fiches` et `_NewsUndActu\_Statuts`, toujours celle de
-#     PRODUCTION (`<ancrage>\2_Produkte\54_Pronto\_NewsUndActu`, que l'onglet Archive du
-#     cockpit lit toujours -- voir docs/EMPLACEMENTS.md, §1bis), PLUS celle de la racine
-#     ACTIVE si elle en diffère (poste en mode test). Ciblés par NOM ('Fiches', '_Statuts'),
-#     jamais par un `Get-ChildItem` sur `_NewsUndActu\` entier : `_Import-*` n'est donc
-#     jamais épinglé, quel que soit ce qu'il contient.
+# Ce qui est épinglé :
+#   * chaque numéro en cours, sous `Revue\` ou `Zeitschrift\` de la racine active (test ou
+#     production), reconnu à son `ausgabe.yaml` ; les archives ne le sont pas ;
+#   * chaque livre en cours, sous `Books\`, reconnu à son `buch.yaml` ;
+#   * `_NewsUndActu\Fiches` et `_NewsUndActu\_Statuts` de la production (que l'onglet
+#     Archive du cockpit lit toujours, voir docs/EMPLACEMENTS.md), et aussi ceux de la racine
+#     active si elle diffère. Ils sont désignés par leur nom : `_Import-*` n'est pas épinglé.
 #
-# LA MÉCANIQUE, mesurée sur ce poste. Un dossier synchronisé par OneDrive porte l'attribut
-# .NET ReparsePoint (0x400) ; « Toujours conserver sur cet appareil » pose en plus
-# FILE_ATTRIBUTE_PINNED (0x80000), « Libérer de l'espace » pose FILE_ATTRIBUTE_UNPINNED
-# (0x100000) -- deux valeurs que [System.IO.FileAttributes] ne nomme pas (ajoutées par
-# Windows 10 1709 pour Files On-Demand, après l'énumération .NET), d'où les entiers bruts.
-# Épingler se fait par `attrib.exe +P -U <dossier> /S /D` (%SystemRoot%\System32\attrib.exe),
-# lancé en processus caché et NON attendu -- le lanceur ne doit jamais attendre un
-# téléchargement OneDrive. Un dossier déjà épinglé ne demande rien : les fichiers qu'on y
-# ajoutera ensuite héritent de l'épinglage de leur dossier.
+# Un dossier synchronisé par OneDrive porte l'attribut ReparsePoint (0x400). « Toujours
+# conserver sur cet appareil » ajoute FILE_ATTRIBUTE_PINNED (0x80000). [System.IO.FileAttributes]
+# ne nomme pas cette valeur, d'où l'entier brut. L'épinglage passe par attrib.exe, lancé
+# caché et sans attendre : le lanceur n'attend pas un téléchargement. Les fichiers ajoutés
+# plus tard héritent de l'épinglage de leur dossier.
 #
-# CE QU'ON NE FAIT JAMAIS. Bloquer le lanceur (D5) : tout est dans des try/catch, journalisé,
-# jamais une fenêtre. Attendre le téléchargement d'un dossier (pas de -Wait). Épingler en
-# simulation (SZH_LANCEUR_SIMULE=1) : le plan est calculé comme d'habitude, mais rien n'est
-# lancé pour de vrai -- exactement le même principe que szh-ancrage.ps1 et szh-rapport.ps1
-# pour ce drapeau.
+# Aucune erreur ne remonte au lanceur : tout est journalisé. En simulation
+# (SZH_LANCEUR_SIMULE=1), le plan est calculé mais rien n'est lancé.
 
 # ---- Constantes ----
 
-# Les jetons de $SzhSousDossiers (szh-produits.ps1) à épingler, et le manifeste qui fait
-# d'un dossier un numéro ou un livre (sans lui, ce n'est pas une unité de travail). Livres
-# ajoutés le 24.09.2026 (Robin).
+# Produits à épingler et manifeste qui fait d'un dossier un numéro ou un livre.
 $script:SzhEpinglageProduits = @('revue', 'zeitschrift', 'livre')
 $script:SzhEpinglageManifeste = @{ revue = 'ausgabe.yaml'; zeitschrift = 'ausgabe.yaml'; livre = 'buch.yaml' }
 
-# Les deux sous-dossiers de la bibliothèque à épingler, PAR NOM -- voir l'en-tête ci-dessus
-# pour pourquoi jamais un balayage de `_NewsUndActu\` entier.
+# Sous-dossiers de _NewsUndActu à épingler.
 $script:SzhEpinglageBibliotheque = @('Fiches', '_Statuts')
 
-# Attributs de fichier .NET pertinents pour OneDrive Files On-Demand (en-tête ci-dessus).
+# Attributs OneDrive Files On-Demand (voir l'en-tête).
 $script:SzhAttributReparsePoint = 0x400
 $script:SzhAttributEpingle      = 0x80000
 
 # ---- Plan : quels dossiers épingler ----
-# Pure (aucune écriture, aucun lancement de processus) : deux racines en entrée, une liste de
-# chemins en sortie. Les deux paramètres sont résolus tout seuls quand ils manquent (usage
-# normal, depuis Invoke-SzhTachesDemarrage) ; un test les fournit explicitement, sur une arborescence
-# jetable, pour ne dépendre ni du poste ni de l'ancrage SharePoint réel.
+# Rend la liste des dossiers à épingler, sans rien écrire. Les deux racines se résolvent
+# seules quand elles manquent ; un test les fournit pour travailler sur une arborescence
+# jetable.
 function Get-SzhDossiersAEpingler {
   param(
     [string]$RacineActive = '',
@@ -69,7 +50,7 @@ function Get-SzhDossiersAEpingler {
 
   $dossiers = New-Object System.Collections.Generic.List[string]
 
-  # ---- Numéros EN COURS des revues, racine active seulement ----
+  # ---- Numéros et livres en cours, racine active seulement ----
   if ($RacineActive) {
     foreach ($produit in $script:SzhEpinglageProduits) {
       $racineProduit = Join-Path $RacineActive $SzhSousDossiers[$produit].encours
@@ -77,15 +58,13 @@ function Get-SzhDossiersAEpingler {
       $enfants = @()
       try { $enfants = @(Get-ChildItem -LiteralPath $racineProduit -Directory -Force -ErrorAction Stop) } catch { $enfants = @() }
       foreach ($e in $enfants) {
-        # Même définition d'un numéro ou d'un livre que le reste du dépôt (docs/EMPLACEMENTS.md,
-        # §1) : un dossier sans son manifeste n'en est pas un, l'épingler n'a pas de sens.
         $manifeste = $script:SzhEpinglageManifeste[$produit]
         if (Test-Path -LiteralPath (Join-Path $e.FullName $manifeste)) { [void]$dossiers.Add($e.FullName) }
       }
     }
   }
 
-  # ---- Bibliothèque _NewsUndActu : PRODUCTION toujours, racine active EN PLUS si distincte ----
+  # ---- _NewsUndActu : production, et racine active si elle diffère ----
   $racinesBibliotheque = New-Object System.Collections.Generic.List[string]
   if ($RacineProduction) { [void]$racinesBibliotheque.Add($RacineProduction) }
   if ($RacineActive -and (-not (Test-SzhMemeChemin $RacineActive $RacineProduction))) {
@@ -101,18 +80,16 @@ function Get-SzhDossiersAEpingler {
   return @($dossiers)
 }
 
-# Deux chemins désignent-ils le même dossier -- insensible à la casse (NTFS) et à un
-# séparateur final. '' n'égale jamais rien, y compris une autre chaîne vide : deux racines
-# non résolues ne doivent pas se faire passer pour « la même ».
+# Vrai si deux chemins désignent le même dossier, sans tenir compte de la casse ni d'un « \ »
+# final. Une chaîne vide n'égale rien, pas même une autre chaîne vide.
 function Test-SzhMemeChemin([string]$A, [string]$B) {
   if ((-not $A) -or (-not $B)) { return $false }
   return [string]::Equals($A.TrimEnd('\'), $B.TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)
 }
 
 # ---- Vérification d'attribut ----
-# Rend 'epingle' | 'aepingler' | 'horsonedrive' | 'absent'. Jamais une exception : un dossier
-# qui disparaît entre le plan et la vérification (synchronisation en cours) rend 'absent'
-# comme un dossier qui n'a jamais existé.
+# Rend 'epingle' | 'aepingler' | 'horsonedrive' | 'absent', sans lever. Un dossier disparu
+# entre-temps (synchronisation en cours) rend 'absent'.
 function Test-SzhDossierEpingle([string]$Chemin) {
   if (-not $Chemin) { return 'absent' }
   $val = 0
@@ -126,17 +103,14 @@ function Test-SzhDossierEpingle([string]$Chemin) {
 }
 
 # ---- Lancement réel : attrib.exe, caché, non attendu ----
-# Ne lève jamais côté appelant que via son propre try (Invoke-SzhEpinglageHorsLigne) : cette
-# fonction-ci peut lever (chemin de attrib.exe introuvable, Start-Process refusé), et c'est
-# volontaire -- l'appelant décide seul de ce que devient l'échec (compté, journalisé).
+# Peut lever : Invoke-SzhEpinglageHorsLigne compte et journalise l'échec.
 function Start-SzhEpinglageProcessus([string]$Dossier) {
   $attribExe = Join-Path $env:SystemRoot 'System32\attrib.exe'
   if (-not (Test-Path -LiteralPath $attribExe)) { $attribExe = 'attrib.exe' }
-  # +P -U : épingle et retire « en ligne seulement ». Deux appels, mesurés le 24.09.2026 :
-  # « attrib <dossier> /S /D » ne descend PAS dans le dossier -- il cherche, dans l'arbre
-  # PARENT, tout dossier du même nom. D'où : le dossier lui-même (ce que teste
-  # Test-SzhDossierEpingle, et dont héritent les fichiers à venir), puis son contenu avec
-  # « <dossier>\* /S /D ». Jamais -Wait : le lanceur n'attend aucun téléchargement.
+  # +P -U : épingle et retire « en ligne seulement ». Deux appels, car
+  # « attrib <dossier> /S /D » ne descend pas dans le dossier : il cherche dans l'arbre parent
+  # les dossiers de même nom. D'abord le dossier lui-même (que teste Test-SzhDossierEpingle),
+  # puis son contenu par « <dossier>\* /S /D ». Sans -Wait.
   Start-Process -FilePath $attribExe -WindowStyle Hidden -ArgumentList @(
     '+P', '-U', ('"{0}"' -f $Dossier))
   Start-Process -FilePath $attribExe -WindowStyle Hidden -ArgumentList @(
@@ -145,9 +119,8 @@ function Start-SzhEpinglageProcessus([string]$Dossier) {
 
 # ---- Orchestration ----
 # Rend { examines; lances; deja; ignores }. $VerifAttribut et $LanceurProcessus acceptent un
-# nom de fonction (chaîne) ou un scriptblock -- l'opérateur `&` sait invoquer les deux -- pour
-# qu'un test remplace la vérification d'attribut et le lancement du processus sans jamais
-# toucher un vrai dossier OneDrive ni lancer un vrai attrib.exe.
+# nom de fonction ou un scriptblock : un test les remplace pour ne toucher ni OneDrive ni
+# attrib.exe.
 function Invoke-SzhEpinglageHorsLigne {
   param(
     [string[]]$Dossiers = $null,
@@ -156,9 +129,7 @@ function Invoke-SzhEpinglageHorsLigne {
   )
   $vide = [pscustomobject]@{ examines = 0; lances = 0; deja = 0; ignores = 0 }
 
-  # Réglage de désactivation : absent = actif (Resolve-SzhBooleenConfig, comme les autres
-  # booléens de config.json). Testé AVANT de calculer le plan -- "false" ne doit rien lire de
-  # plus que nécessaire.
+  # epinglageHorsLigne de config.json : absent vaut actif. Testé avant de calculer le plan.
   try {
     $cfg = Get-SzhConfig
     if ($cfg -and $cfg.PSObject.Properties['epinglageHorsLigne']) {
@@ -172,8 +143,7 @@ function Invoke-SzhEpinglageHorsLigne {
   }
   if (-not $Dossiers) { return $vide }
 
-  # Jamais un lancement réel en simulation : le plan se calcule quand même (utile au journal
-  # et aux tests), mais aucun processus ne part.
+  # En simulation, le plan se calcule mais aucun processus ne part.
   $simule = ($env:SZH_LANCEUR_SIMULE -eq '1')
 
   $examines = 0; $lances = 0; $deja = 0; $ignores = 0
@@ -193,10 +163,8 @@ function Invoke-SzhEpinglageHorsLigne {
     }
   }
 
-  # Une ligne récapitulative SEULEMENT quand quelque chose a vraiment été lancé -- cette passe
-  # tourne à chaque ouverture du lanceur, la plupart du temps sans rien à faire (tout est déjà
-  # épinglé), et un journal qui grossirait à chaque lancement pour ne rien dire ne servirait à
-  # personne.
+  # Journalisé seulement si un épinglage a été lancé : la passe tourne à chaque ouverture et
+  # n'a le plus souvent rien à faire.
   if ($lances -gt 0) {
     try {
       Write-SzhLog ('epinglage hors ligne : ' + $lances + ' dossier(s) marque(s) "toujours conserver", ' +

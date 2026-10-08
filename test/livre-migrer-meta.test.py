@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-# test/livre-migrer-meta.test.py — pipeline/livre-migrer-meta.py : le titre et les
-# auteur·e·s d'un chapitre quittent le .md pour sa fiche <slug>.meta.yaml.
+# Teste pipeline/livre-migrer-meta.py : le titre et les auteur·e·s d'un chapitre passent
+# du .md à sa fiche <slug>.meta.yaml.
 #
 #   python3 test/livre-migrer-meta.test.py
 #
-# Aucun test ne s'abstient : un import qui échoue est une erreur de collecte.
+# Un import qui échoue est une erreur, pas un test sauté.
 
 import importlib.util
 import os

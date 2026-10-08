@@ -1,41 +1,32 @@
 #!/usr/bin/env python3
-# liens-courts.py — lien court Shlink pour les QR des livres (à terme : chaque QR encode
-# un lien de la forme https://link.szh-csps.ch/BuchLS_01_click plutôt que l'URL longue de
-# l'auteur). Module SÉPARÉ, jamais appelé contre le vrai serveur par ce dépôt lui-même —
-# voir test/liens-courts.test.py, qui ne parle qu'à un http.server local.
+# Liens courts Shlink pour les QR des livres : chaque QR encode un lien du type
+# https://link.szh-csps.ch/BuchLS_01_click plutôt que l'URL longue. Les tests
+# (test/liens-courts.test.py) ne parlent qu'à un http.server local.
 #
-# API REST Shlink v3 vérifiée sur la spec officielle (shlink.io/documentation, OpenAPI
-# shlinkio/shlink) le 23.09.2026 :
+# API REST Shlink v3 :
 #   POST {base}/rest/v3/short-urls
 #   en-tête  X-Api-Key: <clé>
 #   corps    {"longUrl": "...", "findIfExists": true, "tags": [...]}
-#   réponse  200, JSON, champ "shortUrl" — c'est lui qu'on garde.
+#   réponse  200, JSON, champ "shortUrl".
 #
-# Configuration UNIQUEMENT par variables d'environnement — jamais la clé dans le dépôt ni
-# dans le livre :
+# Configuration par variables d'environnement seulement (la clé n'est ni dans le dépôt ni
+# dans le livre) :
 #   SZH_SHLINK_URL   base de l'instance (ex. https://link.szh-csps.ch)
 #   SZH_SHLINK_CLE   clé d'API (X-Api-Key)
-# L'une des deux absente, ou l'appel réseau en échec : l'URL longue est gardée telle
-# quelle, avec un avertissement au format des autres (grep « [livre-avertissement] » dans
-# pipeline/profils/livre.mk) — jamais un arrêt : Shlink n'est pas encore le serveur réel de
-# la maison, un livre doit continuer à se compiler sans lui.
+# Si l'une manque ou si l'appel échoue, l'URL longue est gardée avec un
+# « [livre-avertissement] » : le livre se compile quand même.
 #
-# Cache dans le dossier du livre (liens-courts.yaml, à côté de buch.yaml) : URL longue ->
-# URL courte, une entrée par ligne, guillemets et antislashs échappés — un format à soi
-# plutôt qu'une dépendance à PyYAML, mais qui reste du YAML valide (bloc mapping, une paire
-# par ligne) : szh-qr.lua le relit avec un simple motif de ligne (voir son en-tête).
-# Ce cache rend la compilation reproductible et HORS LIGNE : une fois résolu, un lien ne
-# redemande plus le réseau à chaque build.
+# Cache liens-courts.yaml, à côté de buch.yaml : une paire « "longue": "courte" » par ligne,
+# guillemets et barres obliques inverses échappés. C'est du YAML valide, écrit sans PyYAML ;
+# szh-qr.lua le relit ligne à ligne. Une fois résolu, un lien ne demande plus le réseau.
 #
 #   python3 liens-courts.py <cache.yaml> [--scan CHAPITRES_DIR] [--lecteur LECTEUR] [URL...]
 #
-# Usage typique (depuis livre.mk, derrière SZH_SHLINK_URL — voir ce fichier) :
+# Depuis livre.mk, si SZH_SHLINK_URL est posée :
 #   python3 liens-courts.py liens-courts.yaml --scan chapitres --lecteur "$(LECTEUR)"
 #
-# --scan lit les URL par un vrai passage pandoc (filters/szh-qr-lister.lua), pas par un
-# motif texte : voir scanner_liens_qr() plus bas pour pourquoi. --lecteur doit être celui de
-# la compilation (markdown ou markdown+hard_line_breaks selon la maquette du livre, livre.mk
-# LECTEUR) — un lecteur différent pourrait lire les blocs autrement.
+# --lecteur doit être celui de la compilation (LECTEUR dans livre.mk), pour lire les blocs
+# de la même façon.
 
 import argparse
 import json
@@ -90,24 +81,19 @@ def ecrire_cache(chemin, cache):
 
 
 # ------------------------------------------------------------------------------------
-# Extraction des URL des blocs qr-link/.qr du markdown d'un livre — EN PASSANT PAR LE VRAI
-# LECTEUR PANDOC (pipeline/filters/szh-qr-lister.lua), pas par un motif texte : un motif ne
-# peut pas distinguer un lien réellement lu comme tel d'un exemple en bloc de code, ni
-# suivre les mêmes règles de lecture que la compilation (le lecteur diffère déjà selon la
-# maquette, `--lecteur` ci-dessous — voir livre.mk, LECTEUR). Remplace l'ancien
-# REGEX_LIEN_QR (motif `[texte](url){.qr}` seul, aveugle au nouveau bloc qr-link).
+# Extraction des URL des blocs qr-link et .qr par pandoc lui-même
+# (filters/szh-qr-lister.lua) : un motif texte prendrait aussi les exemples en bloc de code,
+# et ne lirait pas comme la compilation.
 # ------------------------------------------------------------------------------------
 FILTRE_LISTER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'filters', 'szh-qr-lister.lua')
 
 
 def scanner_liens_qr(dossier, lecteur='markdown', pandoc_bin='pandoc'):
-    """URL des qr-link/.qr dont `tracked` n'est pas explicitement false, triées et
-    dédoublonnées. Un appel pandoc (document rendu ignoré, capturé sur stdout) par fichier
-    .md du dossier — le filtre écrit une ligne JSON par lien dans un fichier temporaire
-    (SZH_QR_LISTE), relu ici.
-    ⚠ PAS de `-o os.devnull` : sur un pandoc Windows natif (GHC), écrire vers « nul » lève
-    « withFile: invalid argument » — mesuré sur le poste de dev (pandoc 3.9, PATH Windows).
-    La sortie va donc sur stdout, déjà capturée (capture_output=True) et jamais lue."""
+    """URL des qr-link et .qr dont `tracked` n'est pas false, triées et sans doublon. Un
+    appel pandoc par .md du dossier ; le filtre écrit une ligne JSON par lien dans le
+    fichier SZH_QR_LISTE.
+    La sortie de pandoc va sur stdout (capturée, ignorée) et non vers os.devnull : sous
+    Windows, pandoc échoue sur « nul » (« withFile: invalid argument »)."""
     urls = set()
     for base, _dirs, fichiers in os.walk(dossier):
         for nom in sorted(fichiers):
@@ -147,9 +133,9 @@ def scanner_liens_qr(dossier, lecteur='markdown', pandoc_bin='pandoc'):
 # L'appel Shlink lui-même.
 # ------------------------------------------------------------------------------------
 def obtenir_lien_court(url_longue, base_url, cle_api, tags=None, timeout=10):
-    """Un POST {base_url}/rest/v3/short-urls. Rend l'URL courte (champ "shortUrl" de la
-    réponse). Lève urllib.error.URLError/HTTPError (réseau/HTTP) ou ValueError (réponse
-    JSON invalide ou sans "shortUrl") en échec — à l'appelant de décider du repli."""
+    """POST {base_url}/rest/v3/short-urls ; rend le champ "shortUrl" de la réponse. Lève
+    URLError/HTTPError (réseau, HTTP) ou ValueError (réponse invalide ou sans
+    "shortUrl")."""
     corps = {'longUrl': url_longue, 'findIfExists': True}
     if tags:
         corps['tags'] = list(tags)
@@ -173,9 +159,8 @@ def obtenir_lien_court(url_longue, base_url, cle_api, tags=None, timeout=10):
 
 
 def resoudre_liens(urls_longues, cache, base_url, cle_api, tags=None):
-    """Complète `cache` (dict muté en place) pour chaque URL absente. Rend le nombre d'URL
-    effectivement raccourcies par un appel réseau réussi (les autres retombent sur
-    l'URL longue, avec avertissement — voir avertir())."""
+    """Complète `cache` en place pour chaque URL absente. Rend le nombre d'URL raccourcies ;
+    les autres gardent l'URL longue, avec un avertissement."""
     resolues = 0
     for url in urls_longues:
         if url in cache:

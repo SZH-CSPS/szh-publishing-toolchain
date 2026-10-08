@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-  Désinstalleur du poste SZH -- à lancer en administrateur, sauf -Simuler et -ProfilSeulement :
+  Désinstalleur du poste SZH, à lancer en administrateur (sauf -Simuler et -ProfilSeulement) :
 
     powershell -ExecutionPolicy Bypass -File .\uninstall.ps1 -Simuler
     powershell -ExecutionPolicy Bypass -File .\uninstall.ps1
@@ -12,36 +12,32 @@
   szh-apercu, et les clés de registre HKCU posées par update.ps1 (association .md, protocole
   szh:, confiance Office).
 
-  Ce qu'il conserve TOUJOURS, quelle que soit l'option : la distribution WSL et son
-  enregistrement (jamais désinscrite), C:\ProgramData\SZH\WSL\ et son contenu (les
-  disques des rédacteurs), la racine C:\ProgramData\SZH elle-même, %USERPROFILE%\.wslconfig,
-  %APPDATA%\VSCodium\argv.json, et les revues ou livres eux-mêmes (OneDrive ou ailleurs).
-  VSCodium et SumatraPDF ne sont désinstallés qu'avec -Applications explicite : ce sont des
-  logiciels partagés.
+  Ce qu'il conserve, quelle que soit l'option : la distribution WSL et son enregistrement,
+  C:\ProgramData\SZH\WSL\ et son contenu (les disques des rédacteurs), la racine
+  C:\ProgramData\SZH elle-même, %USERPROFILE%\.wslconfig, %APPDATA%\VSCodium\argv.json, et
+  les revues ou livres. VSCodium et SumatraPDF, logiciels partagés, ne sont désinstallés
+  qu'avec -Applications.
 
-  À lancer depuis un clone frais du dépôt ou une extraction de toolkit-<v>.zip -- jamais
-  depuis C:\ProgramData\SZH\toolkit sous élévation (voir docs/MAINTENANCE.md, « Réparer un poste ») :
-  ce dossier est inscriptible par le groupe Utilisateurs, et un administrateur qui
-  l'exécuterait tel quel exécuterait aussi bien un code qu'un compte standard y aurait
-  déposé. -Simuler n'est pas concerné : il ne fait qu'afficher le plan.
+  À lancer depuis un clone du dépôt ou une extraction de toolkit-<v>.zip, et non depuis
+  C:\ProgramData\SZH\toolkit en administrateur (docs/MAINTENANCE.md, « Réparer un poste ») :
+  ce dossier est inscriptible par tout utilisateur, qui aurait pu y déposer du code.
+  -Simuler, qui n'affiche que le plan, peut s'y lancer.
 
-  Compatibilité : Windows PowerShell 5.1 (proscrire ?. ?? ?: && ||).
+  Compatibilité : Windows PowerShell 5.1.
 
 .PARAMETER Simuler
   Affiche le plan sans rien toucher. N'exige pas l'administrateur.
 .PARAMETER Json
-  Avec -Simuler : le plan en JSON sur la sortie standard, rien d'autre -- pour les tests et
-  l'inspection automatisée. Aucune suppression n'a lieu quand -Json est présent.
+  Écrit le plan en JSON sur la sortie standard, sans rien supprimer (pour les tests).
 .PARAMETER ProfilSeulement
   Sans administrateur : ne retire que ce qui est au compte courant (raccourcis, fichiers
   profil, registre, extensions). Ni les fichiers du poste, ni les tâches planifiées.
 .PARAMETER TousLesProfils
-  Administrateur. En plus du compte courant : les fichiers profil (jamais le registre, qui
-  n'est chargé que pour le compte courant) de chaque compte sous C:\Users ayant un dossier
-  AppData.
+  Administrateur. Retire aussi les fichiers profil de chaque compte de C:\Users qui a un
+  dossier AppData. Leur registre n'est pas touché : seul celui du compte courant est chargé.
 .PARAMETER Applications
-  Désinstalle aussi VSCodium et SumatraPDF (Program Files). Jamais par défaut : logiciels
-  partagés avec d'autres usages du poste.
+  Désinstalle aussi VSCodium et SumatraPDF (Program Files), qui peuvent servir à d'autres
+  usages du poste.
 .PARAMETER SansConfirmation
   N'attend pas que « oui » soit tapé en clair avant d'agir.
 #>
@@ -64,8 +60,7 @@ function Sortir([int]$Code, [string]$Message) {
   exit $Code
 }
 
-# ---- Jamais depuis le toolkit sous élévation (docs/MAINTENANCE.md, « Réparer un poste ») ----
-# -Simuler n'est pas concerné : il ne fait qu'afficher un plan, jamais un Remove-Item.
+# ---- Refus de tourner depuis le toolkit, sauf -Simuler (voir l'en-tête) ----
 $sousToolkit = $false
 try {
   $ici = (Get-Item -LiteralPath $PSScriptRoot).FullName.TrimEnd('\')
@@ -85,7 +80,7 @@ if ((-not $Simuler) -and (-not $ProfilSeulement) -and (-not $identite.admin)) {
     'ou ajouter -ProfilSeulement pour ne retirer que votre compte, sans administrateur.')
 }
 
-# ---- Une mise à jour ne doit jamais tourner en même temps ----
+# ---- Pas pendant une mise à jour ----
 $mutex = New-SzhMutexPoste
 $mutexLibre = $false
 try { $mutexLibre = $mutex.WaitOne(0) } catch { $mutexLibre = $false }
@@ -116,7 +111,7 @@ if ($TousLesProfils) {
 
 $plan = @(Get-SzhPlanDesinstallation -Machine:$machine -Profil:$profil -Applications:$Applications -AutresProfils $autresProfils)
 
-# ---- -Json : le plan, rien d'autre, jamais de suppression ----
+# ---- -Json : le plan seul ----
 if ($Json) {
   Write-Output ($plan | ConvertTo-Json -Depth 5)
   exit 0

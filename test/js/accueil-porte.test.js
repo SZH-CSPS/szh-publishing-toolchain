@@ -1,8 +1,7 @@
-// La porte de l'Accueil dans l'éditeur (lib/accueil-hote.js) : il ne s'ouvre seul que dans
-// une fenêtre sans dossier ni onglet. Une porte mal fermée le ferait surgir par-dessus un
-// numéro ou un fichier. Et quand le numéro choisi est déjà ouvert ailleurs, la fenêtre de
-// l'Accueil se ferme. Chaque cas active l'extension dans son propre processus : le faux
-// vscode ne s'active qu'une fois par processus.
+// Quand l'Accueil s'ouvre de lui-même (lib/accueil-hote.js) : seulement dans une fenêtre sans
+// dossier ni onglet, sinon il recouvrirait un numéro ou un fichier. Quand le numéro choisi est
+// déjà ouvert ailleurs, la fenêtre de l'Accueil se ferme. Chaque cas active l'extension dans
+// son propre processus : le faux vscode ne s'active qu'une fois par processus.
 //
 //   node --test test/js/accueil-porte.test.js
 'use strict';
@@ -28,7 +27,7 @@ async function enfant() {
   fs.mkdirSync(path.join(process.env.SZH_RACINE_TEST, 'Revue', '2026-03'), { recursive: true });
   fs.writeFileSync(path.join(process.env.SZH_RACINE_TEST, 'Revue', '2026-03', 'ausgabe.yaml'),
     'title: "Trois"\nrevue: revue\n');
-  // Un dossier d'avant la convention : il s'affiche quand même « 2025-04 ».
+  // Un dossier nommé sans zéro (2025-4) s'affiche « 2025-04 ».
   const ancien = path.join(process.env.SZH_RACINE_TEST, 'Revue', '2025-4');
   fs.mkdirSync(ancien, { recursive: true });
   fs.writeFileSync(path.join(ancien, 'ausgabe.yaml'), 'revue: revue\n');

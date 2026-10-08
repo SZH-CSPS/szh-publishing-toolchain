@@ -3,16 +3,14 @@
 //
 //   node --test "test/js/*.test.js"
 //
-// Trois défauts sont gardés ici, et c'est le même vu de trois côtés :
-//   * un article ne pouvait pas déclarer sa langue — la revue décidait pour lui, si bien
-//     qu'un article allemand d'un numéro français sortait avec `/Lang (fr)` ;
-//   * un titre vide dans la langue de l'article laissait imprimer celui d'une autre
-//     langue, sans un mot, sous le mauvais `lang=` ;
-//   * la marque « TO BE TRANSLATED » d'un mot-clé non traduit devenait une puce de la
-//     couverture publiée.
+// Ce fichier vérifie que :
+//   * un article déclare sa langue, qui l'emporte sur celle du numéro (`/Lang` du PDF) ;
+//   * un titre vide dans la langue de l'article arrête la compilation, au lieu d'imprimer
+//     celui d'une autre langue sous le mauvais `lang=` ;
+//   * la marque « TO BE TRANSLATED » d'un mot-clé non traduit ne s'imprime pas.
 //
-// Le rendu lui-même se vérifie en compilant (voir le rapport de ce chantier) ; ici on
-// garde ce qui se recopie d'un fichier à l'autre, plus le formulaire réellement exécuté.
+// Le rendu se vérifie en compilant (test/build-render.sh) ; ici on contrôle ce qui se
+// recopie d'un fichier à l'autre, et le formulaire réellement exécuté.
 'use strict';
 
 const test = require('node:test');
@@ -57,9 +55,9 @@ test('fiche d’article : sans langue, la clé est vide et ne se réécrit pas',
 });
 
 test('fiche d’article : une langue hors revue vaut « non déclarée »', () => {
-  // Une valeur inattendue ne doit pas s'imprimer : la maquette n'a ni libellé de résumé
-  // ni mention de licence hors fr/de/it. Elle est relue comme absente, donc le numéro
-  // reprend la main, avec l'avertissement du filtre.
+  // Une valeur inattendue est relue comme absente (la maquette n'a ni libellé de résumé ni
+  // mention de licence hors fr/de/it) : la langue du numéro s'applique, avec
+  // l'avertissement du filtre.
   for (const brute of ['en', 'EN', 'rm', 'de-CH ', '']) {
     assert.strictEqual(yaml.normaliserLangueArticle(brute), brute.trim().slice(0, 2).toLowerCase() === 'de' ? 'de' : '',
       'valeur mal normalisée : ' + JSON.stringify(brute));
@@ -85,8 +83,8 @@ test('fiche d’article : les clés inconnues survivent à un aller-retour avec 
 // ---- Ce qui se recopie d'un fichier à l'autre ----
 
 test('langues de la revue : une seule liste, trois fichiers', () => {
-  // yaml.js décide, _commun.js propose, szh-commun.lua tranche au rendu. Une liste qui
-  // diverge, et le formulaire offrirait une langue que la maquette refuse.
+  // yaml.js valide, _commun.js propose, szh-commun.lua décide au rendu : les trois listes
+  // doivent concorder, sinon le formulaire offrirait une langue que la maquette refuse.
   const commun = lire('vscodium-extension', 'szh-cockpit', 'media', '_commun.js');
   const mCommun = commun.match(/var LANGUES_CHOIX = \[([^\]]*)\]/);
   assert.ok(mCommun, 'LANGUES_CHOIX introuvable dans _commun.js');
@@ -97,7 +95,7 @@ test('langues de la revue : une seule liste, trois fichiers', () => {
   assert.ok(mLua, 'table M.LANGUES introuvable dans szh-commun.lua');
   const duLua = (mLua[1].match(/([a-z]{2}) = true/g) || []).map((s) => s.slice(0, 2));
   assert.deepStrictEqual(duLua.slice().sort(), yaml.LANGUES_ARTICLE.slice().sort());
-  // Et c'est cette liste-là qui valide la fiche, aucune autre.
+  // C'est cette liste qui valide la fiche.
   assert.match(corpsLua(COMMUN, 'function M.calculer_contexte'), /langues_valides = M\.LANGUES,/,
     'calculer_contexte ne valide plus la fiche contre M.LANGUES');
   for (const f of fs.readdirSync(path.join(RACINE, 'pipeline', 'filters')).filter((n) => n.endsWith('.lua'))) {
@@ -108,11 +106,10 @@ test('langues de la revue : une seule liste, trois fichiers', () => {
 });
 
 test('les deux filtres résolvent la langue via le module commun', () => {
-  // szh-numerotation tourne aussi dans la chaîne d'aperçu, où szh-maquette n'est pas
-  // branché : sans une langue commune, l'aperçu dirait « Figure » et le PDF « Abbildung ».
-  // La langue se calcule une fois, dans calculer_contexte() de szh-commun.lua, que
-  // szh-contexte.lua pose en tête de chaîne ; les deux filtres la relisent par
-  // commun.contexte().
+  // szh-numerotation tourne aussi dans la chaîne d'aperçu, sans szh-maquette : la langue se
+  // calcule une fois, dans calculer_contexte() de szh-commun.lua, que szh-contexte.lua pose
+  // en tête de chaîne, et les deux filtres la relisent par commun.contexte(). Sinon l'aperçu
+  // pourrait dire « Figure » et le PDF « Abbildung ».
   assert.match(CONTEXTE, /commun\.calculer_contexte\(meta,/, 'szh-contexte.lua ne calcule plus le contexte');
   assert.match(CONTEXTE, /meta\.lang = pandoc\.MetaString\(c\.lang\)/, 'szh-contexte.lua ne pose plus meta.lang');
   for (const [nom, src] of [['szh-maquette', MAQUETTE], ['szh-numerotation', NUMEROTATION]]) {
@@ -121,8 +118,8 @@ test('les deux filtres résolvent la langue via le module commun', () => {
     assert.match(src, /commun\.contexte\((doc\.)?meta\b/, nom + ' ne lit plus le contexte commun');
     assert.ok(!/langue_de\(/.test(src.replace(/^\s*--.*$/gm, '')), nom + ' a retrouvé sa propre résolution de langue');
   }
-  // La cascade elle-même : la fiche, validée, puis le jeton de revue AVANT la langue du
-  // numéro, puis le français.
+  // La cascade : la fiche, validée, puis le jeton de revue, puis la langue du numéro, puis
+  // le français.
   const calcul = corpsLua(COMMUN, 'function M.calculer_contexte');
   assert.match(calcul, /M\.langue_de\(m, \{\s*\n\s*lire_fiche = true,/, 'la fiche n’est plus lue en premier');
   assert.ok(calcul.indexOf("lang_revue ~= '' and lang_revue") !== -1
@@ -133,9 +130,9 @@ test('les deux filtres résolvent la langue via le module commun', () => {
 });
 
 test('aucune cascade de langue locale : seul szh-commun.lua lit la fiche ou SZH_LIVRE', () => {
-  // Une cascade recopiée dans un filtre, c'est un aperçu qui finit par parler une autre
-  // langue que le PDF. Hors du module commun, aucun filtre ne relit `lang:` dans un fichier,
-  // ne recalcule la langue depuis le jeton de revue ni ne lit SZH_LIVRE.
+  // Hors du module commun, aucun filtre ne relit `lang:` dans un fichier, ne recalcule la
+  // langue depuis le jeton de revue ni ne lit SZH_LIVRE : une cascade recopiée finirait par
+  // diverger entre l'aperçu et le PDF.
   for (const f of fs.readdirSync(path.join(RACINE, 'pipeline', 'filters')).filter((n) => n.endsWith('.lua'))) {
     if (f === 'szh-commun.lua') { continue; }
     const code = lire('pipeline', 'filters', f).replace(/^\s*--.*$/gm, '');
@@ -147,8 +144,8 @@ test('aucune cascade de langue locale : seul szh-commun.lua lit la fiche ou SZH_
 });
 
 test('szh-maquette : plus de repli silencieux sur une autre langue', () => {
-  // C'était l'ancien `local ordre = { lang, 'de', 'fr', 'it' }` : un titre allemand vide
-  // faisait imprimer le titre français sous lang="de".
+  // Pas de liste de repli du type `{ lang, 'de', 'fr', 'it' }` : un titre allemand vide
+  // ferait imprimer le titre français sous lang="de".
   assert.ok(!/\{\s*lang,\s*'de',\s*'fr',\s*'it'\s*\}/.test(MAQUETTE),
     'la suite de replis est revenue');
   assert.ok(MAQUETTE.indexOf('function champ_localise') !== -1,
@@ -167,8 +164,7 @@ test('szh-maquette : la marque de traduction arrête la compilation', () => {
 });
 
 test('szh-maquette : chaque message nomme l’article, le champ et le geste', () => {
-  // Le panneau de compilation est lu par des rédacteurs : un message qui ne dit pas quoi
-  // faire ne vaut pas mieux que le silence d'avant.
+  // Le panneau de compilation est lu par des rédacteurs : le message dit quoi faire.
   for (const langue of ['fr', 'de']) {
     const bloc = MAQUETTE.slice(MAQUETTE.indexOf('  ' + langue + ' = {', MAQUETTE.indexOf('local MESSAGES')));
     for (const cle of ['champ_vide', 'marque_motcle', 'marque_champ']) {
@@ -243,8 +239,8 @@ test('métadonnées des articles : chaque carte offre le choix de la langue', ()
   assert.strictEqual(declare.balise, 'select');
   assert.deepStrictEqual(declare.enfants.map((o) => o.value), yaml.LANGUES_ARTICLE.slice());
   assert.strictEqual(declare.value, 'de', 'la langue de la fiche n’est pas reprise');
-  // Fiche sans langue : le formulaire montre celle du numéro, exactement le repli que
-  // fait la maquette. Montrer autre chose que ce qui s'imprimera serait le pire des cas.
+  // Fiche sans langue : le formulaire montre celle du numéro, le même repli que la
+  // maquette, pour montrer ce qui s'imprimera.
   assert.strictEqual(selectLangue(page, 'article-sans').value, 'fr');
 });
 
@@ -257,8 +253,7 @@ test('métadonnées des articles : le choix suit la langue du numéro', () => {
 
 test('szh-maquette : la langue déclarée prime — un article IT dans une revue FR sort en IT', () => {
   // La langue de la fiche est prise telle quelle dès qu'elle est déclarée et valide, avant
-  // tout repli — et « une seule liste, trois fichiers » garantit plus haut que l'italien
-  // fait partie des langues acceptées (M.LANGUES).
+  // tout repli ; l'italien fait partie des langues acceptées (M.LANGUES, vérifié plus haut).
   const fiche = corpsLua(COMMUN, 'function M.langue_de');
   assert.ok(fiche.indexOf('if correcte(brut) then return brut end') !== -1
     && fiche.indexOf('if correcte(brut) then return brut end') < fiche.indexOf('o.repli(meta)'),
@@ -271,16 +266,16 @@ test('szh-maquette : la langue déclarée prime — un article IT dans une revue
     'la langue résolue ne repart plus vers le gabarit');
   assert.match(lire('pipeline', 'templates', 'szh-article.html'), /<html[^>]* lang="\$lang\$"/,
     'le gabarit n’imprime plus la langue résolue');
-  // Le rendu compilé lui-même (dont un article IT dans la Revue) se prouve par le banc
-  // WSL : test/build-render.sh — hors de portée de cette suite.
+  // Le rendu compilé (dont un article IT dans la Revue) se vérifie par le banc WSL,
+  // test/build-render.sh.
 });
 
 // ---- Le changement de langue, côté hôte ----
 //
-// La permutation des CONTENUS est faite par le formulaire (webview), qui renvoie l'état
-// permuté à l'enregistrement — voir webviews.test.js. L'hôte, lui, fait suivre les
-// STATUTS du suivi de traduction (<slug>.traduction.yaml, indexé champ×langue) : sans
-// cet échange, « finalisé » désignerait le mauvais texte.
+// Le formulaire (webview) permute les contenus et renvoie l'état permuté à
+// l'enregistrement (voir webviews.test.js). L'hôte permute les statuts du suivi de
+// traduction (<slug>.traduction.yaml, indexé champ×langue), pour que « finalisé » désigne
+// le bon texte.
 
 test('changer la langue d’un article permute aussi les statuts de traduction', async () => {
   const { revueDEssai, activerHote } = require('./hote-factice');
@@ -298,8 +293,8 @@ test('changer la langue d’un article permute aussi les statuts de traduction',
   const p = hote.panneauDeType('szhApercuMetadonnees');
   assert.ok(p, 'panneau des métadonnées absent');
   await p._recepteur({ type: 'pret' });
-  // La webview a permuté DE↔IT et renvoie l'état permuté, langue comprise — la forme
-  // exacte de collecter() dans media/_fiches.js.
+  // La webview a permuté DE↔IT et renvoie l'état permuté, langue comprise, sous la forme
+  // de collecter() (media/_fiches.js).
   await p._recepteur({ type: 'enregistrer', auto: true, articles: { '01-essai': {
     type: 'article', lang: 'it', licence: '', doi: '',
     title: { de: 'Titolo', fr: '', it: 'Titel' }, subtitle: {}, resume: {}, keywords: {},
@@ -309,15 +304,15 @@ test('changer la langue d’un article permute aussi les statuts de traduction',
   assert.ok(meta.indexOf('it: "Titel"') !== -1, 'le titre permuté n’est pas écrit');
   const chemin = path.join(dossier, '01-essai.traduction.yaml');
   const suivi = fs.readFileSync(chemin, 'utf8');
-  // title.it — qui qualifiait l'ancien texte italien, parti sous DE — suit sous
-  // title.de ; title.fr ne bouge pas ; le commentaire survit.
+  // title.it, qui qualifiait l'ancien texte italien parti sous DE, passe sous title.de ;
+  // title.fr ne bouge pas ; le commentaire est conservé.
   assert.match(suivi, /^ {2}title\.de: finalise$/m, 'le statut n’a pas suivi son texte');
   assert.ok(!/^ {2}title\.it:/m.test(suivi), 'le statut italien qualifie maintenant l’ancien texte allemand');
   assert.match(suivi, /^ {2}title\.fr: pret-relecture$/m, 'le statut français n’avait pas à bouger');
   assert.ok(suivi.indexOf('Garder.') !== -1, 'le commentaire du suivi est perdu');
 
-  // Un enregistrement SANS changement de langue laisse le sidecar intact — SharePoint
-  // répliquerait chaque octet pour rien. La sentinelle est l'heure du fichier.
+  // Un enregistrement sans changement de langue laisse le fichier de suivi intact :
+  // SharePoint répliquerait chaque écriture. On le vérifie à l'heure du fichier.
   const sentinelle = new Date(2000, 0, 1);
   fs.utimesSync(chemin, sentinelle, sentinelle);
   await p._recepteur({ type: 'enregistrer', auto: true, articles: { '01-essai': {
@@ -326,11 +321,10 @@ test('changer la langue d’un article permute aussi les statuts de traduction',
   assert.strictEqual(fs.statSync(chemin).mtime.getFullYear(), 2000,
     'le sidecar a été réécrit sans changement de langue');
 
-  // Et quand le sidecar ne PEUT PAS s'écrire, l'échec se dit — chasse aux échecs muets.
-  // Le nom du temporaire de l'écriture atomique porte désormais pid + aléa : il n'y a plus
-  // de nom fixe à squatter par un dossier. La panne se simule donc directement sur le
-  // rename final, ciblé sur ce seul fichier — la fiche, elle, s'enregistre quand même, et
-  // l'avertissement non bloquant oriente vers le panneau.
+  // Quand le fichier de suivi ne peut pas s'écrire, l'échec se dit. Le temporaire de
+  // l'écriture atomique a un nom imprévisible (pid + aléa) : la panne se simule sur le
+  // renommage final de ce seul fichier. La fiche s'enregistre quand même, et un
+  // avertissement non bloquant oriente vers le panneau.
   const contenuAvant = fs.readFileSync(chemin, 'utf8');
   const renameOriginal = fs.renameSync;
   fs.renameSync = (src, dest) => {

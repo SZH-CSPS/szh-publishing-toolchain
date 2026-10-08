@@ -1,15 +1,16 @@
 // La vue « Articles » : l'ordre du numéro, le nom des articles, leurs tâches, la
 // couverture, et le brouillon « Envoyer à l'auteur ».
 //
-//   node --test "test/js/*.test.js"
+//   node --test test/js/articles.test.js
 //
-// Trois familles de contrôle. Le modèle pur (lib/articles.js) d'abord : l'ordre se répare,
-// le sidecar fait l'aller-retour, les deux revues ne se mélangent pas. Le partage ensuite :
-// le formulaire du numéro n'existe qu'une fois, et les deux pages qui le montrent montrent
-// exactement les mêmes champs — c'est cela qu'il ne faut pas laisser se dédoubler. L'hôte
-// enfin, réellement activé : déplacer un article écrit ausgabe.yaml et ne renomme aucun
-// dossier, un article ajouté à la main apparaît, une couverture déposée atterrit là où
-// l'export OJS la cherche.
+// Trois familles de contrôles :
+//   - le modèle (lib/articles.js) : l'ordre se répare, le sidecar fait l'aller-retour, les
+//     deux revues ne se mélangent pas ;
+//   - le formulaire du numéro est défini une seule fois, et les deux pages qui le montrent
+//     ont les mêmes champs ;
+//   - l'hôte activé : déplacer un article écrit ausgabe.yaml sans renommer de dossier, un
+//     article ajouté à la main apparaît, une couverture déposée arrive là où l'export OJS
+//     la cherche.
 'use strict';
 
 const test = require('node:test');
@@ -66,19 +67,19 @@ test('ordre des articles : un déplacement rend la liste entière, et s’arrêt
 });
 
 test('nom d’un article : deux chiffres, le titre de la fiche, le slug en dernier recours', () => {
-  // À partir de 00, comme le rang que porte le DOI (rangDoi → doiCalcule, « …-03-00 ») :
-  // le mode « Changer l'ordre » et le DOI disent le même nombre du même article.
+  // À partir de 00, comme le rang du DOI (rangDoi → doiCalcule, « …-03-00 ») : le mode
+  // « Changer l'ordre » et le DOI donnent le même nombre pour le même article.
   assert.strictEqual(art.prefixeOrdre(0), '00');
   assert.strictEqual(art.prefixeOrdre(9), '09');
   assert.strictEqual(art.prefixeOrdre(10), '10');
   assert.strictEqual(art.prefixeOrdre(100), '100');   // au-delà de 99, le nombre tel quel
   const meta = yaml.analyserMeta('title:' + LF + '  fr: "Un titre"' + LF);
-  // `libelleArticle` ne recalcule plus rien : c'est l'appelant qui décide du numéro,
-  // pré-formaté — ici celui que prefixeOrdre() aurait rendu, pour vérifier la jonction.
+  // `libelleArticle` reçoit le numéro déjà formaté par l'appelant ; ici celui que
+  // prefixeOrdre() aurait rendu.
   assert.strictEqual(art.libelleArticle(art.prefixeOrdre(2), '03-truc', art.titreFiche(meta, 'fr')),
     '02 · Un titre');
-  // Fiche absente, ou titre vide : l'article garde son numéro et son slug s'affiche — sans
-  // le préfixe du slug, qui redirait le même nombre que celui déjà affiché à côté.
+  // Fiche absente, ou titre vide : l'article garde son numéro et son slug s'affiche, sans
+  // son préfixe, qui répéterait le numéro affiché à côté.
   assert.strictEqual(
     art.libelleArticle(art.prefixeOrdre(2), '03-truc', art.titreFiche(yaml.analyserMeta(''), 'fr')),
     '02 · truc');
@@ -87,30 +88,27 @@ test('nom d’un article : deux chiffres, le titre de la fiche, le slug en derni
     'Titel');
 });
 
-// ---- Le numéro affiché : celui du dossier, pas le rang — sauf en mode « Changer l'ordre » --
+// ---- Le numéro affiché : celui du dossier, sauf en mode « Changer l'ordre » ---------------
 
 test('nom d’un article : le numéro vient du dossier, jamais d’un rang qu’il ne porte pas', () => {
-  // Un dossier préfixé affiche son propre numéro, même s'il ne correspond pas à son rang
-  // dans l'ordre : le disque et l'écran ne doivent jamais se contredire.
+  // Un dossier préfixé affiche son propre numéro, même s'il diffère de son rang : l'écran
+  // dit ce qui est sur le disque.
   assert.strictEqual(art.prefixeDossier('07-essai'), '07');
   assert.strictEqual(art.libelleArticle(art.prefixeDossier('07-essai'), '07-essai', 'Titre'),
     '07 · Titre');
-  // Un dossier SANS préfixe n'affiche ni numéro ni séparateur : promettre un rangement que
-  // le disque n'a pas serait pire que ne rien promettre.
+  // Un dossier sans préfixe n'affiche ni numéro ni séparateur.
   assert.strictEqual(art.prefixeDossier('essai'), '');
   assert.strictEqual(art.libelleArticle(art.prefixeDossier('essai'), 'essai', 'Titre'), 'Titre');
-  // Fiche absente ou titre vide : le slug prend la place du titre, avec ou sans numéro —
-  // amputé de son préfixe quand il en a un, sinon « 03 · 03-essai » redirait deux fois le
-  // même « 03 ».
+  // Fiche absente ou titre vide : le slug prend la place du titre, sans son préfixe s'il en
+  // a un (sinon « 03 · 03-essai »).
   assert.strictEqual(art.libelleArticle(art.prefixeDossier('essai'), 'essai', ''), 'essai');
   assert.strictEqual(art.libelleArticle(art.prefixeDossier('03-essai'), '03-essai', ''),
     '03 · essai');
   // tigeDossier() elle-même : le complément de prefixeDossier(), sans numéro à côté.
   assert.strictEqual(art.tigeDossier('03-essai'), 'essai');
   assert.strictEqual(art.tigeDossier('essai'), 'essai');
-  // Lu tel quel, jamais reformaté : à la différence de prefixeOrdre(), qui complète
-  // toujours sur deux chiffres, le préfixe du dossier est celui qui est écrit sur le
-  // disque — un chiffre seul reste un chiffre seul.
+  // Lu tel quel : contrairement à prefixeOrdre(), qui complète sur deux chiffres, le préfixe
+  // du dossier est celui du disque. Un chiffre seul reste un chiffre seul.
   assert.strictEqual(art.prefixeDossier('5-essai'), '5');
   // Sans tiret après les chiffres, ce n'est pas un préfixe séparé du reste du nom.
   assert.strictEqual(art.prefixeDossier('2026rapport'), '');
@@ -135,7 +133,7 @@ test('tâches : chaque revue a sa liste, et l’une ne touche pas l’autre', ()
   ]);
   assert.deepStrictEqual(art.tachesRevue(cfg, 'zeitschrift').map((t) => t.id),
     ['bon-a-tirer', 'issn-verifie']);
-  // La Revue n'a pas bougé : elle garde le jeu de départ.
+  // La Revue garde le jeu de départ.
   assert.deepStrictEqual(art.tachesRevue(cfg, 'revue').map((t) => t.id),
     art.TACHES_DEFAUT.map((t) => t.id));
   // Une revue inconnue — ausgabe.yaml sans clé `revue` — reçoit le jeu de départ.
@@ -192,8 +190,8 @@ test('tâches d’un article : l’avancement suit ce que la revue demande aujou
 // ---- La couverture ----
 
 test('couverture : les noms sont ceux que l’export OJS cherche', () => {
-  // lib/articles.js ne peut pas importer lib/export-ojs.js sans l'écrire : la liste y est
-  // recopiée, et c'est ici qu'on empêche les deux de diverger.
+  // lib/articles.js ne peut pas importer lib/export-ojs.js : la liste y est recopiée, et ce
+  // test empêche les deux copies de diverger.
   const src = fs.readFileSync(path.join(COCKPIT, 'lib', 'export-ojs.js'), 'utf8');
   const m = src.match(/const NOMS_COUVERTURE = \[([^\]]+)\]/);
   assert.ok(m, 'NOMS_COUVERTURE introuvable dans lib/export-ojs.js');
@@ -216,30 +214,29 @@ test('couverture : un seul nom canonique par format', () => {
 
 // ---- Le formulaire du numéro n'existe qu'une fois ----
 
-// Toute la table des champs vit dans media/_numero.js. Une clé d'intitulé absente de l'hôte
-// s'afficherait vide, sans erreur : c'est exactement la panne muette qu'on garde.
+// La table des champs vit dans media/_numero.js. Une clé d'intitulé absente de l'hôte
+// s'afficherait vide, sans erreur.
 test('formulaire du numéro : chaque intitulé de la table est fourni par l’hôte', () => {
   const fragment = fs.readFileSync(path.join(COCKPIT, 'media', '_numero.js'), 'utf8');
   const table = fragment.slice(fragment.indexOf('var CHAMPS = ['), fragment.indexOf('\n  ];'));
   const utilisees = [...table.matchAll(/libelle: '([^']+)'/g)].map((m) => m[1]);
   assert.ok(utilisees.length >= 15, 'table des champs trop maigre : ' + utilisees.length);
-  // Concaténé à lib/ : préalable au découpage d'extension.js, voir hote-factice.js.
+  // Source d'extension.js et de lib/ réunies (voir hote-factice.js).
   const src = sourceExtensionEtLib(COCKPIT);
   const bloc = src.slice(src.indexOf('const LIBELLES_NUMERO = ['), src.indexOf('];', src.indexOf('const LIBELLES_NUMERO = [')));
   const fournies = new Set([...bloc.matchAll(/'([^']+)'/g)].map((m) => m[1]));
   for (const cle of utilisees) {
     assert.ok(fournies.has(cle), 'intitulé « ' + cle + ' » absent de LIBELLES_NUMERO');
   }
-  // Et chaque clé annoncée existe vraiment dans les deux langues.
+  // Chaque clé annoncée existe dans les deux langues.
   const i18n = lire('vscodium-extension', 'szh-cockpit', 'lib', 'i18n.js');
   for (const cle of fournies) {
     assert.ok(i18n.indexOf("'" + cle + "'") !== -1, 'clé i18n inexistante : ' + cle);
   }
 });
 
-// Les deux pages ne portent plus un seul champ dans leur HTML : elles n'ont qu'un conteneur
-// vide, et c'est le fragment qui bâtit tout. Sans cela, la duplication reviendrait par le
-// gabarit sans qu'aucun contrôle de code la voie.
+// Les deux pages n'ont aucun champ dans leur HTML, seulement un conteneur vide que le
+// fragment remplit : les champs ne peuvent pas se dédoubler par le gabarit.
 test('formulaire du numéro : aucun champ dans le HTML des deux pages', () => {
   for (const page of ['metadata-issue', 'articles']) {
     const html = fs.readFileSync(path.join(COCKPIT, 'media', page + '.html'), 'utf8');
@@ -286,7 +283,7 @@ test('formulaire du numéro : les deux pages rendent exactement les mêmes champ
   assert.ok(a.length >= 8, 'formulaire du numéro vide : ' + JSON.stringify(a));
   assert.deepStrictEqual(b, a,
     'les deux pages ne montrent pas les mêmes champs : le formulaire s’est dédoublé');
-  // Et ces clés sont bien celles de la table du fragment, pas une liste écrite à la main.
+  // Ces clés sont celles de la table du fragment, pas une liste écrite à la main.
   const fragment = fs.readFileSync(path.join(COCKPIT, 'media', '_numero.js'), 'utf8');
   const table = fragment.slice(fragment.indexOf('var CHAMPS = ['), fragment.indexOf('\n  ];'));
   const attendues = [...table.matchAll(/\{ cle: '([^']+)'/g)].map((m) => m[1]).sort();
@@ -307,9 +304,8 @@ test('vue « Articles » : une carte par article, ses tâches et ses commandes',
     boutons: [{ id: 'importer', libelle: 'Convertir', icone: 'fleche' },
               { id: 'taches', libelle: 'Tâches', icone: 'ok' }],
     lignes: [
-      // Plus de pastille d'avancement (A7.5) : elle vit dans l'entête « À faire » de la
-      // carte, via `tachesResume` — la pastille reste réservée à d'autres compteurs, comme
-      // celui des images.
+      // L'avancement est dans l'entête « À faire » de la carte, via `tachesResume` ; les
+      // pastilles servent à d'autres compteurs, comme celui des images.
       { cle: '01-a', titre: '01 · Premier', ouvrir: true,
         pastilles: [], tachesResume: { texte: '1/4 tâches', toutes: false },
         actions: [{ id: 'monter', libelle: 'Monter', icone: 'haut', desactive: true },
@@ -329,7 +325,7 @@ test('vue « Articles » : une carte par article, ses tâches et ses commandes',
   // Les tâches sont cochables sur la carte : l'avancement se change sans rien ouvrir.
   assert.strictEqual(page.compter('.szh-tache'), 8, 'quatre cases par carte attendues');
   assert.strictEqual(page.compter('[data-tache]'), 8);
-  // Un entête « À faire » par carte à tâches (A7.2), qui porte l'avancement (A7.5).
+  // Un entête « À faire » par carte à tâches, qui porte l'avancement.
   assert.strictEqual(page.compter('.szh-taches-entete'), 2, 'entête « À faire » manquant');
   const textes = page.textes().join(' | ');
   assert.ok(textes.indexOf('À faire') !== -1, 'le titre compact de l’encadré des tâches a disparu');
@@ -348,10 +344,10 @@ test('vue « Articles » : une carte par article, ses tâches et ses commandes',
 
 // ---- La barre en deux lignes ---------------------------------------------------------
 //
-// `boutons` reste un tableau à plat côté hôte ; c'est cette page qui le répartit sur ses
-// deux conteneurs statiques (#barreFiltres, #barreActions — media/articles.html) selon
-// `groupe`. Le DOM ne se lit pas par `page.compter()` ici : les deux conteneurs sont des
-// FRÈRES de #cartes, pas ses descendants — on les prend donc directement par id.
+// `boutons` est un tableau à plat côté hôte ; la page le répartit selon `groupe` sur ses
+// deux conteneurs (#barreFiltres, #barreActions, dans media/articles.html). Ce sont des
+// frères de #cartes, pas ses descendants : on les prend par id plutôt que par
+// `page.compter()`.
 
 function boutonsVueDeuxLignes(extra) {
   return Object.assign({
@@ -377,8 +373,7 @@ test('vue Articles : la barre se répartit en deux lignes, et l’état ne vit q
       { id: 'cacher-meta', groupe: 'filtre', libelle: 'Métadonnées', icone: 'oeil' },
       { id: 'cacher-constats', groupe: 'filtre', libelle: 'Avertissements', icone: 'oeil' },
       { id: 'ordre', groupe: 'action', libelle: 'Changer l’ordre', icone: 'liste' },
-      // Sans `groupe` : un bouton qui n'en porte pas doit continuer de se comporter comme
-      // avant l'ajout des deux lignes — il rejoint donc les gestes, jamais les filtres.
+      // Sans `groupe`, un bouton rejoint la ligne des actions, pas celle des filtres.
       { id: 'verif-meta', libelle: 'Vérifier les méta (print)', icone: 'imprimante' }
     ]
   }));
@@ -393,14 +388,14 @@ test('vue Articles : la barre se répartit en deux lignes, et l’état ne vit q
   assert.strictEqual(boutonsDe(actions).length, 2,
     'le mode « Changer l’ordre » et le bouton sans groupe n’ont pas rejoint la ligne des gestes : '
     + boutonsDe(actions).map((e) => e.dataset.id).join(', '));
-  // Une seule zone role="status" pour toute la barre, et c'est celle des gestes : c'est de
-  // là que partent les phrases que la barre affiche (decorerBarre, media/articles.js).
+  // Une seule zone role="status" pour toute la barre, sur la ligne des actions : c'est là
+  // que s'affichent les phrases de la barre (decorerBarre, media/articles.js).
   assert.strictEqual(statutsDe(filtres).length, 0,
     'la ligne des filtres porte sa propre zone d’état : deux role="status" à la fois');
   assert.strictEqual(statutsDe(actions).length, 1, 'la ligne des gestes n’a pas sa zone d’état');
 
-  // Le mode « Changer l'ordre » : plus rien à filtrer sur les bandeaux minimaux — la ligne
-  // des filtres disparaît complètement, hidden et non pas seulement vide.
+  // En mode « Changer l'ordre », rien à filtrer sur les bandeaux minimaux : la ligne des
+  // filtres est masquée (hidden), pas seulement vide.
   page.envoyer(boutonsVueDeuxLignes({
     ordre: true,
     boutons: [
@@ -410,9 +405,9 @@ test('vue Articles : la barre se répartit en deux lignes, et l’état ne vit q
       { id: 'cacher-constats', groupe: 'filtre', libelle: 'Avertissements', icone: 'oeil' },
       { id: 'ordre-terminer', groupe: 'action', libelle: 'Terminer', icone: 'ok' },
       { id: 'ordre-annuler', groupe: 'action', libelle: 'Annuler', icone: 'fermer' }
-      // Pas de « Vérifier les méta » ici : l'hôte ne l'envoie plus en mode « Changer
-      // l'ordre » (extension.js, chargeArticles) — une feuille tirée pendant qu'on
-      // réordonne porterait des slugs déjà périmés au moment où « Terminer » les renomme.
+      // Pas de « Vérifier les méta » en mode « Changer l'ordre » (extension.js,
+      // chargeArticles) : une feuille tirée pendant qu'on réordonne porterait des slugs que
+      // « Terminer » va renommer.
     ]
   }));
   assert.strictEqual(filtres.hidden, true,
@@ -459,15 +454,14 @@ test('arborescence : les articles portent leur titre, préfixé du numéro de le
   const items = await HOTE.arbre().getChildren(sectionArticles());
   const libelles = items.map((it) => it.label);
   // « 01-essai » a un titre dans sa fiche, « 02-sans-fiche » n'en a pas : les deux se voient.
-  // Le numéro est celui du DOSSIER — « 01 », « 02 » — pas le rang dans l'ordre : les deux
-  // coïncident ici puisque rien n'a encore été déplacé.
-  // Le slug, lui, perd son propre préfixe dans le repli : sinon « 02 » se lirait deux
-  // fois de suite.
+  // Le numéro est celui du dossier (« 01 », « 02 »), qui coïncide ici avec le rang puisque
+  // rien n'a été déplacé. Dans le repli, le slug perd son préfixe, sinon « 02 » se lirait
+  // deux fois.
   assert.deepStrictEqual(libelles, ['01 · Titre', '02 · sans-fiche']);
   // Le slug passe en description : c'est par lui qu'on retrouve le dossier.
   assert.ok(items[0].description.indexOf('01-essai') === 0,
     'le slug a disparu de la description : ' + items[0].description);
-  // Et l'avancement des tâches s'y lit aussi, sans ouvrir la vue.
+  // L'avancement des tâches s'y lit aussi, sans ouvrir la vue.
   assert.match(items[0].description, /0\/4/);
 });
 
@@ -489,16 +483,15 @@ test('ordre : monter un article écrit ausgabe.yaml et ne renomme aucun dossier'
   assert.deepStrictEqual(fs.readdirSync(path.join(REVUE, 'articles')).sort(), dossiersAvant,
     'un dossier a été renommé : out/ serait à recompiler');
 
-  // L'ordre pilote l'arborescence, mais pas ses préfixes : aucun dossier n'a été renommé,
-  // chacun garde donc le numéro qu'il portait déjà — seule sa PLACE dans la liste a bougé.
+  // L'ordre pilote l'arborescence, pas ses préfixes : aucun dossier n'est renommé, chacun
+  // garde son numéro ; seule sa place dans la liste change.
   const items = await HOTE.arbre().getChildren(sectionArticles());
   assert.deepStrictEqual(items.map((it) => it.label), ['02 · sans-fiche', '01 · Titre']);
-  // Et la carte de la vue le dit aussi.
+  // La carte de la vue le montre aussi.
   const charge = p.messages.filter((m) => m.type === 'valeurs').pop();
   assert.deepStrictEqual(charge.lignes.map((l) => l.cle), ['02-sans-fiche', '01-essai']);
-  // « Monter »/« Descendre » ont quitté le pied de la carte complète (le classement se
-  // fait désormais dans le mode « Changer l'ordre », voir plus bas) : la limite se vérifie
-  // donc par le comportement de l'hôte, plus par un bouton désactivé sur la carte.
+  // « Monter »/« Descendre » ne sont pas sur la carte complète (le classement se fait dans
+  // le mode « Changer l'ordre ») : la limite se vérifie par le comportement de l'hôte.
   await p._recepteur({ type: 'action', cle: '02-sans-fiche', id: 'monter' });
   assert.strictEqual(fs.readFileSync(AUSGABE, 'utf8'), apres,
     'le premier article a encore pu monter');
@@ -516,15 +509,13 @@ test('ordre : un article ajouté à la main apparaît sans casser l’ordre', as
   assert.deepStrictEqual(items.map((it) => it.label),
     ['02 · sans-fiche', '01 · Titre', '07 · Ajouté hors interface'],
     'l’article ajouté n’apparaît pas, ou l’ordre s’est perdu');
-  // Rien n'a été réécrit au passage : la clé n'est écrite que par un geste de l'utilisateur.
+  // Rien n'a été réécrit : la clé n'est écrite que par une action de l'utilisateur.
   assert.match(fs.readFileSync(AUSGABE, 'utf8'), /^ordre-articles: \["02-sans-fiche", "01-essai"\]$/m);
 });
 
-// Cocher une case ne doit PAS renvoyer « valeurs » : la page reconstruirait sa liste
-// entière, et le focus clavier quitterait la case qu'on vient d'utiliser. La page sait
-// traiter « avancement » depuis longtemps ; c'est l'hôte qui ne l'envoyait pas.
-// L'avancement lui-même vit dans `tachesResume` (A7.5) et non plus dans `pastilles` :
-// c'est l'entête « À faire » de la carte qu'il faut reposer sans rien reconstruire.
+// Cocher une case renvoie « avancement », pas « valeurs » : la page reconstruirait sa liste
+// entière et le focus clavier quitterait la case. L'avancement est dans `tachesResume` :
+// seul l'entête « À faire » de la carte est mis à jour.
 test('tâches : cocher une case écrit le sidecar, et ne repose que son entête', async () => {
   const sidecar = path.join(REVUE, 'articles', '01-essai', '01-essai.taches.yaml');
   await HOTE.executer('szh.vueArticles');
@@ -548,7 +539,7 @@ test('tâches : cocher une case écrit le sidecar, et ne repose que son entête'
   assert.strictEqual(avancement.tachesResume.texte, '1/4 tâches',
     'l’avancement ne se lit pas sur la carte');
   assert.strictEqual(avancement.tachesResume.toutes, false);
-  // Et l'état coché est bien sur le disque, donc dans le prochain rendu complet.
+  // L'état coché est sur le disque, donc dans le prochain rendu complet.
   await HOTE.executer('szh.vueArticles');
   const relu = p.messages.filter((m) => m.type === 'valeurs').pop()
     .lignes.find((l) => l.cle === '01-essai');
@@ -571,7 +562,7 @@ test('couverture : déposée, elle atterrit là où l’export OJS la cherche', 
   await p._recepteur({
     type: 'couverture-deposer', nomFichier: 'scan.jpeg', donneesBase64: png.toString('base64')
   });
-  // « .jpeg » est écrit sous le premier nom que l'export essaie : jamais deux couvertures.
+  // « .jpeg » est écrit sous le premier nom que l'export essaie : une seule couverture.
   assert.ok(fs.existsSync(path.join(REVUE, 'couverture.jpg')), 'couverture non écrite');
   assert.ok(!fs.existsSync(path.join(REVUE, 'couverture.jpeg')));
   const reponse = p.messages.filter((m) => m.type === 'couverture').pop();
@@ -598,14 +589,13 @@ test('formulaire du numéro : la vue « Articles » écrit par le même chemin',
   await p._recepteur({ type: 'enregistrer', auto: true, modifies: { volume: '17' } });
   assert.match(fs.readFileSync(AUSGABE, 'utf8'), /^volume: "17"$/m);
   assert.ok(p.messages.some((m) => m.type === 'enregistre'), 'aucune confirmation');
-  // Et la charge utile de la vue porte les valeurs du numéro, comme la page dédiée.
+  // La charge utile de la vue porte les valeurs du numéro, comme la page dédiée.
   await p._recepteur({ type: 'pret' });
   const charge = p.messages.filter((m) => m.type === 'valeurs').pop();
   assert.strictEqual(charge.valeurs.volume, '17');
   assert.ok(charge.couverture, 'la couverture n’est pas dans la charge de la vue');
-  // Les INTITULÉS des tâches ne voyagent plus jusqu'à cette page : ils se règlent dans
-  // « Réglages SZH », avec les autres réglages de la rédaction. Seules les cases d'un
-  // article restent ici, ligne par ligne.
+  // Les intitulés des tâches se règlent dans « Réglages SZH » et ne sont pas envoyés à
+  // cette page ; seules les cases de chaque article y figurent.
   assert.strictEqual(charge.taches, undefined,
     'la table des intitulés est encore envoyée : la vue croirait pouvoir la régler');
   assert.ok((charge.lignes[0].taches || []).length > 0,
@@ -630,7 +620,7 @@ test('« Envoyer à l’auteur » : le brouillon parle la langue de l’auteur',
   assert.match(brouillon.corps, /Z2026-03/);
   // Le corps part tel quel à l'auteur : aucune consigne interne au rédacteur n'y traîne.
   assert.doesNotMatch(brouillon.corps, /Ctrl\+V|presse-papiers|Zwischenablage/);
-  // Et le mailto: encode tout ce que l'adresse ne peut pas porter nue.
+  // Le mailto: encode tout ce que l'adresse ne peut pas porter tel quel.
   const uri = pur.uriMailto(brouillon);
   assert.ok(uri.indexOf('mailto:anne@example.ch,beat@example.ch?subject=') === 0);
   assert.ok(uri.indexOf('%0A') !== -1, 'les retours à la ligne du corps ne sont pas encodés');
@@ -638,14 +628,12 @@ test('« Envoyer à l’auteur » : le brouillon parle la langue de l’auteur',
 
 // ---- Les quatre interrupteurs d'affichage de la vue ----
 //
-// Une carte porte l'aperçu complet des métadonnées, la liste des tâches à cocher et ses
-// avertissements : neuf lignes et quatre cases, fois le nombre d'articles du numéro. Sur un
-// numéro complet, la liste devient longue à parcourir. Quatre boutons la raccourcissent —
-// sans rien retirer du numéro : c'est ce que l'on choisit de LIRE qui change, jamais ce qui
-// est écrit.
+// Une carte porte l'aperçu des métadonnées, les tâches à cocher et les avertissements : la
+// liste devient longue sur un numéro complet. Quatre boutons masquent des parties de
+// l'affichage, sans rien changer à ce qui est écrit.
 //
 // Ils vivent dans la configuration du poste et non dans les réglages de l'éditeur, que la
-// mise à jour réécrit en entier (même motif que la langue, voir langue-interface.test.js).
+// mise à jour réécrit en entier (comme la langue, voir langue-interface.test.js).
 
 function apercuDe(charge, slug) {
   const ligne = charge.lignes.find((l) => l.cle === slug);
@@ -659,12 +647,12 @@ function derniereCharge(p) {
   return p.messages.filter((m) => m.type === 'valeurs').pop();
 }
 
-// Les quatre interrupteurs remis à « tout montrer », quoi qu'il soit arrivé avant : ce sont
-// des réglages de poste, ils survivent au contrôle qui les allume, et un contrôle qui
-// échoue en laissant l'un allumé ferait tomber les suivants pour la mauvaise raison.
+// Remet les quatre interrupteurs à « tout montrer ». Ce sont des réglages de poste : ils
+// survivent au contrôle qui les change, et un contrôle qui échoue ne doit pas fausser les
+// suivants.
 //
-// C'est `actif` qui dit l'état, et non le libellé : celui-ci nomme la chose et ne bouge
-// plus. `actif` vaut « la chose est à l'écran », donc éteindre veut dire rallumer.
+// `actif` dit l'état (« la chose est à l'écran ») ; le libellé nomme la chose et ne change
+// pas.
 const INTERRUPTEURS_VUE = ['cacher-taches', 'cacher-traductions', 'cacher-meta', 'cacher-constats'];
 
 async function eteindreVue(p) {
@@ -689,17 +677,15 @@ test('vue Articles : les quatre interrupteurs d’affichage sont offerts, allum�
     assert.ok(boutons[id], 'bouton absent de la barre : ' + id);
     assert.ok(boutons[id].libelle && boutons[id].tip,
       'bouton sans libellé ni infobulle : ' + id);
-    // Rien n'est caché : les quatre sont allumés, oeil ouvert. C'est là que se jouait la
-    // faute facile — la configuration retient ce qui est CACHÉ, recopier sa valeur dans
-    // `actif` allumerait précisément les boutons dont le contenu ne s'affiche pas.
+    // Rien n'est caché : les quatre sont allumés, œil ouvert. Piège : la configuration
+    // retient ce qui est caché, `actif` en est donc l'inverse.
     assert.strictEqual(boutons[id].actif, true, 'interrupteur éteint alors que rien n’est caché : ' + id);
     assert.strictEqual(boutons[id].icone, 'oeil', 'oeil fermé sur un contenu affiché : ' + id);
-    // `groupe: 'filtre'` est le seul contrat qui dit à la page (media/articles.js) de poser
-    // ce bouton sur la LIGNE DU HAUT de la barre — sans lui, un interrupteur atterrirait
-    // avec les gestes.
+    // `groupe: 'filtre'` indique à la page (media/articles.js) de poser ce bouton sur la
+    // ligne du haut de la barre, sinon il irait avec les actions.
     assert.strictEqual(boutons[id].groupe, 'filtre', 'l’interrupteur n’est plus marqué pour sa ligne : ' + id);
   }
-  // Le libellé nomme la chose et ne dit pas le geste : c'est l'infobulle qui l'annonce.
+  // Le libellé nomme la chose ; l'infobulle annonce l'action.
   assert.strictEqual(boutons['cacher-taches'].libelle, 'Tâches');
   assert.strictEqual(boutons['cacher-traductions'].libelle, 'Traductions');
   assert.strictEqual(boutons['cacher-meta'].libelle, 'Métadonnées');
@@ -721,17 +707,16 @@ test('vue Articles : « Changer l’ordre » et « Vérifier les méta » sont m
   assert.strictEqual(bouton('ordre').groupe, 'action', 'le bouton du mode n’est pas marqué « action »');
   assert.strictEqual(bouton('verif-meta').groupe, 'action',
     'le bouton de vérification n’est pas marqué « action »');
-  // Et aucun des quatre interrupteurs ne s'est glissé dans ce groupe : les deux lignes
-  // doivent rester disjointes, jamais un bouton compté deux fois ni aucun.
+  // Aucun des quatre interrupteurs n'est dans ce groupe : chaque bouton est sur une seule
+  // ligne.
   for (const id of INTERRUPTEURS_VUE) { assert.notStrictEqual(bouton(id).groupe, 'action'); }
 
   await p._recepteur({ type: 'commande', id: 'ordre' });
   const dedans = derniereCharge(p);
   assert.strictEqual(dedans.boutons.find((b) => b.id === 'ordre-terminer').groupe, 'action');
   assert.strictEqual(dedans.boutons.find((b) => b.id === 'ordre-annuler').groupe, 'action');
-  // « Vérifier les méta » disparaît en mode « Changer l'ordre » : les dossiers sont sur le
-  // point d'être renommés par « Terminer », et une feuille tirée maintenant porterait des
-  // slugs déjà périmés au moment où elle sort de l'imprimante.
+  // « Vérifier les méta » disparaît en mode « Changer l'ordre » : « Terminer » va renommer
+  // les dossiers, et une feuille tirée maintenant porterait des slugs périmés.
   assert.strictEqual(dedans.boutons.find((b) => b.id === 'verif-meta'), undefined,
     'le bouton de vérification est resté dans la barre en mode « Changer l’ordre »');
   await p._recepteur({ type: 'commande', id: 'ordre-annuler' });
@@ -753,8 +738,8 @@ test('vue Articles : « Cacher les métadonnées » vaut pour toutes les cartes'
   assert.strictEqual(btMeta.libelle, 'Métadonnées', 'le libellé d’un interrupteur ne doit pas bouger');
   assert.strictEqual(btMeta.icone, 'oeil-ferme');
   assert.match(btMeta.tip, /Remontrer/, 'l’infobulle n’annonce pas le retour');
-  // L'aperçu part quand même : replié n'est pas retiré, une carte se déplie encore seule
-  // par son chevron, sans aller-retour avec l'hôte.
+  // L'aperçu est envoyé quand même : une carte repliée se déplie par son chevron, sans
+  // aller-retour avec l'hôte.
   assert.ok(apres.lignes.every((l) => l.apercu && (l.apercu.lignes || []).length > 0),
     'l’aperçu des métadonnées n’est plus envoyé : une carte ne pourrait plus se déplier seule');
 
@@ -780,13 +765,12 @@ test('vue Articles : « Cacher les tâches » raccourcit la carte sans rien déc
   const apres = derniereCharge(p);
   assert.ok(apres.lignes.every((l) => l.taches.length === 0),
     'des tâches sont encore envoyées à la page : la carte ne raccourcit pas');
-  // L'interrupteur s'éteint, et son infobulle propose le retour : sans elle, le chemin
-  // inverse serait introuvable.
+  // L'interrupteur s'éteint, et son infobulle propose le retour.
   const btTaches = apres.boutons.find((b) => b.id === 'cacher-taches');
   assert.strictEqual(btTaches.actif, false);
   assert.strictEqual(btTaches.icone, 'oeil-ferme');
   assert.match(btTaches.tip, /Remontrer/);
-  // Et rien n'a été décoché au passage : le sidecar de l'article est intact.
+  // Rien n'a été décoché : le sidecar de l'article est intact.
   assert.match(fs.readFileSync(sidecar, 'utf8'), /version-finale/,
     'cacher les tâches a touché à leur état');
 
@@ -804,8 +788,8 @@ test('vue Articles : « Cacher les tâches » raccourcit la carte sans rien déc
 });
 
 test('vue Articles : « Cacher les traductions » ne laisse que la langue de l’article', async () => {
-  // Une fiche bilingue, et une langue déclarée qui n'est PAS celle du numéro : c'est le seul
-  // cas où l'on voit laquelle des deux le bouton retient.
+  // Une fiche bilingue, et une langue déclarée autre que celle du numéro : c'est le seul cas
+  // où l'on voit laquelle des deux le bouton retient.
   const fiche = path.join(REVUE, 'articles', '01-essai', '01-essai.meta.yaml');
   const original = fs.readFileSync(fiche, 'utf8');
   fs.writeFileSync(fiche, ['type: article', 'lang: de', 'doi: "10.57161/x"',
@@ -835,7 +819,7 @@ test('vue Articles : « Cacher les traductions » ne laisse que la langue de l�
     for (const libelle of ['Rubrique', 'Langue', 'Auteur·e·s', 'Licence', 'DOI']) {
       assert.ok(apres.marques[libelle], 'ligne perdue au passage : ' + libelle);
     }
-    // Et la case « pas de DOI », qui vit dans le même bloc, reste offerte.
+    // La case « pas de DOI », dans le même bloc, reste offerte.
     assert.ok(apres.ligne.sansDoi, 'la case « pas de DOI » a disparu avec les traductions');
     // Rien n'a été écrit dans la fiche : seul l'affichage a changé.
     assert.ok(fs.readFileSync(fiche, 'utf8').indexOf('fr: "Titre"') !== -1,
@@ -853,8 +837,7 @@ test('vue Articles : « Cacher les traductions » ne laisse que la langue de l�
 });
 
 test('vue Articles : sans langue déclarée, c’est celle du numéro qui reste', async () => {
-  // Le repli de la compilation, et donc la langue dans laquelle l'article paraîtra. Montrer
-  // autre chose que ce qui s'imprimera serait le pire des cas.
+  // Le repli de la compilation, donc la langue dans laquelle l'article paraîtra.
   const fiche = path.join(REVUE, 'articles', '01-essai', '01-essai.meta.yaml');
   const original = fs.readFileSync(fiche, 'utf8');
   fs.writeFileSync(fiche, ['type: article', 'doi: "10.57161/x"',
@@ -892,7 +875,7 @@ test('vue Articles : les quatre interrupteurs sont indépendants et se souvienne
   assert.ok(rouvert.lignes.every((l) => l.constats.length === 0));
   assert.strictEqual(rouvert.boutons.find((b) => b.id === 'cacher-traductions').actif, false);
 
-  // Et un identifiant de bouton inconnu ne touche à rien.
+  // Un identifiant de bouton inconnu ne touche à rien.
   const avant = fs.readFileSync(process.env.SZH_CONFIG_OJS, 'utf8');
   await p._recepteur({ type: 'commande', id: 'cacher-la-lune' });
   assert.strictEqual(fs.readFileSync(process.env.SZH_CONFIG_OJS, 'utf8'), avant);
@@ -920,7 +903,7 @@ test('vue Articles : « Cacher les avertissements » vide les constats sans rien
   assert.strictEqual(bt.actif, false);
   assert.strictEqual(bt.icone, 'oeil-ferme');
   assert.match(bt.tip, /Remontrer/);
-  // Rien n'a été corrigé au passage : « 02-sans-fiche » n'a toujours pas de fiche du tout.
+  // Rien n'a été corrigé : « 02-sans-fiche » n'a toujours pas de fiche.
   assert.ok(!fs.existsSync(
     path.join(REVUE, 'articles', '02-sans-fiche', '02-sans-fiche.meta.yaml')),
     'cacher les avertissements a écrit une fiche');
@@ -933,14 +916,13 @@ test('vue Articles : « Cacher les avertissements » vide les constats sans rien
 
 // ---- Le mode « Changer l'ordre » ---------------------------------------------------
 //
-// Le numéro qu'un article porte à l'écran vient de son rang ; le préfixe de son dossier
-// était figé à l'import. Les aligner demande de renommer des dossiers, et renommer à
-// chaque clic sur « Monter » ferait autant d'occasions de tomber sur un fichier ouvert ou
-// une synchronisation en cours. D'où un mode : on déplace autant qu'on veut sans rien
-// toucher au disque, et « Terminer » exécute le lot d'un coup.
+// Dans ce mode, le numéro affiché vient du rang ; le préfixe du dossier est fixé à l'import.
+// Les aligner demande de renommer des dossiers, ce qui peut buter sur un fichier ouvert ou
+// une synchronisation. On déplace donc sans toucher au disque, et « Terminer » renomme tout
+// d'un coup.
 //
-// Ce que ces contrôles tiennent : qu'aucun déplacement n'écrive tant que le mode est
-// ouvert, que « Terminer » aligne vraiment les dossiers, et qu'« Annuler » ne laisse rien.
+// Contrôles : aucun déplacement n'écrit tant que le mode est ouvert, « Terminer » aligne les
+// dossiers, « Annuler » ne laisse rien.
 
 function ausgabeOrdre() {
   const texte = fs.readFileSync(path.join(REVUE, 'ausgabe.yaml'), 'utf8');
@@ -962,10 +944,9 @@ test('ordre : la barre porte « Changer l’ordre », et le mode se voit dans la
   await p._recepteur({ type: 'commande', id: 'ordre' });
   const dedans = derniereCharge(p);
   assert.strictEqual(dedans.ordre, true, 'le mode ne se dit pas à la page');
-  // Dans le mode, une carte ne propose plus que de se déplacer : ouvrir un formulaire
-  // pendant qu'on réordonne, c'est repartir avec un dossier sur le point d'être renommé.
-  // « Monter »/« Descendre » ont quitté `actions` (le pied de la carte complète) : ils
-  // vivent désormais dans `ordre`, le bandeau minimal du mode (media/articles.js).
+  // Dans le mode, une carte propose seulement de se déplacer : un formulaire ouvert
+  // pointerait sur un dossier sur le point d'être renommé. « Monter »/« Descendre » sont
+  // dans `ordre`, le bandeau minimal du mode (media/articles.js), pas dans `actions`.
   for (const ligne of dedans.lignes) {
     assert.deepStrictEqual(ligne.actions, [],
       'une carte garde ses autres gestes en mode ordre : ' + ligne.actions.map((a) => a.id).join(', '));
@@ -975,29 +956,26 @@ test('ordre : la barre porte « Changer l’ordre », et le mode se voit dans la
     assert.deepStrictEqual(ligne.taches, [], 'les tâches partent encore en mode ordre');
     assert.deepStrictEqual(ligne.constats, [], 'les constats partent encore en mode ordre');
   }
-  // Le bandeau de « 02-sans-fiche » affiche le RANG À VENIR (prefixeOrdre), pas le préfixe
-  // de son dossier — mais le repli sur le slug doit quand même retirer ce dernier, sinon on
-  // lirait deux numéros à la fois (l'ancien du dossier après le nouveau rang), pire que le
-  // doublon d'origine.
+  // Le bandeau de « 02-sans-fiche » affiche le rang à venir (prefixeOrdre), pas le préfixe
+  // de son dossier. Le repli sur le slug retire ce préfixe, sinon on lirait deux numéros.
   const sansFiche = dedans.lignes.find((l) => l.cle === '02-sans-fiche');
   assert.ok(sansFiche, 'article de test disparu de la liste');
   assert.match(sansFiche.titre, /^\d+ · sans-fiche$/,
     'le bandeau du mode ordre réaffiche le préfixe du dossier : ' + sansFiche.titre);
-  // Le premier ne peut plus monter, le dernier ne peut plus descendre — et un bouton
-  // désactivé n'annonce pas un rang qui n'existe pas : son aria-label reprend le tip
-  // générique plutôt qu'une destination inventée.
+  // Le premier ne peut pas monter, le dernier ne peut pas descendre. Un bouton désactivé
+  // n'annonce pas de rang : son aria-label reprend l'infobulle générique.
   const premier = dedans.lignes[0];
   const dernier = dedans.lignes[dedans.lignes.length - 1];
   assert.strictEqual(premier.ordre.monter.desactive, true);
   assert.strictEqual(premier.ordre.monter.ariaLabel, premier.ordre.monter.tip);
   assert.strictEqual(dernier.ordre.descendre.desactive, true);
   assert.strictEqual(dernier.ordre.descendre.ariaLabel, dernier.ordre.descendre.tip);
-  // Un bouton actif, lui, nomme l'article et le rang visé — pas seulement le geste.
+  // Un bouton actif nomme l'article et le rang visé.
   if (dedans.lignes.length > 1) {
     assert.strictEqual(dedans.lignes[0].ordre.descendre.desactive, false);
     assert.match(dedans.lignes[0].ordre.descendre.ariaLabel, /01/);
   }
-  // Et la barre propose de terminer ou d'abandonner.
+  // La barre propose de terminer ou d'abandonner.
   const ids = dedans.boutons.map((b) => b.id);
   assert.ok(ids.indexOf('ordre-terminer') !== -1 && ids.indexOf('ordre-annuler') !== -1,
     'le mode n’offre pas de sortie : ' + ids.join(', '));
@@ -1023,7 +1001,7 @@ test('ordre : déplacer dans le mode n’écrit rien tant qu’on n’a pas term
   assert.deepStrictEqual(ausgabeOrdre(), ordreAvant, 'ausgabe.yaml écrit avant « Terminer »');
   assert.deepStrictEqual(dossiersArticles(), dossiersAvant, 'un dossier renommé avant « Terminer »');
 
-  // Annuler remet l'affichage d'aplomb, sans avoir rien touché.
+  // Annuler rétablit l'affichage, sans avoir rien touché.
   await p._recepteur({ type: 'commande', id: 'ordre-annuler' });
   assert.strictEqual(derniereCharge(p).lignes[0].cle, premier, 'l’abandon n’a pas rendu l’ordre d’avant');
   assert.deepStrictEqual(ausgabeOrdre(), ordreAvant);
@@ -1043,9 +1021,8 @@ test('ordre : « Terminer » aligne les dossiers sur les rangs affichés', async
 
   // Le mode est refermé.
   assert.ok(!derniereCharge(p).ordre, 'le mode reste ouvert après « Terminer »');
-  // Les dossiers portent le rang qu'ils affichent : c'est tout l'objet du chantier. Le rang
-  // compte à partir de ZÉRO (prefixeOrdre(), lib/articles.js) : le premier article de la
-  // liste porte « 00- », pas « 01- ».
+  // Les dossiers portent le rang qu'ils affichent. Le rang compte à partir de zéro
+  // (prefixeOrdre(), lib/articles.js) : le premier article porte « 00- ».
   const apres = derniereCharge(p).lignes.map((l) => l.cle);
   apres.forEach((slug, i) => {
     const rang = (i < 10 ? '0' : '') + String(i);

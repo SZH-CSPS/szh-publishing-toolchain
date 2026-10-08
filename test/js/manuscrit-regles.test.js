@@ -1,40 +1,8 @@
-// test/js/manuscrit-regles.test.js : le catalogue de règles STRUCTURELLES et le moteur
-// d'alertes du nettoyeur de manuscrit (article), §7 de
-// docs/ARCHITECTURE-nettoyeur-manuscrit.md.
-//
-// ⚠ Révision du 19.09.2026 : les contrôles sur le langage épicène, le vocabulaire du
-// handicap (dont le piège OQLF/CSPS) et la liaison et/& ont migré vers
-// test/js/manuscrit-vale.test.js — ces familles vivent maintenant en YAML dans
-// pipeline/vale/, portées par Vale, pas par ce module. Ce fichier ne garde que ce qui reste
-// structurel :
-//   1. chaque règle du catalogue porte une référence de chapitre non vide ;
-//   2. les seuils diffèrent entre les deux produits : un résumé de 650 signes passe en
-//      Zeitschrift (plafond seul, 700) et échoue en Revue (fourchette 400–600) ;
-//   3. le code de sortie du moteur est non nul dès la première alerte `error` ;
-//   4. les avertissements C1/C2 du filtre typographique sont REPRIS tels quels, jamais
-//      réimplémentés ;
-//   5. l'héritage en `suggestion` d'une règle d'accessibilité sans source normative
-//      allemande ;
-//   6. un saut de niveau de titre (H1 -> H3 sans H2) est détecté, un niveau de titre qui
-//      reste dans l'ordre ne l'est pas ;
-//   7. `regle.langue` (toujours courte) se compare à la sous-étiquette PRIMAIRE d'une
-//      langue de Contexte longue (fr-CH -> fr), jamais à la chaîne brute.
-//
-// ⚠ Révision du 21.09.2026 (branchement de pipeline/manuscrit_biblio.py) : le contrôle sur
-// APA.OrdreAlphabetiqueBiblio (ordre fautif détecté, entrée incomplète jamais « None (None) »)
-// a été RETIRÉ d'ici — la règle elle-même a quitté le catalogue de ce module,
-// manuscrit_biblio.verifier_ordre() la recouvre (APA.OrdreBiblio) et fait plus (suffixes
-// a/b/c en prime). Le contrôle équivalent vit maintenant dans
-// test/js/manuscrit-biblio.test.js, sur la fonction verifier_ordre() elle-même. Un contrôle
-// n°8, ci-dessous, garde spécifiquement l'ABSENCE de ce doublon dans le catalogue.
-//
-//   node --test test/js/manuscrit-regles.test.js
-//
-// Patron : test/js/manuscrit-docx.test.js. Python passe par python() de test/js/gardes.js
-// (la WSL sous Windows).
-//
-// manuscrit_regles.py n'est piloté que par sa CLI de diagnostic (--diagnostiquer/
-// --catalogue) : Node ne peut pas l'importer directement.
+// Catalogue des règles structurelles et moteur d'alertes du nettoyeur de manuscrit
+// (pipeline/manuscrit_regles.py), voir docs/ARCHITECTURE-nettoyeur-manuscrit.md. Les règles
+// de langue (épicène, vocabulaire du handicap) sont des règles Vale, testées dans
+// manuscrit-vale.test.js ; l'ordre de la bibliographie, dans manuscrit-biblio.test.js.
+// Le module est piloté par sa CLI (--diagnostiquer, --catalogue), dans la WSL.
 'use strict';
 
 const test = require('node:test');
@@ -50,8 +18,8 @@ function lancerPython(args, entree) {
     { encoding: 'utf8', input: entree, maxBuffer: 64 * 1024 * 1024 });
 }
 
-// Lance --diagnostiquer sur un Contexte JS, rend {code, sortie} — `code` est le code de
-// sortie du PROCESSUS (0 = aucune error, 1 = au moins une), `sortie` le JSON déjà parsé.
+// Lance --diagnostiquer sur un contexte. Rend { code, sortie } : `code` est le code de
+// sortie du processus (1 s'il y a au moins une alerte error), `sortie` le JSON lu.
 function diagnostiquer(contexte) {
   const r = lancerPython([MANUSCRIT_REGLES, '--diagnostiquer'], JSON.stringify(contexte));
   assert.ok(r.status === 0 || r.status === 1,
@@ -65,14 +33,7 @@ function catalogue() {
   return JSON.parse(r.stdout);
 }
 
-// ---------------------------------------------------------------------------------
-// Contrôle n°1 — chaque règle du catalogue porte une référence de chapitre non vide :
-// c'est ce qui permet à la rédaction de contester une alerte en remontant à sa source.
-//
-// Sabotage minimal : dans CATALOGUE, vider le champ `chapitre` d'UNE règle (par exemple
-// Structure.NiveauxTitre -> '') — l'assertion sur cette règle précise rougit, et le message
-// nomme l'id fautif.
-
+// La référence de chapitre permet de remonter d'une alerte à sa source.
 test('chaque règle du catalogue porte une référence de chapitre non vide',
   { skip: sansPython }, () => {
     const regles = catalogue();
@@ -82,9 +43,7 @@ test('chaque règle du catalogue porte une référence de chapitre non vide',
       'ces règles n\'ont aucune référence de chapitre : ' + JSON.stringify(sansChapitre));
   });
 
-// Les règles de longueur de la Zeitschrift parlent allemand jusque dans `found` et `suggested`
-// (insérés dans le message ou affichés tels quels) : « Zeichen », jamais « signes ».
-// Sabotage : remettre '%d signes' dans un des quatre détecteurs Zeitschrift.
+// `found` et `suggested` s'affichent tels quels : ils sont en allemand pour la Zeitschrift.
 test('longueurs Zeitschrift : found et suggested en allemand, sans « signes »',
   { skip: sansPython }, () => {
     const { sortie } = diagnostiquer({ produit: 'zeitschrift', langue: 'de', paragraphes: [
@@ -102,14 +61,7 @@ test('longueurs Zeitschrift : found et suggested en allemand, sans « signes »'
     }
   });
 
-// ---------------------------------------------------------------------------------
-// Contrôle n°2 — les seuils sont bien des CONSTANTES PAR PRODUIT : un résumé de 650 signes
-// passe en Zeitschrift (plafond seul, 700) et échoue en Revue (fourchette 400–600).
-//
-// Sabotage minimal : dans manuscrit_regles.py, remplacer RESUME_MAX_ZEITSCHRIFT = 700 par
-// RESUME_MAX_ZEITSCHRIFT = 600 (le seuil français) — la première assertion (aucune alerte
-// en zeitschrift) rougit : 650 dépasserait alors le seuil confondu avec celui du français.
-
+// Résumé : 400 à 600 signes en Revue, 700 au plus en Zeitschrift.
 test('les seuils de longueur diffèrent entre les deux produits (résumé de 650 signes)',
   { skip: sansPython }, () => {
     const resume650 = { source: 0, role: 'resume', texte: 'x'.repeat(650) };
@@ -129,28 +81,16 @@ test('les seuils de longueur diffèrent entre les deux produits (résumé de 650
     assert.strictEqual(cotéRevue.alertes[0].severity, 'error');
   });
 
-// ---------------------------------------------------------------------------------
-// Contrôle n°3 — le code de sortie du moteur est non nul dès la première alerte `error`,
-// et reste nul quand toutes les alertes sont de sévérité moindre.
-//
-// Sabotage minimal : dans principal(), remplacer
-// `return 1 if any(a['severity'] == 'error' for a in alertes) else 0` par `return 0` —
-// la première assertion (code === 1) rougit alors que le contexte contient bel et bien
-// une error.
-
 test('le code de sortie est non nul dès la première alerte error, nul sinon',
   { skip: sansPython }, () => {
-    // Forme.LongueurArticle.Revue (error) : un article de 20 000 signes dépasse le
-    // plafond de 18 000. Ne dépend d'aucune règle lexicale migrée vers Vale.
+    // Forme.LongueurArticle.Revue (error) : 20 000 signes dépassent le plafond de 18 000.
     const { code: codeAvecError } = diagnostiquer({
       produit: 'revue', langue: 'fr',
       paragraphes: [{ source: 0, texte: 'x'.repeat(20000) }]
     });
     assert.strictEqual(codeAvecError, 1, 'une alerte error doit rendre le code de sortie 1');
 
-    // Un contexte délibérément SANS RAPPORT avec le premier (APA.TroisAuteursPlus,
-    // severity 'warning') : un sabotage qui casserait un autre contrôle ne doit jamais
-    // faire rougir CELUI-CI par ricochet.
+    // APA.TroisAuteursPlus, de sévérité warning.
     const { code: codeSansError } = diagnostiquer({
       produit: 'revue', langue: 'fr',
       paragraphes: [{ source: 0, texte: 'Dupont et al a montré cela.' }]  // warning seule
@@ -159,17 +99,8 @@ test('le code de sortie est non nul dès la première alerte error, nul sinon',
       'aucune error (seulement une warning) doit rendre le code de sortie 0');
   });
 
-// ---------------------------------------------------------------------------------
-// Contrôle n°4 — les avertissements C1 (ß) / C2 (guillemets droits) du filtre
-// typographique sont REPRIS tels quels comme alertes, jamais réimplémentés (§6/§7 du
-// contrat) : ce module ne fait que redécouper la ligne stderr que
-// pipeline/filters/szh-typographie.lua émet déjà.
-//
-// Sabotage minimal : dans RE_TYPO_AVERTISSEMENT, retirer le groupe de capture du code
-// (remplacer `(\S+)` par `\S+`) — la reprise perd le nom du code, `rule` devient
-// littéralement 'Typo.' + la phrase française entière au lieu de 'Typo.eszett' : l'assertion
-// sur le nom de la règle rougit.
-
+// Le module redécoupe la ligne stderr émise par pipeline/filters/szh-typographie.lua, sans
+// refaire le contrôle.
 test('les avertissements C1/C2 du filtre typographique sont repris comme alertes, avec leur code',
   { skip: sansPython }, () => {
     const ligne = '[typo-avertissement] eszett | article « essai » | '
@@ -185,16 +116,8 @@ test('les avertissements C1/C2 du filtre typographique sont repris comme alertes
       'la phrase française reprise telle quelle, jamais réécrite : ' + sortie.alertes[0].message);
   });
 
-// ---------------------------------------------------------------------------------
-// Contrôle n°5 — un chapitre sans équivalent allemand (ici l'accessibilité, §7 du brief)
-// reste actif en Revue et hérité en `suggestion` pour la Zeitschrift : deux entrées de
-// catalogue distinctes, jamais une seule règle qui prétendrait tenir sa source des deux
-// documents.
-//
-// Sabotage minimal : dans le catalogue, changer la sévérité de
-// A11y.TexteAlternatif.ZeitschriftHeritee de 'suggestion' à 'warning' (celle de la Revue) —
-// la deuxième assertion (sévérité 'suggestion' côté zeitschrift) rougit.
-
+// Une règle sans source allemande a deux entrées au catalogue : celle de la Revue, et une
+// copie héritée en suggestion pour la Zeitschrift.
 test('A11y.TexteAlternatif : actif en Revue, hérité en suggestion pour la Zeitschrift (pas de source allemande)',
   { skip: sansPython }, () => {
     const image = { source: 3, alt: '' };
@@ -205,13 +128,8 @@ test('A11y.TexteAlternatif : actif en Revue, hérité en suggestion pour la Zeit
     assert.strictEqual(cotéRevue.alertes.length, 1);
     assert.strictEqual(cotéRevue.alertes[0].rule, 'A11y.TexteAlternatif.Revue');
     assert.strictEqual(cotéRevue.alertes[0].severity, 'warning');
-    // Audit du 22.09.2026 (coordinateur) : `found` reste None, jamais un placeholder texte
-    // (« texte alternatif absent ») qui n'apparaît nulle part dans le document écrit — sur
-    // le corpus réel, ce placeholder faisait TOUJOURS échouer la localisation et retombait
-    // en repli, parfois sur un paragraphe sans rapport avec l'image (un bloc figure n'a pas
-    // de correspondance dédiée). Un `found` absent évite la recherche vouée à l'échec ;
-    // manuscrit_annoter.py pose alors honnêtement un commentaire de paragraphe, sans prétendre
-    // avoir localisé un passage qui n'a jamais existé.
+    // `found` reste null : aucun texte du document ne correspond à une image manquante.
+    // manuscrit_annoter.py pose alors un commentaire sur le paragraphe.
     assert.strictEqual(cotéRevue.alertes[0].found, null);
 
     const { sortie: cotéZeitschrift } = diagnostiquer({
@@ -223,17 +141,7 @@ test('A11y.TexteAlternatif : actif en Revue, hérité en suggestion pour la Zeit
       'sans source normative allemande, l\'alerte est héritée en suggestion, pas en warning');
   });
 
-// ---------------------------------------------------------------------------------
-// Contrôle n°6 — Structure.NiveauxTitre détecte un SAUT de niveau (H1 direct à H3, sans
-// jamais poser de H2), pas un niveau 4 impossible : `niveau_retenu` est déjà borné à 0..3
-// par manuscrit_modele.classer_titres(), un contrôle qui guettait un niveau > 3 ne pouvait
-// donc jamais s'allumer. Un document qui commence directement à H2 (aucun H1) n'est PAS un
-// saut : c'est un choix éditorial valide, le premier titre fixe son propre départ.
-//
-// Sabotage minimal : dans _detecter_saut_niveau_titre, remplacer
-// `niveau > niveau_max_vu + 1` par `niveau > niveau_max_vu + 2` — le saut H1 -> H3 (écart de
-// 2) ne serait plus détecté, la première assertion rougit.
-
+// Un document peut commencer à H2 : le premier titre fixe le niveau de départ.
 test('Structure.NiveauxTitre : un saut H1 -> H3 est détecté, un départ à H2 ne l\'est pas',
   { skip: sansPython }, () => {
     const { sortie: avecSaut } = diagnostiquer({
@@ -259,17 +167,7 @@ test('Structure.NiveauxTitre : un saut H1 -> H3 est détecté, un départ à H2 
       'commencer directement à H2 (jamais de H1) est un choix éditorial valide, pas un saut');
   });
 
-// ---------------------------------------------------------------------------------
-// Contrôle n°7 — `regle.langue` (toujours courte : 'fr', 'de', '') se compare à la
-// sous-étiquette PRIMAIRE d'une langue de Contexte longue ('fr-CH' -> 'fr'), jamais à la
-// chaîne brute — la CLI passera des codes courts après ce lot, mais le module doit rester
-// robuste aux deux formes.
-//
-// Sabotage minimal : dans evaluer(), remplacer `_langue_courte(contexte.get('langue'))` par
-// `contexte.get('langue') or ''` (comparaison brute, sans normalisation) — avec
-// langue='fr-CH', plus aucune règle à `langue='fr'` ne matcherait ('fr-CH' != 'fr'), et
-// l'assertion sur Forme.LongueurResume.Revue rougirait (aucune alerte au lieu d'une).
-
+// `regle.langue` est courte (fr, de) ; le contexte peut porter une langue longue (fr-CH).
 test('la comparaison de langue se fait sur la sous-étiquette primaire (fr-CH -> fr)',
   { skip: sansPython }, () => {
     const { sortie } = diagnostiquer({
@@ -280,17 +178,8 @@ test('la comparaison de langue se fait sur la sous-étiquette primaire (fr-CH ->
       'langue="fr-CH" doit déclencher les règles langue="fr", comme langue="fr" tout court');
   });
 
-// ---------------------------------------------------------------------------------
-// Contrôle n°8 — révision du 21.09.2026 (branchement de pipeline/manuscrit_biblio.py) :
-// APA.OrdreAlphabetiqueBiblio ne doit JAMAIS réapparaître dans ce catalogue —
-// manuscrit_biblio.verifier_ordre() (APA.OrdreBiblio) la recouvre entièrement, une
-// réintroduction produirait deux alertes pour le même défaut de classement, vues du rapport
-// final (le mécanisme de fusion de la CLI ne fusionne pas les doublons entre moteurs, il
-// concatène).
-//
-// Sabotage minimal : dans CATALOGUE, réintroduire l'entrée
-// `Regle('APA.OrdreAlphabetiqueBiblio', ...)` retirée le 21.09.2026 — l'assertion rougit.
-
+// La CLI concatène les alertes des moteurs sans dédoublonner : une règle en double dans ce
+// catalogue donnerait deux alertes pour le même défaut.
 test('APA.OrdreAlphabetiqueBiblio ne réapparaît jamais dans le catalogue (recouverte par manuscrit_biblio.verifier_ordre)',
   { skip: sansPython }, () => {
     const regles = catalogue();
@@ -299,24 +188,10 @@ test('APA.OrdreAlphabetiqueBiblio ne réapparaît jamais dans le catalogue (reco
       + 'jamais revenir dans le catalogue structurel');
   });
 
-// ---------------------------------------------------------------------------------
-// Contrôle n°9 — Entete.OrdreNomIncertain (§6.3 du contrat de lot D, CONTRAT-noms.md ; §4.4
-// étendu par le superviseur le 22.09.2026) : une alerte PAR FICHE dont l'ordre prénom/nom
-// est resté en confiance 'defaut' ET porte `ordre_conflit: true` — un champ booléen qui
-// voyage comme une DONNÉE (recopié tel quel depuis manuscrit_noms.trancher()), jamais une
-// inspection du texte de `ordre_motif` : un motif reformulé ne doit jamais faire taire cette
-// règle en silence. Une fiche 'certaine' ne lève rien ; `found` cite `texte_source` tel quel
-// (le segment de byline tapé), pas la fiche déjà découpée en prénom/nom. Une fiche 'defaut'
-// SANS conflit (`ordre_conflit: false`) ne lève JAMAIS cette règle-ci — seulement (en
-// parallèle) Entete.OrdreNomParDefaut : c'est la distinction que le champ existe pour rendre
-// possible.
-//
-// Sabotage minimal : dans _auteur_en_conflit() (pipeline/manuscrit_regles.py), remplacer
-// `bool(auteur.get('ordre_conflit'))` par `auteur.get('ordre_confiance') == 'defaut'` (donc
-// toute fiche 'defaut' compterait comme en conflit) — la fiche « Jean Martin » (defaut, sans
-// conflit) se mettrait alors À TORT à lever Entete.OrdreNomIncertain, la dernière assertion
-// rougit (2 alertes au lieu de 1, « Jean Martin » retrouvé dans les deux règles à la fois).
-
+// Entete.OrdreNomIncertain se décide sur le booléen `ordre_conflit` (posé par
+// manuscrit_noms.trancher()), pas sur le texte de `ordre_motif`. `found` cite
+// `texte_source`, le segment tel que l'auteur l'a tapé. Une fiche 'defaut' sans conflit ne
+// lève que Entete.OrdreNomParDefaut.
 test('Entete.OrdreNomIncertain : une alerte par fiche à ordre_conflit=true, jamais pour une fiche defaut sans conflit',
   { skip: sansPython }, () => {
     const { sortie } = diagnostiquer({
@@ -328,8 +203,7 @@ test('Entete.OrdreNomIncertain : une alerte par fiche à ordre_conflit=true, jam
         { prenom: 'Isabel', nom: 'Valarino', ordre_confiance: 'certaine', ordre_conflit: false,
           ordre_motif: 'nom marqué par les capitales (VALARINO)',
           texte_source: 'Isabel VALARINO' },
-        // Fiche 'defaut' SANS conflit : la distinction que le champ `ordre_conflit` rend
-        // possible. Doit rester muette ici, et apparaître seule dans OrdreNomParDefaut.
+        // Fiche 'defaut' sans conflit : attendue dans OrdreNomParDefaut seulement.
         { prenom: 'Jean', nom: 'Martin', ordre_confiance: 'defaut', ordre_conflit: false,
           ordre_motif: 'aucun indice, convention prénom-nom appliquée',
           texte_source: 'Jean Martin' },
@@ -355,18 +229,8 @@ test('Entete.OrdreNomIncertain : une alerte par fiche à ordre_conflit=true, jam
       + 'alerte, individuelle) : ' + alertesParDefaut[0].found);
   });
 
-// ---------------------------------------------------------------------------------
-// Contrôle n°10 — Entete.OrdreNomParDefaut (§6.3 du contrat de lot D, §7 du contrat
-// d'architecture : « le volume d'alertes est un défaut ») : UNE SEULE alerte pour tout le
-// document quand au moins une fiche est en confiance 'defaut' SANS conflit — jamais une
-// alerte par fiche. `found` liste les noms concernés séparés par « ; ». Silence total quand
-// aucune fiche n'est en 'defaut' (certaine/probable/propagee ne lèvent rien).
-//
-// Sabotage minimal : dans _detecter_ordre_nom_par_defaut() (pipeline/manuscrit_regles.py),
-// remplacer le `return [{...}]` unique par un constat PAR fiche (une boucle qui `append`
-// dans la boucle plutôt qu'une seule fois après) — la première assertion (une seule alerte)
-// rougirait (3 au lieu de 1), contredisant le principe anti-bruit du §7.
-
+// Entete.OrdreNomParDefaut : une alerte pour tout le document, pour limiter le volume
+// d'alertes. `found` liste les noms concernés, séparés par « ; ».
 test('Entete.OrdreNomParDefaut : une seule alerte agrégée pour trois fiches en defaut, silence si tout est tranché',
   { skip: sansPython }, () => {
     const { sortie: avecDefaut } = diagnostiquer({
@@ -394,8 +258,7 @@ test('Entete.OrdreNomParDefaut : une seule alerte agrégée pour trois fiches en
       + alertesDefaut[0].found);
     assert.ok(alertesDefaut[0].message.includes('3'),
       'le message doit compter les fiches concernées : ' + alertesDefaut[0].message);
-    // Les trois fiches portent ordre_conflit: false (donnée, jamais déduite d'un motif) :
-    // Entete.OrdreNomIncertain ne doit rien lever en parallèle.
+    // ordre_conflit: false partout : Entete.OrdreNomIncertain reste muette.
     assert.deepStrictEqual(
       avecDefaut.alertes.filter((a) => a.rule === 'Entete.OrdreNomIncertain'), []);
 
@@ -416,14 +279,8 @@ test('Entete.OrdreNomParDefaut : une seule alerte agrégée pour trois fiches en
       + 'Entete.OrdreNom*');
   });
 
-// ---------------------------------------------------------------------------------
-// Forme.LongueurTitreChapitre.Zeitschrift : UNE alerte par document (un manuscrit allemand
-// en recevait 44), qui porte le nombre d'intertitres trop longs, la limite, et cite le
-// premier, sur lequel elle est ancrée.
-//
-// Sabotage minimal : dans _detecter_longueur_titre_chapitre_zeitschrift, rendre un constat
-// par titre trop long — l'assertion sur le nombre d'alertes rougit.
-
+// Forme.LongueurTitreChapitre.Zeitschrift : une alerte par document, ancrée sur le premier
+// intertitre trop long, avec leur nombre et la limite.
 test('intertitres trop longs (Zeitschrift) : une seule alerte, qui compte et cite le premier',
   { skip: sansPython }, () => {
     const long = (c) => c.repeat(85);
@@ -436,7 +293,7 @@ test('intertitres trop longs (Zeitschrift) : une seule alerte, qui compte et cit
         { source: 7, role: 'corps', texte: 'x'.repeat(80), niveau_retenu: 2 },
         { source: 9, role: 'corps', texte: long('b'), niveau_retenu: 3 },
         { source: 11, role: 'corps', texte: long('c'), niveau_retenu: 1 },
-        // Corps de texte long, pas un intertitre : jamais compté.
+        // Corps de texte : pas compté.
         { source: 12, role: 'corps', texte: long('d'), niveau_retenu: 0 },
       ]
     };

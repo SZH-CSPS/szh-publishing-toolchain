@@ -1,8 +1,7 @@
 ﻿<#
 .SYNOPSIS
-  Enveloppe gardee pour les anciens epinglages « Books SZH-CSPS » : aucun raccourci pose
-  par l'installation ne vise plus ce script. Il ouvre « Pronto » comme open-revue.ps1, dont
-  l'Accueil suit le produit du reglage du compte.
+  Sert les epinglages « Books SZH-CSPS » encore presents sur des postes. Ouvre « Pronto »
+  par open-revue.ps1.
 
     powershell -ExecutionPolicy Bypass -File open-livre.ps1
     powershell -ExecutionPolicy Bypass -File open-livre.ps1 -Versions   # selecteur de version seul
@@ -11,8 +10,7 @@
 #>
 [CmdletBinding()]
 param(
-  # Ouvre directement le selecteur de version, comme le bouton « Changer de version... » du
-  # cockpit.
+  # Ouvre seulement le selecteur de version.
   [switch]$Versions
 )
 

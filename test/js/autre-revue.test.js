@@ -28,7 +28,7 @@ function article(dossierNumero, slug, meta) {
 }
 
 // Une racine d'arbre jetable : deux numéros de la Revue (l'un archivé), un numéro illisible,
-// et un numéro de la Zeitschrift, la revue courante, qui ne doit jamais être proposé.
+// et un numéro de la Zeitschrift, la revue courante, qui ne doit pas être proposé.
 function racineEssai() {
   const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-autre-revue-'));
   const r1 = path.join(racine, 'Revue', '2026-01');

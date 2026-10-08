@@ -3,19 +3,15 @@
 //
 //   node --test "test/js/*.test.js"
 //
-// Le défaut de départ, relevé le 08.09.2026 sur deux postes. La cascade de langueCockpit()
-// s'arrêtait à la langue d'affichage de VSCodium, et retombait sur le français dès qu'elle
-// ne valait pas « de ». Or les postes d'ici affichent VSCodium en anglais : le repli était
-// donc atteint TOUJOURS, et le cockpit parlait français à la rédaction germanophone. Rien
-// ne le rattrapait — le réglage szh.langue, qui aurait pu, vit dans les réglages de
-// l'éditeur, que la mise à jour du poste réécrit en entier : le choix disparaissait à
-// chaque mise à jour.
+// Les postes affichent VSCodium en anglais : la langue de l'éditeur ne dit pas celle de
+// l'équipe. La cascade de langueCockpit() consulte donc d'abord les fichiers du poste
+// (state.json, config.json), que la mise à jour conserve, contrairement aux réglages de
+// l'éditeur.
 //
-// Et le symptôme le plus déroutant, celui qu'on ne relie à rien sans le savoir : les menus
-// de VSCodium et les textes du cockpit ne viennent pas de la même source. Les premiers de
-// package.nls*.json, résolus par la langue d'affichage de l'éditeur ; les seconds de
-// lib/i18n.js, résolus par la cascade ci-dessous. Un écran à moitié allemand et à moitié
-// français est donc un état ATTEIGNABLE, et non une traduction manquante.
+// Les menus de VSCodium et les textes du cockpit n'ont pas la même source : les premiers
+// viennent de package.nls*.json, selon la langue d'affichage de l'éditeur ; les seconds de
+// lib/i18n.js, selon la cascade. Un écran à moitié allemand, à moitié français est donc
+// possible sans qu'une traduction manque.
 'use strict';
 
 const test = require('node:test');
@@ -28,9 +24,8 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
 
-// Les deux fichiers du poste sont détournés AVANT le premier require : lib/i18n.js les lit
-// par SZH_CONFIG_OJS et SZH_ETAT_POSTE, exactement comme lib/archivage.js le fait déjà pour
-// le premier. Aucun contrôle de ce fichier ne touche le config.json du poste.
+// Les deux fichiers du poste sont détournés avant le premier require : lib/i18n.js les lit
+// par SZH_CONFIG_OJS et SZH_ETAT_POSTE.
 const POSTE = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-langue-'));
 const CONFIG = path.join(POSTE, 'config.json');
 const ETAT = path.join(POSTE, 'state.json');
@@ -59,16 +54,15 @@ test('cascade : sans rien sur le poste, la langue d’affichage de l’éditeur 
 });
 
 test('cascade : le dernier lanceur ouvert décide quand rien de plus explicite ne le fait', () => {
-  // C'est le correctif du défaut principal : sur ces postes, ni Windows ni VSCodium ne
-  // disent l'équipe qui s'en sert — les deux sont en anglais. Le lanceur, lui, le dit :
-  // « Zeitschriften SZH » écrit « de » dans son fichier d'état (Set-SzhLangueProduit).
+  // Sur ces postes, Windows et VSCodium sont en anglais. La langue écrite par le lanceur
+  // dans state.json dit celle de l'équipe.
   poserPoste({}, { langue: 'de' });
   assert.deepStrictEqual(i18n.sourceLangue(), { langue: 'de', source: 'lanceur' });
   assert.strictEqual(i18n.T('arbre.actualite'), i18n.TEXTES_COCKPIT.de['arbre.actualite']);
 });
 
 test('cascade : le choix enregistré pour le poste passe devant le lanceur', () => {
-  // Deux exemplaires du même choix, et c'est celui-ci qui survit à une mise à jour.
+  // Deux exemplaires du même choix ; celui-ci survit à une mise à jour.
   poserPoste({ langue: 'de' }, { langue: 'fr' });
   assert.deepStrictEqual(i18n.sourceLangue(), { langue: 'de', source: 'poste' });
 });
@@ -95,7 +89,7 @@ test('cascade : une valeur inconnue sur le poste ne détourne rien', () => {
     assert.strictEqual(i18n.sourceLangue().source, 'poste',
       'étiquette de langue refusée : ' + JSON.stringify(brute));
   }
-  // Un fichier illisible n'est pas une valeur : il ne doit pas faire échouer la traduction.
+  // Un fichier illisible est ignoré, sans faire échouer la traduction.
   fs.writeFileSync(CONFIG, '{ pas du json');
   i18n.oublierLanguePoste();
   assert.strictEqual(i18n.sourceLangue().source, 'editeur');
@@ -114,8 +108,8 @@ test('le choix de la langue s’écrit hors des réglages de l’éditeur', () =
 });
 
 test('le formulaire de réglages écrit la langue aux DEUX endroits', () => {
-  // Le premier exemplaire pilote la session, le second survit à la mise à jour. Écrire l'un
-  // sans l'autre ramènerait le défaut : l'outil remis à jour reparlait français.
+  // Le premier exemplaire pilote la session, le second survit à la mise à jour : les deux
+  // sont écrits.
   const src = lire('vscodium-extension', 'szh-cockpit', 'lib', 'reglages-hote.js');
   const i = src.indexOf("msg.cle === 'langue'");
   assert.notStrictEqual(i, -1, 'la branche « langue » du formulaire de réglages a disparu');
@@ -133,9 +127,8 @@ test('le formulaire de réglages écrit la langue aux DEUX endroits', () => {
 // ---- La discordance, dite plutôt que devinée ----
 
 test('discordance : elle ne se signale que lorsqu’elle existe vraiment', () => {
-  // Des menus en anglais ne sont pas une discordance : c'est l'état ordinaire d'un poste
-  // sans pack de langue, et personne ne s'en plaint. Le message ne sort donc que quand
-  // l'éditeur parle une des deux langues de la maison, et pas la même que le cockpit.
+  // Des menus en anglais sont l'état ordinaire d'un poste sans pack de langue. Le message
+  // ne sort que si l'éditeur parle fr ou de, et pas la même langue que le cockpit.
   const src = lire('vscodium-extension', 'szh-cockpit', 'lib', 'reglages-hote.js');
   const i = src.indexOf('function avertissementLangue');
   assert.notStrictEqual(i, -1, 'avertissementLangue a disparu');
@@ -157,7 +150,7 @@ test('discordance : l’onglet Paramètres la pose sous le choix de la langue', 
     'la zone du message ne se pose plus dans le groupe « langue »');
   assert.match(src, /zoneLangue\.textContent = String\(msg\.avertLangue \|\| ''\)/,
     'le message envoyé par l’hôte n’est plus affiché');
-  // Et la page réelle l'affiche, puis le retire quand l'hôte n'a plus rien à dire.
+  // La page l'affiche, puis le retire quand l'hôte n'a plus rien à dire.
   const { ouvrirReglages, MSG } = require('./page-reglages');
   const p = ouvrirReglages();
   const dit = 'Les menus parlent allemand, le cockpit français.';
@@ -170,9 +163,8 @@ test('discordance : l’onglet Paramètres la pose sous le choix de la langue', 
 
 // ---- Le diagnostic du poste ----
 //
-// C'est lui qui sert quand un poste distant montre le symptôme : il pose les six sources
-// côte à côte. Sa cascade doit être celle de lib/i18n.js — un diagnostic qui les ordonne
-// autrement désignerait la mauvaise coupable.
+// Le diagnostic pose les six sources de la langue côte à côte. Il les ordonne comme
+// lib/i18n.js, sans quoi il désignerait la mauvaise.
 
 test('diagnostic : sa cascade est celle du cockpit, dans le même ordre', () => {
   const diag = lire('windows', 'diagnostic.ps1');
@@ -181,8 +173,8 @@ test('diagnostic : sa cascade est celle du cockpit, dans le même ordre', () => 
     ['srcEssai', 'srcReglage', 'srcPoste', 'srcLanceur', 'langueMenus', 'srcWindows'],
     'la cascade du diagnostic ne suit plus celle de lib/i18n.js');
 
-  // Et l'ordre de lib/i18n.js, lu dans sourceLangue() : les mêmes étages, dans le même
-  // ordre. « editeur » y paraît deux fois — un test par langue d'affichage reconnue.
+  // L'ordre de lib/i18n.js, lu dans sourceLangue() : les mêmes étages, dans le même ordre.
+  // « editeur » y paraît deux fois, un test par langue d'affichage reconnue.
   const src = lire('vscodium-extension', 'szh-cockpit', 'lib', 'i18n.js');
   const i = src.indexOf('function sourceLangue');
   assert.notStrictEqual(i, -1, 'sourceLangue a disparu');
@@ -203,11 +195,10 @@ test('diagnostic : un pack de langue absent est nommé, pas tu', () => {
   assert.match(diag, /Dire 'manque' 'Interface cohérente'/,
     'la discordance ne ressort plus en défaut à réparer');
 
-  // Le piège, et c'est celui de SumatraPDF déjà corrigé une fois (voir diagnostic.test.js,
-  // correctif 1) : un pack absent n'est un DÉFAUT que si nous le livrons. Le pack français
-  // n'est volontairement pas épinglé, donc une locale « fr » qui laisse les menus en anglais
-  // est l'état voulu d'un poste francophone — le dire en défaut ferait ressortir tout poste
-  // sain en « exit 1 ». Seul un pack épinglé et non posé mérite « manque ».
+  // Un pack absent n'est un défaut que si nous le livrons (même règle que pour SumatraPDF,
+  // voir diagnostic.test.js). Le pack français n'est pas épinglé : une locale « fr » avec
+  // des menus en anglais est l'état normal d'un poste francophone. Seul un pack épinglé et
+  // non posé vaut « manque ».
   assert.match(diag, /\$packEpingle -and \(-not \$packPose\)/,
     'le diagnostic ne distingue plus « pack livré » de « pack absent du catalogue »');
   const iManque = diag.indexOf("Dire 'manque' '5. Affichage");

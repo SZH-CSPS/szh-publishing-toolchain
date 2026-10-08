@@ -5,35 +5,30 @@
 #   python3 reimporter.py --article <slug>            # le Word est celui de `source:`
 #   python3 reimporter.py --word "<nom>.docx"         # l'article est celui de `source:`
 #   python3 reimporter.py --article <slug> --word "<nom>.docx"     # appariement forcé
-#                                                      # (.odt accepté comme .docx dans les
-#                                                      # trois formes ci-dessus : import-docx.sh
-#                                                      # le convertit à l'entrée de sa chaîne)
 #   python3 reimporter.py --annuler --article <slug>  # revenir à l'état d'avant
 #   python3 reimporter.py --reprise                   # remettre d'aplomb un réimport tué
 #   python3 reimporter.py --empreintes --dossier . --slug <slug> [--word <nom>]
 #
-# Le dernier mode n'est pas pour un humain : import-docx.sh l'appelle en fin d'import pour
-# noter ce que la conversion a produit (voir « Empreintes » plus bas).
+# Un .odt est accepté partout comme un .docx (import-docx.sh le convertit). Le mode
+# --empreintes est appelé par import-docx.sh en fin d'import, pour noter ce que la
+# conversion a produit (voir « Empreintes » plus bas).
 #
-# Ce que le Word possède, et rien d'autre
+# Ce que le Word possède
 #
 #   <slug>.md         le corps
-#   <slug>.biblio.md  la bibliographie détachée à l'import — mêmes conditions qu'un tableau
+#   <slug>.biblio.md  la bibliographie détachée à l'import (même règle qu'un tableau)
 #   media/            les images du corps, nommées d'après leur ordre de citation
-#   tables/           les tableaux — sous conditions, c'est tout le sujet de ce script
+#   tables/           les tableaux, sous conditions (voir plus bas)
 #
 # Tout le reste du dossier de l'article est recopié tel quel : la fiche <slug>.meta.yaml,
-# le suivi de traduction, les tâches, portraits/, et tout fichier qu'une version future y
-# rangerait. La règle est une liste blanche de ce qui est remplacé, non une liste de ce qui
-# survit : un sidecar inventé demain survivra sans qu'on y pense.
+# le suivi de traduction, les tâches, portraits/, et tout autre fichier. On liste ce qui
+# est remplacé, pas ce qui survit, pour qu'un fichier ajouté plus tard survive aussi.
 #
-# Les tableaux : trois états, pas deux
+# Les tableaux : trois états
 #
-# Un tableau vit deux vies. L'auteur le corrige dans son Word ; la rédaction le retravaille
-# dans l'éditeur de tableaux (préréglage, fusions, légende, description pour les lecteurs
-# d'écran). Comparer le fichier vivant au nouveau ne dit pas laquelle des deux a bougé.
-# D'où les empreintes : à chaque import, on note le SHA-256 de ce que la conversion a
-# produit. Trois comparaisons deviennent alors possibles, et la décision est claire :
+# L'auteur corrige un tableau dans son Word ; la rédaction le retravaille dans l'éditeur de
+# tableaux (préréglage, fusions, légende, description). Pour savoir lequel des deux a
+# bougé, chaque import note le SHA-256 de ce que la conversion a produit (les empreintes) :
 #
 #   * le Word livre le même tableau qu'à l'import (empreinte retrouvée) -> l'auteur n'y a
 #     pas touché : la version de la rédaction est gardée, quel qu'ait été son travail. Si
@@ -41,35 +36,29 @@
 #   * le Word livre un tableau différent, et la rédaction n'avait pas touché celui-là ->
 #     la version du Word remplace l'ancienne. Personne ne perd rien.
 #   * le Word livre un tableau différent et la rédaction avait retravaillé le sien -> la
-#     version du Word gagne, et le conflit est nommé au rédacteur, avec le chemin où
-#     retrouver la sienne. Pourquoi le Word gagne : le corps et le tableau viennent du même
-#     document. Garder l'ancien tableau publierait une donnée que l'auteur vient de
-#     corriger, sous un texte qui parle de la nouvelle — et le ferait en silence, ce qui
-#     est exactement le défaut que cette fonction existe pour réparer. Rien n'est détruit :
-#     l'ancien dossier entier attend dans .szh-avant-reimport/.
-#   * article importé avant les empreintes -> on ne peut pas savoir. Tout tableau qui
-#     diffère est traité comme un conflit, et un message le dit une fois pour l'article.
+#     version du Word gagne, et le conflit est signalé avec le chemin où retrouver
+#     l'ancienne. Le corps et le tableau viennent du même document : garder l'ancien
+#     tableau publierait une donnée que l'auteur a corrigée. L'ancien dossier entier reste
+#     dans .szh-avant-reimport/.
+#   * article sans empreintes -> on ne peut pas savoir. Tout tableau qui diffère est
+#     traité comme un conflit, et un message le dit une fois pour l'article.
 #
 # La bibliographie : le même modèle, sur un seul fichier
 #
-# Depuis que l'import détache la bibliographie dans <slug>.biblio.md, elle vit les deux
-# mêmes vies qu'un tableau : l'auteur corrige ses références dans son Word, et la rédaction
-# peut les corriger ici — l'arborescence du cockpit ouvre ce fichier d'un clic. Les trois
-# états sont donc les mêmes, sur un fichier au lieu d'une série :
+# <slug>.biblio.md peut être corrigé par l'auteur dans son Word comme par la rédaction dans
+# le cockpit. Mêmes trois états :
 #
 #   * le Word livre les mêmes références qu'à l'import -> la version d'ici est gardée ;
 #   * le Word livre autre chose, personne n'avait touché -> le Word remplace ;
 #   * les deux ont bougé -> le Word gagne (le corps et les références viennent du même
 #     document), et le conflit est nommé, avec le chemin de l'ancienne version.
 #
-# Et deux cas propres à un fichier unique : le Word qui n'en détache plus (ses références
-# ne portent plus le style ; la liste reste dans son corps, et le fichier d'ici s'en va),
-# et l'article importé quand la chaîne détachait déjà sans noter l'empreinte — on ne peut
-# alors pas savoir, et un message le dit plutôt que d'accuser la rédaction à tort.
+# Deux cas de plus : le Word dont la bibliographie n'est plus détachée (la liste reste dans
+# son corps, et le fichier d'ici disparaît), et l'article sans empreinte de bibliographie
+# (on ne peut pas savoir, et un message le dit).
 #
-# ⚠ La bibliographie compte aussi dans « rien à faire » : sans cela, un Word dont seules
-# les références changent était jugé sans effet, consommé, et la correction de l'auteur
-# était jetée en silence — mesuré. C'est le défaut même que ce script existe pour empêcher.
+# La bibliographie compte dans « rien à faire » : un Word dont seules les références
+# changent n'est pas sans effet.
 #
 # Les images : elles voyagent avec le corps
 #
@@ -78,8 +67,8 @@
 # le nouveau produirait des figures qui ne correspondent plus à leurs légendes. media/ est
 # donc remplacé en entier. Ce qui pourrait se perdre — une image que la rédaction avait
 # déposée à la main, une que l'auteur a retirée — est compté et nommé, et l'ancien media/
-# attend dans .szh-avant-reimport/. Les portraits ne sont pas concernés : ils vivent dans
-# portraits/, appartiennent au formulaire des auteur·e·s, et ne sont pas touchés.
+# attend dans .szh-avant-reimport/. Les portraits, dans portraits/, appartiennent au
+# formulaire des auteurs et ne sont pas touchés.
 #
 # La fiche : elle survit, mais ce que le Word disait est déposé à côté
 #
@@ -90,30 +79,27 @@
 #
 # Réversibilité et interruption
 #
-# Le dossier de l'article n'est jamais modifié sur place : il est déplacé — pas copié —
-# dans .szh-avant-reimport/<slug>/<horodatage>/article-avant/, avec le Word consommé, un
-# journal et un LISEZ-MOI. `--annuler` remet cet état en place, et met de côté celui qu'il
-# remplace : on peut donc annuler l'annulation. Ces dossiers occupent de la place, surtout
-# à cause des images ; le LISEZ-MOI dit qu'on peut les supprimer à la main.
+# Le dossier de l'article n'est pas modifié sur place : il est déplacé dans
+# .szh-avant-reimport/<slug>/<horodatage>/article-avant/, avec le Word consommé, un
+# journal et un LISEZ-MOI. `--annuler` remet cet état en place et met de côté celui qu'il
+# remplace : une annulation s'annule. Ces dossiers peuvent être supprimés à la main.
 #
-# La bascule est faite de deux renommages voisins dans articles/ (atomiques, même système
-# de fichiers) : l'ancien dossier prend le nom .szh-bascule-<slug>, puis le nouveau prend
-# sa place. Tuer le script n'importe où ne laisse jamais un article à moitié remplacé :
-# tout ce qui précède la bascule se passe dans articles/.szh-reimport-<slug>/, invisible du
-# Makefile comme du cockpit (le point de tête écarte le dossier des jokers), et un reste de
-# chantier est reconnu et repris au lancement suivant, ou par `--reprise`, que la cible
-# `import` du Makefile appelle à chaque compilation : un article laissé sous
-# .szh-bascule-<slug> serait invisible du numéro, et se publierait sans lui sans un mot.
+# La bascule tient en deux renommages voisins dans articles/ (atomiques sur un même
+# système de fichiers) : l'ancien dossier devient .szh-bascule-<slug>, puis le nouveau
+# prend sa place. Tout ce qui précède se passe dans articles/.szh-reimport-<slug>/, que le
+# point initial cache au Makefile et au cockpit. Un script tué ne laisse donc jamais un
+# article à moitié remplacé ; le reste est repris au lancement suivant ou par `--reprise`,
+# que la cible `import` du Makefile appelle à chaque compilation (un article resté sous
+# .szh-bascule-<slug> manquerait au numéro).
 #
 # Sortie
 #
-# Une ligne JSON sur stdout, comme portraits.py et docx-meta.py, et rien d'autre sur
-# stdout : c'est le contrat du cockpit. Les messages destinés au rédacteur vont sur stderr
-# et dans articles-word/.import.log, français puis allemand, avec un code stable en
-# deuxième champ. Code de sortie : 0 réussi, 3 rien à faire, 4 refusé, 1 échec, 2 appel
-# mal formé.
+# Une seule ligne JSON sur stdout, pour le cockpit. Les messages à la rédaction vont sur
+# stderr et dans articles-word/.import.log, en français puis en allemand, avec un code
+# stable en deuxième champ. Code de sortie : 0 réussi, 3 rien à faire, 4 refusé, 1 échec,
+# 2 appel mal formé.
 #
-# stdlib uniquement, comme les autres maillons : pas de PyYAML dans la WSL.
+# Bibliothèque standard seule : la WSL n'a pas PyYAML.
 
 import hashlib
 import json
@@ -137,25 +123,18 @@ NOM_JOURNAL = '.import.log'
 PREFIXE_INFO = '[reimport]'
 PREFIXE_AVERT = '[import-avertissement]'
 
-# Le fichier de la bibliographie détachée. Nommé ici une fois pour toutes, comme
-# szh-biblio-detacher.lua le nomme à l'import et lib/citations.js à l'édition.
+# Le fichier de la bibliographie détachée, nommé comme dans szh-biblio-detacher.lua et
+# lib/citations.js.
 def nom_biblio(slug):
     return slug + '.biblio.md'
 
 
-# Depuis que l'import pose toujours <slug>.biblio.md — même quand le Word n'a pas de
-# bibliographie, voir szh-biblio-detacher.lua — sa seule PRÉSENCE ne dit plus si le Word en
-# apportait une : un fichier vide et un fichier absent doivent se lire pareil partout
-# ci-dessous (fusionner_biblio, rien_a_faire, ecrire_empreintes), sans quoi un article qui
-# n'a jamais eu de bibliographie recevrait un message de réimport qui n'a pas de sens pour
-# lui — c'est le bruit que ce contrôle existe pour empêcher.
+# L'import pose toujours <slug>.biblio.md, même sans bibliographie dans le Word : un fichier
+# vide et un fichier absent se lisent donc pareil partout ci-dessous (fusionner_biblio,
+# rien_a_faire, ecrire_empreintes).
 #
-# « Vide » au sens large, comme szh-citations.lua le définit à la compilation (même
-# raisonnement, langage différent) : rien, ou seulement des blancs — espaces, tabulations,
-# retours à la ligne, et les blancs qu'on ne voit pas, que ce dépôt pose partout par ses
-# règles de typographie et qu'un fichier « vidé à la main » en contiendra. str.strip() de
-# Python traite déjà l'insécable (U+00A0) et l'espace fine insécable (U+202F) comme des
-# blancs ; seul le BOM (U+FEFF) ne l'est pas pour lui, et doit être retiré à part.
+# « Vide » comme dans szh-citations.lua : rien, ou seulement des blancs, insécables
+# comprises. str.strip() les retire déjà ; seul le BOM (U+FEFF) est retiré à part.
 def est_vide(chemin):
     with open(chemin, encoding='utf-8') as f:
         texte = f.read()
@@ -179,22 +158,19 @@ def possede_par_le_word(slug):
 EXTENSIONS_IMAGE = ('.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.bmp',
                     '.tif', '.tiff', '.emf', '.wmf')
 
-# Les issues, et le code de sortie du processus. Ce code est AUSSI dans la ligne JSON
-# (champ `code`) : un appelant qui teste $? et un appelant qui lit le JSON doivent
-# conclure la même chose, et un contrôle du banc le mesure sur les cinq issues.
+# Les issues et le code de sortie. Le code figure aussi dans la ligne JSON (champ `code`),
+# pour que $? et le JSON disent la même chose (un test le vérifie sur les cinq issues).
 #
 #   0 reussi   le corps vient du Word corrigé
 #   3 rien     un Word a été examiné, il ne changeait rien ; il est consommé
-#   4 refuse   il n'y avait rien à faire de ce Word ou de cet article, et rien n'a été
-#              touché. Ce n'est pas une panne : à ne jamais peindre en rouge.
-#   1 echec    la conversion ou le système de fichiers a lâché ; l'article est intact
-#   2 —        appel mal formé (pas de ligne JSON : c'est un bug d'appelant)
+#   4 refuse   rien à faire de ce Word ou de cet article, rien n'a été touché. Ce n'est
+#              pas une panne : à ne pas afficher en rouge.
+#   1 echec    la conversion ou le système de fichiers a échoué ; l'article est intact
+#   2 —        appel mal formé (pas de ligne JSON : erreur de l'appelant)
 #
-# ⚠ `--article <slug>` sur un article dont aucun Word n'attend rend 4 (`reimport-sans-word`)
-# et non 3. La distinction est voulue : « rien » veut dire qu'un document a été lu et
-# n'apportait rien ; « refusé » qu'il n'y avait aucun document à lire. Le geste attendu du
-# rédacteur diffère — dans un cas il n'a rien à faire, dans l'autre il doit déposer le Word
-# corrigé — et c'est le message qui le dit.
+# `--article <slug>` sans Word en attente rend 4 (`reimport-sans-word`), pas 3 : « rien »
+# veut dire qu'un Word a été lu sans rien apporter, « refusé » qu'il n'y avait rien à lire
+# (il faut alors déposer le Word corrigé).
 CODES = {0: 'reussi', 3: 'rien', 4: 'refuse', 1: 'echec'}
 
 
@@ -222,15 +198,11 @@ class Voix(object):
             pass                          # un journal illisible ne casse pas le réimport
 
     def dire(self, fr, de):
-        # Les deux langues sont exigées par la signature : un message à moitié traduit ne
-        # doit pas pouvoir sortir d'ici.
+        # Les deux langues sont obligatoires.
         self._poser(PREFIXE_INFO + ' ' + fr + ' [de] ' + de)
 
     def avertir(self, code, champs, fr, de):
-        # Même préfixe et même mécanisme que docx-meta.py, docx-tables.py et
-        # livre-scinder.py (szh_commun.avertir()) — seul le journal diffère : le nôtre est
-        # un chemin résolu au constructeur, jamais SZH_IMPORT_LOG, et l'écriture se fait ici
-        # avec flush=True, comme le reste de cette classe (voir _poser).
+        # szh_commun.avertir(), avec le journal de cette instance au lieu de SZH_IMPORT_LOG.
         self.avertissements.append(code)
         ligne = szh_commun.avertir(PREFIXE_AVERT, code, champs, fr, de,
                                     journal=self.journal, flush=True)
@@ -289,14 +261,12 @@ def lister_images(dossier):
 def ecrire_empreintes(dossier, slug, nom_word, tableaux=None, biblio=None):
     """Note ce que le Word a livré. Rend le nombre de lignes écrites.
 
-    `tableaux` ({rang: sha}) sert au réimport : ce qui est INSTALLÉ à un rang peut être la
-    version que la rédaction avait retravaillée, mais l'empreinte doit décrire ce que le
-    Word livrait. Sans cette distinction, un tableau gardé passerait au réimport suivant
-    pour une modification de l'auteur, et chaque réimport rouvrirait le même faux conflit.
+    `tableaux` ({rang: sha}), au réimport : l'empreinte décrit ce que le Word livrait, pas
+    la version de la rédaction installée à ce rang. Sinon, un tableau gardé passerait au
+    réimport suivant pour une modification de l'auteur.
 
-    `biblio` dit la même chose de <slug>.biblio.md, et la même subtilité s'y applique :
-    l'empreinte du fichier livré par le Word, '' si ce Word n'en détachait pas, None pour
-    mesurer le fichier installé — c'est le cas de l'import, où il n'y a rien d'autre.
+    `biblio`, de même pour <slug>.biblio.md : l'empreinte du fichier livré, '' si le Word
+    n'en détachait pas, None pour mesurer le fichier installé (cas de l'import).
     """
     lignes = []
     if nom_word:
@@ -306,9 +276,7 @@ def ecrire_empreintes(dossier, slug, nom_word, tableaux=None, biblio=None):
     if os.path.isfile(corps):
         lignes.append('corps\t%s\t%s' % (sha(corps), slug + '.md'))
     refs = os.path.join(dossier, nom_biblio(slug))
-    # Vide comme absent (voir est_vide ci-dessus) : sans cela, le fichier toujours créé à
-    # l'import, même sans bibliographie dans le Word, laisserait une empreinte — et le
-    # premier réimport de cet article la comparerait à du vide pour rien.
+    # Vide comme absent (voir est_vide()) : pas d'empreinte.
     if biblio is None and not biblio_absente_ou_vide(refs):
         biblio = sha(refs)
     if biblio:
@@ -382,12 +350,10 @@ def lire_source(chemin_fiche):
 
 def blocs_fiche(chemin):
     """{clé de premier niveau: texte du bloc}. Une clé commence en colonne 0 ; ses lignes
-    indentées et ses tirets lui appartiennent. Assez fin pour dire quels champs diffèrent,
-    et sans dépendance.
+    indentées et ses tirets lui appartiennent. Suffit pour dire quels champs diffèrent.
 
-    Les lignes `photo:` des auteur·e·s sont écartées : leur valeur est décidée par le
-    détourage, non par l'auteur, et elles feraient diverger la liste des auteurs à chaque
-    fois sans rien dire de son contenu."""
+    Les lignes `photo:` des auteurs sont écartées : leur valeur vient du détourage, et
+    ferait toujours diverger la liste des auteurs."""
     blocs = {}
     try:
         with open(chemin, encoding='utf-8-sig') as f:
@@ -412,9 +378,8 @@ def blocs_fiche(chemin):
 
 
 def champs_divergents(fiche_vivante, fiche_du_word):
-    """Champs que le Word remplit autrement que la fiche. Un champ dont le Word ne dit
-    rien n'est pas un écart : il n'y aurait rien à recopier. `source` est écarté, il est
-    égal par construction et ne dit rien du contenu."""
+    """Champs que le Word remplit autrement que la fiche. Un champ vide dans le Word n'est
+    pas un écart. `source` est écarté."""
     a, b = blocs_fiche(fiche_vivante), blocs_fiche(fiche_du_word)
     return [cle for cle in sorted(b)
             if cle != 'source' and b[cle].strip() and b[cle] != a.get(cle, '')]
@@ -444,9 +409,8 @@ def articles_de_la_revue(revue):
 
 def trouver_word(revue, nom):
     """Le Word en attente (.docx ou .odt), désigné par un nom ou par un chemin. Comparaison
-    insensible à la casse, comme le nocaseglob de la cible `import`. Aucun filtre
-    d'extension ici : le nom vient de `source:` ou du choix de l'utilisateur, et
-    import-docx.sh saura convertir un .odt à son tour."""
+    insensible à la casse, comme le nocaseglob de la cible `import`. Pas de filtre
+    d'extension : import-docx.sh convertit un .odt."""
     if os.sep in nom or '/' in nom:
         return nom if os.path.isfile(nom) else None
     direct = os.path.join(revue, DOSSIER_WORD, nom)
@@ -528,8 +492,8 @@ def creer_rebut(revue, slug, suffixe=''):
                   encoding='utf-8', newline='\r\n') as f:
             f.write(LISEZ_MOI)
     except OSError:
-        pass                              # le mode d'emploi n'est pas la sauvegarde
-    # Un réimport par seconde au plus : le suffixe -2, -3 lève l'égalité si besoin.
+        pass                              # le LISEZ-MOI est facultatif
+    # Deux réimports dans la même seconde : suffixe -2, -3…
     souche = os.path.join(base, slug, horodatage() + suffixe)
     chemin, n = souche, 1
     while os.path.exists(chemin):
@@ -551,14 +515,13 @@ def rebuts_de(revue, slug):
 
 
 # ---------------------------------------------------------------------------------
-# Reprise d'un chantier interrompu. Trois restes possibles, et un seul est grave :
-# le dossier de l'article déplacé sous .szh-bascule-<slug> et pas encore remplacé.
+# Reprise d'un réimport interrompu. Le seul reste grave est un dossier d'article déplacé
+# sous .szh-bascule-<slug> et pas encore remplacé.
 
 def reprendre_tout(revue, voix):
-    """Balaie articles/ des restes d'un réimport interrompu. Sans article à nommer : quand
-    le kill est tombé dans la fenêtre de la bascule, articles/<slug> n'existe plus et
-    l'article est introuvable — c'est justement là qu'il faut secourir. Rend le nombre
-    d'articles remis d'aplomb."""
+    """Nettoie articles/ des restes d'un réimport interrompu, sans article désigné : si
+    l'interruption a eu lieu pendant la bascule, articles/<slug> n'existe plus. Rend le
+    nombre d'articles remis en place."""
     articles = os.path.join(revue, 'articles')
     try:
         restes = sorted(os.listdir(articles))
@@ -573,8 +536,7 @@ def reprendre_tout(revue, voix):
         try:
             repris += 1 if reprendre(revue, slug, voix) else 0
         except OSError as exc:
-            # Le seul endroit où un échec laisse l'article introuvable : il doit se lire
-            # comme une phrase, pas comme une trace Python.
+            # Ici, un échec laisse l'article introuvable : on l'explique en clair.
             voix.avertir(
                 'reimport-reprise-impossible',
                 ['article « %s »' % slug, 'dossier « articles/%s »' % nom,
@@ -635,8 +597,8 @@ def reprendre(revue, slug, voix):
 
 def fusionner_tables(vivant, temp, empreintes, voix, slug):
     """Décide, tableau par tableau, ce que temp/tables doit contenir. Modifie temp en
-    place, et rend le compte de chaque issue avec les empreintes de ce que le Word a
-    livré — ce sont celles-là qu'il faut noter, non celles de l'installé."""
+    place, et rend le compte de chaque issue avec les empreintes de ce que le Word a livré
+    (celles qu'il faut noter, pas celles de la version installée)."""
     bilan = {'gardes': 0, 'remplaces': 0, 'deplaces': 0, 'retires': 0, 'conflits': 0,
              'nouveaux': 0}
     tables_vivantes = lister_tables(vivant)
@@ -665,8 +627,7 @@ def fusionner_tables(vivant, temp, empreintes, voix, slug):
             'liefert, wird daher gemeldet, und die alte bleibt im Sicherungsordner '
             'zugänglich.')
 
-    # Chaque tableau vivant ne peut servir qu'une fois : un tableau dupliqué dans le Word
-    # ne doit pas faire réapparaître deux fois la même version retravaillée.
+    # Chaque tableau en place ne sert qu'une fois, même si le Word le duplique.
     pris = set()
     garder = {}                           # rang neuf -> rang vivant à réinstaller
     for k in sorted(sha_neuves):
@@ -698,8 +659,7 @@ def fusionner_tables(vivant, temp, empreintes, voix, slug):
             continue
         # Le Word livre autre chose à ce rang.
         if k not in sha_vivantes or k in pris:
-            # Rien à ce rang avant, ou bien ce qui y était a suivi son contenu à un autre
-            # rang : dans les deux cas personne ne perd rien ici.
+            # Rien à ce rang avant, ou l'ancien tableau a suivi son contenu à un autre rang.
             bilan['nouveaux'] += 1
             continue
         if sha_vivantes[k] == sha_neuves[k]:
@@ -718,26 +678,20 @@ def fusionner_tables(vivant, temp, empreintes, voix, slug):
 
 
 # ---------------------------------------------------------------------------------
-# La bibliographie détachée. Même modèle que les tableaux, sur un fichier unique : voir
-# l'en-tête du fichier pour le raisonnement, il est le même mot pour mot.
+# La bibliographie détachée : même modèle que les tableaux, sur un seul fichier (voir
+# l'en-tête du fichier).
 
 def fusionner_biblio(vivant, temp, empreintes, slug):
     """Décide ce que temp/<slug>.biblio.md doit contenir, et rend (bilan, empreinte de ce
-    que le Word a livré). L'empreinte rendue est celle du WORD, jamais celle de l'installé :
-    une bibliographie gardée passerait sinon au réimport suivant pour une correction de
-    l'auteur, et le même faux conflit se rouvrirait indéfiniment.
+    que le Word a livré). L'empreinte est celle du Word, pas de la version installée, pour
+    qu'une bibliographie gardée ne passe pas au réimport suivant pour une correction.
 
-    Ne dit rien lui-même : les messages sont posés par l'appelant, après le partage entre
-    « rien à faire » et un vrai remplacement."""
+    N'écrit aucun message : l'appelant s'en charge, une fois « rien à faire » tranché."""
     bilan = {'gardee': 0, 'remplacee': 0, 'conflit': 0, 'retiree': 0, 'nouvelle': 0,
              'inconnue': 0}
     ancien = os.path.join(vivant, nom_biblio(slug))
     neuf = os.path.join(temp, nom_biblio(slug))
-    # Vide comme absent (voir est_vide en tête de fichier) : depuis que l'import pose
-    # toujours ce fichier, même sans bibliographie dans le Word, sa seule présence ne dit
-    # plus rien — sans ce garde-fou, un article qui n'en a jamais eu recevrait « nouvelle
-    # bibliographie » au premier réimport, pour un fichier qui est resté vide des deux
-    # côtés.
+    # Vide comme absent (voir est_vide()).
     sha_ancien = None if biblio_absente_ou_vide(ancien) else sha(ancien)
     sha_neuf = None if biblio_absente_ou_vide(neuf) else sha(neuf)
     if sha_ancien is None:
@@ -749,17 +703,15 @@ def fusionner_biblio(vivant, temp, empreintes, slug):
     retravaillee = emp is None or emp != sha_ancien
     bilan['inconnue'] = 1 if emp is None else 0
     if sha_neuf is None:
-        # Les références de ce Word ne portent plus le style de bibliographie : sa liste
-        # est restée dans son corps, et le fichier d'ici n'a plus de raison d'être. Il ne
-        # revient donc pas — le corps qui le référençait n'est plus là non plus.
+        # Ce Word ne détache plus sa bibliographie : la liste est dans son corps, et le
+        # fichier d'ici n'est pas recopié.
         bilan['retiree'] = 1
         bilan['conflit'] = 1 if retravaillee else 0
         return bilan, ''
     if sha_neuf == sha_ancien:
         return bilan, sha_neuf            # les deux disent la même chose : rien à décider
     if emp == sha_neuf:
-        # Le Word livre ce qu'il livrait à l'import : l'auteur n'a pas touché ses
-        # références, et c'est la version d'ici qui est gardée, quel qu'ait été son travail.
+        # Le Word livre ce qu'il livrait à l'import : on garde la version d'ici.
         shutil.copyfile(ancien, neuf)
         bilan['gardee'] = 1
         return bilan, sha_neuf
@@ -782,7 +734,7 @@ def copier_preserves(vivant, temp, slug):
             continue
         source, cible = os.path.join(vivant, nom), os.path.join(temp, nom)
         if os.path.exists(cible):
-            continue                      # déjà déposé par la conversion : on n'écrase pas
+            continue                      # déjà déposé par la conversion
         if os.path.isdir(source):
             shutil.copytree(source, cible)
         else:
@@ -799,11 +751,7 @@ def memes_octets(a, b):
     return sha(a) == sha(b)
 
 
-# Comme memes_octets(), mais pour <slug>.biblio.md : depuis que l'import pose toujours ce
-# fichier, absent et vide doivent compter pour la même chose des deux côtés, sinon un
-# article qui n'a jamais eu de bibliographie et un Word qui n'en apporte toujours pas
-# feraient échouer « rien à faire » — la comparaison verrait un fichier apparaître d'un
-# côté, là où memes_octets() aurait vu deux absences et conclu « identique ».
+# Comme memes_octets(), pour <slug>.biblio.md, où absent et vide comptent pareil.
 def biblio_inchangee(vivant, temp, slug):
     a = os.path.join(vivant, nom_biblio(slug))
     b = os.path.join(temp, nom_biblio(slug))
@@ -818,11 +766,8 @@ def biblio_inchangee(vivant, temp, slug):
 
 def rien_a_faire(vivant, temp, slug):
     """Vrai si le corps, la bibliographie, les tableaux et les images sortiraient
-    identiques.
-
-    ⚠ La bibliographie en fait partie, et ce n'est pas un détail : mesuré, un Word dont
-    SEULES les références changeaient était jugé « rien à faire », son fichier consommé, et
-    la correction de l'auteur jetée sans un mot. C'est le remplacement qui la rapporte."""
+    identiques. La bibliographie compte : un Word dont seules les références changent doit
+    être réimporté."""
     if not memes_octets(os.path.join(vivant, slug + '.md'),
                         os.path.join(temp, slug + '.md')):
         return False
@@ -862,13 +807,12 @@ def reimporter(revue, slug, chemin_docx, pipeline, voix, resultat):
     shutil.rmtree(temp, ignore_errors=True)
     os.makedirs(temp)
 
-    # La conversion, dans le chantier. Même chaîne que l'import d'un Word neuf : rien
-    # n'est dupliqué ici, seul le dossier de destination change.
+    # La conversion, dans le chantier, par la même chaîne que l'import d'un Word neuf.
     env = dict(os.environ)
     env['SZH_IMPORT_DIR'] = os.path.relpath(temp, revue)
     env['PYTHONIOENCODING'] = 'utf-8'
-    # Les portraits du Word ne seront pas réinstallés : les détourer coûterait des minutes
-    # pour rien. Ils sont quand même rangés, donc déposés dans le rebut.
+    # Les portraits du Word ne sont pas réinstallés : pas de détourage, qui prendrait des
+    # minutes. Ils sont rangés dans le rebut.
     env['SZH_SANS_DETOURAGE'] = '1'
     if voix.journal:
         env['SZH_IMPORT_LOG'] = os.path.abspath(voix.journal)
@@ -1371,15 +1315,12 @@ def principal(argv):
     return rendre(code)
 
 
-# Le seul point de sortie du processus. Le code rendu ici est celui que la ligne JSON
-# annonce : un appelant qui teste $? et un appelant qui lit le JSON doivent conclure la
-# même chose. ⚠ Piège d'appel, mesuré : dans un tube (« … | tail »), $? est le code du
-# dernier maillon, donc 0 — il faut lire ${PIPESTATUS[0]}, ou ne pas mettre de tube.
+# Point de sortie : le code rendu est celui qu'annonce la ligne JSON. Dans un tube
+# (« … | tail »), $? est le code du dernier maillon : lire ${PIPESTATUS[0]}.
 #
-# `except Exception` n'attrape ni SystemExit ni KeyboardInterrupt (tous deux dérivent de
-# BaseException) : le code de sortie de principal() passe donc intact, et Ctrl+C garde sa
-# branche à lui. C'est la raison pour laquelle ce filet est ici, et nulle part ailleurs :
-# dans le corps du script, seuls des OSError sont attrapés, un par un.
+# `except Exception` n'attrape ni SystemExit ni KeyboardInterrupt : le code de principal()
+# passe intact et Ctrl+C garde sa branche. Dans le corps du script, seules des OSError sont
+# attrapées, une par une.
 def sortir(code, resultat):
     print(json.dumps(resultat, ensure_ascii=False))
     sys.exit(code)
@@ -1389,9 +1330,8 @@ if __name__ == '__main__':
     try:
         sys.exit(principal(sys.argv))
     except KeyboardInterrupt:
-        # Ctrl+C : l'article est intact, ou sous .szh-bascule-<slug> le temps que la
-        # reprise le remette en place. On tente le balayage tout de suite ; s'il échoue,
-        # la compilation suivante s'en charge (`import` appelle --reprise).
+        # Ctrl+C : l'article est intact, ou sous .szh-bascule-<slug>. On tente la reprise
+        # tout de suite ; à défaut, la compilation suivante s'en charge (--reprise).
         revue = '.'
         for i, a in enumerate(sys.argv):
             if a == '--revue' and i + 1 < len(sys.argv):

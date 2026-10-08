@@ -1,31 +1,21 @@
-// lib/codes-erreur.js : la table des 9 codes d'erreur et les fonctions pures du schéma v1
-// des rapports automatiques (docs/RAPPORTS-ERREUR.md, §2 et §7). Module neuf (jalon J0) : pas de
-// régression à rejouer, mais deux pièges du gel lui-même, repérés en le lisant plutôt qu'en
-// les vivant en production, et que ces tests gardent explicitement :
+// lib/codes-erreur.js : la table des codes d'erreur et les fonctions pures du schéma v1 des
+// rapports automatiques (voir docs/RAPPORTS-ERREUR.md).
 //
 //   node --test test/js/codes-erreur.test.js
 //
-//  1. L'id du rapport se fonde sur l'heure UTC de `horodatage`, jamais sur l'heure locale
-//     de `horodatageLocal` — l'exemple gelé du §4 le montre déjà (« 081530 » dans l'id,
-//     alors que l'horodatage local dit « 10:15:30 » en heure d'été) : une implémentation
-//     qui formaterait l'heure locale casserait le tri chronologique par ordre alphabétique
-//     une fois par an, au changement d'heure.
-//  2. L'ordre des règles de masquage (§4.1) n'est pas cosmétique : les racines connues
-//     (ancrage, %USERPROFILE%, ProgramData) doivent être retirées AVANT les règles
-//     génériques, sinon un chemin encore absolu — donc long — se ferait avaler avant
-//     d'avoir eu la chance de devenir un chemin relatif lisible. Et parmi les trois
-//     racines, l'ancrage doit passer avant %USERPROFILE% : il lui est presque toujours
-//     imbriqué, et l'ordre inverse masquerait un chemin utile en « ~\… » au lieu du
-//     relatif à l'ancrage.
-//
-// AMENDEMENT du 09.09.2026 (docs/RAPPORTS-ERREUR.md §3, en fin de section) : la règle 5 d'origine
-// (« ≥ 32 caractères de [A-Za-z0-9+/=_-] ») incluait `/` et masquait donc, mesuré sur des
-// lignes réelles de la chaîne, exactement ce que D3 demande de garder — un chemin relatif,
-// une URL, une empreinte SHA-256. Remplacée par 5a (secret nu resserré, sans `/`, casse et
-// chiffre mélangés, jamais purement hexadécimal) et 5b (un JWT complet, en un seul passage,
-// sinon ses segments — souvent < 32 caractères chacun — survivaient un par un). La section
-// « ce qui doit survivre au masquage » ci-dessous rejoue les cinq lignes réelles qui ont
-// révélé le défaut, et une régression sur un jeton Bearer/JWT.
+// Pièges vérifiés :
+//  1. L'id du rapport se fonde sur l'heure UTC de `horodatage`, pas sur l'heure locale de
+//     `horodatageLocal` (« 081530 » dans l'id pour « 10:15:30 » en heure d'été). L'heure
+//     locale casserait le tri alphabétique, qui est chronologique, au changement d'heure.
+//  2. L'ordre des règles de masquage compte : les racines connues (ancrage, %USERPROFILE%,
+//     ProgramData) sont retirées avant les règles génériques, sinon un chemin encore absolu,
+//     donc long, serait masqué avant de devenir un chemin relatif lisible. L'ancrage passe
+//     avant %USERPROFILE%, sous lequel il est presque toujours : l'ordre inverse donnerait
+//     « ~\… » au lieu du chemin relatif à l'ancrage.
+//  3. Le masquage garde ce qui sert au diagnostic (chemin relatif, URL, empreinte SHA-256)
+//     et retire les secrets. Règle 5a : secret nu de 32 caractères ou plus, sans `/`, casse
+//     et chiffres mélangés, jamais purement hexadécimal. Règle 5b : un JWT complet en un
+//     seul passage, ses segments étant souvent trop courts pour 5a.
 'use strict';
 
 const test = require('node:test');
@@ -37,7 +27,7 @@ const codes = require(path.join(
   '..', '..', 'vscodium-extension', 'szh-cockpit', 'lib', 'codes-erreur'));
 
 // ---------------------------------------------------------------------------------------
-// La table des codes (§3)
+// La table des codes
 // ---------------------------------------------------------------------------------------
 
 const CODES_ATTENDUS = [
@@ -59,15 +49,9 @@ test('CODES : les codes gelés sont présents, chacun avec un résumé FR et DE 
   }
 });
 
-// Le défaut qui a valu ce test, le 14.09.2026 : le bouton « Signaler une erreur… » de
-// l'onglet « Journal » du lanceur écrivait -Code 'LANCEUR-SIGNALEMENT', un code qu'aucune
-// des deux tables ne connaissait. Test-SzhRapportValide le refusait, Write-SzhRapport
-// s'arrêtait juste après sans rien écrire — ni sur le disque, ni dans la file d'attente hors
-// ligne — et la fenêtre annonçait quand même que le signalement était parti. Aucune
-// exception, aucun test, aucune trace sauf une ligne de journal local : un bouton mort qui
-// se disait vivant.
-//
-// La porte se ferme ici, statiquement : le test ne lance pas PowerShell, il lit les scripts.
+// Un code inconnu de l'une des deux tables est refusé par Test-SzhRapportValide :
+// Write-SzhRapport n'écrit alors rien, ni sur le disque ni dans la file d'attente, sans
+// erreur visible. Le test lit les scripts sans lancer PowerShell.
 test('tout code cité par un script de windows/ est connu des DEUX tables', () => {
   const dossier = path.join(__dirname, '..', '..', 'windows');
   const cites = new Set();
@@ -112,7 +96,7 @@ test('CODES et les tables gelées sont bien figées (Object.freeze)', () => {
 });
 
 // ---------------------------------------------------------------------------------------
-// Masquage (§4.1) — chaque règle isolée, puis combinées
+// Masquage : chaque règle isolée, puis combinées
 // ---------------------------------------------------------------------------------------
 
 const ANCRAGE = 'C:\\Users\\robin\\SZH CSPS\\Daten_Allgemein - General';
@@ -169,13 +153,12 @@ test('masquage, règle 5a : une suite de 31 caractères ou moins n’est pas mas
 });
 
 test('masquage, règle 5a : ni un chemin (présence de `/`), ni une empreinte, ni un GUID mixte ne sont masqués', () => {
-  // Un `/` casse la classe de caractères de 5a (retiré exprès, amendement du 09.09.2026) :
-  // même long, un fragment de chemin n'est jamais une candidate pour 5a. Slugs réalistes de
-  // ce dépôt (toujours en minuscules, voir lib/slug.js) : le `/` suffit à couper la classe,
-  // qu'il y ait ou non de la casse mélangée de part et d'autre.
+  // La classe de caractères de 5a exclut `/` : même long, un chemin n'est pas candidat.
+  // Le `/` suffit à couper, quelle que soit la casse de part et d'autre (les slugs du dépôt
+  // sont en minuscules, voir lib/slug.js).
   const cheminLong = 'articles/07-ressources-documentaires-2027/image-01.png';
   assert.strictEqual(codes.masquer(cheminLong, {}), cheminLong);
-  // Empreinte SHA-256, purement hexadécimale : jamais masquée.
+  // Empreinte SHA-256, purement hexadécimale : pas masquée.
   const empreinte = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
   assert.strictEqual(codes.masquer(empreinte, {}), empreinte);
   // GUID à casse mélangée : hexadécimal + tirets seulement -> protégé au même titre.
@@ -183,12 +166,10 @@ test('masquage, règle 5a : ni un chemin (présence de `/`), ni une empreinte, n
   assert.strictEqual(codes.masquer(guid, {}), guid);
 });
 
-// Limite CONNUE et ASSUMÉE, distincte de celle sur la clé DeepL nue plus bas : un segment
-// de chemin isolé (entre deux `/`, donc lui-même sans `/`) qui mélangerait casse et
-// chiffres sur ≥ 32 caractères — un nom de dossier tiers, hors des slugs de ce dépôt qui
-// sont toujours en minuscules (lib/slug.js) — reste une candidate valide pour 5a et SERAIT
-// masqué. Non couvert par un slug de cette chaîne (jamais en casse mixte), mais possible
-// dans un chemin extérieur cité tel quel (bibliothèque Node, dossier personnel Windows).
+// Limite connue et acceptée : un segment de chemin isolé (sans `/`) qui mélange casse et
+// chiffres sur 32 caractères ou plus est candidat pour 5a et masqué. Les slugs du dépôt
+// sont en minuscules (lib/slug.js), mais un chemin extérieur peut contenir un tel segment
+// (bibliothèque Node, dossier personnel Windows).
 test('masquage : limite connue — un segment de chemin isolé en casse mixte peut être masqué à tort', () => {
   const chemin = 'C:\\Users\\robin\\Documents\\MonDossierPersonnel2027Sauvegarde\\notes.txt';
   const sortie = codes.masquer(chemin, {});
@@ -199,10 +180,9 @@ test('masquage : limite connue — un segment de chemin isolé en casse mixte pe
 test('masquage, règle 5b : un JWT complet (en-tête, charge utile, signature) disparaît en un bloc', () => {
   const jwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SIGNATURE12345';
   const sortie = codes.masquer('Authorization: Bearer ' + jwt, {});
-  // Défaut réel relevé (09.09.2026) : la règle 4 seule ne masque que le mot « Bearer »
-  // (son \S+ s'arrête à l'espace qui le sépare du jeton), et l'ancienne règle 5 ne masquait
-  // que les segments individuellement assez longs — la charge utile décodable en base64
-  // (`{"sub":"1234567890"}`) survivait. Ici, aucune trace du jeton ne doit rester.
+  // La règle 4 seule ne masque que le mot « Bearer » (son \S+ s'arrête à l'espace avant le
+  // jeton), et des segments courts, comme la charge utile décodable en base64
+  // (`{"sub":"1234567890"}`), échapperaient à 5a. Aucune trace du jeton ne doit rester.
   assert.strictEqual(sortie.indexOf('eyJ'), -1, 'un fragment du JWT survit : ' + sortie);
   assert.strictEqual(sortie.indexOf('sub'), -1, 'la charge utile décodée transparaît : ' + sortie);
   assert.strictEqual(sortie.indexOf('SIGNATURE12345'), -1);
@@ -215,17 +195,15 @@ test('masquage, règle 5b : un JWT nu (sans mot-clé devant) est aussi masqué',
 });
 
 test('masquage, règle 4 : la phrase qui suit un mot-clé absent reste lisible', () => {
-  // Contre-épreuve explicite de l'amendement : la règle 4 ne masque que le jeton suivant
-  // le mot-clé, jamais la fin de la ligne.
+  // La règle 4 ne masque que le jeton qui suit le mot-clé, pas la fin de la ligne.
   assert.strictEqual(
     codes.masquer('token: absent — configuration OJS non remplie', {}),
     'token: *** — configuration OJS non remplie');
 });
 
 test('masquage : les cinq lignes réelles de l’amendement du 09.09.2026 survivent intactes', () => {
-  // Rejeu exact du tableau de mesure de l'amendement (docs/RAPPORTS-ERREUR.md §3) : la règle 5
-  // d'origine (avec `/` dans sa classe) transformait chacune de ces lignes réelles de la
-  // chaîne en un « ***.<extension> » ou pire — exactement ce que D3 interdit de perdre.
+  // Lignes réelles de la chaîne (voir docs/RAPPORTS-ERREUR.md) : une règle dont la classe
+  // contiendrait `/` les réduirait à « ***.<extension> », et le diagnostic serait perdu.
   const lignes = [
     '2_Produkte/52_Revue/RV02_Redaction/2027-02/articles/03-inclusion/03-inclusion.md',
     'make: *** [Makefile:142: out/2027-02/articles/03-inclusion-scolaire.pdf] Error 1',
@@ -244,27 +222,22 @@ test('masquage : un slug d’article seul (minuscules, chiffres, tirets) n’est
 });
 
 test('masquage : une clé DeepL réaliste précédée de son mot-clé reste masquée', () => {
-  // Format réel d'une clé DeepL : hexadécimal minuscule, tirets, suffixe « :fx » (offre
-  // gratuite) — donc SANS majuscule. Sans mot-clé devant, voir le test de limite connue
-  // ci-dessous : c'est la règle 4, pas 5a, qui protège ce cas au quotidien.
+  // Format d'une clé DeepL : hexadécimal minuscule, tirets, suffixe « :fx » (offre
+  // gratuite), donc sans majuscule. C'est la règle 4, pas 5a, qui la protège (voir la
+  // limite connue ci-dessous pour une clé sans mot-clé).
   const cle = 'ab12cd34-ef56-7890-ab12-cd34ef567890:fx';
   assert.strictEqual(codes.masquer('deepl: ' + cle, {}), 'deepl: ***');
-  // « DEEPL_API_KEY=… » : le soulignement colle « DEEPL » à « API » et « API » à « KEY »
-  // (\w couvre `_`) — aucun \b n'y sépare donc « deepl » ni « api key » au sens de la
-  // règle 4, qui ne mord pas ici. Le filet qui rattrape ce cas précis est 5a : le `=` fait
-  // partie de sa classe de caractères et RACCORDE le nom de variable à la valeur en une
-  // seule candidate — le résultat ne ressemble pas à celui de la règle 4 (le nom de
-  // variable disparaît aussi), mais la valeur, elle, ne survit pas davantage. Seul ce qui
-  // compte (D3 : jamais le secret) est vérifié ici, pas la forme exacte du résultat.
+  // « DEEPL_API_KEY=… » : `_` fait partie de \w, donc aucun \b ne sépare « deepl » ni
+  // « api key », et la règle 4 ne s'applique pas. 5a rattrape ce cas : le `=` est dans sa
+  // classe et relie le nom de variable à la valeur en une seule candidate. Le nom disparaît
+  // aussi ; on vérifie seulement que le secret ne survit pas.
   const sortie = codes.masquer('DEEPL_API_KEY=' + cle, {});
   assert.strictEqual(sortie.indexOf(cle), -1, 'la clé survit : ' + sortie);
 });
 
-// Limite CONNUE et ASSUMÉE de 5a (signalée à la relecture du jalon, confirmée ici) : un
-// secret nu SANS mot-clé et sans mélange majuscule/minuscule/chiffre — une clé DeepL nue
-// en est l'exemple réel — n'a rien qui le distingue d'un GUID ou d'un slug, et échappe donc
-// au masquage. Ce test documente le comportement actuel tel quel (pas une régression à
-// corriger ici) : le filet de sécurité pour ce cas précis reste la règle 4.
+// Limite connue et acceptée de 5a : un secret nu, sans mot-clé ni mélange de casse et de
+// chiffres (une clé DeepL nue, par exemple), ne se distingue pas d'un GUID ou d'un slug et
+// n'est pas masqué. Pour ce cas, la protection reste la règle 4.
 test('masquage : limite connue — une clé DeepL NUE, sans mot-clé, échappe à 5a', () => {
   const cleNue = 'ab12cd34-ef56-7890-ab12-cd34ef567890:fx';
   assert.strictEqual(codes.masquer('valeur trouvée : ' + cleNue, {}),
@@ -330,7 +303,7 @@ test('versCheminRelatif : sans racine fournie, reste absolu', () => {
 });
 
 // ---------------------------------------------------------------------------------------
-// Signature anti-inondation (§4.3)
+// Signature anti-inondation
 // ---------------------------------------------------------------------------------------
 
 test('calculerSignature : stable pour les mêmes entrées', () => {
@@ -372,7 +345,7 @@ test('calculerSignature : seuls les 200 premiers caractères du message masqué 
 });
 
 // ---------------------------------------------------------------------------------------
-// L'identifiant du rapport (§4)
+// L'identifiant du rapport
 // ---------------------------------------------------------------------------------------
 
 test('calculerId : reproduit exactement l’exemple gelé du §4', () => {
@@ -420,14 +393,13 @@ test('genererAleatoireHex : rend bien 6 caractères hexadécimaux, et pas toujou
   const b = codes.genererAleatoireHex();
   assert.match(a, /^[0-9a-f]{6}$/);
   assert.match(b, /^[0-9a-f]{6}$/);
-  // Probabiliste, mais 1 chance sur 16 millions de coïncider : un test qui échoue ici
-  // dénoncerait une source d'aléa cassée (un genererAleatoireHex qui renverrait toujours
-  // la même valeur), pas une malchance ordinaire.
+  // Probabiliste, mais une chance sur 16 millions de coïncider : un échec signalerait une
+  // source d'aléa cassée (un genererAleatoireHex qui renverrait toujours la même valeur).
   assert.notStrictEqual(a, b);
 });
 
 // ---------------------------------------------------------------------------------------
-// Plafonds (§4.2)
+// Plafonds
 // ---------------------------------------------------------------------------------------
 
 test('PLAFONDS : les nombres gelés du §4.2', () => {
@@ -523,8 +495,7 @@ test('appliquerPlafonds : au-delà de 256 Ko, journal.extrait est vidé et tronq
     fichiers: fichiersEnormes,
     journal: { chemin: 'logs\\x.log', relatifA: 'programdata', lignes: 1, tronque: false, extrait: ['une ligne, pas le problème ici'] }
   });
-  // Le montage du test doit réellement dépasser 256 Ko AVANT tout plafonnement, sans quoi
-  // ce test ne prouverait rien.
+  // Témoin : le montage dépasse 256 Ko avant tout plafonnement.
   assert.ok(Buffer.byteLength(JSON.stringify(rapport, null, 2), 'utf8') > codes.PLAFONDS.fichierOctets,
     'le montage du test ne dépasse pas 256 Ko : à agrandir');
   const capped = codes.appliquerPlafonds(rapport);

@@ -1,21 +1,17 @@
 ﻿# ---- Sélecteur de version du logiciel ----
-# Appelé par le seul open-revue.ps1 -Versions (bouton « Changer de version… » du cockpit), qui
-# dot-source ce fichier : le socle (szh-common.ps1) est chargé par des scripts sans fenêtre et
-# n'a pas à porter un sélecteur WinForms. Recomposer un ancien numéro à l'identique suppose de
-# réinstaller la version qui l'a fabriqué ; `update.ps1 -Version X` sait le faire, ce dialogue
-# le rend atteignable, et explicitement : le changement remplace le rootfs WSL et les
-# extensions, et demande un redémarrage de l'éditeur.
+# Chargé par open-revue.ps1 -Versions (bouton « Changer de version… » du cockpit). Il sert à
+# réinstaller une version précise, par exemple pour recomposer un ancien numéro à
+# l'identique, en lançant `update.ps1 -Version X`. Le changement remplace le rootfs WSL et
+# les extensions, et demande de redémarrer l'éditeur.
 #
-# $Parent : fenêtre appelante, ou $null en processus détaché (le sélecteur ouvert seul, hors
-# du lanceur). $FichierIcone : icône de ce lanceur (szh-revue.ico, szh-zeitschrift.ico ou
-# szh-livre.ico) — chaque produit garde la sienne, cette fonction ne décide donc pas d'icône
-# elle-même. Chargée en tableau d'octets et non par nom de fichier : Icon(String) garderait
-# le .ico ouvert tant que la fenêtre vit, et une mise à jour concurrente ne pourrait pas le
-# remplacer. Ne lève jamais, une icône n'étant pas une condition d'ouverture.
+# $Parent : fenêtre appelante, ou $null quand le sélecteur est ouvert seul. $FichierIcone :
+# icône de la fenêtre. Elle est chargée en octets : Icon(String) garderait le .ico ouvert et
+# empêcherait une mise à jour de le remplacer. Une icône qui ne se charge pas n'empêche pas
+# l'ouverture.
+# Rend $true si une installation a été lancée : l'appelant doit alors se retirer.
 function Show-SzhVersions($Parent, [string]$FichierIcone) {
   $installee = Get-SzhVersionInstallee
-  # Aucun appel réseau ici : la liste est remplie au Shown, plus bas ; le faire avant
-  # l'affichage fige la fenêtre jusqu'au bout du timeout.
+  # Les versions publiées (réseau) se chargent après l'affichage, au Shown.
   $locales = @(Select-SzhVersionsProposables (Get-SzhVersionsLocales))
   $disponibles = New-Object System.Collections.ArrayList
 
@@ -26,8 +22,7 @@ function Show-SzhVersions($Parent, [string]$FichierIcone) {
   $boite.FormBorderStyle = 'FixedDialog'
   $boite.MaximizeBox = $false
   $boite.MinimizeBox = $false
-  # Atteignable sans la fenêtre principale : elle a son propre bouton de barre des tâches,
-  # donc son propre besoin d'icône.
+  # La boîte peut s'ouvrir seule : elle a alors son propre bouton de barre des tâches.
   if ($FichierIcone -and (Test-Path $FichierIcone)) {
     try {
       $flux = New-Object System.IO.MemoryStream (,[System.IO.File]::ReadAllBytes($FichierIcone))
@@ -73,12 +68,10 @@ function Show-SzhVersions($Parent, [string]$FichierIcone) {
   $boite.Controls.Add($bFermer)
   $boite.CancelButton = $bFermer
 
-  # La liste se remplit après l'affichage : la fenêtre est là tout de suite, et l'attente
-  # réseau se voit au lieu de figer l'interface.
+  # La liste se remplit après l'affichage, pour que l'attente réseau ne fige pas la fenêtre.
   $boite.Add_Shown({
     $boite.Refresh()
-    # Le réseau d’abord, le filtre ensuite : c’est « GitHub a-t-il répondu ? » qui décide du
-    # message hors ligne, plus bas, et non « reste-t-il quelque chose après le filtre ».
+    # Le message hors ligne dépend de la réponse de GitHub avant filtrage.
     $publieesBrutes = @(Get-SzhVersionsPubliees)
     $publiees = @(Select-SzhVersionsProposables $publieesBrutes)
     foreach ($v in $publiees) { if (-not $disponibles.Contains($v)) { [void]$disponibles.Add($v) } }
@@ -89,16 +82,13 @@ function Show-SzhVersions($Parent, [string]$FichierIcone) {
       elseif ($locales -contains $v) { [void]$liVersions.Items.Add((T 'lanceur.versions.locale' @($v))) }
       else { [void]$liVersions.Items.Add($v) }
     }
-    # La ligne présélectionnée est la première qui changerait quelque chose. La version
-    # installée ouvre la liste quand elle n’y figure pas — elle dit où l’on en est —, mais
-    # la réinstaller n’est pas le geste qu’on vient chercher ici. Le cas est devenu la règle
-    # au passage à 1.0.0 : toutes les versions d’avant s’insèrent ainsi, sans jamais être
-    # proposables, et le bouton « Installer » aurait proposé de ne rien faire.
+    # La version installée est ajoutée en tête si elle manque, pour situer l'utilisateur ;
+    # la présélection porte sur la première ligne qui changerait quelque chose.
     $premier = 0
     if (($disponibles.Count -gt 1) -and ($disponibles[0] -eq $installee)) { $premier = 1 }
     if ($liVersions.Items.Count -gt 0) { $liVersions.SelectedIndex = $premier }
-    # Trois états à nommer : liste complète, hors ligne avec un repli réel, hors ligne
-    # sans repli (seule la version installée, donc rien à installer).
+    # Trois cas : liste complète ; hors ligne avec des versions locales ; hors ligne avec la
+    # seule version installée.
     if ($publieesBrutes.Count -gt 0) { $note.Text = (T 'lanceur.versions.note') }
     elseif ($locales.Count -gt 0) { $note.Text = (T 'lanceur.versions.horsligne') }
     else { $note.Text = (T 'lanceur.versions.horsligne.deja') }
@@ -109,8 +99,8 @@ function Show-SzhVersions($Parent, [string]$FichierIcone) {
   $bInstaller.Add_Click({
     if ($liVersions.SelectedIndex -lt 0) { return }
     $choix = [string]$disponibles[$liVersions.SelectedIndex]
-    # Garde-fou de quoting : la valeur peut venir d'un nom de fichier de staging et part
-    # en argument de update.ps1, où « 2026.08.0 -Verbose » injecterait un paramètre.
+    # La valeur peut venir d'un nom de fichier et part en argument d'update.ps1 : on vérifie
+    # sa forme, pour que « 2026.08.0 -Verbose » ne puisse pas y glisser un paramètre.
     if (-not (Test-SzhVersionTag $choix)) {
       [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.versions.vide'), (T 'lanceur.versions.titre'))
       return
@@ -120,8 +110,8 @@ function Show-SzhVersions($Parent, [string]$FichierIcone) {
       [System.Windows.Forms.MessageBoxButtons]::OKCancel,
       [System.Windows.Forms.MessageBoxIcon]::Warning)
     if ($reponse -ne [System.Windows.Forms.DialogResult]::OK) { return }
-    # update.ps1 fait le reste, sans demander l'administrateur. Chaque argument est cité,
-    # le chemin du toolkit contenant des espaces.
+    # update.ps1 fait le reste, sans administrateur. Arguments entre guillemets : le chemin
+    # du toolkit contient des espaces.
     Write-SzhLog ('Show-SzhVersions : installation de la version ' + $choix + ' demandee')
     Start-Process -FilePath 'powershell.exe' -ArgumentList @(
       '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
@@ -130,14 +120,13 @@ function Show-SzhVersions($Parent, [string]$FichierIcone) {
     $boite.Close()
   })
 
-  # Sans parent (processus détaché), rien ne garantit le premier plan, et une boîte qui
-  # s'ouvre derrière VSCodium se lit comme un bouton inerte.
+  # Sans parent, la boîte est forcée au premier plan : ouverte derrière VSCodium, on
+  # croirait que le bouton n'a rien fait.
   $resultat = [System.Windows.Forms.DialogResult]::Cancel
   if ($Parent) { $resultat = $boite.ShowDialog($Parent) }
   else {
     $boite.TopMost = $true
     $resultat = $boite.ShowDialog()
   }
-  # $true = une installation a été lancée : l'appelant doit se retirer.
   return ($resultat -eq [System.Windows.Forms.DialogResult]::OK)
 }

@@ -3,15 +3,12 @@
   Crée un nouveau livre à partir du gabarit du toolkit, sans administrateur :
     powershell -ExecutionPolicy Bypass -File new-livre.ps1 -Dossier "$env:OneDrive\Livres\2026-B330-Nom"
 
-  L'Accueil passe en plus -Titre, -Annee, -Reference, -Type, -Maquette et -Format : c'est
-  lui qui les fait saisir (lib/accueil-nouveau.js). Sans -Titre ou
-  sans -Annee, ils se relisent dans le nom du dossier (convention « <année>-B<référence>-<nom> »,
-  Get-SzhNomLivre) — repli imparfait, gardé pour un appel en ligne de commande sur un
-  dossier déjà nommé, comme le fait new-revue.ps1 pour l'année et le numéro.
+  L'Accueil (lib/accueil-nouveau.js) passe en plus -Titre, -Annee, -Reference, -Type,
+  -Maquette et -Format. Sans -Titre ou -Annee, ils se lisent dans le nom du dossier
+  (« <année>-B<référence>-<nom> »).
 
-  Copie le gabarit livre-template/, pose les clés de buch.yaml que le formulaire a fait
-  saisir (titre, année, type, maquette, format), pose « Ouvrir le livre.lnk » dans le
-  dossier pour qu'il voyage avec le livre.
+  Copie le gabarit livre-template/, écrit dans buch.yaml les valeurs reçues et pose
+  « Ouvrir le livre.lnk » dans le dossier.
 
   Compatibilité : Windows PowerShell 5.1.
 #>
@@ -20,18 +17,15 @@ param(
   [Parameter(Mandatory = $true)][string]$Dossier,
   [string]$Titre = '',
   [int]$Annee = 0,
-  # Référence B (le nombre après « B » dans le nom du dossier) : n'est écrite nulle part
-  # dans buch.yaml — elle ne vit que dans le nom du dossier — mais sert au repli ci-dessous
-  # quand -Titre ou -Annee manquent.
+  # Référence B (le nombre après « B » dans le nom du dossier). Elle n'est pas écrite dans
+  # buch.yaml.
   [int]$Reference = 0,
-  # monographie | collectif — vide : on laisse ce que dit le gabarit.
+  # monographie | collectif ; vide : valeur du gabarit.
   [string]$Type = '',
-  # normal | falc — vide : on laisse ce que dit le gabarit.
+  # normal | falc ; vide : valeur du gabarit.
   [string]$Maquette = '',
-  # standard | a4 — vide : on laisse ce que dit le gabarit. N'a de sens qu'en FALC (voir le
-  # commentaire de la clé « format » dans buch.yaml) ; un « a4 » reçu avec la maquette
-  # normale est ramené à « standard » plus bas, pour ne pas écrire une combinaison que
-  # styles/livre/normal.css ne compose pas.
+  # standard | a4 ; vide : valeur du gabarit. « a4 » n'existe qu'en FALC : avec la maquette
+  # normale, il devient « standard », seul format que styles/livre/normal.css compose.
   [string]$Format = ''
 )
 
@@ -49,16 +43,14 @@ New-Item -ItemType Directory -Force -Path $Dossier | Out-Null
 if ($existait) {
   Write-SzhInfo 'Ce dossier contient déjà un livre : rien n''est écrasé, seul le raccourci est (re)créé.'
 } else {
-  # -Force sur Get-ChildItem, pas seulement sur Copy-Item : un gabarit caché (.gitkeep,
-  # .gitattributes) suit désormais la copie, là où le joker '*' seul le sautait.
+  # -Force sur Get-ChildItem pour copier aussi les fichiers cachés (.gitkeep, .gitattributes).
   Get-ChildItem -LiteralPath $template -Force | Copy-Item -Destination $Dossier -Recurse -Force
 }
 $chemin = (Resolve-Path -LiteralPath $Dossier).Path
 
-# Sans -Titre ni -Annee (appel en ligne de commande sur un dossier déjà nommé), on relit la
-# convention « <année>-B<référence>-<nom> » du nom de dossier. Le <nom> qu'on y retrouve est
-# un slug (accents et espaces perdus, underscores à la place) : loin d'un vrai titre, mais
-# moins vide qu'un titre resté blanc — et le champ reste modifiable dans buch.yaml.
+# Sans -Titre ou -Annee, on lit « <année>-B<référence>-<nom> » dans le nom du dossier. Le
+# <nom> sert de titre provisoire (sans accents, « _ » remplacés par des espaces), à
+# corriger dans buch.yaml.
 if ((-not $existait) -and ((-not $Titre) -or ($Annee -le 0))) {
   $leaf = Split-Path $chemin -Leaf
   if ($leaf -match '^(\d{4})-B(\d+)-(.+)$') {
@@ -70,15 +62,14 @@ if ((-not $existait) -and ((-not $Titre) -or ($Annee -le 0))) {
 
 if (-not $existait) {
   if ($Titre) {
-    # Cité : un titre est une chaîne libre, comme `title` pour un numéro de revue.
+    # Entre guillemets : le titre est une chaîne libre.
     [void](Set-SzhAusgabeCle $chemin 'titre' $Titre $true $false 'buch.yaml')
     Write-SzhInfo ('Livre intitulé « {0} ».' -f $Titre)
   } else {
     Write-SzhInfo 'Titre inconnu : laissé vide dans buch.yaml, à saisir à la main.'
   }
   if ($Annee -gt 0) {
-    # Nu, comme `annee:` dans les buch.yaml réels (2025, pas "2025") : un entier lu par
-    # livre-assembler.py et par le sed du Makefile, jamais entre guillemets.
+    # Sans guillemets : livre-assembler.py et le sed du Makefile lisent un entier.
     [void](Set-SzhAusgabeCle $chemin 'annee' ([string]$Annee) $false $false 'buch.yaml')
   }
 
@@ -99,7 +90,7 @@ if (-not $existait) {
   }
 }
 
-# Version du logiciel qui crée ce livre : de quoi le recomposer plus tard à l'identique.
+# Version du logiciel qui crée le livre, pour pouvoir le recomposer à l'identique.
 if (-not $existait) {
   $version = Get-SzhVersionInstallee
   if (Set-SzhAusgabeVersion $chemin $version 'buch.yaml') {
@@ -107,15 +98,14 @@ if (-not $existait) {
   }
 }
 
-# Identifiant fixe du livre (`id:`) : posé UNE FOIS ici, jamais recalculé ensuite — c'est lui
-# que porteront le raccourci et tout lien szh:// envoyé pour ce livre (docs/EMPLACEMENTS.md).
+# Identifiant fixe du livre (`id:`), posé à la création seulement. Le raccourci et les liens
+# szh:// le portent (docs/EMPLACEMENTS.md).
 if (-not $existait) {
   [void](Set-SzhAusgabeIdSiAbsent $chemin 'buch.yaml')
 }
 
-# Raccourci dans le dossier : il voyage avec le livre sur OneDrive, sur le modèle de
-# « Ouvrir la revue.lnk », mais nommé et décrit pour un livre — et, comme lui, sans aucun
-# chemin de poste depuis le 15.09.2026 (voir Set-SzhRaccourciRevue).
+# Raccourci dans le dossier, qui voyage avec le livre sur OneDrive. Il ne contient aucun
+# chemin propre au poste (voir Set-SzhRaccourciRevue).
 if (-not (Get-VSCodiumExe)) { throw 'VSCodium introuvable — lancer d''abord bootstrap.ps1.' }
 Set-SzhRaccourciRevue $chemin (T $SzhProduits['livre'].nomRaccourci) (T $SzhProduits['livre'].descRaccourci) 'livre' | Out-Null
 

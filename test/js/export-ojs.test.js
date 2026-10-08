@@ -2,15 +2,11 @@
 //
 //   node --test "test/js/*.test.js"
 //
-// Pourquoi ce fichier. lib/export-ojs.js est le seul module qui décide de ce que reçoit
-// OJS, et rien ne le chargeait : ni les intitulés de rubrique, ni la date de publication,
-// ni l'ORCID, ni les références n'avaient de témoin. Trois de ces quatre choses étaient
-// fausses ou absentes sans que rien ne le dise — un import réussit en rangeant l'article
-// dans une rubrique inventée.
+// lib/export-ojs.js décide de ce que reçoit OJS. Une erreur n'y fait pas échouer l'import
+// côté OJS : l'article est rangé dans une rubrique inventée, ou part sans date.
 //
 // Deux familles de contrôle : la référence, où l'XML entier est comparé caractère par
-// caractère à ce qu'on attend ; et le refus, où un manque doit arrêter l'export avec un
-// message qui dit quoi faire, plutôt que partir avec une valeur fausse.
+// caractère ; et le refus, où un manque arrête l'export avec un message qui dit quoi faire.
 'use strict';
 
 const test = require('node:test');
@@ -30,11 +26,9 @@ const { revueDEssai, activerHote } = require('./hote-factice');
 const yaml = require(path.join(COCKPIT, 'lib', 'yaml.js'));
 const i18n = require(path.join(COCKPIT, 'lib', 'i18n.js'));
 
-// Ce que l'hôte envoie RÉELLEMENT au panneau des réglages (extension.js:donneesOjs),
-// plutôt qu'une copie recopiée à la main qui divergerait dans le dos de ce test le jour
-// où donneesOjs() change : un hôte factice activé (une seule fois, mémoïsé — le crochet
-// Module._load ne se défait pas, voir hote-factice.js), la commande qui ouvre le
-// panneau, puis le message qu'il a réellement posté sur son canal.
+// Ce que l'hôte envoie au panneau des réglages (donneesOjs), lu sur un hôte factice
+// activé. Activé une seule fois : le crochet Module._load ne se défait pas (voir
+// hote-factice.js).
 let _panneauOjs = null;
 async function messagePanneau() {
   if (_panneauOjs) { return _panneauOjs; }
@@ -48,8 +42,8 @@ async function messagePanneau() {
   return _panneauOjs;
 }
 
-// Le config.json du poste n'est jamais touché : SZH_CONFIG_OJS détourne la lecture et
-// l'écriture vers un fichier temporaire, que chaque contrôle pose ou retire.
+// SZH_CONFIG_OJS détourne la lecture et l'écriture du config.json du poste vers un fichier
+// temporaire, que chaque contrôle pose ou retire.
 const CONFIG_ESSAI = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'szh-ojs-cfg-')), 'config.json');
 process.env.SZH_CONFIG_OJS = CONFIG_ESSAI;
 const ojs = require(path.join(COCKPIT, 'lib', 'export-ojs.js'));
@@ -80,10 +74,9 @@ function fiche(lignes) { return lignes.concat(['']).join(LF); }
 // Un article du dossier : deux auteurs dont un seul porte un ORCID, un résumé et des
 // mots-clés dans les deux langues.
 //
-// `doi` est FACULTATIF, et absent par défaut : le DOI ne se saisit plus dans la fiche, il se
-// calcule d'après la place de l'article dans le numéro. Un doi posé dans la fiche est un DOI
-// MANUEL (l'échappatoire du formulaire) : il part à la place du calculé, et la divergence se
-// dit. Les contrôles qui en posent un sont ceux de cette échappatoire, et eux seuls.
+// `doi` est facultatif : le DOI se calcule d'après la place de l'article dans le numéro. Un
+// doi posé dans la fiche est un DOI manuel : il part à la place du calculé, et l'écart est
+// signalé.
 function ficheArticle(langue, doi) {
   return fiche([
     'type: article',
@@ -133,8 +126,7 @@ function ficheEditorial(langue, doi) {
 // opts.ausgabe  clés d'ausgabe.yaml à changer (date, volume…)
 // opts.articles [{ slug, fiche, texte }] ; par défaut l'éditorial puis l'article
 //
-// Le numéro part du vrai revue-template/ausgabe.yaml, et non d'une copie : c'est le
-// gabarit livré aux rédactions qui est éprouvé, avec ses commentaires et ses défauts.
+// Le numéro part du vrai revue-template/ausgabe.yaml, le gabarit livré aux rédactions.
 function monter(opts) {
   opts = opts || {};
   const produit = opts.produit || 'revue';
@@ -145,8 +137,8 @@ function monter(opts) {
   fs.writeFileSync(path.join(racine, 'ausgabe.yaml'), yaml.serialiserAusgabe(gabarit, valeurs));
   fs.writeFileSync(path.join(racine, 'couverture.jpg'), Buffer.from('JPEG'));
 
-  // Aucun DOI dans les fiches : celui qui part est calculé du rang, et la référence ci-dessous
-  // le prouve — le numéro d'essai est le 2 de 2026, l'éditorial ouvre donc à « 00 ».
+  // Aucun DOI dans les fiches : il est calculé du rang. Numéro 2 de 2026, l'éditorial ouvre
+  // à « 00 ».
   const articles = opts.articles || [
     { slug: '01-edito', fiche: ficheEditorial(langue), texte: '# Edito' + LF + LF + 'Un mot.' + LF },
     { slug: '02-observation', fiche: ficheArticle(langue), texte: TEXTE_ARTICLE }
@@ -154,16 +146,14 @@ function monter(opts) {
   for (const a of articles) {
     const dossier = path.join(racine, 'articles', a.slug);
     fs.mkdirSync(dossier, { recursive: true });
-    // `sansMd` : la Documentation Kirby (lib/kirby-contenu.js) n'a plus de <slug>.md du
-    // tout — voir le contrôle « la Documentation Kirby (sans .md) participe… » plus bas.
+    // `sansMd` : la Documentation Kirby (lib/kirby-contenu.js) n'a pas de <slug>.md.
     if (!a.sansMd) { fs.writeFileSync(path.join(dossier, a.slug + '.md'), a.texte); }
     if (a.fiche !== null) { fs.writeFileSync(path.join(dossier, a.slug + '.meta.yaml'), a.fiche); }
-    // La bibliographie détachée à l'import : c'est elle qui fait foi pour <citations>.
+    // La bibliographie détachée à l'import, source de <citations>.
     if (a.biblio) { fs.writeFileSync(path.join(dossier, a.slug + '.biblio.md'), a.biblio); }
     const sortie = path.join(racine, 'out', a.slug);
     fs.mkdirSync(sortie, { recursive: true });
-    // Des galleys minuscules mais réels : leur taille entre dans l'XML, elle doit donc
-    // être prévisible.
+    // Des galleys minuscules : leur taille entre dans l'XML et doit être prévisible.
     for (const ext of ['pdf', 'html', 'docx']) {
       fs.writeFileSync(path.join(sortie, a.slug + '.' + ext), Buffer.from(a.slug + ':' + ext));
     }
@@ -171,12 +161,9 @@ function monter(opts) {
   return racine;
 }
 
-// L'XML produit, base64 des pièces jointes retiré : ce qui est comparé, c'est la
-// structure et les valeurs, pas le contenu des fichiers.
-//
+// L'XML produit, sans le base64 des pièces jointes : on compare la structure et les valeurs.
 // `pagination` est facultatif (undefined équivaut à l'option absente, voir
-// intervallesPages()) : les contrôles déjà en place, écrits avant que l'option existe,
-// continuent de l'appeler sur deux arguments sans rien changer à leur comportement.
+// intervallesPages()).
 function exporter(racine, config, pagination) {
   const resultat = ojs.genererExportOjs(racine, { maintenant: MAINTENANT, config: config, pagination: pagination });
   const xml = fs.readFileSync(resultat.chemin, 'utf8')
@@ -193,8 +180,8 @@ function refuse(racine, config, pagination) {
   assert.fail('l’export a réussi alors qu’il devait être refusé');
 }
 
-// Configuration complète des deux revues : les défauts, plus ce qui manque côté allemand,
-// pour que les contrôles qui ne portent pas sur la configuration puissent aboutir.
+// Configuration complète des deux revues, pour les contrôles qui ne portent pas sur la
+// configuration.
 function configComplete() {
   return {
     revues: {
@@ -382,8 +369,7 @@ const REFERENCE_REVUE = [
   ''
 ].join(LF);
 
-// Les rubriques de la Zeitschrift ne partagent avec celles de la Revue que la clé
-// interne : c'est tout ce bloc qui était faux six fois.
+// Les rubriques de la Zeitschrift ne partagent avec celles de la Revue que la clé interne.
 const REFERENCE_SECTIONS_ZEITSCHRIFT = [
   '  <sections>',
   '    <section ref="Ed" seq="1" editor_restricted="0" meta_indexed="1" meta_reviewed="0" abstracts_not_required="1" hide_title="0" hide_author="0" abstract_word_count="0">',
@@ -401,10 +387,8 @@ const REFERENCE_SECTIONS_ZEITSCHRIFT = [
 
 // ---- Les rubriques réelles des deux revues ------------------------------------------
 
-// Relevées sur l'instance, rubrique par rubrique, dans l'ordre de la base. Deux pièges
-// qu'aucune règle ne devine : « Ed » en allemand mais « ED » en français, et « Tribune
-// Libre » avec une majuscule côté français quand la revue allemande écrit « Tribune
-// libre » — le libellé de cette rubrique est français des deux côtés.
+// Relevées sur l'instance, dans l'ordre de la base. Deux irrégularités : « Ed » en allemand
+// mais « ED » en français ; « Tribune Libre » côté français, « Tribune libre » côté allemand.
 const RUBRIQUES_RELEVEES = [
   { cle: 'ED', fr: ['ED', 'Éditorial'], de: ['Ed', 'Editorial'] },
   { cle: 'ART', fr: ['ART', 'Articles'], de: ['ART', 'Artikel'] },
@@ -432,7 +416,7 @@ test('rubriques OJS : la table du code est celle de l’instance, rubrique par r
         'titre ' + loc.toUpperCase() + ' de la rubrique ' + attendu.cle);
     }
   }
-  // Le trou en 2 est « ART », rétro-catalogue de migration : les seq suivent la base.
+  // seq 2 est « ART », rubrique du rétro-catalogue : les seq suivent la base.
   assert.deepStrictEqual(ojs.RUBRIQUES_DEFAUT.slice(0, 6).map((r) => r.seq), [1, 2, 3, 4, 5, 6]);
 });
 
@@ -442,17 +426,15 @@ function RUBRIQUES_RELEVEEES_CLES() { return RUBRIQUES_RELEVEES.map((r) => r.cle
 
 test('export OJS : un numéro de la Revue, caractère par caractère', () => {
   const racine = monter({ produit: 'revue', ausgabe: { date: '2026-09-08' } });
-  // Rien, sur le disque, ne porte les deux DOI de la référence : ni les fiches, ni les
-  // métadonnées du numéro. Les <id type="doi"> qui suivent ne peuvent donc venir que du
-  // calcul, et la référence prouve le calcul au lieu de recopier une saisie.
+  // Aucun DOI sur le disque : les <id type="doi"> de la référence viennent du calcul.
   for (const slug of ['01-edito', '02-observation']) {
     const f = fs.readFileSync(path.join(racine, 'articles', slug, slug + '.meta.yaml'), 'utf8');
     assert.strictEqual(f.indexOf('10.57161'), -1, 'la fiche de ' + slug + ' porte un DOI');
   }
   assert.strictEqual(fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8').indexOf('10.57161'), -1);
   const sortie = exporter(racine, configComplete());
-  // Le nom du fichier porte le volume et le nombre du numéro, tels qu'ils sont saisis : le
-  // « 2 » y reste « 2 », alors que le DOI le complète à deux chiffres.
+  // Le nom du fichier porte le volume et le nombre tels que saisis (« 2 », alors que le DOI
+  // écrit « 02 »).
   assert.strictEqual(path.basename(sortie.chemin), 'native-20260821-093000-44-2.xml');
   assert.strictEqual(sortie.xml, REFERENCE_REVUE);
 });
@@ -463,8 +445,7 @@ test('export OJS : les rubriques d’un numéro de la Zeitschrift portent les in
   assert.ok(sortie.xml.indexOf(REFERENCE_SECTIONS_ZEITSCHRIFT) !== -1,
     'bloc <sections> inattendu :\n' + sortie.xml.slice(sortie.xml.indexOf('  <sections>'),
       sortie.xml.indexOf('</sections>') + 12));
-  // section_ref est résolu par OJS sur la seule abréviation : la clé interne « DT » n'y a
-  // rien à faire, c'est « TS » qui range l'article dans le Themenschwerpunkt.
+  // OJS résout section_ref sur l'abréviation : « TS », pas la clé interne « DT ».
   assert.ok(sortie.xml.indexOf('section_ref="TS"') !== -1, 'section_ref allemand absent');
   assert.strictEqual(sortie.xml.indexOf('section_ref="DT"'), -1, 'la clé interne part dans le XML');
   // Genre, groupe et compte sont ceux de la Zeitschrift, pas ceux de la Revue.
@@ -477,12 +458,11 @@ test('export OJS : les rubriques d’un numéro de la Zeitschrift portent les in
 
 test('date de publication : le gabarit n’en livre aucune, et l’export l’exige', () => {
   const gabarit = fs.readFileSync(path.join(RACINE, 'revue-template', 'ausgabe.yaml'), 'utf8');
-  // Le gabarit ne porte plus de date d'exemple : plausible, elle partirait telle quelle
-  // dans un numéro qui n'est pas le sien et désarmerait le refus ci-dessous. La date de
-  // publication ne s'invente pas à la création — voir test/js/date-numero.test.js.
+  // Une date d'exemple partirait telle quelle et désarmerait le refus ci-dessous (voir
+  // aussi test/js/date-numero.test.js).
   assert.strictEqual(String(yaml.analyserAusgabe(gabarit).date || ''), '',
     'revue-template/ausgabe.yaml : date de publication d’exemple revenue');
-  // Monté sur le gabarit tel quel, le numéro est donc refusé.
+  // Monté sur le gabarit tel quel, le numéro est refusé.
   const e = refuse(monter({}), configComplete());
   assert.match(e.message, /AAAA-MM-JJ/);
   assert.match(e.message, /Métadonnées du numéro/);
@@ -505,25 +485,21 @@ test('date de publication : une année seule arrête l’export et dit où la sa
   assert.deepStrictEqual(fs.readdirSync(racine).filter((f) => f.indexOf('.xml') !== -1), []);
 });
 
-// Les points bloquants partaient concaténés dans le message d'une seule notification, avec
-// des puces et des retours à la ligne que VSCodium écrase : le plus grave de l'application
-// était son message le moins lisible. L'erreur les porte donc aussi en liste, pour que
-// l'hôte les pose un par un dans « À corriger », chacun avec son bouton.
+// Une notification VSCodium écrase puces et retours à la ligne. L'erreur porte donc aussi
+// les points bloquants en liste, que l'hôte pose un par un dans « À corriger ».
 test('refus : l’erreur porte les points bloquants un par un, pas seulement en prose', () => {
   const racine = monter({ produit: 'revue' });
   const e = refuse(racine, {});
   assert.ok(Array.isArray(e.szhBloquants), 'l’erreur ne porte pas la liste des bloquants');
   assert.ok(e.szhBloquants.length >= 2,
     'un seul point listé : la liste n’est pas celle qui a servi au message');
-  // Chaque point est une phrase à lui, sans puce ni retour à la ligne : c'est ce qui permet
-  // d'en faire une carte.
+  // Chaque point est une phrase, sans puce ni retour à la ligne.
   for (const point of e.szhBloquants) {
     assert.ok(point && point.length > 0, 'point vide dans la liste');
     assert.ok(point.indexOf('\n') === -1, 'un point porte encore un retour à la ligne : ' + point);
     assert.ok(point.indexOf('- ') !== 0, 'un point porte encore sa puce : ' + point);
   }
-  // Et le message reste ce qu'il était : la notification n'est pas le seul chemin, mais
-  // elle continue de dire pourquoi l'export n'est pas parti.
+  // Le message de la notification contient toujours tous les points.
   for (const point of e.szhBloquants) {
     assert.ok(e.message.indexOf(point) !== -1,
       'un point de la liste manque au message : les deux chemins divergent');
@@ -554,16 +530,14 @@ test('refus : un galley HTML ou PDF non produit nomme le fichier, avec le messag
 test('refus : une locale hors des deux revues nomme la locale saisie et les deux connues', () => {
   const racine = monter({ ausgabe: { revue: '', lang: 'it', date: '2026-09-08' } });
   const e = refuse(racine, configComplete());
-  // Espace insécable normale (U+00A0, pas une espace ordinaire) de part et d’autre du
-  // guillemet : la typographie maison, pas une négligence — voir lib/i18n.js.
+  // Espaces insécables (U+00A0) dans les guillemets, voir lib/i18n.js.
   assert.match(e.message, /« it »/, 'la locale saisie n’est pas nommée');
   assert.match(e.message, /fr, de/, 'les deux locales connues ne sont pas listées');
   assert.match(e.message, /Métadonnées du numéro/, 'le geste de retour n’est pas nommé');
 });
 
 test('refus : un type d’article inconnu du cockpit nomme le type et l’article', () => {
-  // Le slug ne porte pas le mot « mystere » : la présence du type dans le message doit
-  // venir de la VALEUR du type, pas d’un nom de dossier qui la contiendrait par coïncidence.
+  // Le slug ne contient pas « mystere » : le mot du message vient bien du type.
   const racine = monter({
     ausgabe: { date: '2026-09-08' },
     articles: [{ slug: '01-brouillon', fiche: fiche(['type: mystere', 'lang: fr',
@@ -607,7 +581,7 @@ test('avertissement : couverture absente, les trois noms acceptés sont nommés 
 
 test('configuration : un champ obligatoire vide arrête l’export, en français et en allemand', () => {
   const racine = monter({ produit: 'zeitschrift' });
-  // Aucune configuration de poste : le côté allemand n'a jamais été relevé.
+  // Aucune configuration de poste.
   const fr = refuse(racine, {});
   assert.ok(fr.szhConfigOjs === true, 'l’erreur ne mène pas au panneau de configuration');
   assert.match(fr.message, /Schweizerische Zeitschrift für Heilpädagogik/);
@@ -632,8 +606,8 @@ test('configuration : un champ obligatoire vide arrête l’export, en français
 });
 
 test('configuration : une rubrique sans abréviation dans la revue visée arrête l’export', () => {
-  // « Annonces / Inserate » existe dans tous les sommaires mais son abréviation n'a
-  // jamais pu être relevée : y ranger un article doit s'arrêter là.
+  // « Annonces / Inserate » n'a pas d'abréviation relevée : y ranger un article arrête
+  // l'export.
   const config = Object.assign(configComplete(), { types: { documentation: 'AN' } });
   const racine = monter({
     articles: [{ slug: '01-annonce', fiche: fiche(['type: documentation', 'lang: fr',
@@ -646,9 +620,8 @@ test('configuration : une rubrique sans abréviation dans la revue visée arrêt
 });
 
 test('configuration : ce que le panneau enregistre est ce que l’export emploie', () => {
-  // Le trajet complet : le panneau envoie sa table, l'hôte l'écrit dans le config.json du
-  // poste, et l'export la relit. Une rubrique ajoutée avec son intitulé exact, désignée
-  // par un type d'article, doit se retrouver dans le XML.
+  // Le panneau envoie sa table, l'hôte l'écrit dans le config.json du poste, l'export la
+  // relit : une rubrique ajoutée et désignée par un type d'article se retrouve dans le XML.
   const depuisPanneau = {
     revues: {
       fr: { genreFichier: 'Volltext', groupeAuteur: 'Auteur', televerseur: 'redaction', paysAuteur: 'CH' },
@@ -662,7 +635,7 @@ test('configuration : ce que le panneau enregistre est ce que l’export emploie
     const relu = ojs.configOjs();
     assert.strictEqual(relu.revues.fr.genreFichier, 'Volltext');
     assert.strictEqual(relu.revues.fr.paysAuteur, 'CH');
-    // Les rubriques non citées survivent : la table n'est pas remplacée, elle est fusionnée.
+    // La table est fusionnée : les rubriques non citées restent.
     assert.strictEqual(relu.rubriques.length, ojs.RUBRIQUES_DEFAUT.length);
     assert.strictEqual(relu.types.documentation, 'AN');
 
@@ -671,7 +644,7 @@ test('configuration : ce que le panneau enregistre est ce que l’export emploie
       articles: [{ slug: '01-annonce', fiche: fiche(['type: documentation', 'lang: fr',
         'title:', '  fr: "Annonce"', 'author:', '- nom: "SZH/CSPS"']), texte: 'Texte.' + LF }]
     });
-    // Sans options.config : c'est bien le fichier du poste qui est lu.
+    // Sans options.config : le fichier du poste est lu.
     const resultat = ojs.genererExportOjs(racine, { maintenant: MAINTENANT });
     const xml = fs.readFileSync(resultat.chemin, 'utf8');
     assert.ok(xml.indexOf('<abbrev locale="fr">ANN</abbrev>') !== -1, 'abréviation ajoutée absente');
@@ -723,11 +696,10 @@ test('ORCID : une valeur illisible est signalée, pas envoyée', () => {
 // ---- ROR -------------------------------------------------------------------
 
 test('ROR : canonique reconnaît les identifiants réels et les formes tordues', () => {
-  // Quatre identifiants réels relevés sur ojs.szh.ch, sous différentes formes
+  // Quatre identifiants réels relevés sur ojs.szh.ch, sous différentes formes.
   assert.strictEqual(ojs.rorCanonique('01swzsf04'), 'https://ror.org/01swzsf04');
   assert.strictEqual(ojs.rorCanonique('https://ror.org/01swzsf04'), 'https://ror.org/01swzsf04');
   assert.strictEqual(ojs.rorCanonique('http://ror.org/01swzsf04'), 'https://ror.org/01swzsf04');
-  // ror.org/<id> contient un identifiant valide, donc il est reconnu
   assert.strictEqual(ojs.rorCanonique('ror.org/01swzsf04'), 'https://ror.org/01swzsf04');
 
   assert.strictEqual(ojs.rorCanonique('00w9q2c06'), 'https://ror.org/00w9q2c06');
@@ -736,14 +708,14 @@ test('ROR : canonique reconnaît les identifiants réels et les formes tordues',
   assert.strictEqual(ojs.rorCanonique('04nd0xd48'), 'https://ror.org/04nd0xd48');
   assert.strictEqual(ojs.rorCanonique('027h8t796'), 'https://ror.org/027h8t796');
 
-  // Formes tordues
+  // Formes invalides.
   assert.strictEqual(ojs.rorCanonique('https://ror.org/'), '');
   assert.strictEqual(ojs.rorCanonique('12345'), '');
   assert.strictEqual(ojs.rorCanonique('https://orcid.org/0000-0002-1825-0097'), '');
   assert.strictEqual(ojs.rorCanonique(''), '');
   assert.strictEqual(ojs.rorCanonique(null), '');
 
-  // Les minuscules et majuscules donnent le même résultat
+  // Insensible à la casse.
   assert.strictEqual(ojs.rorCanonique('00W9Q2C06'), 'https://ror.org/00w9q2c06');
 });
 
@@ -761,7 +733,7 @@ test('ROR : un auteur avec ror + affiliation émet rorAffiliation bien formé', 
   assert.ok(sortie.xml.indexOf('<rorAffiliation>') !== -1, 'balise rorAffiliation absente');
   assert.ok(sortie.xml.indexOf('<ror>https://ror.org/01swzsf04</ror>') !== -1, 'ror canonique absent');
   assert.ok(sortie.xml.indexOf('Université de Genève') !== -1, 'affiliation absente');
-  // Vérifier la position : après familyname, avant email/country
+  // rorAffiliation vient après familyname.
   const bloc = sortie.xml.slice(
     sortie.xml.indexOf('<familyname'),
     sortie.xml.indexOf('</author>')
@@ -818,7 +790,7 @@ test("ROR : un ror tordu ne part pas et signale l'avertissement", () => {
 });
 
 test("ROR : une fiche d'avant (sans ror) se relit, se réécrit et ne perd rien", () => {
-  // Fiche sans clé ror : analyserMeta la crée avec ror: '', et serialiserMeta la réécrit bien
+  // Fiche sans clé ror : analyserMeta pose ror: '', serialiserMeta ne l'écrit pas.
   const ficheMeta = fiche([
     'type: article',
     'lang: fr',
@@ -842,13 +814,11 @@ test("ROR : une fiche d'avant (sans ror) se relit, se réécrit et ne perd rien"
   assert.ok(reecrite.indexOf('Anne') !== -1, 'prénom perdu');
   assert.ok(reecrite.indexOf('HEP Vaud') !== -1, 'affiliation perdue');
   assert.ok(reecrite.indexOf('0000-0002-1825-0097') !== -1, 'ORCID perdu');
-  // La clé ror ne s'écrit pas si elle est vide
   assert.strictEqual(reecrite.indexOf('ror:'), -1, 'ror vide écrit quand même');
 });
 
 test('DOI : une fiche sans DOI n’est plus un manque, et la rubrique sans DOI n’en reçoit aucun', () => {
-  // Le DOI ne se saisit plus : il est le rang de l'article dans le numéro. Une fiche vide
-  // n'arrête donc plus rien — c'est devenu le cas normal.
+  // Le DOI est le rang de l'article dans le numéro : une fiche sans DOI est le cas normal.
   const sansDoi = ['type: article', 'lang: fr', 'title:', '  fr: "Sans DOI"',
     'resume:', '  fr: "Un résumé."', 'author:', '- nom: "SZH/CSPS"'];
   const seul = exporter(monter({
@@ -857,7 +827,7 @@ test('DOI : une fiche sans DOI n’est plus un manque, et la rubrique sans DOI n
   }), configComplete());
   assert.ok(seul.xml.indexOf('<id type="doi" advice="update">10.57161/r2026-02-00</id>') !== -1,
     'le DOI calculé n’est pas parti : ' + seul.xml.slice(seul.xml.indexOf('<publication'), 400));
-  // Et il n'est signalé nulle part : un calcul qui aboutit n'a rien à dire.
+  // Sans avertissement.
   assert.ok(!seul.avertissements.some((a) => a.indexOf('DOI') !== -1),
     'un DOI calculé sans divergence ne doit rien signaler : ' + seul.avertissements.join(' | '));
 
@@ -873,13 +843,9 @@ test('DOI : une fiche sans DOI n’est plus un manque, et la rubrique sans DOI n
   assert.ok(sortie.avertissements.some((a) => a.indexOf('normal pour cette rubrique') !== -1));
 });
 
-// La Documentation est désormais une arborescence Kirby (lib/kirby-contenu.js) : son
-// dossier n'a PLUS de <slug>.md du tout (seulement <slug>.meta.yaml, documentation.<lang>.txt
-// et les dossiers de ses fiches — hors du périmètre de ce test, qui n'exerce que la
-// reconnaissance de l'article). listerSlugs() de lib/export-ojs.js doit donc la reconnaître
-// à sa fiche (`type: documentation`) plutôt qu'à un fichier qui n'existe plus, sans quoi
-// elle disparaîtrait purement et simplement de l'export : pas de section DC, pas de
-// galleys, pas d'avertissement — un silence qui a l'air d'un numéro sans Documentation.
+// La Documentation est une arborescence Kirby (lib/kirby-contenu.js) sans <slug>.md.
+// listerSlugs() la reconnaît à sa fiche (`type: documentation`) ; sinon elle disparaîtrait
+// de l'export sans avertissement.
 test('Documentation Kirby (sans .md) : reconnue par sa fiche, participe à l’export comme avant', () => {
   const doc = ['type: documentation', 'lang: fr', 'title:', '  fr: "Actualité et ressources"',
     'author:', '- nom: "SZH/CSPS"'];
@@ -891,15 +857,13 @@ test('Documentation Kirby (sans .md) : reconnue par sa fiche, participe à l’e
     'la Documentation devrait entrer dans la rubrique DC, comme quand elle portait un .md');
   assert.ok(sortie.xml.indexOf('Actualité et ressources') !== -1, 'le titre de la page n’est pas parti');
   assert.strictEqual(sortie.xml.indexOf('type="doi"'), -1, 'un DOI a été inventé pour la Documentation');
-  // Les galleys (out/<slug>/<slug>.pdf…) sont bien exigés et embarqués : la reconnaissance
-  // par la fiche ne dispense pas des mêmes contrôles qu'un article ordinaire.
+  // Les galleys (out/<slug>/<slug>.pdf…) sont exigés comme pour un article ordinaire.
   assert.ok(sortie.xml.indexOf('07-documentation.pdf') !== -1, 'le galley PDF n’est pas parti');
 });
 
 test('DOI : un numéro sans nombre ne fabrique aucun DOI, et le refus dit où le saisir', () => {
-  // Un DOI à trous — « …-00-01 » pour un numéro sans nombre — aurait l'air juste et
-  // désignerait un numéro qui n'existe pas. L'export s'arrête donc, comme il s'arrêtait sur
-  // un DOI absent, et le message renvoie au seul endroit où cela se saisit.
+  // Sans nombre, le DOI serait « …-00-01 » et désignerait un numéro qui n'existe pas.
+  // L'export s'arrête et renvoie aux métadonnées du numéro.
   const racine = monter({ ausgabe: { date: '2026-09-08', numero: '' } });
   const e = refuse(racine, configComplete());
   assert.match(e.message, /date de publication et le numéro/);
@@ -907,7 +871,6 @@ test('DOI : un numéro sans nombre ne fabrique aucun DOI, et le refus dit où le
   // Rien n'a été écrit : un export refusé ne laisse pas de fichier à moitié fait.
   assert.deepStrictEqual(fs.readdirSync(racine).filter((f) => f.indexOf('.xml') !== -1), []);
 
-  // Une date absente arrête déjà l'export ; c'est bien le DOI qui parle du nombre manquant.
   process.env.SZH_LANGUE = 'de';
   try {
     const de = refuse(monter({ ausgabe: { date: '2026-09-08', numero: '' } }), configComplete());
@@ -916,7 +879,7 @@ test('DOI : un numéro sans nombre ne fabrique aucun DOI, et le refus dit où le
     assert.strictEqual(de.message.indexOf('ß'), -1, 'eszett dans un message allemand');
   } finally { process.env.SZH_LANGUE = 'fr'; }
 
-  // Un numéro fait de rubriques sans DOI n'a rien à calculer : il part comme avant.
+  // Un numéro fait de rubriques sans DOI n'a rien à calculer : il part.
   const doc = ['type: documentation', 'lang: fr', 'title:', '  fr: "Documentation"',
     'author:', '- nom: "SZH/CSPS"'];
   const sortie = exporter(monter({
@@ -928,14 +891,10 @@ test('DOI : un numéro sans nombre ne fabrique aucun DOI, et le refus dit où le
 
 // ---- Mots-clés : le qualificatif de provenance edudoc masqué, et son doublon fondu ----
 //
-// La saisie des mots-clés passe désormais par une liste fermée qui insère la forme
-// canonique d'edudoc, qualificatif compris (« prévention (na) », « inclusion (SZH) »). Ce
-// qualificatif ne doit jamais atteindre la page publique d'ojs.szh.ch — la règle et la
-// liste fermée vivent dans lib/mots-cles-edudoc.js (sansQualificatifDeProvenance,
-// QUALIFICATIFS_PROVENANCE), partagées avec pipeline/filters/szh-maquette.lua pour le PDF et
-// le HTML ; voir test/js/mots-cles-provenance.test.js pour la fonction elle-même et l'accord
-// des deux listes. Ici, on prouve que l'export OJS réel — le seul consommateur de ce module
-// dans ce fichier — applique bien la règle sur l'XML qui part vers l'instance.
+// Les mots-clés sont saisis sous la forme canonique d'edudoc, qualificatif compris
+// (« prévention (na) », « inclusion (SZH) »). Le qualificatif ne doit pas atteindre
+// ojs.szh.ch. La règle vit dans lib/mots-cles-edudoc.js, partagée avec szh-maquette.lua, et
+// se teste dans test/js/mots-cles-provenance.test.js ; ici, on vérifie l'XML de l'export.
 test('mots-clés OJS : le qualificatif de provenance est masqué, une parenthèse de sens survit', () => {
   const racine = monter({
     ausgabe: { date: '2026-09-08' },
@@ -993,13 +952,9 @@ test('mots-clés OJS : un mot-clé sans qualificatif traverse inchangé', () => 
   assert.ok(sortie.xml.indexOf('<name>pédagogie spécialisée</name>') !== -1, sortie.xml);
 });
 
-// Cas dégénéré signalé après coup : un mot-clé réduit à son seul qualificatif de provenance
-// (« (na) » tapé seul) devenait une chaîne vide après masquage, mais la garde qui filtre les
-// entrées vides testait la valeur BRUTE, avant masquage — un <keyword><name></name></keyword>
-// vide partait donc dans le XML d'import OJS. Personne ne tape « (na) » seul et aucun
-// descripteur du thésaurus n'a cette forme, mais la saisie manuelle reste ouverte, et un
-// élément vide est le genre de chose qu'un validateur de bibliothèque refuse sans dire
-// pourquoi.
+// Un mot-clé réduit à son qualificatif (« (na) » saisi seul) devient vide après masquage.
+// Le filtre des entrées vides doit porter sur la valeur masquée, sinon un <keyword> vide
+// part dans l'XML.
 test('mots-clés OJS : un mot-clé réduit à rien par le masquage n’écrit aucun <keyword> vide', () => {
   const racine = monter({
     ausgabe: { date: '2026-09-08' },
@@ -1022,10 +977,8 @@ test('mots-clés OJS : un mot-clé réduit à rien par le masquage n’écrit au
 });
 
 test('DOI : le DOI manuel de la fiche part à la place du calculé, et l’écart se dit', () => {
-  // Le corpus réel porte des DOI déposés, de la forme de la maison : « 10.57161/r2024-01-01 ».
-  // Un doi resté dans la fiche est un DOI MANUEL — c'est le sens de l'échappatoire « Définir
-  // manuellement le DOI » — et c'est LUI qui part. Mais jamais en silence : l'écart se dit,
-  // avec les deux valeurs et le geste qui les départage.
+  // Un doi dans la fiche est un DOI manuel (« Définir manuellement le DOI ») : c'est lui qui
+  // part. L'écart est signalé avec les deux valeurs et l'endroit où le corriger.
   const historique = () => monter({
     produit: 'revue', ausgabe: { date: '2026-09-08' },
     articles: [{ slug: '01-edito', fiche: ficheEditorial('fr', '10.57161/r2024-01-01'),
@@ -1057,10 +1010,9 @@ test('DOI : le DOI manuel de la fiche part à la place du calculé, et l’écar
 });
 
 test('DOI : une forme étrangère à la revue part aussi, mais se dit autrement', () => {
-  // La lettre distingue les deux revues : un « z » dans la Revue n'a jamais pu être déposé
-  // tel quel, c'est très probablement une saisie de travers. Le DOI manuel part quand même
-  // — l'échappatoire appartient à qui sait ce qu'il fait — mais le diagnostic n'est pas
-  // celui d'un DOI historique, parce qu'il n'appelle pas le même geste.
+  // La lettre distingue les deux revues : un « z » dans la Revue est sans doute une erreur
+  // de saisie. Le DOI manuel part quand même, avec un autre message que pour un DOI déjà
+  // déposé.
   const racine = monter({
     produit: 'revue', ausgabe: { date: '2026-09-08' },
     articles: [{ slug: '01-edito', fiche: ficheEditorial('fr', '10.57161/z2026-02-00'),
@@ -1080,7 +1032,7 @@ test('DOI : une forme étrangère à la revue part aussi, mais se dit autrement'
 });
 
 test('DOI : un DOI manuel égal au calculé part sans un mot', () => {
-  // La case cochée puis laissée sur son point de départ : rien ne diverge, rien à dire.
+  // Case cochée sans changer la valeur : rien ne diverge.
   const racine = monter({
     produit: 'revue', ausgabe: { date: '2026-09-08' },
     articles: [{ slug: '01-edito', fiche: ficheEditorial('fr', '10.57161/r2026-02-00'),
@@ -1094,8 +1046,8 @@ test('DOI : un DOI manuel égal au calculé part sans un mot', () => {
 });
 
 test('DOI : un article qui n’en reçoit pas, mais dont la fiche en porte un, le dit', () => {
-  // Le cas qui se glisserait sans bruit : la rubrique change, l'article perd son DOI, et
-  // celui de sa fiche reste. Il ne part pas — et cela ne se devine pas.
+  // La rubrique a changé et ne reçoit pas de DOI, mais la fiche en garde un : il ne part
+  // pas, et c'est signalé.
   const doc = ['type: documentation', 'lang: fr', 'doi: "10.57161/r2024-01-07"',
     'title:', '  fr: "Documentation"', 'author:', '- nom: "SZH/CSPS"'];
   const sortie = exporter(monter({
@@ -1109,9 +1061,8 @@ test('DOI : un article qui n’en reçoit pas, mais dont la fiche en porte un, l
 });
 
 test('DOI : deux articles avec le même DOI manuel refusent l’export', () => {
-  // Un DOI recopié d'un article à l'autre — le cas qu'un .meta.yaml dupliqué à la main
-  // laisse passer en silence sans ce contrôle : les deux articles reçoivent le même
-  // identifiant, et OJS ne saurait lequel des deux dépôts garder.
+  // Un DOI recopié d'un article à l'autre (.meta.yaml dupliqué à la main) : OJS ne saurait
+  // lequel garder.
   const doiCommun = '10.57161/r2024-01-05';
   const racine = monter({
     produit: 'revue', ausgabe: { date: '2026-09-08' },
@@ -1138,10 +1089,8 @@ test('DOI : deux articles avec le même DOI manuel refusent l’export', () => {
 });
 
 test('DOI : sans doublon, l’export est inchangé — aucun DOI calculé ne coïncide jamais', () => {
-  // Les DOI calculés sont le rang de chaque article parmi les porteurs : deux rangs
-  // distincts ne peuvent jamais donner la même valeur. Ce contrôle affirme que le nouveau
-  // garde-fou ne se déclenche pas sur le cas ordinaire, déjà prouvé caractère par caractère
-  // par la référence plus haut.
+  // Deux rangs distincts donnent deux DOI distincts : le contrôle des doublons ne se
+  // déclenche pas sur le cas ordinaire.
   const sortie = exporter(monter({ ausgabe: { date: '2026-09-08' } }), configComplete());
   assert.ok(!sortie.avertissements.some((a) => a.indexOf('même DOI') !== -1),
     'un avertissement de doublon est apparu sans qu’il y ait de doublon : '
@@ -1151,7 +1100,7 @@ test('DOI : sans doublon, l’export est inchangé — aucun DOI calculé ne co�
 });
 
 // Le fichier de bibliographie que l'import détache : les références seules, sans titre.
-// C'est la source de <citations> depuis que la chaîne ne devine plus où la liste commence.
+// C'est la source de <citations>.
 const BIBLIO_DETACHEE = [
   'Shaw, A., Bertrand, C., & Muller, D. (2023). *Enseigner autrement*. Editions SZH/CSPS.',
   '',
@@ -1164,7 +1113,7 @@ test('références : les <citations> viennent du fichier de bibliographie', () =
   const racine = monter({
     ausgabe: { date: '2026-09-08' },
     articles: [{ slug: '02-observation', fiche: ficheArticle('fr'),
-      // Le corps ne porte plus la liste : il porte la référence que la compilation résout.
+      // Le corps porte le bloc .szh-biblio que la compilation résout.
       texte: ['# Titre', '', 'Un appel (Shaw et al., 2023) et un autre (Zielinski, 2021).',
         '', '::: {.szh-biblio src="02-observation.biblio.md"}', ':::', ''].join(LF),
       biblio: BIBLIO_DETACHEE }]
@@ -1179,16 +1128,15 @@ test('références : les <citations> viennent du fichier de bibliographie', () =
   assert.strictEqual(bloc.indexOf('*'), -1, 'italiques du markdown laissées dans la référence');
   assert.ok(lignes[0].indexOf('&amp;') !== -1, 'esperluette non échappée');
   assert.ok(lignes[0].indexOf('Enseigner autrement') !== -1);
-  // Le fichier suffit : rien à deviner, donc rien à signaler.
+  // Rien à signaler.
   assert.ok(!sortie.avertissements.some((a) => a.indexOf('encore dans le texte') !== -1),
     'un article à bibliographie détachée ne doit rien avoir à signaler : '
     + sortie.avertissements.join(' | '));
 });
 
 test('références : sans fichier, le corps sert de repli et l’export le dit', () => {
-  // Un article importé avant que la bibliographie devienne un fichier : la liste est encore
-  // dans le .md, sous son titre. On l'envoie quand même — mieux vaut des références devinées
-  // que pas de références — mais le rédacteur doit savoir qu'un réimport les fiabilise.
+  // Sans .biblio.md, la liste est lue dans le .md, sous son titre. Elle part, avec un
+  // avertissement qui propose un réimport.
   const sortie = exporter(monter({ ausgabe: { date: '2026-09-08' } }), configComplete());
   const bloc = sortie.xml.slice(sortie.xml.indexOf('<citations>'), sortie.xml.indexOf('</citations>'));
   assert.strictEqual(bloc.split(LF).filter((l) => l.indexOf('<citation>') !== -1).length, 2);
@@ -1238,8 +1186,7 @@ test('langue de l’article : une langue autre que celle de la revue est signal�
 
 // ---- Pagination continue d'un numéro -------------------------------------------------
 //
-// options.pagination est le JSON déjà analysé de `pipeline/pagination.py etat` (voir
-// pipeline/pagination.py) : ce module ne le lit jamais lui-même, il le reçoit tout fait.
+// options.pagination est le JSON déjà analysé de `pipeline/pagination.py etat`.
 
 function paginationEssai(articles, opts) {
   opts = opts || {};
@@ -1254,8 +1201,7 @@ function paginationEssai(articles, opts) {
 }
 
 test('pagination : sans options.pagination, l’export part comme avant, aucun <pages>', () => {
-  // Le cas qui protège les numéros déjà publiés à l’ancienne : l’option absente ne doit
-  // changer ni l’écriture ni le refus.
+  // Option absente : ni <pages> ni refus.
   const sortie = exporter(monter({ ausgabe: { date: '2026-09-08' } }), configComplete());
   assert.strictEqual(sortie.xml.indexOf('<pages>'), -1,
     '<pages> écrit alors qu’aucune pagination n’a été fournie');
@@ -1276,7 +1222,7 @@ test('pagination : à jour, chaque article porte son propre intervalle', () => {
     'intervalle d’une page absent de 01-edito : ' + blocEdito);
   assert.strictEqual(blocEdito.indexOf('<pages>1-3</pages>'), -1,
     'l’intervalle du voisin s’est glissé dans 01-edito');
-  // Trois pages : trait d'union ASCII (U+002D), jamais un tiret demi-cadratin.
+  // Trois pages : trait d'union ASCII (U+002D), pas de tiret demi-cadratin.
   assert.ok(blocObservation.indexOf('<pages>1-3</pages>') !== -1,
     'intervalle de trois pages absent de 02-observation : ' + blocObservation);
   assert.strictEqual(blocObservation.indexOf('<pages>4</pages>'), -1,
@@ -1321,8 +1267,8 @@ test('pagination : la position de <pages> suit le schéma étendu d’OJS 3.5, p
   });
 
 test('pagination : périmée, l’export refuse et n’écrit aucun fichier', () => {
-  // La porte : un folio qui ne suit plus le sommaire (article allongé, inséré, déplacé…)
-  // enverrait à OJS un <pages> qui ne concorde plus avec le PDF réellement publié.
+  // Un folio périmé (article allongé, inséré, déplacé…) enverrait à OJS un <pages> qui ne
+  // concorde plus avec le PDF publié.
   const racine = monter({ ausgabe: { date: '2026-09-08' } });
   const pagination = paginationEssai([
     { slug: '01-edito', depart: 1, pages: 1, pdf: true },
@@ -1337,8 +1283,8 @@ test('pagination : périmée, l’export refuse et n’écrit aucun fichier', ()
 });
 
 test('image introuvable : une image appelée mais absente du disque arrête l’export, et se nomme', () => {
-  // Au rendu, szh-image-introuvable.lua met un cadre à sa place : le PDF existe, il ne doit
-  // pas partir. Le texte et un tableau réinjecté sont lus l'un et l'autre.
+  // Au rendu, szh-image-introuvable.lua met un cadre à la place de l'image : le PDF existe
+  // mais ne doit pas partir. Le texte et un tableau réinjecté sont lus.
   const racine = monter({ ausgabe: { date: '2026-09-08' } });
   const dossier = path.join(racine, 'articles', '02-observation');
   fs.appendFileSync(path.join(dossier, '02-observation.md'), LF + '![Une figure](media/Absente.png)' + LF
@@ -1362,8 +1308,7 @@ test('image introuvable : une image appelée mais absente du disque arrête l’
 });
 
 test('pagination : enregistre à faux, même avec perimes vide, n’écrit ni <pages> ni ne refuse', () => {
-  // `enregistre: false` dit que le numéro n’a jamais été paginé : un tel numéro part
-  // exactement comme avant, quel que soit le contenu de `perimes`.
+  // `enregistre: false` : le numéro n'a jamais été paginé, `perimes` est ignoré.
   const racine = monter({ ausgabe: { date: '2026-09-08' } });
   const pagination = paginationEssai([
     { slug: '01-edito', depart: 1, pages: 1, pdf: true },
@@ -1376,8 +1321,7 @@ test('pagination : enregistre à faux, même avec perimes vide, n’écrit ni <p
 
 // ---- Les libellés du panneau --------------------------------------------------------
 
-// Le panneau réellement exécuté : sans cela, une erreur au rendu laisserait le bloc vide
-// sous un titre, et rien ne le dirait — c'est le défaut que webviews.test.js garde ailleurs.
+// Le panneau exécuté : une erreur au rendu laisserait le bloc vide sans message.
 test('panneau des réglages : la table des rubriques et les champs par revue sont rendus', async () => {
   const page = ouvrirReglages();
   assert.strictEqual(page.postes('pret').length, 1, 'la page ne s’annonce pas');
@@ -1393,13 +1337,13 @@ test('panneau des réglages : la table des rubriques et les champs par revue son
     nRubriques * ojs.LOCALES_REVUE.length);
   assert.strictEqual(bloc.querySelectorAll('select').length, yaml.TYPES_ARTICLE.length,
     'un choix de rubrique par type d’article');
-  // Les intitulés exacts sont éditables, y compris les deux qui se lisent de travers.
+  // Les intitulés exacts sont éditables, irrégularités comprises.
   const valeurs = bloc.querySelectorAll('input').map((e) => e.value);
   for (const attendu of ['Themenschwerpunkt', 'Tribune Libre', 'Tribune libre', 'Freie Beiträge',
     'Inserate', 'Ed', 'ED']) {
     assert.ok(valeurs.indexOf(attendu) !== -1, 'intitulé absent du panneau : ' + attendu);
   }
-  // Une case vide se voit : c'est une valeur à relever, pas une valeur.
+  // Une case vide est marquée : c'est une valeur à relever.
   assert.ok(bloc.querySelectorAll('input.vide').length >= 4, 'champs vides non marqués');
 });
 

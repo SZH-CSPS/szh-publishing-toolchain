@@ -1,8 +1,8 @@
-// L'entrée de production « Pronto » (windows/open-revue.ps1) ouvre VSCodium sur l'Accueil du
-// cockpit, par Start-SzhAccueil (windows/szh-shell.ps1), que pronto-dev.ps1 appelle aussi.
-// Tout passe par le mode simulé : rien n'est lancé, et le poste est jetable (ancrage, base,
-// rapports, racines et LOCALAPPDATA détournés), pour que le check-in n'écrive jamais sur le
-// vrai dossier partagé.
+// L'entrée « Pronto » (windows/open-revue.ps1) ouvre VSCodium sur l'Accueil du cockpit par
+// Start-SzhAccueil (windows/szh-shell.ps1), que pronto-dev.ps1 appelle aussi.
+// Les tests passent par le mode simulé : rien n'est lancé. Le poste est jetable (ancrage,
+// base, rapports, racines et LOCALAPPDATA détournés) pour que le check-in n'écrive pas dans
+// le vrai dossier partagé.
 //
 //   node --test test/js/accueil-demarrage.test.js
 'use strict';
@@ -146,7 +146,8 @@ test('la version du cockpit se lit dans le profil, sans les extensions marquées
       assert.strictEqual(r.deux, '0.74.1', 'la plus haute version posée');
       assert.strictEqual(r.obsolete, '0.73.0', 'une extension marquée obsolète compte encore');
       assert.deepStrictEqual(r.ok, [true, false, false, false]);
-      // Le minimum ne dépasse jamais la version livrée : sinon Pronto refuserait sa propre extension.
+      // Le minimum reste inférieur ou égal à la version livrée, sinon Pronto refuserait sa
+      // propre extension.
       const vers = (s) => s.split('.').map(Number);
       const [a, b] = [vers(r.min), vers(VERSION_COCKPIT)];
       assert.ok(a[0] < b[0] || (a[0] === b[0] && (a[1] < b[1] || (a[1] === b[1] && a[2] <= b[2]))),
@@ -175,11 +176,11 @@ test('-Versions ouvre le sélecteur seul : ni VSCodium, ni cockpit, ni tâches',
   });
 });
 
-// Le lanceur WinForms n'est plus lancé par personne : open-produit.ps1 n'est plus appelé.
+// open-produit.ps1 lance le lanceur WinForms, qui ne sert plus.
 test('aucun script ni module n’appelle encore open-produit.ps1', () => {
   const fichiers = [];
   for (const d of ['windows', 'outils-dev']) {
-    // open-produit.ps1 lui-même ne compte pas : son en-tête se cite.
+    // open-produit.ps1 est exclu : son en-tête cite son propre nom.
     for (const n of fs.readdirSync(path.join(RACINE, d))) { if (/\.(ps1|vbs|cmd)$/.test(n) && n !== 'open-produit.ps1') { fichiers.push(path.join(d, n)); } }
   }
   for (const n of fs.readdirSync(path.join(COCKPIT, 'lib'))) { if (n.endsWith('.js')) { fichiers.push(path.join('vscodium-extension', 'szh-cockpit', 'lib', n)); } }
@@ -194,9 +195,9 @@ test('aucun script ni module n’appelle encore open-produit.ps1', () => {
   assert.deepStrictEqual(appels, []);
 });
 
-// En simulation, un oubli de détournement ne doit jamais atteindre le vrai poste : sans
-// ancrage d'essai, le check-in ne part pas, et sans racine d'essai, l'arbre de test n'est pas
-// créé. Le profil factice porte un dossier partagé que la détection automatique trouve.
+// En simulation, un détournement oublié ne doit pas atteindre le vrai poste : sans ancrage
+// d'essai, le check-in ne part pas ; sans racine d'essai, l'arbre de test n'est pas créé.
+// Le profil factice porte un dossier partagé que la détection automatique trouverait.
 test('en simulation, ni check-in ni arbre d’essai hors des dossiers d’essai désignés', { skip: sansPowerShell }, () => {
   avecPoste({ SZH_COCKPIT_DOSSIER: COCKPIT }, (p) => {
     const profil = p.d('profil');

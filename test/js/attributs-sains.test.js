@@ -1,14 +1,13 @@
-// Les filtres d'assainissement sont-ils BRANCHÉS ? Rien de plus : ce fichier est exécuté
-// par le job `contrats` de la CI, qui n'installe volontairement pas la chaîne PDF.
+// Vérifie que les filtres d'assainissement sont branchés dans les chaînes. Ce fichier tourne
+// dans le job `contrats` de la CI, qui n'installe pas la chaîne PDF.
 //
 //   node --test test/js/attributs-sains.test.js
 //
-// Ce que font réellement ces filtres se vérifie en faisant tourner pandoc, dans
-// test/filtres-pandoc.test.js — hors du glob `test/js/*.test.js`, et lancé par le job
-// `pdf-ua`, seul à disposer de pandoc.
+// Leur effet se vérifie avec pandoc dans test/filtres-pandoc.test.js (hors du glob
+// `test/js/*.test.js`, lancé par le job `pdf-ua`).
 //
-// Un filtre débranché ne casse rien de visible : le livre sort, conforme, et le défaut ne
-// se lit qu'une fois imprimé. D'où ce contrôle, qui ne coûte rien.
+// Un filtre débranché ne casse rien de visible : le livre sort, et le défaut ne se voit
+// qu'une fois imprimé.
 'use strict';
 
 const test = require('node:test');
@@ -25,9 +24,9 @@ test('filtres : l’assainissement des attributs est dans la chaîne d’import'
     'illisibles et leur bloc d’attributs s’imprimera dans le livre');
 });
 
-// La présence seule ne suffit pas : le filtre assainit ce que tout ce qui précède a pu
-// poser (son propre en-tête le dit), il doit donc être le DERNIER --lua-filter de la
-// chaîne. Un filtre remonté après lui salirait de nouveau les attributs, en silence.
+// Le filtre assainit ce que les filtres précédents ont posé : il doit être le dernier
+// --lua-filter de la chaîne, sinon un filtre placé après lui salirait de nouveau les
+// attributs.
 function dernierFiltre(sh) {
   const noms = [];
   const re = /--lua-filter="\$PIPE\/filters\/([a-zA-Z0-9_-]+)\.lua"/g;
@@ -44,9 +43,8 @@ test('filtres : szh-attributs-sains.lua est le DERNIER --lua-filter de l’impor
     + 'après lui pourrait de nouveau salir les attributs qu’il vient d’assainir');
 });
 
-// import-docx.sh est hors périmètre en écriture, donc pas de sonde dessus : on vérifie
-// plutôt que dernierFiltre() SAIT détecter un filtre remonté trop tôt, sur une copie du
-// script tenue en mémoire (le fichier réel n’est jamais touché).
+// Vérifie que dernierFiltre() détecte un filtre mal placé, sur une copie permutée du script
+// tenue en mémoire.
 test('filtres : le contrôle de position détecte un filtre remonté avant szh-attributs-sains.lua', () => {
   const sh = fs.readFileSync(path.join(RACINE, 'pipeline', 'import-docx.sh'), 'utf8');
   const avant = '--lua-filter="$PIPE/filters/szh-tabelle-reference.lua" \\\n'
@@ -60,9 +58,9 @@ test('filtres : le contrôle de position détecte un filtre remonté avant szh-a
     'le contrôle de position ne voit pas un filtre remonté avant szh-attributs-sains.lua');
 });
 
-// Celui-ci garde le nombre de PAGES d'un livre FALC. Sans lui, chaque saut de ligne est
-// posé deux fois — le `\` de l'import Word, puis le retour promu par hard_line_breaks — et
-// l'ouvrage gagne un tiers de pages sans qu'aucun avertissement ne l'annonce.
+// Sans szh-sauts-uniques.lua, chaque saut de ligne d'un livre FALC est posé deux fois (le
+// `\` de l'import Word, puis le retour promu par hard_line_breaks) et l'ouvrage gagne un
+// tiers de pages sans avertissement.
 test('filtres : les sauts uniques sont dans la chaîne du livre', () => {
   const chapitre = require('./chaines-filtres-lire').lireChaines().CHAINE_CHAPITRE;
   assert.ok(chapitre.includes('sauts-uniques'),

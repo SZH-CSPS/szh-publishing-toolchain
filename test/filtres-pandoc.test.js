@@ -1,24 +1,19 @@
-// Ce que les filtres Lua font vraiment, en faisant tourner pandoc.
+// Teste ce que font les filtres Lua, avec pandoc.
 //
 //   node --test test/filtres-pandoc.test.js
 //
-// ⚠ CE FICHIER EST HORS DU GLOB `test/js/*.test.js`, ET C'EST VOULU. Le job `contrats` de
-//   la CI n'installe pas la chaîne PDF — c'est sa raison d'être, il doit rendre son verdict
-//   sans attendre. Ces contrôles-ci demandent pandoc : ils sont lancés par le job `pdf-ua`,
-//   qui l'a déjà. Déplacer ce fichier sous test/js/ ferait échouer `contrats`.
+// Ce fichier est hors du glob `test/js/*.test.js` : le job `contrats` de la CI n'installe
+// pas la chaîne PDF. Le job `pdf-ua`, qui a pandoc, le lance.
 //
-// Aucun de ces contrôles ne s'abstient : si pandoc manque, ils ÉCHOUENT. Un test qui se
-// neutralise tout seul ne protège rien.
+// Sans pandoc, les tests échouent.
 //
-// ⚠ ILS TOURNENT AVEC LE PANDOC DU PATH, ET CE N'EST PAS FORCÉMENT CELUI QUI COMPILE.
-// La CI installe le 3.7.0.2 épinglé (ci.yml, PANDOC_VERSION), comme image/Containerfile et comme
-// la WSL d'un poste de rédaction. Un poste de développement Windows, lui, peut avoir tout
-// autre chose dans son PATH — 3.9 sur celui d'origine. Les deux versions ne rendent pas le
-// même HTML pour les mêmes documents : sous 3.5 un Div « wrapper » de commonmark+sourcepos
-// sort en « <div data-pos> », sous 3.9 il est fondu en « <p data-pos> ». Un contrôle écrit
-// sur la FORME du HTML passe donc ici et tombe en CI. Écrire les assertions sur ce qui ne
-// dépend pas de la version : un compte comparé à un autre compte, une sortie comparée à
-// l'autre sortie — jamais une balise précise, jamais un nombre écrit en dur.
+// Les tests tournent avec le pandoc du PATH, pas forcément celui qui compile. La CI
+// installe la version épinglée (ci.yml, PANDOC_VERSION), comme image/Containerfile et la
+// WSL ; un poste Windows peut avoir une autre version (3.9). Les versions ne rendent pas
+// le même HTML : un Div « wrapper » de commonmark+sourcepos sort en « <div data-pos> »
+// dans la version épinglée et en « <p data-pos> » sous 3.9. Les assertions comparent donc
+// un compte à un autre compte, une sortie à une autre sortie, et jamais une balise précise
+// ou un nombre écrit en dur.
 'use strict';
 
 const test = require('node:test');
@@ -36,13 +31,12 @@ const FILTRES = path.join(RACINE, 'pipeline', 'filters');
 function pandoc(entree, options) {
   const o = options || {};
   const args = ['--from=' + (o.de || 'html'), '--to=' + (o.vers || 'markdown'), '--wrap=none'];
-  // --standalone : sans lui, le writer markdown de pandoc n'imprime pas le bloc de
-  // métadonnées YAML — nécessaire pour lire resumes[].motscles en sortie.
+  // --standalone : sans lui, le writer markdown n'imprime pas le bloc YAML, où se lit
+  // resumes[].motscles.
   if (o.standalone) { args.push('--standalone'); }
   for (const f of (o.filtres || [])) { args.push('--lua-filter=' + path.join(FILTRES, f)); }
-  // env : hérité du process par défaut (spawnSync sans `env`) ; szh-qr.lua lit
-  // SZH_LIENS_COURTS, d'où ce point d'entrée optionnel — fusionné, pas remplacé, pour que
-  // le PATH (et donc pandoc lui-même) reste trouvable.
+  // env : ajouté à l'environnement du processus (szh-qr.lua lit SZH_LIENS_COURTS), sans
+  // le remplacer, pour garder le PATH qui mène à pandoc.
   const opts = { input: entree, encoding: 'utf8' };
   if (o.env) { opts.env = Object.assign({}, process.env, o.env); }
   const r = spawnSync('pandoc', args, opts);
@@ -53,13 +47,12 @@ function pandoc(entree, options) {
 
 // ── Assainissement des attributs ───────────────────────────────────────────────────────
 // Le lecteur docx pose le nom du style Word en classe : « Titre 2 (small) » devient
-// `Titre-2-(small)`, que la syntaxe d'attributs de pandoc n'admet pas. Le bloc entier est
-// alors abandonné à la relecture et s'imprime en toutes lettres.
+// `Titre-2-(small)`, que la syntaxe d'attributs de pandoc refuse. À la relecture, le bloc
+// entier s'imprimerait en toutes lettres.
 //
-// ⚠ On passe par le lecteur HTML, et non par un markdown écrit à la main : il range la
-//   classe dans `el.classes`, exactement comme le lecteur docx. Un essai écrit en markdown
-//   avec `class="…"` remplirait `el.attributes`, qui est une AUTRE table — et un filtre
-//   fautif, lisant `attributes`, passerait l'essai sans rien corriger. C'est arrivé.
+// L'entrée passe par le lecteur HTML, qui range la classe dans `el.classes` comme le
+// lecteur docx. Un markdown avec `class="…"` la mettrait dans `el.attributes`, et un
+// filtre qui lit la mauvaise table passerait le test.
 const TITRE_FAUTIF = '<h2 id="qui-a-fait-ce-livre" class="Titre-2-(small)">Qui ?</h2>';
 
 test('attributs : le défaut existe bien sans le filtre', () => {
@@ -92,10 +85,9 @@ test('attributs : un lien interne suit l’identifiant renommé', () => {
 });
 
 // ── Sauts de ligne uniques ─────────────────────────────────────────────────────────────
-// La maquette FALC lit en `markdown+hard_line_breaks` — en facile à lire, le retour à la
-// ligne porte du sens. Mais l'import Word écrit AUSSI un `\` en fin de ligne : pandoc compte
-// alors deux sauts, et le texte sort à double interligne. Sur un ouvrage réel, 282 des 570
-// sauts étaient doubles et le livre faisait 64 pages contre 46 à l'édition d'origine.
+// La maquette FALC lit en `markdown+hard_line_breaks` : en FALC, le retour à la ligne a
+// un sens. L'import Word écrit aussi un `\` en fin de ligne : pandoc compterait deux sauts
+// et le texte sortirait à double interligne.
 const FALC = 'Première ligne.\\\nDeuxième ligne.\\\nTroisième ligne.\n';
 
 test('sauts : sans le filtre, le `\\` et hard_line_breaks se cumulent', () => {
@@ -108,37 +100,29 @@ test('sauts : avec le filtre, jamais deux sauts consécutifs', () => {
   const html = pandoc(FALC, { de: 'markdown+hard_line_breaks', vers: 'html',
                               filtres: ['szh-sauts-uniques.lua'] });
   assert.ok(!/<br\s*\/?>\s*<br\s*\/?>/.test(html), 'un saut double subsiste : ' + html);
-  // Trois lignes, donc deux sauts : ni plus — ce serait le défaut — ni moins, ce qui
-  // recollerait les phrases et détruirait la règle « une phrase, une ligne ».
+  // Trois lignes, donc exactement deux sauts : moins recollerait les phrases, alors que
+  // la règle FALC est « une phrase, une ligne ».
   assert.equal((html.match(/<br\s*\/?>/g) || []).length, 2,
     'le compte de sauts n’est pas celui des lignes : ' + html);
 });
 
 // ── Tri des mots-clés par langue (A8) ──────────────────────────────────────────────────
 // szh-maquette.lua trie chaque keywords.<langue> avant de le recopier dans
-// resumes[].motscles (couverture + résumé) : table.sort nu compare des OCTETS, et en
-// UTF-8 une lettre accentuée occupe deux octets plus grands que toute lettre ASCII —
-// « École » finirait après « Zurich », « Ökonomie » après « Zürich ». cle_tri_motcle et
-// motcle_avant réparent ça en repliant les diacritiques sur leur lettre de base avant de
-// comparer, avec repli sur la chaîne brute à clé égale (sinon table.sort peut lever
-// « invalid order function »).
+// resumes[].motscles (couverture et résumé). table.sort seul compare des octets, et
+// « École » finirait après « Zurich ». cle_tri_motcle et motcle_avant replient les
+// diacritiques sur leur lettre de base avant de comparer, avec repli sur la chaîne brute
+// à clé égale (sinon table.sort peut lever « invalid order function »).
 //
-// cle_tri_motcle, motcle_avant et PLIAGE_ACCENTS sont `local` au fichier, invisibles hors
-// de lui : la seule prise est donc la sortie de Meta(), d'où un document complet
-// (title+resume+keywords dans la langue) plutôt qu'un appel direct à la fonction — même
-// niveau que les contrôles ci-dessus.
+// Ces fonctions sont locales au filtre : on passe par la sortie de Meta(), avec un
+// document complet (title, resume, keywords).
 //
-// ⚠ Défaut de BUILD constaté sur un pandoc Windows natif (winget JohnMacFarlane.Pandoc,
-// 3.10) : string.lower() y fait passer les octets non-ASCII par la page de code active au
-// lieu de les laisser intacts (comportement POSIX/Linux, celui de la CI ubuntu-24.04 et de
-// WSL) — le premier octet UTF-8 d'une lettre accentuée change de valeur, et PLIAGE_ACCENTS
-// ne reconnaît plus rien. Rien à voir avec szh-maquette.lua ni avec ce fichier : voir
-// pliageCasse() ci-dessous, qui le détecte et saute les tests concernés en le disant plutôt
-// que de les laisser rouges en permanence sur un tel poste.
+// Sur un pandoc Windows natif (3.10 de winget), string.lower() fait passer les octets
+// non ASCII par la page de code active, et PLIAGE_ACCENTS ne reconnaît plus rien. Sous
+// Linux (CI, WSL), les octets restent intacts. Les tests concernés sont alors sautés avec
+// un motif (voir sauterSiPliageCasse plus bas).
 
-// Construit une fiche minimale portant title/resume/keywords pour chaque langue donnée,
-// juste assez pour que Meta() peuple resumes[].motscles sans buter sur un champ
-// obligatoire vide (title) ni ignorer les mots-clés faute de résumé nom-vide.
+// Fiche minimale avec title, resume et keywords pour chaque langue : sans titre ou sans
+// résumé, Meta() ne remplirait pas resumes[].motscles.
 function docMotscles(langues) {
   const noms = Object.keys(langues);
   let yaml = '---\nlang: ' + noms[0] + '\ntitle:\n';
@@ -156,10 +140,9 @@ function docMotscles(langues) {
   return yaml;
 }
 
-// Relit resumes[].motscles pour une langue dans le markdown --standalone renvoyé par
-// pandoc. Ancré sur « \n  lang: xx\n » (deux espaces) pour ne pas confondre avec le champ
-// racine `lang:` (sans indentation) que Meta() pose aussi. Le groupe `motscles:` est
-// optionnel : une liste vide n'est pas réécrite du tout par pandoc (le champ disparaît).
+// Relit resumes[].motscles d'une langue dans le markdown --standalone. Ancré sur
+// « \n  lang: xx\n » (deux espaces), pour ne pas prendre le `lang:` racine que Meta() pose
+// aussi. `motscles:` est facultatif : pandoc n'écrit pas une liste vide.
 function motsclesPour(md, lang) {
   const re = new RegExp('\\n  lang: ' + lang + '\\n(?:  motscles:\\n((?:  - .*\\n)*))?  texte:');
   const m = md.match(re);
@@ -171,21 +154,16 @@ function motsclesPour(md, lang) {
 function trierMotscles(langues) {
   const brut = pandoc(docMotscles(langues), { de: 'markdown', vers: 'markdown', standalone: true,
                                                filtres: ['szh-maquette.lua'] });
-  // Un pandoc natif Windows imprime du CRLF (traduction de fin de ligne du runtime Haskell,
-  // indépendante du filtre) ; motsclesPour ancre sur `\n` nu, donc on uniformise d'abord —
-  // sans quoi ces tests-ci seraient les seuls du fichier à dépendre de la plateforme.
+  // Un pandoc natif Windows écrit du CRLF ; motsclesPour cherche `\n`, d'où la conversion.
   const md = brut.replace(/\r\n/g, '\n');
   const res = {};
   for (const l of Object.keys(langues)) { res[l] = motsclesPour(md, l); }
   return res;
 }
 
-// Détection centralisée (test/js/gardes.js, sansPliage/sauter.pliage) : mémoïsée là-bas,
-// un seul appel pandoc pour tout le processus, et le motif « pliage des accents » composé
-// une seule fois — la famille que test/js/motifs-saut.js et verifier-tap.js reconnaissent.
-// SZH_LUA_OBLIGATOIRE (géré par sauter.pliage) y transforme le saut en échec, pour qu'une
-// CI qui tourne sous ubuntu-24.04 (jamais concernée par ce défaut de build Windows) ne se
-// contente jamais d'un saut.
+// La détection vit dans test/js/gardes.js (sansPliage, sauter.pliage), avec le motif de
+// saut « pliage des accents » que reconnaissent test/js/motifs-saut.js et verifier-tap.js.
+// Sous SZH_LUA_OBLIGATOIRE, le saut devient un échec : la CI ubuntu n'a pas ce défaut.
 function sauterSiPliageCasse(t) {
   if (!sansPliage()) { return false; }
   console.warn('\n*** pliage des accents cassé — tri des mots-clés NON vérifié ici ; il '
@@ -196,8 +174,7 @@ function sauterSiPliageCasse(t) {
 
 test('mots-clés : ordre français, les accents rangés avec leur lettre', (t) => {
   if (sauterSiPliageCasse(t)) { return; }
-  // « École » doit tomber entre « Dyslexie » et « Élève », pas après « Zurich » (tri par
-  // octet nu).
+  // « École » tombe entre « Dyslexie » et « Élève », pas après « Zurich ».
   const res = trierMotscles({ fr: ['Zurich', 'École', 'Dyslexie', 'Élève'] });
   assert.deepEqual(res.fr, ['Dyslexie', 'École', 'Élève', 'Zurich'],
     'ordre français incorrect : ' + JSON.stringify(res.fr));
@@ -217,26 +194,16 @@ test('mots-clés : œ, æ et majuscules accentuées se plient aussi', (t) => {
     'œ/æ mal repliés : ' + JSON.stringify(res.fr));
 });
 
-// Ce test vérifiait à l'origine que table.sort ne plantait pas sur deux clés de tri égales
-// (« invalid order function »). Depuis le dédoublonnage posé le 16.09.2026 pour le
-// qualificatif de provenance (voir plus bas « qualificatif de provenance »), deux mots-clés
-// IDENTIQUES dès la saisie ne s'impriment plus deux fois non plus — imprimer « Alpes » deux
-// fois sur une couverture n'a jamais eu de sens, qualificatif masqué ou non — et le doublon
-// est retiré AVANT même d'atteindre le tri, ce qui couvre le même risque autrement.
+// Deux mots-clés identiques ne s'impriment qu'une fois : le doublon est retiré avant le
+// tri, ce qui écarte aussi l'erreur « invalid order function » sur deux clés égales.
 test('mots-clés : deux mots-clés identiques sont fondus en un seul, sans planter le tri', () => {
   const res = trierMotscles({ fr: ['Alpes', 'Alpes'] });
   assert.deepEqual(res.fr, ['Alpes'], 'le doublon aurait dû être fondu : ' + JSON.stringify(res.fr));
 });
 
-// « École » et « ecole » plient tous deux sur « ecole » (casse et accent) : avant le
-// dédoublonnage du 16.09.2026, ce test vérifiait seulement que motcle_avant retombe sur la
-// chaîne brute à clé égale, sans quoi table.sort pouvait lever « invalid order function ».
-// Le dédoublonnage demandé pour le qualificatif de provenance est lui aussi insensible à la
-// casse et aux accents (même cle_tri_motcle) : ces deux formes d'un même mot ne survivent
-// donc plus toutes les deux, la première rencontrée fait foi, et le risque de plantage à clé
-// égale ne se présente même plus au moment du tri — il ne reste qu'une entrée à trier.
-// Dépend du pliage des accents, comme les tests A8 ci-dessus : sauté sur le même défaut de
-// build.
+// « École » et « ecole » plient tous deux sur « ecole ». Le dédoublonnage ignore aussi la
+// casse et les accents (même cle_tri_motcle) : la première forme rencontrée reste seule.
+// Dépend du pliage des accents, comme les tests A8 ci-dessus.
 test('mots-clés : deux mots pliant sur la même clé (casse, accent) sont fondus, le premier fait foi', (t) => {
   if (sauterSiPliageCasse(t)) { return; }
   const res = trierMotscles({ fr: ['École', 'ecole'] });
@@ -261,8 +228,7 @@ test('mots-clés : une liste vide ne fait pas planter le tri', () => {
 
 test('mots-clés : le tri est indépendant par langue', (t) => {
   if (sauterSiPliageCasse(t)) { return; }
-  // L'ordre du français n'a pas à correspondre à celui de l'allemand : chaque liste est
-  // triée pour elle-même, sans fuite de l'une vers l'autre.
+  // Chaque langue est triée pour elle-même.
   const res = trierMotscles({
     fr: ['Zurich', 'École', 'Dyslexie'],
     de: ['Wien', 'Österreich', 'Anlage'],
@@ -273,37 +239,20 @@ test('mots-clés : le tri est indépendant par langue', (t) => {
     'liste allemande altérée : ' + JSON.stringify(res.de));
 });
 
-// ── Qualificatif de provenance edudoc, masqué à l'affichage (16.09.2026) ───────────────
-// Un descripteur edudoc porte parfois un qualificatif final entre parenthèses qui ne dit
-// rien du terme, seulement d'où il vient dans le thésaurus : « accessibilité (csps) »,
-// « plan d'études (na) ». sans_qualificatif_provenance (szh-maquette.lua) le retire AVANT le
-// tri A8 ci-dessus, dédoublonne APRÈS coup, et ne touche jamais une parenthèse de SENS ni une
-// parenthèse au milieu du libellé. La liste fermée et la fonction sont partagées avec
-// lib/mots-cles-edudoc.js (sansQualificatifDeProvenance, QUALIFICATIFS_PROVENANCE) — voir
-// test/js/mots-cles-provenance.test.js pour l'égalité des deux listes et le comportement de
-// la moitié JS ; ici, c'est le comportement RÉEL du Lua, sous le vrai pandoc, qui est éprouvé.
+// ── Qualificatif de provenance edudoc, masqué à l'affichage ─────────────────────────────
+// Un descripteur edudoc porte parfois un qualificatif final entre parenthèses qui dit
+// seulement d'où il vient dans le thésaurus : « accessibilité (csps) », « plan d'études
+// (na) ». sans_qualificatif_provenance (szh-maquette.lua) le retire avant le tri A8, puis
+// dédoublonne. Une parenthèse de sens, ou au milieu du libellé, reste. La liste et la
+// fonction ont leur jumelle dans lib/mots-cles-edudoc.js (voir
+// test/js/mots-cles-provenance.test.js) ; ici, on teste le Lua sous pandoc.
 //
-// ⚠ AUCUN de ces tests ne se met derrière sauterSiPliageCasse (contrairement aux tests A8
-// ci-dessus), et c'est délibéré, pas un oubli. Ce garde-fou protège des comparaisons qui ont
-// besoin du PLIAGE des accents pour aboutir — deux libellés qui ne diffèrent que par la casse
-// ou les accents, ou un ordre alphabétique qui se déciderait sur une lettre accentuée. Ici :
-//   * le masquage compare le contenu d'une parenthèse à six jetons ASCII purs
-//     (na/ce/szh/csps/spc) — string.lower() ne touche pas un octet ASCII, pliage cassé ou pas ;
-//   * chaque fixture ci-dessous a été choisie pour que l'ordre alphabétique se décide sur une
-//     lettre ASCII qui distingue déjà les libellés (measure directe : accessibilité/
-//     biotechnologie/compensation/inclusion/plan/prévention se décident sur a/b/c/i/p/p puis
-//     l/r, tous ASCII) — jamais sur la lettre accentuée elle-même.
-// Un test qui mêlerait vraiment les deux (masquage ET position décidée par une lettre
-// accentuée) devrait se scinder plutôt que de se cacher derrière la garde ; aucun des cas
-// demandés ne s'y trouve, et les protéger derrière pliageRaison les aurait rendus muets sur
-// le poste même où le PDF de la revue se fabrique.
-// L'apostrophe est ÉCRITE DROITE dans les deux fixtures ci-dessous (« d'études »,
-// « d'évaluation »), pas courbe : trierMotscles fait un aller-retour markdown -> markdown
-// (--standalone) pour relire le bloc YAML, et le writer markdown de pandoc, extension
-// « smart » active par défaut, renormalise une apostrophe typographique (’) en apostrophe
-// simple (') à l'écriture — c'est un comportement de CE HARNAIS, mesuré ici, sans rapport
-// avec sans_qualificatif_provenance (qui ne regarde jamais l'apostrophe) ni avec la vraie
-// chaîne PDF (markdown -> HTML -> WeasyPrint, qui ne repasse jamais par ce writer-là).
+// Ces tests ne sont pas derrière sauterSiPliageCasse : le masquage compare des jetons
+// ASCII (na, ce, szh, csps, spc), et l'ordre des données se décide sur des lettres ASCII.
+// Ils tournent donc aussi sur un poste où le pliage est cassé.
+// L'apostrophe des données est droite (« d'études ») : le writer markdown de pandoc
+// (extension smart) rend l'apostrophe courbe en droite lors de l'aller-retour de
+// trierMotscles. C'est propre à ce harnais, pas à la chaîne PDF.
 test('qualificatif de provenance : les six jetons sont masqués, sens et casse mêlés', () => {
   const res = trierMotscles({ fr: ['accessibilité (csps)', 'compensation des désavantages (csps)',
     "plan d'études (na)", 'inclusion (CSPS)', 'biotechnologie (ce)', 'prévention (SPC)'] });
@@ -337,23 +286,17 @@ test('qualificatif de provenance : le tri porte sur la forme AFFICHÉE, qualific
   assert.deepEqual(res.fr, ['accessibilité', 'milieu', 'zèbre'], JSON.stringify(res.fr));
 });
 
-// Cas dégénéré : un mot-clé réduit à son seul qualificatif de provenance devient une chaîne
-// vide une fois masqué. Personne ne tape « (na) » tout seul et aucun descripteur du
-// thésaurus n'a cette forme, mais la saisie manuelle reste ouverte — et un élément vide
-// serait le genre de chose qu'un validateur de bibliothèque refuse sans dire pourquoi.
-// L'entrée disparaît, elle n'est PAS gardée comme un mot-clé vide ordinaire (voir le test
-// « un mot-clé vide ne fait pas planter le tri », plus haut, sur une entrée VRAIMENT vide
-// dès le départ, dont le comportement ne change pas). Comparaison sur des jetons ASCII :
-// aucune dépendance au pliage des accents ici non plus.
+// Cas limite : un mot-clé réduit à son qualificatif (« (na) », possible en saisie
+// manuelle) devient vide une fois masqué. L'entrée disparaît ; un mot-clé vide dès la
+// saisie suit une autre règle (« un mot-clé vide ne fait pas planter le tri », plus haut).
 test('qualificatif de provenance : un mot-clé réduit à rien par le masquage disparaît', () => {
   const res = trierMotscles({ fr: ['(na)', 'accessibilité'] });
   assert.deepEqual(res.fr, ['accessibilité'],
     '« (na) » seul aurait dû disparaître après masquage : ' + JSON.stringify(res.fr));
 });
 
-// Même chose avec DEUX entrées dégénérées différentes : elles ne doivent pas non plus se
-// dédoublonner en une seule puce vide (« (na) » et « (szh) » plient tous deux sur la chaîne
-// vide) — les deux disparaissent, purement et simplement.
+// Avec deux entrées de ce genre (« (na) » et « (szh) »), les deux disparaissent, sans
+// laisser une puce vide.
 test('qualificatif de provenance : deux mots-clés dégénérés différents disparaissent tous les deux', () => {
   const res = trierMotscles({ fr: ['(na)', '(szh)', 'vrai mot'] });
   assert.deepEqual(res.fr, ['vrai mot'],
@@ -363,27 +306,21 @@ test('qualificatif de provenance : deux mots-clés dégénérés différents dis
 // ── Détection de langue : quatre filtres, une seule langue ─────────────────────────────
 // szh-maquette.lua, szh-numerotation.lua, szh-ressource.lua et szh-citations.lua lisent la
 // langue du contexte de composition (szh-commun.lua, calculer_contexte), que szh-contexte.lua
-// pose en tête de chaîne ; lancé seul, chacun la calcule lui-même, de la même façon. Les
-// quatre cas qui distinguaient leurs anciennes cascades restent fixés ici, filtre par filtre.
-// Chaque test vérifie D'ABORD que sa sortie dépend réellement du filtre — le patron déjà
-// suivi plus haut dans ce fichier.
+// pose en tête de chaîne ; lancé seul, chacun la calcule de la même façon. Chaque test
+// vérifie d'abord que sa sortie dépend bien du filtre.
 //
-// La fiche <slug>.meta.yaml se relit sur le disque (io.open, pas les métadonnées fusionnées
-// de pandoc) : le prouver demande un VRAI fichier, au bon nom, dans le dossier courant de
-// pandoc — une invocation par stdin, sans nom de fichier, ne peut pas nourrir cette lecture.
+// La fiche <slug>.meta.yaml est lue sur le disque (io.open) : il faut un vrai fichier, au
+// bon nom, dans le dossier courant de pandoc.
 
 function dossierJetable(prefixe) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefixe));
 }
 
-// Écrit les fichiers donnés (nom -> contenu) dans un dossier jetable, lance pandoc DEPUIS
-// ce dossier sur `principal`, avec le filtre donné. `essai.meta.yaml`, s'il est fourni,
-// n'est jamais passé en --metadata-file : seule une lecture directe par le filtre
-// (io.open) le verra, exactement comme dans la chaîne réelle où le Makefile ne le passe
-// pas non plus à cette place (voir szh-numerotation.lua, langue_fiche()).
-// `opts.from` : le lecteur, « markdown » par défaut (celui du PDF) — passer « commonmark_x »
-// pour rejouer la passe d'aperçu. `opts.env` : variables ajoutées à celles du processus, par
-// exemple SZH_APERCU ou SZH_LIVRE, exactement ce que le Makefile pose autour de pandoc.
+// Écrit les fichiers donnés (nom -> contenu) dans un dossier jetable et lance pandoc depuis
+// ce dossier sur `principal`, avec le filtre donné. `essai.meta.yaml` n'est pas passé en
+// --metadata-file : le filtre le lit lui-même, comme dans la vraie chaîne.
+// `opts.from` : le lecteur, « markdown » par défaut (PDF), « commonmark_x » pour l'aperçu.
+// `opts.env` : variables ajoutées à l'environnement (SZH_APERCU, SZH_LIVRE…).
 function pandocDansDossier(fichiers, principal, filtre, opts) {
   const o = opts || {};
   const dossier = dossierJetable('szh-langue-');
@@ -391,18 +328,14 @@ function pandocDansDossier(fichiers, principal, filtre, opts) {
     for (const nom of Object.keys(fichiers)) {
       fs.writeFileSync(path.join(dossier, nom), fichiers[nom], 'utf8');
     }
-    // `filtre` : une chaîne (un seul filtre, forme historique) ou un tableau (plusieurs,
-    // dans l'ordre — ex. szh-livre-entete-image.lua avant szh-livre-entete.lua).
+    // `filtre` : un nom, ou un tableau de noms dans l'ordre d'exécution.
     const filtresListe = Array.isArray(filtre) ? filtre : [filtre];
     const args = ['--from=' + (o.from || 'markdown'), '--to=markdown', '--wrap=none', '--standalone',
       ...filtresListe.map((f) => '--lua-filter=' + path.join(FILTRES, f)), principal];
     const env = Object.assign({}, process.env, o.env || {});
     const r = spawnSync('pandoc', args, { cwd: dossier, encoding: 'utf8', env: env });
     if (r.error) { throw new Error('pandoc introuvable : ' + r.error.message); }
-    // Un pandoc natif Windows imprime du CRLF (traduction de fin de ligne du runtime
-    // Haskell, indépendante des filtres) : uniformisé ici, comme trierMotscles() plus
-    // haut dans ce fichier, pour que les motifs ancrés sur `\n` nu restent valables
-    // quelle que soit la plateforme qui fait tourner ce test.
+    // Un pandoc natif Windows écrit du CRLF : converti pour les motifs ancrés sur `\n`.
     const stdout = (r.stdout || '').replace(/\r\n/g, '\n');
     return { stdout, stderr: r.stderr, status: r.status };
   } finally {
@@ -411,9 +344,8 @@ function pandocDansDossier(fichiers, principal, filtre, opts) {
 }
 
 // ── szh-maquette.lua : lit <slug>.meta.yaml en premier, meta.lang puis le jeton de revue,
-// « fr » en dernier repli. Sortie observée : le `lang:` qu'il pose lui-même sur le document
-// (meta['lang'], §Meta() en toute fin) — visible tel quel dans le bloc YAML du writer
-// markdown --standalone.
+// « fr » en dernier repli. Sortie observée : le `lang:` qu'il pose sur le document, dans
+// le bloc YAML du writer markdown --standalone.
 function docMaquette(entete) {
   return '---\n' + entete + 'title:\n  fr: "Titre"\n  de: "Titel"\n---\n\nCorps.\n';
 }
@@ -450,13 +382,12 @@ test('langue : szh-maquette.lua — rien du tout, repli français', () => {
   assert.match(r.stdout, /\nlang: fr\n/, r.stdout);
 });
 
-// ── szh-maquette.lua : entete-condensee, défaut « compact » depuis le 09.09.2026 ───────
-// Verrou des trois cas de la clé (absente / true / false), plus le cas que le garde-fou
-// est_vrai existe pour attraper : une chaîne CITÉE « false » — le sérialiseur du cockpit
-// cite ses valeurs, et pour pandoc toute chaîne non vide est vraie. Sortie observée : la
-// ligne `entete-condensee: true` du bloc YAML du writer markdown --standalone quand la clé
-// doit ressortir vraie, son absence complète sinon — pandoc n'imprime jamais une valeur
-// MetaBool fausse, il retire la clé (voir le relevé manuel qui a servi à écrire ce motif).
+// ── szh-maquette.lua : entete-condensee, vraie par défaut ───────────────────────────────
+// Les trois cas de la clé (absente, true, false), plus une chaîne « false » entre
+// guillemets : le cockpit écrit ses valeurs entre guillemets, et pour pandoc toute chaîne
+// non vide est vraie (d'où est_vrai). Sortie observée : la ligne `entete-condensee: true`
+// du bloc YAML quand la clé est vraie, son absence sinon (pandoc n'écrit pas un MetaBool
+// faux).
 test('entete-condensee : clé absente -> vraie, le nouveau défaut', () => {
   const r = pandocDansDossier({ 'essai.md': docMaquette('') }, 'essai.md', 'szh-maquette.lua');
   assert.strictEqual(r.status, 0, r.stderr);
@@ -490,19 +421,16 @@ test('entete-condensee : "false" citée (comme l’écrit le cockpit) -> reste f
 
 // ── szh-legendes.lua : les blocs `Figure` du lecteur docx ───────────────────────
 //
-// Quand la légende Word porte le style de légende, le lecteur docx ne rend pas deux
-// paragraphes voisins mais UN bloc `Figure` : légende dans le bloc, alt de l’auteur dans
-// la description de l’image. Le writer markdown ne sait écrire cela en `![…](…)` que si
-// les deux sont identiques — sinon il écrit du HTML brut dans le .md, sans un mot.
+// Quand la légende Word porte le style de légende, le lecteur docx rend un seul bloc
+// `Figure` : la légende dans le bloc, l'alt de l'auteur dans la description de l'image. Le
+// writer markdown n'écrit `![…](…)` que si les deux sont identiques ; sinon il écrit du
+// HTML brut dans le .md, sans avertir.
 //
-// ⚠ L’ENTRÉE EST DU `native`, PAS DU MARKDOWN. C’est la seule façon de reproduire ce que
-//   le lecteur docx produit vraiment : un markdown écrit à la main donnerait une Figure
-//   dont la légende ÉGALE la description, c’est-à-dire justement le cas qui marche.
+// L'entrée est en `native` : un markdown écrit à la main donnerait une Figure dont la
+// légende égale la description, le cas qui fonctionne déjà.
 //
-// ⚠ LES ASSERTIONS NE REGARDENT PAS UNE BALISE. pandoc 3.9 écrit déjà du markdown ici
-//   quand 3.5 écrit du HTML : un contrôle écrit sur « il y a une <figure> sans le filtre »
-//   passerait en CI (3.5) et tomberait sur un poste de développement (3.9). Ce qu’on
-//   vérifie, c’est le CONTRAT de sortie, le même aux deux versions.
+// Les assertions portent sur le contrat de sortie, pas sur une balise : selon la version,
+// pandoc écrit ici du markdown ou du HTML.
 const FIGURE_DOCX =
   '[ Figure ("",[],[]) (Caption Nothing [Para [Str "Figure",Space,Str "1",Space,Str ":",'
   + 'Space,Str "Niveaux"]]) [Plain [Image ("",[],[("width","6.2in")]) '
@@ -542,8 +470,8 @@ test('legendes : une Figure irréductible (deux images) est laissée telle quell
     + 'que d’en perdre une : ' + r);
 });
 
-// ── szh-numerotation.lua : la langue du contexte de composition. Sortie observée : le libellé qu'il pose devant une légende de figure — « Figure » ou
-// « Abbildung ».
+// ── szh-numerotation.lua : la langue du contexte de composition. Sortie observée : le
+// libellé posé devant une légende de figure, « Figure » ou « Abbildung ».
 function docNumerotation(entete) {
   return '---\n' + entete + '---\n\n![Légende de test](x.png)\n';
 }
@@ -563,12 +491,10 @@ test('langue : szh-numerotation.lua — fiche avec lang: de l’emporte sur revu
 });
 
 // ── szh-numerotation.lua : images décoratives au fil d'un paragraphe ─────────────────────
-// Cas réel (Zeitschrift 2025-02, article 02) : deux photos côte à côte, « Bild 1 » entre
-// crochets et alt="" posé par « Image purement décorative ». La passe principale ne les
-// rendait pas en décor (texte entre crochets), WeasyPrint en faisait deux /Figure sans
-// /Alt (PDF/UA 7.3-1). Elles doivent sortir en décor, à leur largeur déclarée ; une image
-// décrite, ou sans alt explicite (le texte entre crochets lui sert alors de nom), reste
-// une image.
+// Deux photos côte à côte dans un paragraphe, avec « Bild 1 » entre crochets et alt=""
+// (« Image purement décorative »). Elles sortent en décor, à leur largeur déclarée ; sinon
+// WeasyPrint en ferait deux /Figure sans /Alt (PDF/UA 7.3-1). Une image décrite, ou sans
+// alt explicite (le texte entre crochets lui sert alors de nom), reste une image.
 const PNG_1PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 
 test('décor : deux images décoratives côte à côte sortent en décor, à leur largeur', () => {
@@ -604,11 +530,10 @@ test('langue : szh-numerotation.lua — rien du tout, repli français', () => {
   assert.match(r.stdout, /Figure 1/, r.stdout);
 });
 
-// ── szh-numerotation.lua : le constat « figure-sans-alt », UNIQUEMENT sous SZH_APERCU ──
+// ── szh-numerotation.lua : le constat « figure-sans-alt », seulement sous SZH_APERCU ────
 //
-// Émis sur l'AST intact de la passe d'aperçu (commonmark_x) : c'est le seul moment où
-// alt="" (décoratif, voulu) se distingue encore d'un alt absent. La passe PDF (markdown)
-// ne doit jamais rien dire — SZH_APERCU n'y est pas posée, comme dans la vraie chaîne.
+// Émis pendant la passe d'aperçu (commonmark_x), où alt="" (décoratif) se distingue encore
+// d'un alt absent. La passe PDF (markdown), sans SZH_APERCU, n'émet rien.
 
 test('figure-sans-alt : ni alt ni légende — un constat, sous SZH_APERCU', () => {
   const r = pandocDansDossier({ 'essai.md': '![](x.png)\n' }, 'essai.md', 'szh-numerotation.lua',
@@ -644,13 +569,11 @@ test('figure-sans-alt : sans SZH_APERCU (passe PDF), jamais de constat', () => {
 
 // ── szh-typographie.lua : le champ `mot`, pour que la flèche vise le passage fautif ─────
 //
-// signaler() n'écrivait que le code et le slug de l'article : aucun champ ne désignait le
-// mot fautif (revue F03). mot_en() retrouve, sur la liste de caractères UTF-8 pleins —
-// jamais sur des octets, pour ne jamais couper « Klauß » en deux —, le jeton qui contient
-// l'octet de la position fautive. Entrée en `native`, comme FIGURE_DOCX plus haut : c'est
-// la seule façon d'obtenir un « ß » et un « " » sans que le lecteur markdown « smart » ne
-// les ait déjà changés avant que le filtre ne les voie — pour les guillemets, un RawBlock
-// html, comme szh-tabelle-inclure en pose pour un tableau réinjecté.
+// signaler() ajoute le champ `mot`, qui désigne le passage fautif. mot_en() retrouve le
+// jeton qui contient la position fautive en parcourant des caractères UTF-8 entiers, pour
+// ne pas couper « Klauß ». Entrée en `native`, comme FIGURE_DOCX plus haut, pour que le
+// lecteur markdown (extension smart) ne change pas « ß » et « " » avant le filtre ; pour
+// les guillemets, un RawBlock html, comme ceux de szh-tabelle-inclure.
 
 const NATIF_ESZETT = '[ Para [ Str "Herr", Space, Str "Klau\\223", Space, Str "kam." ] ]';
 
@@ -662,7 +585,7 @@ test('typographie : eszett (allemand) — le constat porte le mot fautif, en cha
   assert.match(r.stderr, /^\[typo-avertissement\] eszett \|/m, 'aucun constat codé : ' + r.stderr);
   assert.match(r.stderr, /article « essai »/);
   assert.match(r.stderr, /mot « Klauß »/, 'le mot fautif n’est pas nommé : ' + r.stderr);
-  // Le champ se place AVANT la phrase française, qui ferme toujours la liste.
+  // Le champ précède la phrase française, toujours en fin de liste.
   const ligne = r.stderr.split(/\r?\n/).find((l) => l.indexOf('eszett') !== -1);
   assert.ok(ligne.indexOf('mot « Klauß »') < ligne.indexOf('un « ß » subsiste'),
     'le champ `mot` ne précède pas la phrase française : ' + ligne);
@@ -710,8 +633,8 @@ test('typographie : un « | » venu du texte, dans le mot fautif, ne coupe pas l
 });
 
 // ── szh-ressource.lua : la langue du contexte de composition (szh-commun.lua), réduite au
-// français et à l'allemand, les deux langues du contrat de la Documentation. Sortie observée : le texte du lien généré, qui nomme la ressource dans la langue
-// détectée — « En savoir plus sur le livre… » / « Mehr zum Buch… ».
+// français et à l'allemand, les deux langues de la Documentation. Sortie observée : le
+// texte du lien généré, « En savoir plus sur le livre… » ou « Mehr zum Buch… ».
 function docRessource(entete) {
   return '---\n' + entete + '---\n\n'
     + '::: {#r1 .szh-ressource type="livre" title="Mon Titre" lien="https://exemple.org"}\n'
@@ -725,8 +648,7 @@ test('langue (préparation) : sans szh-ressource.lua, pas de texte de lien gén�
 });
 
 test('langue : szh-ressource.lua — fiche avec lang: de l’emporte sur revue: revue', () => {
-  // La fiche se relit sur le disque, comme pour les autres filtres : la langue est celle du
-  // contexte de composition, la même partout.
+  // La fiche est lue sur le disque, comme pour les autres filtres.
   const r = pandocDansDossier(
     { 'essai.md': docRessource('revue: revue\n'), 'essai.meta.yaml': 'lang: de\n' },
     'essai.md', 'szh-ressource.lua');
@@ -754,9 +676,8 @@ test('langue : szh-ressource.lua — rien du tout, repli français', () => {
 });
 
 // ── szh-citations.lua : la langue du contexte de composition. Sortie observée : le titre de
-// bibliographie posé au-dessus de la liste résolue — « Références » ou « Literatur »
-// (TITRES_BIBLIO_DEFAUT ne distingue pas « revue » de « zeitschrift », seule la langue
-// compte pour ce titre-là).
+// bibliographie, « Références » ou « Literatur » (TITRES_BIBLIO_DEFAUT dépend de la langue
+// seule).
 function docCitations(entete) {
   return '---\n' + entete + '---\n\n'
     + 'Un texte, sans appel à lier ici.\n\n'
@@ -807,15 +728,13 @@ test('langue : szh-citations.lua — rien du tout, repli français', () => {
 
 
 // ── szh-cesure.lua : les noms propres soustraits à la césure, en français seulement ───
-// Le corps est justifié avec `hyphens: auto` (print.css §4) et WeasyPrint coupait donc
-// « Fri-bourg ». Le filtre relève les noms propres sur la POSITION de leur majuscule, puis
-// les enveloppe dans un span de classe szh-sans-cesure — voir son commentaire de tête pour
-// les deux règles du relevé et le défaut qui reste. Ce qui est fixé ici, ce sont ces règles
-// et l'exception PDF/UA sur les liens.
+// Le corps est justifié avec `hyphens: auto` (print.css), et WeasyPrint couperait
+// « Fri-bourg ». Le filtre repère les noms propres d'après la position de leur majuscule
+// et les enveloppe dans un span szh-sans-cesure (règles dans l'en-tête du filtre). On
+// teste ces règles et l'exception PDF/UA des liens.
 //
-// Lecture markdown -> HTML : c'est la sortie où le span se lit tel quel. Le `lang:` du bloc
-// YAML suffit à porter la langue de composition (meta.lang), le filtre ne relisant pas la
-// fiche sur le disque.
+// Sortie HTML, où le span se lit tel quel. Le `lang:` du bloc YAML donne la langue : ce
+// filtre ne lit pas la fiche.
 
 function docFr(corps, langue) {
   return '---\nlang: ' + (langue || 'fr') + '\n---\n\n' + corps + '\n';
@@ -826,9 +745,8 @@ function cesure(corps, langue) {
     { de: 'markdown', vers: 'html', filtres: ['szh-cesure.lua'] });
 }
 
-// Combien de fois `mot` est enveloppé. Le writer HTML de pandoc replie ses lignes : la
-// balise ouvrante peut donc être coupée entre `<span` et `class=`, d'où la classe de
-// caractères plutôt qu'un point.
+// Nombre de fois où `mot` est enveloppé. Le writer HTML replie ses lignes : la balise peut
+// être coupée entre `<span` et `class=`, d'où la classe de caractères.
 function enveloppes(html, mot) {
   const re = new RegExp('<span[\\s\\S]*?class="szh-sans-cesure">' + mot + '</span>', 'g');
   return (html.match(re) || []).length;
@@ -879,11 +797,9 @@ test('césure : en allemand, RIEN — tous les substantifs y portent la majuscul
   assert.ok(!/szh-sans-cesure/.test(html), 'le filtre a agi sur un article allemand : ' + html);
 });
 
-// ⚠ PDF/UA-1 7.18.5 : un lien ne doit contenir aucun élément, sinon WeasyPrint pose une
-// annotation par boîte descendante et une seule est rattachée au /Link de l'arbre de
-// structure. Mesuré le 08.09.2026 : les spans posés dans les liens de l'article d'essai
-// faisaient tomber la porte veraPDF (« Lien mal balisé, 11 fois, page 2 »). Le lien porte
-// donc la classe lui-même, et ce contrôle est la seule chose qui garde cette décision.
+// PDF/UA-1 7.18.5 : un lien ne doit contenir aucun élément. Sinon WeasyPrint pose une
+// annotation par boîte descendante, et une seule est rattachée au /Link de l'arbre de
+// structure. Le lien porte donc la classe lui-même.
 test('césure : dans un lien, la classe va sur le <a> et JAMAIS un span dedans', () => {
   const html = cesure('Voir la [Haute école de Fribourg](https://example.ch) pour cela.');
   assert.match(html, /<a href="https:\/\/example\.ch" class="szh-sans-cesure">/,
@@ -892,13 +808,11 @@ test('césure : dans un lien, la classe va sur le <a> et JAMAIS un span dedans',
     'un span a été laissé à l’intérieur du lien (PDF/UA-1 7.18.5) : ' + html);
 });
 
-// ⚠ Même règle 7.18.5-1, pour la mise en forme de la rédaction. [*Texte du* lien](…)
-// donnait <a><em>Texte du</em> lien</a> : le <em> pose sa propre annotation de lien, que
-// WeasyPrint range sous /NonStruct, et la porte veraPDF tombait (mesuré le 29.09.2026 :
-// italique partiel, gras, souligné et lien entièrement italique échouent tous les quatre ;
-// conformes une fois la mise en forme sortie du lien). Robin : la mise en forme reste
-// permise dans un lien, et visible. Elle ENVELOPPE donc des liens de pur texte.
-// Contrôlé en allemand : la seconde passe ne dépend pas de la langue, la césure si.
+// Même règle 7.18.5-1 pour la mise en forme. [*Texte du* lien](…) donnerait
+// <a><em>Texte du</em> lien</a>, et le <em> poserait sa propre annotation, rangée par
+// WeasyPrint sous /NonStruct (italique, gras, souligné). La mise en forme reste permise
+// et visible : elle enveloppe des liens de texte seul. Contrôlé en allemand : cette passe
+// ne dépend pas de la langue, la césure si.
 function liensDe(md, langue) {
   return pandoc(docFr(md, langue || 'de'),
     { de: 'markdown', vers: 'html', filtres: ['szh-cesure.lua'] });
@@ -938,10 +852,9 @@ test('liens : un lien entièrement en italique reste UN lien', () => {
   assert.match(html, /<em><a href="https:\/\/exemple\.com">Texte du lien<\/a><\/em>/, html);
 });
 
-// L'espace entre deux mises en forme ne fait pas un lien à elle seule (un lecteur d'écran
-// annoncerait un lien vide), et ne reste pas nue non plus (le filet du lien se coupait,
-// mesuré en 300 dpi) : elle rejoint un lien voisin. L'identifiant ne va qu'au premier
-// segment — deux fois le même id, et l'ancre vise au hasard —, la classe à tous.
+// L'espace entre deux mises en forme rejoint un lien voisin : seule, elle ferait un lien
+// vide pour un lecteur d'écran ; hors lien, elle couperait le soulignement. L'identifiant
+// ne va qu'au premier segment (un id en double rendrait l'ancre ambiguë), la classe à tous.
 test('liens : imbrication, espace entre deux mises en forme, id et classes', () => {
   const html = liensDe('Un [***Texte*** *du* lien](https://exemple.com){#ici .k} là.');
   aucunElementDansUnLien(html);
@@ -972,22 +885,19 @@ test('liens : en français, césure et mise en forme se cumulent sur chaque segm
 });
 
 // ── szh-maquette.lua : les initiales de prénom de la couverture ────────────────────────
-// Sur la couverture, le prénom est réduit à ses initiales — « de Diesbach, J. » (décision
-// du 08.09.2026). Le bloc « À propos des auteur·e·s », lui, garde le prénom entier : c'est
-// là qu'on présente les personnes, la couverture ne fait que les créditer.
+// Sur la couverture, le prénom est réduit à ses initiales : « de Diesbach, J. ». Le bloc
+// « À propos des auteur·e·s » garde le prénom entier.
 //
-// Sortie observée : la clé `initiales` que le filtre pose sur chaque auteur, visible telle
-// quelle dans le bloc YAML du writer markdown --standalone. Lire la source ne dirait rien
-// du découpage réel d'un prénom accentué ou composé, qui est tout l'enjeu.
+// Sortie observée : la clé `initiales` posée sur chaque auteur, dans le bloc YAML du
+// writer markdown --standalone. On teste surtout les prénoms accentués et composés.
 
 function initiales(auteurs) {
   const md = ['---', 'revue: revue', 'lang: fr', 'title:', '  fr: "Titre"', 'author:']
     .concat(auteurs).concat(['---', '', 'Corps.', '']).join('\n');
   const r = pandocDansDossier({ 'essai.md': md }, 'essai.md', 'szh-maquette.lua');
   assert.strictEqual(r.status, 0, r.stderr);
-  // Le writer YAML de pandoc range les cles par ordre alphabetique : `initiales` ouvre
-  // donc l'element de liste et prend le tiret, sauf si l'auteur porte une cle qui la
-  // precede (affiliation). Les deux formes sont acceptees.
+  // Le writer YAML de pandoc trie les clés : `initiales` ouvre l'élément de liste, sauf si
+  // une clé la précède (affiliation). Les deux formes sont acceptées.
   return (r.stdout.match(/^[- ]\s*initiales: (.*)$/gm) || [])
     .map((l) => l.replace(/^[- ]\s*initiales: /, '').replace(/^'|'$/g, ''));
 }
@@ -1006,10 +916,8 @@ test('initiales : un prénom simple donne une lettre et un point', () => {
     initiales(['- prenom: "Jérôme"', '  nom: "de Diesbach"']), ['J.']);
 });
 
-// ⚠ Trait d'union INSÉCABLE (U+2011) et non ordinaire : « J.-B. » est une abréviation, pas
-// un mot composé, et la coupure à un trait d'union ordinaire relève de UAX #14 — aucun
-// réglage `hyphens` ne l'empêche. Mesuré : la couverture à dix auteur·e·s sortait
-// « Rossier, J.- » en fin de ligne et « B. » au début de la suivante.
+// Trait d'union insécable (U+2011) : « J.-B. » ne doit pas se couper. La coupure après un
+// trait d'union ordinaire relève d'UAX #14, et aucun réglage `hyphens` ne l'empêche.
 test('initiales : un prénom à trait d’union garde un trait d’union, mais INSÉCABLE', () => {
   const TIRET = '\u2011';
   assert.deepStrictEqual(
@@ -1018,15 +926,13 @@ test('initiales : un prénom à trait d’union garde un trait d’union, mais I
     initiales(['- prenom: "Marie-Christine"', '  nom: "Vannotti"']), ['M.' + TIRET + 'C.']);
 });
 
-// ⚠ Une espace ORDINAIRE ouvrirait une coupure de ligne au milieu d'un nom, sur une
-// couverture où la liste passe déjà à deux ou trois lignes.
+// Une espace ordinaire permettrait une coupure de ligne au milieu d'un nom.
 test('initiales : deux prénoms séparés d’une espace prennent une INSÉCABLE', () => {
   assert.deepStrictEqual(
     initiales(['- prenom: "Marie Christine"', '  nom: "Vannotti"']), ['M.\u00A0C.']);
 });
 
-// ⚠ Le cas qui casse un découpage en octets : « É » s'encode sur deux octets, et un
-// prenom:sub(1, 1) rendrait la moitié d'un caractère.
+// « É » s'encode sur deux octets : prenom:sub(1, 1) en rendrait la moitié.
 test('initiales : une capitale accentuée sort entière', () => {
   assert.deepStrictEqual(initiales(['- prenom: "\u00c9lodie"', '  nom: "Winkler"']), ['\u00c9.']);
 });
@@ -1037,16 +943,14 @@ test('initiales : pas de prénom, pas de clé — la couverture n’imprime que 
 
 // ── L'aperçu sous commonmark_x+sourcepos : ce que szh-sourcepos.lua répare ─────────────
 //
-// L'aperçu HTML du cockpit ne peut lire les .md qu'avec `--from=commonmark_x+sourcepos` :
-// c'est le seul lecteur qui pose les positions source dont la webview a besoin pour le clic
-// vers le texte — un dernier test, plus bas, documente pourquoi `markdown+sourcepos`
-// n'existe pas. Mais ce lecteur déforme l'arbre : chaque en-ligne est enveloppé dans un Span
-// « wrapper=1 », et les mots sont découpés à chaque signe (« p. » devient Str "p" + Str ".").
-// Mesuré le 11.09.2026 sur un article d'essai : szh-typographie.lua posait 0 insécable au
-// lieu de 6, szh-citations.lua ne liait plus un seul appel à sa référence. szh-sourcepos.lua,
-// posé en tête de la chaîne d'aperçu, défait les deux, et ce qui suit le prouve filtre par
-// filtre — un compte comparé à un autre compte, jamais à un nombre écrit en dur, pour que ces
-// tests ne mentent pas sur ce qu'ils attendent si une règle de typographie change demain.
+// L'aperçu du cockpit lit les .md avec `--from=commonmark_x+sourcepos`, seul lecteur qui
+// pose les positions source dont la webview a besoin pour le clic vers le texte
+// (`markdown+sourcepos` n'existe pas, voir le dernier test). Ce lecteur déforme l'arbre :
+// chaque élément en ligne est enveloppé dans un Span « wrapper=1 », et les mots sont
+// découpés à chaque signe (« p. » devient Str "p" + Str "."). Sans correction,
+// szh-typographie.lua ne pose plus d'insécables et szh-citations.lua ne lie plus les
+// appels. szh-sourcepos.lua, en tête de la chaîne d'aperçu, défait les deux. Les tests
+// comparent des comptes entre eux, jamais à un nombre écrit en dur.
 
 // Occurrences d'une espace insécable (U+00A0) dans une sortie HTML.
 function compterInsecables(html) {
@@ -1077,12 +981,10 @@ test('sourcepos : szh-sourcepos.lua en tête pose autant d’insécables qu’en
     'le compte sous sourcepos ne rejoint plus celui de commonmark_x nu (' + attendu + ') : ' + avecCorrectif);
 });
 
-// Règles d'abréviation (E4, szh-typographie.lua) : la troisième déformation de sourcepos,
-// et la plus fine. « p. ex. » et « pp. 12-25 » n'obtiennent leur insécable que si les Str
-// que sourcepos a isolés un à un — « p », « . », « ex », « . » — sont redevenus deux Str
-// entiers, « p. » et « ex. » : sort_de_l_espace() les lit alors comme deux INLINES voisins
-// d'un Space, exactement comme sous le lecteur `markdown` de la chaîne PDF. Sans ce
-// recollage, chaque signe reste séparé et aucune règle ne les revoit côte à côte.
+// Règles d'abréviation (E4, szh-typographie.lua). « p. ex. » et « pp. 12-25 » n'ont leur
+// insécable que si les Str isolés par sourcepos (« p », « . », « ex », « . ») sont recollés
+// en « p. » et « ex. » : sort_de_l_espace() les voit alors comme deux éléments voisins
+// d'un Space, comme sous le lecteur `markdown` de la chaîne PDF.
 const TEXTE_ABREV = 'Texte avec p. ex. et pp. 12-25.\n';
 
 test('sourcepos : sans le recollage, « p. » et « pp. » restent sans insécable', () => {
@@ -1100,19 +1002,15 @@ test('sourcepos : avec szh-sourcepos.lua, « p. » et « pp. » retrouvent leur 
 });
 
 // ── szh-citations.lua sous sourcepos : aplatir() et le sentinelle \1 ───────────────────
-// aplatir() (szh-citations.lua) écrit l'octet \1 pour tout inline qui n'est ni Str ni Space,
-// et aucun motif d'appel ne le traverse : sous sourcepos, un Span « wrapper=1 » enveloppe
-// CHAQUE mot, donc le texte plat d'un paragraphe entier n'est plus qu'une suite de \1 — 0
-// appel détecté, 0 lien posé — alors même que la bibliographie elle-même (un Div ordinaire,
-// jamais enveloppé) se résout normalement. Mesuré le 11.09.2026 sur l'article d'essai : 3
-// appels et 2 liens dans le PDF, 0 et 0 dans l'aperçu.
+// aplatir() (szh-citations.lua) écrit l'octet \1 pour tout élément en ligne qui n'est ni
+// Str ni Space, et aucun motif d'appel ne le traverse. Sous sourcepos, sans
+// szh-sourcepos.lua, chaque mot est dans un Span « wrapper=1 » : le paragraphe aplati n'est
+// plus qu'une suite de \1, et aucun appel n'est trouvé. La bibliographie (un Div ordinaire)
+// se résout, elle, normalement.
 //
-// Lance pandoc DEPUIS un dossier jetable, comme pandocDansDossier plus haut : szh-citations.lua
-// lit sa bibliographie par io.open(src), un chemin relatif au cwd de pandoc, jamais par
-// --metadata-file — un essai par stdin ne peut donc pas nourrir cette lecture. Généralisée à
-// PLUSIEURS filtres et à une sortie HTML, ce que pandocDansDossier ne fait pas : c'est en
-// HTML que se lit un <a href="#ref-…">, et la chaîne d'aperçu réelle chaîne toujours
-// szh-sourcepos.lua à un autre filtre, jamais seul.
+// Lance pandoc depuis un dossier jetable, comme pandocDansDossier : szh-citations.lua lit
+// sa bibliographie par io.open(src), relatif au dossier courant. Accepte plusieurs filtres
+// et sort du HTML, où se lit un <a href="#ref-…">.
 function pandocApercuDansDossier(fichiers, principal, filtres) {
   const dossier = dossierJetable('szh-sourcepos-');
   try {
@@ -1125,7 +1023,7 @@ function pandocApercuDansDossier(fichiers, principal, filtres) {
     const r = spawnSync('pandoc', args, { cwd: dossier, encoding: 'utf8' });
     if (r.error) { throw new Error('pandoc introuvable : ' + r.error.message); }
     if (r.status !== 0) { throw new Error('pandoc a échoué : ' + r.stderr); }
-    // Même raison qu'ailleurs dans ce fichier : un pandoc natif Windows imprime du CRLF.
+    // Un pandoc natif Windows écrit du CRLF.
     return (r.stdout || '').replace(/\r\n/g, '\n');
   } finally {
     fs.rmSync(dossier, { recursive: true, force: true });
@@ -1142,10 +1040,8 @@ test('sourcepos : sans le correctif, l’appel n’est plus lié à sa référen
     'essai.md', ['szh-citations.lua']);
   assert.ok(!/href="#ref-/.test(html),
     'un lien vers la bibliographie subsiste malgré l’enveloppe : ' + html);
-  // La bibliographie, elle, n'est PAS enveloppée (un Div ordinaire, résolu par une lecture
-  // de fichier et non par une traversée d'inlines) : elle doit donc survivre intacte. Sans
-  // cette assertion, un szh-citations.lua qui casserait tout — liste comprise — passerait le
-  // test du dessus par accident, sans que rien ne le dise.
+  // La bibliographie, qui n'est pas enveloppée, doit rester intacte : sans cette
+  // assertion, un szh-citations.lua qui casserait tout passerait le test ci-dessus.
   assert.match(html, /id="ref-dupont-2020"/,
     'même l’entrée de bibliographie a disparu : ce test ne cible plus ce qu’il croit cibler — ' + html);
 });
@@ -1158,20 +1054,17 @@ test('sourcepos : avec szh-sourcepos.lua, l’appel retrouve son lien vers la r�
     'l’appel n’est plus lié à sa référence : ' + html);
 });
 
-// ── szh-grille.lua sous sourcepos : l'invariant le plus fort, faute de pouvoir tester « sans » ─
-// Le correctif (sans_enveloppe(), qui traverse les Div « wrapper=1 » d'un paragraphe d'images)
-// est déjà dans szh-grille.lua : impossible donc de rejouer ici le « sans » de ce défaut-là,
-// à la différence de tout ce qui précède dans ce fichier. Ce qui reste, et qui dure : la
-// sortie sous sourcepos doit être IDENTIQUE à celle sous commonmark_x nu, une fois retirés
-// des deux côtés les seuls attributs que sourcepos ajoute (data-pos, data-wrapper). Un futur
-// changement qui romprait cette égalité — un flex-grow décalé, une case en moins, un id qui
-// change — se verrait ici, même si personne n'a pensé à l'aperçu en l'écrivant.
+// ── szh-grille.lua sous sourcepos : même sortie qu'avec commonmark_x seul ──────────────
+// sans_enveloppe() (szh-grille.lua) traverse les Div « wrapper=1 » d'un paragraphe
+// d'images ; la correction est dans le filtre, il n'y a pas de « sans » à rejouer. La
+// sortie sous sourcepos doit être identique à celle sous commonmark_x, une fois retirés les
+// attributs que sourcepos ajoute (data-pos, data-wrapper).
 const GRILLE_DEUX_IMAGES = '::: {.szh-grille}\n'
   + '![Légende de la figure](a.png){alt="Description a"}\n'
   + '![](b.png){alt="Description b"}\n'
   + ':::\n';
 
-// Retire ce que SEUL sourcepos ajoute, pour comparer les deux sorties à armes égales.
+// Retire ce que sourcepos ajoute, pour comparer les deux sorties.
 function sansAttributsSourcepos(html) {
   return html.replace(/\r\n/g, '\n')
     .replace(/\s*data-pos="[^"]*"/g, '')
@@ -1179,9 +1072,8 @@ function sansAttributsSourcepos(html) {
 }
 
 test('grille (préparation) : la classe szh-grille-rangee est bien posée sous commonmark_x nu', () => {
-  // Sans cette préparation, l'égalité ci-dessous passerait aussi si szh-grille.lua ne
-  // composait plus AUCUNE rangée, des deux côtés à la fois — un accident qu'elle seule
-  // empêche de traverser en silence.
+  // Sans cette vérification, l'égalité ci-dessous passerait aussi si szh-grille.lua ne
+  // composait plus aucune rangée, des deux côtés.
   const html = pandoc(GRILLE_DEUX_IMAGES, { de: 'commonmark_x', vers: 'html', filtres: ['szh-grille.lua'] });
   assert.match(html, /szh-grille-rangee/, 'la grille ne compose plus de rangée : ' + html);
 });
@@ -1195,25 +1087,19 @@ test('grille : sous sourcepos, une fois data-pos et data-wrapper retirés, sorti
     + sansAttributsSourcepos(sousSourcepos) + '\n≠\n' + sansAttributsSourcepos(plain));
 });
 
-// ── Les positions de BLOC survivent : le garde-fou contre une correction de trop ───────
-// szh-sourcepos.lua ne défait QUE les Span « wrapper=1 » (les mots) : les Div « wrapper=1 »
-// (les blocs imbriqués) restent, à dessein — voir son commentaire de tête. C'est d'eux que
-// vient la position dont media/apercu.js a besoin pour le clic vers la source. Les déballer
-// aussi — la correction la plus tentante, puisqu'ils portent le même attribut que les Span —
-// ferait tomber les blocs positionnés de 9 à 2 sur l'article d'essai (mesuré le 11.09.2026).
-// Ce test est le seul qui s'en apercevrait.
+// ── Les positions de bloc restent ───────────────────────────────────────────────────────
+// szh-sourcepos.lua ne défait que les Span « wrapper=1 » (les mots). Les Div « wrapper=1 »
+// (les blocs) restent : ils portent la position dont media/apercu.js a besoin pour le clic
+// vers la source. Les retirer aussi, puisqu'ils portent le même attribut, ferait perdre la
+// plupart des blocs positionnés.
 //
-// ⚠ Il compte, il ne cherche pas une balise précise : les deux pandoc du projet n'écrivent
-// PAS ces Div de la même façon. 3.5 (la version épinglée, image/Containerfile et ci.yml) en
-// fait un vrai <div data-pos> autour du bloc ; 3.9 fond l'attribut dans l'élément enfant et
-// rend <p data-pos>. Une première version de ce test exigeait « data-pos sur <p> et sur
-// <ul> » : elle passait sur le poste de développement en 3.9 et aurait échoué en CI, sur la
-// version qui compile vraiment. L'invariant qui vaut des deux côtés, et le seul qui compte
-// pour la webview, c'est qu'AUCUNE position de bloc ne se perde.
+// Le test compte, sans chercher une balise précise : la version épinglée (image/Containerfile,
+// ci.yml) écrit <div data-pos> autour du bloc, pandoc 3.9 met l'attribut sur l'enfant
+// (<p data-pos>). Ce qui compte pour la webview : aucune position de bloc ne se perd.
 const DOC_POSITIONS = '## Titre\n\nParagraphe.\n\n- Un\n- Deux\n\n::: {.encadre}\nTexte.\n:::\n';
 
-// Les éléments de bloc porteurs d'une position, au sens de la table BLOCS de
-// media/apercu.js : ceux que blocDe() accepte de renvoyer à l'hôte au clic.
+// Les éléments de bloc qui portent une position, selon la table BLOCS de media/apercu.js :
+// ceux que blocDe() renvoie à l'hôte au clic.
 function blocsPositionnes(html) {
   const motif = /<(?:p|h[1-6]|li|dt|dd|blockquote|pre|figure|figcaption|table|caption|ul|ol|dl|div|section|header|aside)\b[^>]*\sdata-pos="/g;
   return (html.match(motif) || []).length;
@@ -1232,10 +1118,8 @@ test('sourcepos : szh-sourcepos.lua n’ôte aucune position de bloc', () => {
 });
 
 // ── `markdown+sourcepos` n'existe pas : ce qui force tout ce qui précède ───────────────
-// Si l'aperçu pouvait lire en `markdown+sourcepos`, il n'aurait pas besoin de commonmark_x,
-// et rien de ce fichier — ni szh-sourcepos.lua, ni les treize tests qui précèdent — n'aurait
-// de raison d'exister. Ce test documente la contrainte de départ plutôt que de la supposer :
-// si pandoc apprenait un jour sourcepos pour markdown, il serait le premier à le dire.
+// Si l'aperçu pouvait lire en `markdown+sourcepos`, commonmark_x et szh-sourcepos.lua ne
+// seraient pas nécessaires. Ce test échouera le jour où pandoc l'acceptera.
 test('sourcepos : le lecteur markdown ne connaît pas l’extension sourcepos', () => {
   assert.throws(() => pandoc('Un texte.\n', { de: 'markdown+sourcepos', vers: 'html' }),
     /sourcepos/,
@@ -1244,17 +1128,14 @@ test('sourcepos : le lecteur markdown ne connaît pas l’extension sourcepos', 
 
 // ── szh-ancres.lua : l'identifiant d'un titre, le même des deux côtés ─────────────────
 //
-// L'autre écart entre les deux chaînes n'a rien à voir avec sourcepos : les lecteurs
-// `markdown` et `commonmark` ne fabriquent pas l'identifiant d'un titre de la même façon dès
-// qu'il porte de la ponctuation. Sur les 4661 titres du corpus du dépôt, 1460 portaient dans
-// l'aperçu une ancre que le PDF n'a jamais eue (11.09.2026) — et les articles de
-// documentation ouvrent sur une table des matières faite de liens « [Rubrique](#rubrique) ».
-// Ces liens menaient au bon endroit dans le PDF et nulle part dans l'aperçu, sans un mot :
-// un lien mort ne se plaint pas.
+// Les lecteurs `markdown` et `commonmark` ne fabriquent pas le même identifiant pour un
+// titre qui contient de la ponctuation. Sans correction, les liens « [Rubrique](#rubrique) »
+// d'une table des matières mèneraient au bon endroit dans le PDF et nulle part dans
+// l'aperçu.
 //
-// szh-ancres.lua ne réécrit pas la règle, il la demande à pandoc. Ces tests comparent donc
-// toujours l'aperçu à ce que le lecteur `markdown` produit, jamais à une chaîne écrite à la
-// main : le jour où pandoc changera d'algorithme, les deux bougeront ensemble.
+// szh-ancres.lua demande l'identifiant à pandoc plutôt que de réécrire la règle. Les tests
+// comparent l'aperçu à ce que produit le lecteur `markdown`, jamais à une chaîne écrite à
+// la main.
 
 // Les identifiants des titres d'une sortie HTML, dans l'ordre du document.
 function ancresDesTitres(html) {
@@ -1281,10 +1162,9 @@ test('ancres : avec szh-ancres.lua, l’aperçu porte exactement les ancres du P
     'un lien de table des matières ne mènera pas au même endroit dans l’aperçu et dans le PDF');
 });
 
-// Un identifiant écrit à la main — ce que posent les tables des matières converties depuis
-// Word — ne doit JAMAIS être réécrit : le lien qui le vise est écrit à la main lui aussi.
-// szh-ancres.lua le reconnaît en recalculant ce que commonmark AURAIT posé et en ne touchant
-// au titre que si c'est exactement ce qu'il porte.
+// Un identifiant écrit à la main (tables des matières converties depuis Word) n'est pas
+// réécrit : le lien qui le vise est écrit à la main lui aussi. szh-ancres.lua ne touche au
+// titre que s'il porte exactement l'identifiant que commonmark aurait calculé.
 test('ancres : un identifiant écrit à la main est laissé tel quel', () => {
   const html = pandoc('## Un titre quelconque : ici {#mon-ancre-a-moi}\n',
     { de: 'commonmark_x+sourcepos', vers: 'html', filtres: ['szh-sourcepos.lua', 'szh-ancres.lua'] });
@@ -1292,10 +1172,9 @@ test('ancres : un identifiant écrit à la main est laissé tel quel', () => {
     'l’ancre écrite à la main a été réécrite : tous les liens qui la visent sont morts — ' + html);
 });
 
-// Deux titres identiques : pandoc suffixe le second par -1, le troisième par -2, dans
-// l'ordre du document. szh-ancres.lua tient DEUX compteurs en parallèle, celui de commonmark
-// et celui de markdown — sans quoi le deuxième « Même titre » porterait « meme-titre-1 » face
-// à un calcul qui rend « meme-titre », et passerait pour une ancre écrite à la main.
+// Titres identiques : pandoc suffixe le deuxième par -1, le troisième par -2.
+// szh-ancres.lua tient deux compteurs, celui de commonmark et celui de markdown ; avec un
+// seul, le deuxième « Même titre » passerait pour une ancre écrite à la main.
 test('ancres : des titres en double reçoivent les mêmes suffixes que dans le PDF', () => {
   const doubles = '## Même titre : deux points\n\n## Même titre : deux points\n\n## Même titre : deux points\n';
   const pdf = ancresDesTitres(pandoc(doubles, { de: 'markdown', vers: 'html' }));
@@ -1307,14 +1186,11 @@ test('ancres : des titres en double reçoivent les mêmes suffixes que dans le P
 
 // ── Rubriques de la Documentation : rangs de titre et numérotation ─────────────────────
 //
-// Le titre d'une rubrique est posé par szh-rubrique.lua, tout en fin de chaîne. Ce qui
-// précède doit donc laisser tranquille ce que le rédacteur écrit DANS le bloc :
-// szh-niveaux.lua ne le compacte pas, szh-sections.lua ne le numérote pas, et
-// szh-rubrique.lua rabat les rangs sous son propre <h2>. Les trois vont ensemble : défaire
-// l'un seul rend « 1 International » ou un plan à deux rangs identiques.
-//
-// Constaté sur la Documentation allemande du 2027-02, dont la Rundschau sortait
-// « 1 International » / « 1.1 Schweizer Engagement… ».
+// Le titre d'une rubrique est posé par szh-rubrique.lua, en fin de chaîne. Les filtres
+// précédents ne touchent pas aux titres écrits dans le bloc : szh-niveaux.lua ne les
+// compacte pas, szh-sections.lua ne les numérote pas, et szh-rubrique.lua les place sous
+// son propre <h2>. Sans l'un des trois, on obtient « 1 International » ou deux rangs
+// identiques.
 
 const CHAINE_RUBRIQUE = ['szh-niveaux.lua', 'szh-sections.lua', 'szh-rubrique.lua'];
 
@@ -1322,8 +1198,8 @@ function rendreRubrique(md) {
   return pandoc(md, { de: 'markdown', vers: 'html5', filtres: CHAINE_RUBRIQUE });
 }
 
-// `##` dans le bloc et `##` hors du bloc : les deux entrent en h2 dans l'AST, et c'est
-// bien le contexte — et lui seul — qui doit les séparer.
+// `##` dans le bloc et hors du bloc : les deux sont des h2 dans l'AST, seul le contexte
+// les distingue.
 const MD_RUBRIQUE = [
   '::: {#b1 .szh-rubrique type="dossier_references"}',
   '## International',
@@ -1340,8 +1216,8 @@ const MD_RUBRIQUE = [
 
 test('rubrique : les titres du bloc ne sont pas numérotés, ceux de l’article le restent', () => {
   const html = rendreRubrique(MD_RUBRIQUE);
-  // Le corps seul : s'arrêter au texte de la section suivante engloberait son propre
-  // numéro, qui la précède dans le HTML — le contrôle passerait pour de mauvaises raisons.
+  // Le corps seul : couper au texte de la section suivante inclurait son numéro, qui le
+  // précède dans le HTML.
   const debut = html.indexOf('szh-rubrique-corps');
   const dans = html.slice(debut, html.indexOf('</div>', debut));
   assert.ok(!/szh-num-section/.test(dans),
@@ -1372,9 +1248,9 @@ test('rubrique : un bloc écrit en ### et #### donne les mêmes rangs qu’en ##
     'le rédacteur ne doit pas avoir à deviner à quel rang commencer');
 });
 
-// ⚠ Le piège du writer html5 décrit dans l'en-tête de szh-rubrique.lua : un Div
-// d'identifiant vide dont le premier enfant est un Header sort en <section>, et pandoc lui
-// déplace l'identifiant de ce Header. Le rabattement des rangs a rendu ce cas courant.
+// Piège du writer html5 (voir l'en-tête de szh-rubrique.lua) : un Div sans identifiant
+// dont le premier enfant est un Header sort en <section>, et pandoc lui donne
+// l'identifiant du Header.
 test('rubrique : le corps reste un div et le premier titre garde son ancre', () => {
   const html = rendreRubrique(MD_RUBRIQUE);
   assert.match(html, /<div id="b1-corps" class="szh-rubrique-corps">/,
@@ -1391,18 +1267,13 @@ test('rubrique : un bloc sans titre intérieur sort exactement comme avant', () 
 });
 
 // ── QR code vectoriel cliquable (szh-qr.lua / szh-qr-commun.lua) ──────────────────────
-// Deux syntaxes : le bloc `qr-link` (référence du cahier des charges, réutilisable partout
-// — y compris embarqué dans un falc-header, voir plus bas) et la forme courte `.qr`, garde
-// pour compatibilité. Un lien `.qr`/qr-link devient un <a class="szh-qr"> VIDE — pas
-// l'image PNG floue importée du Word. Le SVG du QR va en background-image (data URI
-// base64), PAS en enfant du <a> : un <svg> enfant casse le balisage PDF/UA du lien (mesuré
-// au veraPDF, voir szh-qr.lua en tête — une zone cliquable par boîte interne, au lieu d'une
-// seule). D'où ce décodeur : la preuve porte sur le SVG réellement encodé, pas sur sa seule
-// présence dans le HTML.
+// Deux syntaxes : le bloc `qr-link` (utilisable partout, y compris dans un falc-header) et
+// la forme courte `.qr`. Le lien devient un <a class="szh-qr"> vide, et le SVG du QR va en
+// background-image (data URI base64) : un <svg> enfant du <a> casserait le balisage PDF/UA
+// du lien (voir l'en-tête de szh-qr.lua). Ce décodeur permet de vérifier le SVG encodé.
 const LIEN_QR = '[Die Geschichte anhören](https://exemple.ch/x){.qr taille="30mm"}';
-// Nom accessible par défaut (aucun `title=`) : « Lien vers\u{202F}: <url> » en français
-// (lang absente du document -> repli fr), la narrow no-break space étant écrite en dur par
-// szh-qr-commun.lua (même convention que le reste de la chaîne) — jamais par le rédacteur.
+// Nom accessible par défaut (sans `title=`) : « Lien vers\u{202F}: <url> » en français
+// (langue par défaut). szh-qr-commun.lua écrit lui-même la fine insécable.
 const TITRE_DEFAUT_FR = 'Lien vers\u{202F}: https://exemple.ch/x';
 
 function echapperRegex(s) {
@@ -1416,9 +1287,8 @@ function svgDuLienQr(html) {
   return { a, svg: Buffer.from(m[1], 'base64').toString('utf8') };
 }
 
-// Comme pandoc(), mais rend aussi le code de sortie et stderr (pour prouver les
-// avertissements « [qr-avertissement] ») — pandocDansDossier() existe déjà pour ça mais
-// fige `--to=markdown`, inutile ici où c'est le HTML qui porte le contraste/la couleur.
+// Comme pandoc(), mais rend aussi le code de sortie et stderr, pour les avertissements
+// « [qr-avertissement] ». Sortie HTML, contrairement à pandocDansDossier().
 function pandocQr(entree, options) {
   const o = options || {};
   const args = ['--from=' + (o.de || 'markdown'), '--to=' + (o.vers || 'html'), '--wrap=none'];
@@ -1530,9 +1400,8 @@ test('qr : couleur noire par défaut -> aucun avertissement de quadri', () => {
 });
 
 test('qr : le lecteur commonmark_x+sourcepos de l’aperçu produit le même balisage', () => {
-  // Le Link `.qr` n'est PAS enveloppé dans un Span « wrapper=1 » par ce lecteur (vérifié
-  // par ailleurs) — seuls ses inlines enfants le sont. szh-qr.lua vise le type Link, pas
-  // des Str voisins : il n'a donc pas besoin de szh-sourcepos.lua en tête pour fonctionner.
+  // Ce lecteur n'enveloppe pas le Link `.qr` dans un Span « wrapper=1 », seulement ses
+  // enfants. szh-qr.lua vise le Link : il fonctionne sans szh-sourcepos.lua.
   const html = pandoc(LIEN_QR, { de: 'commonmark_x+sourcepos', vers: 'html', filtres: ['szh-qr.lua'] });
   assert.match(html, /<a class="szh-qr" href="https:\/\/exemple\.ch\/x"[^>]*><\/a>/, 'le filtre n’a rien produit (ou a laissé un enfant) sous sourcepos : ' + html);
   const { svg } = svgDuLienQr(html);
@@ -1557,9 +1426,8 @@ test('qr : un cache de liens courts (SZH_LIENS_COURTS) devient le href ET le con
 });
 
 // ── Bloc qr-link autonome (szh-qr.lua, Div) ────────────────────────────────────────────
-// Forme de référence du cahier des charges : réutilisable n'importe où dans un chapitre,
-// seul (ici) ou embarqué dans un falc-header (voir plus bas, szh-livre-entete.lua le
-// consomme lui-même avant que ce filtre ne s'exécute).
+// Utilisable n'importe où dans un chapitre, seul (ici) ou dans un falc-header (voir plus
+// bas : szh-livre-entete.lua le traite avant ce filtre).
 function blocQrLien(attrs, url) {
   return '::: {.qr-link' + (attrs ? ' ' + attrs : '') + '}\n' + url + '\n:::\n';
 }
@@ -1601,10 +1469,9 @@ test('qr-link : sous sourcepos (aperçu), le Div reste reconnu malgré l’envel
 });
 
 // ── falc-header (szh-livre-entete.lua) : encadré « écouter cette histoire » ────────────
-// Livre seulement (SZH_LIVRE) : un bloc `:::: falc-header … ::::` écrit dans le .md du
-// chapitre pose un encadré juste après son titre (et son bloc auteurs) — voir l'en-tête du
-// filtre pour la syntaxe complète. Remplace, depuis le 23.09.2026, la clé YAML `ecouter:`
-// (disparue, aucun livre réel ne l'utilisait).
+// Livre seulement (SZH_LIVRE) : un bloc `:::: falc-header … ::::` dans le .md du chapitre
+// pose un encadré juste après le titre (et le bloc auteurs). Syntaxe complète dans
+// l'en-tête du filtre.
 function docEntete(blocFalcHeader, corps, apresCorps) {
   return '# Titre du chapitre\n\n' + (corps || 'Corps.') +
     (blocFalcHeader ? '\n\n' + blocFalcHeader : '') + (apresCorps || '') + '\n';
@@ -1615,10 +1482,8 @@ function rendreEntete(blocFalcHeader, opts) {
   const env = Object.assign({ SZH_LIVRE: '1' }, o.env || {});
   const meta = o.meta ? '---\n' + o.meta + '---\n\n' : '';
   return pandoc(meta + docEntete(blocFalcHeader, o.corps),
-    // szh-livre-entete-image.lua AVANT szh-livre-entete.lua : même ordre que livre.mk
-    // (juste après szh-typographie.lua, bien avant szh-livre-auteurs.lua) — protège
-    // l'image du falc-header de la numérotation de figures avant même la fiche auteurs,
-    // voir l'en-tête des deux filtres.
+    // szh-livre-entete-image.lua avant szh-livre-entete.lua, comme dans livre.mk : l'image
+    // du falc-header échappe ainsi à la numérotation des figures.
     { de: 'markdown', vers: 'html',
       filtres: ['szh-livre-entete-image.lua', 'szh-livre-auteurs.lua', 'szh-livre-entete.lua'], env: env });
 }
@@ -1660,10 +1525,9 @@ test('falc-header : texte (<br> entre les lignes) + image (+ alt) + qr-link, dat
 });
 
 test('falc-header : l’image ne se fait PAS numéroter comme une figure du corps (chaîne complète)', () => {
-  // Régression réelle (23.09.2026, corpus) : sans szh-livre-entete-image.lua avant
-  // szh-figure.lua/szh-numerotation.lua, l'image du falc-header ressortait numérotée
-  // « Abbildung 1 — … », sa légende s'imprimant en toutes lettres DANS le texte de
-  // l'encadré. Chaîne proche de FILTRES_CHAPITRE (livre.mk) pour le prouver de bout en bout.
+  // Sans szh-livre-entete-image.lua avant szh-figure.lua et szh-numerotation.lua, l'image
+  // du falc-header serait numérotée « Abbildung 1 — … » et sa légende imprimée dans
+  // l'encadré. Chaîne proche de FILTRES_CHAPITRE (livre.mk).
   const r = pandocDansDossier(
     { 'essai.md': docEntete(ENTETE_TEXTE_IMAGE_QR) },
     'essai.md',
@@ -1827,8 +1691,8 @@ test('falc-header : sous sourcepos (aperçu), la liste est reconnue malgré l’
 });
 
 // ── Bloc auteurs venu de l'import (style Word « Auhors », docx-styles-corps.py) ────────
-// À la compilation, ce bloc est déjà un Div `.szh-auteurs` dans le .md — pas un RawBlock
-// écrit par szh-livre-auteurs.lua. Les deux filtres doivent le traiter pareil.
+// À la compilation, ce bloc est un Div `.szh-auteurs` dans le .md, et non un RawBlock
+// écrit par szh-livre-auteurs.lua. Les deux filtres le traitent de la même façon.
 
 test('falc-header : reconnaît aussi le bloc auteurs importé (Div .szh-auteurs), pas seulement le RawBlock du collectif', () => {
   const html = rendreEntete(':::: falc-header\nTexte.\n::::', {
@@ -1853,9 +1717,9 @@ test('collectif : un bloc auteurs déjà importé (Div) empêche le doublon de l
 });
 
 // ── Bloc mise-en-page de buch.yaml (maquette normal) ────────────────────────────────────
-// Les filtres de chapitre relisent le bloc dans leurs métadonnées (buch.yaml passé en
-// --metadata-file). Une maquette falc l'ignore, la revue ne le connaît pas : leurs sorties
-// ne changent pas. Défauts : MISE_EN_PAGE de pipeline/livre-assembler.py.
+// Les filtres de chapitre lisent le bloc dans leurs métadonnées (buch.yaml passé en
+// --metadata-file). La maquette falc et la revue l'ignorent. Valeurs par défaut :
+// MISE_EN_PAGE de pipeline/livre-assembler.py.
 function docLivre(entete, corps) {
   return '---\n' + entete + '---\n\n' + corps;
 }
@@ -2073,8 +1937,8 @@ const CORPS_LANGUE = 'Le centre de Fribourg accueille du monde. Est-ce vrai ? Ou
 
 // Compile essai.md comme le Makefile : métadonnées du numéro (ou de buch.yaml) puis fiche,
 // SZH_AUSGABE en chemin absolu, SZH_APERCU et le lecteur commonmark_x+sourcepos pour un
-// aperçu, SZH_LIVRE et SZH_CHAPITRE pour un chapitre. SZH_CONFIG vise un fichier absent : le
-// config.json du poste ne doit pas changer le titre de bibliographie.
+// aperçu, SZH_LIVRE et SZH_CHAPITRE pour un chapitre. SZH_CONFIG vise un fichier absent,
+// pour que le config.json du poste ne change pas le titre de bibliographie.
 function compilerChaine(chaine, fichiers, o) {
   const dossier = dossierJetable('szh-coherence-');
   try {
@@ -2178,9 +2042,9 @@ test('cohérence de la langue : une langue inconnue bloque la compilation, pas l
 });
 
 // ── Image introuvable (szh-image-introuvable.lua) ──────────────────────────────────────
-// Une image appelée par le texte mais absente du disque se voit : un cadre à sa place, son
-// nom en texte réel, et un constat que le cockpit range sous rendu/image-manquante. Éprouvé
-// sur les chaînes réelles de filtres.mk, compilation et aperçu.
+// Une image appelée par le texte mais absente du disque est remplacée par un cadre avec son
+// nom en texte, et un constat que le cockpit range sous rendu/image-manquante. Testé sur
+// les chaînes de filtres.mk, compilation et aperçu.
 const journalCockpit = require('./js/dom-minimal').chargerAvecVscodeFactice(
   path.join(RACINE, 'vscodium-extension', 'szh-cockpit', 'lib', 'journal.js'));
 const CORPS_INTROUVABLE = 'Un paragraphe.\n\n![Légende de la figure](absente.png)\n\n'

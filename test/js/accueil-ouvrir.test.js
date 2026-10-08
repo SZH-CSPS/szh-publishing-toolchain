@@ -1,7 +1,7 @@
 // Ce que l'Accueil ouvre avec l'application du système (lib/accueil-hote.js) : le document
 // et le rapport du Préprocessing, le dossier d'un export et celui des journaux. Tous passent
-// par ouvrirAvecSysteme, jamais par le file:// encodé d'openExternal, que Windows refuse sur
-// un chemin accentué. Le faux vscode ne s'active qu'une fois : un seul fichier, à lui seul.
+// par ouvrirAvecSysteme : le file:// encodé d'openExternal échoue sous Windows sur un chemin
+// accentué. Le faux vscode ne s'active qu'une fois par processus, d'où un fichier à part.
 //
 //   node --test test/js/accueil-ouvrir.test.js
 'use strict';

@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """Tests du convertisseur pipeline/documentation-kirby.py, sans pandoc : les lecteurs
-restreints (Kirby .txt, YAML liste simple/structurée), le tri des fiches et la conversion
-bout en bout sur un petit dossier jetable. Le rendu HTML final (filtres Lua compris) est
-couvert par test/documentation-kirby.test.js, qui a besoin de pandoc — pas ce fichier.
+restreints (Kirby .txt, YAML liste simple ou structurée), le tri des fiches et la
+conversion de bout en bout sur un dossier jetable. Le rendu HTML (filtres Lua compris) est
+testé par test/documentation-kirby.test.js.
 
-    py -3 test/documentation-kirby.test.py
-    python3 -m unittest test.documentation-kirby.test    (nécessite un nom de module valide,
-                                                            préférer l'appel direct ci-dessus)
+    python3 test/documentation-kirby.test.py      (dans la WSL)
 """
 import contextlib
 import importlib.util
@@ -20,8 +18,7 @@ import unittest
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHAMPS_JSON = os.path.join(RACINE, 'pipeline', 'kirby', 'champs-documentation.json')
 
-# Le nom du fichier porte un tiret : pas un identifiant Python valide pour `import`, d'où le
-# chargement par chemin (importlib), la façon usuelle de charger un module ainsi nommé.
+# Chargement par chemin : le nom du fichier contient un tiret.
 _spec = importlib.util.spec_from_file_location(
     'documentation_kirby', os.path.join(RACINE, 'pipeline', 'documentation-kirby.py'))
 dk = importlib.util.module_from_spec(_spec)
@@ -155,10 +152,9 @@ class ConversionBoutEnBout(unittest.TestCase):
         self.assertNotIn(':::', sortie)  # rien à composer : aucune section, aucune fiche
 
     def test_fiche_sans_uuid_retombe_sur_le_nom_du_dossier(self):
-        # Numéro + bibliothèque complets (docs/FORMAT-DOCUMENTATION-KIRBY.md) : la fiche
-        # vit sous <racine>/_NewsUndActu/Fiches/<slug>/, plus dans l'article — même sans
-        # Uuid, identifiant_fiche() retombe sur le nom du dossier DE LA FICHE (le slug),
-        # jamais sur celui de l'article.
+        # La fiche vit sous <racine>/_NewsUndActu/Fiches/<type>/<slug>/ (voir
+        # docs/FORMAT-DOCUMENTATION-KIRBY.md). Sans Uuid, identifiant_fiche() prend le nom
+        # du dossier de la fiche, pas celui de l'article.
         self._ecrire('ausgabe.yaml', 'id: sansuuidtest01\n')
         self._ecrire('articles/essai/essai.meta.yaml', 'type: documentation\nlang: fr\n')
         self._ecrire('articles/essai/documentation.fr.txt', 'Title: Essai\n')
@@ -176,12 +172,12 @@ class ConversionBoutEnBout(unittest.TestCase):
         self.assertNotIn('titre="', sortie)
 
     def test_langue_deduite_du_fichier_unique_si_meta_muette(self):
-        # Pas de lang: dans la fiche : un seul documentation.<lang>.txt présent tranche.
+        # Sans lang: dans la fiche, l'unique documentation.<lang>.txt donne la langue.
         self._ecrire('essai.meta.yaml', 'type: documentation\n')
         self._ecrire('documentation.de.txt', 'Title: Nur Deutsch\n')
         sortie = dk.convertir(self.dossier, CHAMPS_JSON)
-        # Rien à composer (aucune rubrique ni fiche), mais surtout : aucune erreur, et le
-        # fichier de langue déduite a bien été lu (sys.exit ne se serait pas tû sinon).
+        # Rien à composer, mais pas d'erreur : sans langue trouvée, sys.exit aurait été
+        # appelé.
         self.assertEqual(sortie, '\n')
 
     def test_langue_introuvable_sort_en_erreur(self):
@@ -271,10 +267,9 @@ class BibliothequeFiches(unittest.TestCase):
         shutil.rmtree(self.dossier, ignore_errors=True)
 
     def _fiche(self, slug, fichier, contenu, dossier_surcharge=None):
-        # Fiches\<dossier du type>\<slug>\<fichier> (types[].dossier du contrat, docs/FORMAT-
-        # DOCUMENTATION-KIRBY.md, §Une fiche, 23.09.2026) : le dossier de type se déduit du
-        # type porté par le nom du fichier, sauf dossier_surcharge — utilisé par les tests qui
-        # rangent volontairement un fichier au mauvais endroit.
+        # Fiches\<dossier du type>\<slug>\<fichier> (types[].dossier, voir
+        # docs/FORMAT-DOCUMENTATION-KIRBY.md). Le dossier vient du type lu dans le nom du
+        # fichier ; dossier_surcharge sert à ranger exprès un fichier au mauvais endroit.
         type_ = fichier.split('.', 1)[0]
         dossier_type = dossier_surcharge or self.champs['types'][type_]['dossier']
         chemin = os.path.join(self.racine, '_NewsUndActu', 'Fiches', dossier_type, slug)
@@ -411,14 +406,9 @@ class BibliothequeFiches(unittest.TestCase):
         self.assertIn('rangé sous le dossier', capture.getvalue())
 
     def test_liste_multiple_transportee_telle_quelle_en_attribut(self):
-        # documentation-kirby.py ne connaît pas les listes du contrat (genre_film, pays) :
-        # il transporte la valeur brute « jeton1, jeton2 » telle quelle en attribut, jamais
-        # éclatée ni validée — la traduction et le rejet d'un jeton inconnu (aucun rejet :
-        # imprimé tel quel) vivent dans szh-ressource.lua, couvert par
-        # test/documentation-kirby.test.js. Ce test couvre le seul rôle de ce script : ne
-        # rien perdre, ne rien modifier, y compris un jeton absent de la liste (« jeton-
-        # inconnu-xyz », « ZZ-inconnu ») — un jeton fautif n'est pas du ressort du
-        # convertisseur.
+        # Le convertisseur transmet la valeur brute « jeton1, jeton2 » en attribut, sans la
+        # découper ni la valider, même pour un jeton inconnu. La traduction des jetons se
+        # fait dans szh-ressource.lua (test/documentation-kirby.test.js).
         article = self._article('numeroa00000001', 'de')
         self._fiche('un-film', 'film.de.txt',
                      'Title: Film de test\n\n----\n\nAusgabe: numeroa00000001\n\n'

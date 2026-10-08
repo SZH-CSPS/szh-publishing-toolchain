@@ -1,35 +1,24 @@
-// Contrôles de pipeline/livre-scinder.py : le script a détruit le seul exemplaire du
-// media/ d'un chapitre alors que sept images manquaient à l'appel, parce qu'une copie
-// ratée ne faisait qu'un avertissement non bloquant sur stderr, suivi d'un rmtree
-// inconditionnel de la source. Ce fichier ne refait pas le diagnostic, il en mesure le
-// correctif.
+// Contrôles de pipeline/livre-scinder.py, qui découpe un manuscrit en chapitres. Il est
+// appelé par la cible `import` de pipeline/Makefile quand un manuscrit a plusieurs titres
+// de niveau 1.
 //
 //   node --test "test/js/*.test.js"
 //
-// Comme reimport.test.js le fait pour reimporter.py, ce fichier EXÉCUTE le script plutôt
-// que de lire son source, parce que c'est un état du disque et un code de sortie qui sont
-// en jeu, pas seulement un texte :
-//   1. le défaut réel — une image citée mais absente ne doit plus faire disparaître le
-//      dossier d'origine, et l'échec doit être visible (code de sortie non nul, constat
-//      nommé « [scission-avertissement] ») ;
-//   2. qu'une scission sans ressource manquante continue de réussir et de nettoyer la
-//      source — sans quoi le correctif serait pire que le mal qu'il répare ;
-//   3. que la chaîne alimente désormais liminaires/media/, symétriquement aux chapitres ;
-//   4. que le texte de tête d'un chapitre (avant son premier titre de niveau 1),
-//      auparavant capturé puis jeté en silence, est maintenant mis de côté et annoncé.
-//
-// Depuis le branchement de la scission dans pipeline/Makefile (cible `import`, appelée
-// automatiquement à l'import d'un manuscrit à plusieurs titres de niveau 1) :
-//   5. ordre-chapitres se FUSIONNE : les chapitres déjà listés (une scission précédente,
-//      un réordonnancement à la main dans le cockpit) ne disparaissent plus derrière les
-//      seuls chapitres de CETTE scission — c'était le cas avant ce correctif ;
-//   6. l'IDEMPOTENCE : relancer la scission sur un manuscrit déjà scindé — ou une simple
-//      coïncidence de nom avec un chapitre existant — s'arrête AVANT de rien créer ni
-//      supprimer, plutôt que d'écraser un chapitre déjà retravaillé par la rédaction ;
+// Comme reimport.test.js pour reimporter.py, ce fichier exécute le script : ce qui compte
+// est l'état du disque et le code de sortie. Il vérifie que :
+//   1. une image citée mais absente laisse le dossier d'origine en place, et l'échec se
+//      voit (code de sortie non nul, constat « [scission-avertissement] ») ;
+//   2. une scission sans ressource manquante réussit et nettoie la source ;
+//   3. la chaîne alimente liminaires/media/, comme les chapitres ;
+//   4. le texte de tête d'un chapitre (avant son premier titre de niveau 1) est mis de
+//      côté et annoncé ;
+//   5. ordre-chapitres se fusionne : les chapitres déjà listés (scission précédente, ordre
+//      changé dans le cockpit) restent ;
+//   6. relancer la scission sur un manuscrit déjà scindé, ou une coïncidence de nom avec
+//      un chapitre existant, s'arrête avant de rien créer ni supprimer ;
 //   7. une image référencée en HTML brut (`<img src="…">`, ce que pandoc écrit pour une
-//      image à légende que le markdown ne peut exprimer) ou par un chemin préfixé « ./ »
-//      — les deux formes mesurées sur un vrai aller-retour pandoc, pas supposées — est
-//      copiée vers le nouveau chapitre comme n'importe quelle image en markdown ordinaire.
+//      image à légende) ou par un chemin préfixé « ./ » est copiée vers le nouveau
+//      chapitre comme une image markdown ordinaire.
 'use strict';
 
 const test = require('node:test');
@@ -41,8 +30,7 @@ const os = require('os');
 const RACINE = path.resolve(__dirname, '..', '..');
 const SCRIPT = path.join(RACINE, 'pipeline', 'livre-scinder.py');
 
-// python3, puis python. Aucun saut silencieux : un contrôle qui mesure un code de sortie
-// et l'état du disque ne doit pas pouvoir passer au vert sans avoir rien lancé.
+// Python par gardes.js : sans lui, les tests sont déclarés sautés (sansPython), pas verts.
 const { python, sansPython } = require('./gardes');
 
 function livreJetable() {
@@ -67,9 +55,7 @@ test('scénario du B329 : une image citée mais absente ne détruit plus le doss
   const racine = livreJetable();
   try {
     ecrire(racine, 'buch.yaml', 'titre: "Essai"\nordre-chapitres: []\n');
-    // media/ existe (comme après import-medias.py) mais ne porte pas l'image citée :
-    // exactement la situation du B329, où sept figures manquaient sans qu'on sache
-    // pourquoi — parce que la source a été détruite avant qu'on ait pu le regarder.
+    // media/ existe (comme après import-medias.py) mais ne porte pas l'image citée.
     ecrire(racine, 'chapitres', 'manuscrit', 'manuscrit.md',
       '# Une section\n\nUne image absente.\n\n![img](media/fig-manquante.png)\n');
 
@@ -121,9 +107,8 @@ test('une pièce liminaire écrite à la main récupère son média depuis le ch
     ecrire(racine, 'chapitres', 'manuscrit', 'manuscrit.md',
       '# Une section\n\nRien de spécial ici.\n');
     ecrire(racine, 'chapitres', 'manuscrit', 'media', 'logo.png', 'contenu-logo');
-    // Écrite à la main, comme impressum-du-livre.md pour le B329 : elle cite l'image du
-    // manuscrit importé sans l'avoir copiée dans liminaires/media/ — avant ce correctif,
-    // « grep liminaires/media » sur tout pipeline/ ne rendait rien.
+    // Une pièce liminaire écrite à la main, qui cite l'image du manuscrit importé sans
+    // l'avoir copiée dans liminaires/media/.
     ecrire(racine, 'liminaires', 'impressum.md', '# Impressum\n\n![Logo](media/logo.png)\n');
 
     const r = lancer(racine, 'manuscrit');
@@ -189,9 +174,8 @@ test('ordre-chapitres se fusionne : un chapitre déjà listé n’est pas effac�
 });
 
 test('ordre-chapitres en BLOCS (au fer à gauche) se fusionne comme la forme en ligne', { skip: sansPython }, () => {
-  // pipeline/profils/livre.mk lit désormais les deux formes (szh-lire-config.lua) : ce
-  // script ne doit plus être le seul maillon à ignorer la forme en blocs, sous peine de
-  // dire une chose différente de ce que le moteur de compilation va lire.
+  // pipeline/profils/livre.mk lit les deux formes (szh-lire-config.lua) : le script doit
+  // lire la forme en blocs comme le moteur de compilation.
 
   const racine = livreJetable();
   try {
@@ -222,12 +206,10 @@ test('ordre-chapitres en BLOCS (au fer à gauche) se fusionne comme la forme en 
 
 test('ordre-chapitres : le manuscrit déjà listé sous SON PROPRE nom cède sa place aux ' +
   'chapitres qui en sortent, sans se retrouver ajouté en fin', { skip: sansPython }, () => {
-  // Les scénarios ci-dessus ne listent jamais « manuscrit » (l'argv[2] de lancer()) dans
-  // ordre-chapitres avant la scission — seulement un AUTRE chapitre (« 01-avant »). La
-  // branche « remplacement en place » de fusionner_ordre() (slug_remplace in
-  // ordre_existant) n'est donc exercée par aucun test : ce scénario-ci la met en jeu, avec
-  // un slug de part et d'autre pour vérifier que le remplacement respecte la position et
-  // ne se contente pas de tout ajouter en fin.
+  // « manuscrit » (l'argv[2] de lancer()) figure ici dans ordre-chapitres avant la
+  // scission : c'est la branche « remplacement en place » de fusionner_ordre()
+  // (slug_remplace in ordre_existant). Un slug de part et d'autre vérifie que le
+  // remplacement garde la position.
 
   const racine = livreJetable();
   try {
@@ -240,7 +222,7 @@ test('ordre-chapitres : le manuscrit déjà listé sous SON PROPRE nom cède sa 
     assert.strictEqual(r.status, 0, r.stderr);
     const buch = fs.readFileSync(path.join(racine, 'buch.yaml'), 'utf8');
     const ligne = buch.split('\n').find((l) => l.startsWith('ordre-chapitres:'));
-    // Le nom « manuscrit » lui-même ne doit plus y figurer : il a été REMPLACÉ, pas gardé.
+    // « manuscrit » n'y figure plus : il a été remplacé.
     assert.ok(!/'manuscrit'/.test(ligne),
       'le slug du manuscrit scindé est resté dans ordre-chapitres au lieu d’être remplacé');
     const avant = ligne.indexOf('00-avant');
@@ -249,8 +231,8 @@ test('ordre-chapitres : le manuscrit déjà listé sous SON PROPRE nom cède sa 
     const apres = ligne.indexOf('99-apres');
     assert.ok([avant, premier, second, apres].every((i) => i !== -1),
       'un des quatre chapitres attendus manque dans ordre-chapitres : ' + ligne);
-    // Les deux nouveaux chapitres prennent EXACTEMENT la place de « manuscrit » : entre
-    // 00-avant et 99-apres, jamais ajoutés en fin de liste.
+    // Les deux nouveaux chapitres prennent la place de « manuscrit », entre 00-avant et
+    // 99-apres, et non la fin de la liste.
     assert.ok(avant < premier && premier < second && second < apres,
       'les chapitres issus de la scission n’ont pas pris la place du manuscrit remplacé : ' + ligne);
   } finally {
@@ -295,10 +277,10 @@ test('une image référencée en HTML brut, ou par un chemin préfixé « ./ »,
 
   const racine = livreJetable();
   try {
-    // Formes mesurées sur un vrai aller-retour pandoc (md -> docx -> md), pas supposées :
-    // une image sans texte alternatif ressort en markdown ordinaire mais préfixée « ./ » ;
-    // une image AVEC texte alternatif ressort en <figure><img src="./media/…"> parce que
-    // le writer markdown ne peut pas exprimer un Figure à légende autrement qu'en HTML.
+    // Les formes que donne un aller-retour pandoc (md -> docx -> md) : une image sans texte
+    // alternatif ressort en markdown ordinaire, préfixée « ./ » ; une image avec texte
+    // alternatif ressort en <figure><img src="./media/…">, le writer markdown ne pouvant
+    // exprimer autrement un Figure à légende.
     ecrire(racine, 'buch.yaml', 'titre: "Essai"\nordre-chapitres: []\n');
     ecrire(racine, 'chapitres', 'manuscrit', 'manuscrit.md',
       '# Une section\n\n![](./media/fig-un.png)\n\n# Une autre section\n\n'
@@ -325,11 +307,9 @@ test('une image citée par un TABLEAU suit le chapitre, comme celles du corps', 
   const racine = livreJetable();
   try {
     ecrire(racine, 'buch.yaml', 'titre: "Essai"\nordre-chapitres: []\n');
-    // docx-tables.py sort les tableaux du .md et y laisse une inclusion ; les images du
-    // tableau, elles, restent dans le HTML extrait et n'apparaissent NULLE PART dans le
-    // corps. C'est ce qui est arrivé au VN-FALC le 01.09.2026 : le chapitre 09 citait
-    // fig-73 dans son tableau 05, la scission ne l'a jamais copiée, et le seul signe en
-    // était une ligne d'erreur WeasyPrint que rien ne remontait au rédacteur.
+    // docx-tables.py sort les tableaux du .md et y laisse une inclusion : les images d'un
+    // tableau ne sont que dans le HTML extrait, pas dans le corps. La scission doit les
+    // copier aussi.
     ecrire(racine, 'chapitres', 'manuscrit', 'manuscrit.md',
       '# Une section\n\nUn tableau suit.\n\n'
       + '::: {.szh-tabelle src="tables/table-05.html"}\n:::\n');
@@ -403,8 +383,9 @@ test('un « # » dans un bloc de code clôturé n’ouvre pas un chapitre suppl�
   const racine = livreJetable();
   try {
     ecrire(racine, 'buch.yaml', 'titre: "Essai"\nordre-chapitres: []\n');
-    // Le bloc de code cite un script qui commence par un commentaire « # » : pas un titre
-    // de niveau 1, même si le motif de découpe (« ^#\s+ ») le matcherait hors contexte.
+    // Le bloc de code cite un script qui commence par un commentaire « # » : ce n'est pas
+    // un titre de niveau 1, même si le motif de découpe (« ^#\s+ ») le reconnaîtrait hors
+    // contexte.
     ecrire(racine, 'chapitres', 'manuscrit', 'manuscrit.md',
       '# Un premier\n\nTexte avant le script.\n\n'
       + '```\n# Un faux titre, en commentaire de script\necho "bonjour"\n```\n\n'

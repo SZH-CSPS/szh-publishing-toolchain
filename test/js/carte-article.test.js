@@ -1,34 +1,26 @@
 // La carte d'article de la vue « Articles » : ce qu'elle montre, ce qu'elle signale, et où
 // elle mène.
 //
-//   node --test "test/js/*.test.js"
+//   node --test test/js/carte-article.test.js
 //
-// Quatre choses sont éprouvées ici, et toutes les quatre ont un moyen de casser en silence :
+// Quatre choses sont vérifiées :
 //
-//  1. L'APERÇU des métadonnées. Complet — les neuf champs de la fiche — et NON éditable :
-//     un champ de saisie qui s'y glisserait ferait de cette carte un second formulaire, et
-//     les valeurs se modifieraient à deux endroits. Le contrôle compte les champs de saisie
-//     dans la grille, et en attend zéro.
+//  1. L'aperçu des métadonnées : les neuf champs de la fiche, sans champ de saisie. Un
+//     champ éditable ferait de la carte un second formulaire.
 //
-//  2. Les DEUX BOUTONS. Ils ne réimplémentent rien : ils appellent les commandes qui
-//     existent, sur l'article de leur carte. Un mauvais slug ouvrirait le formulaire d'un
-//     autre article sans que rien ne le dise.
+//  2. Les deux boutons appellent les commandes existantes sur l'article de leur carte. Un
+//     mauvais slug ouvrirait le formulaire d'un autre article sans rien dire.
 //
-//  3. Le COMPTEUR D'IMAGES et ce qui manque. Trois cas, et le second est celui qu'on rate :
-//     une image décorative n'a PAS à porter de texte alternatif, et l'annoncer comme un
-//     défaut serait faux. Une image déclarée « sans légende ni numéro », de même, n'a pas
-//     de légende à avoir.
+//  3. Le compteur d'images et ce qui manque. Une image décorative n'a pas à porter de
+//     texte alternatif, et une image « sans légende ni numéro » n'a pas de légende à avoir.
 //
-//  4. Le DOI CALCULÉ et l'ordre qu'il impose. Le DOI est le rang de l'article parmi ceux
-//     qui en portent un : l'éditorial ouvre le numéro et prend « 00 ». Les articles sans
-//     DOI passent à la fin, et les boutons de déplacement refusent de franchir la
-//     frontière — sinon la règle se contredirait d'un clic.
+//  4. Le DOI calculé et l'ordre qu'il impose. Le DOI est le rang de l'article parmi ceux
+//     qui en portent un : l'éditorial ouvre le numéro avec « 00 ». Les articles sans DOI
+//     passent à la fin, et les déplacements ne franchissent pas cette frontière.
 //
-//     S'y ajoute le gel de l'ordre, qui n'appartient qu'à l'ARCHIVAGE : un numéro
-//     verrouillé a ses textes figés mais son sommaire peut encore se décider. Les deux
-//     sens sont éprouvés, et le second — verrouillé mais non archivé, le déplacement PASSE
-//     — est celui qui protège la distinction ; sans lui, remettre le garde complet
-//     passerait inaperçu.
+//     L'ordre n'est gelé que par l'archivage : un numéro verrouillé a ses textes figés
+//     mais son sommaire peut encore changer. Les deux sens sont vérifiés, en particulier
+//     « verrouillé mais non archivé : le déplacement passe ».
 'use strict';
 
 const test = require('node:test');
@@ -58,7 +50,7 @@ test('ordre : les articles sans DOI passent à la fin, et le reste ne bouge pas'
   // Deux sans DOI : ils se suivent dans l'ordre où ils étaient.
   assert.deepStrictEqual(
     art.trierParDoi(['a', 'x', 'b', 'y'], ['x', 'y']), ['a', 'b', 'x', 'y']);
-  // Aucun : rien à trier, et la liste rendue est bien la même.
+  // Aucun : rien à trier, et la liste rendue est la même.
   assert.deepStrictEqual(art.trierParDoi(['a', 'b'], []), ['a', 'b']);
   // La règle s'applique aussi à la réparation de la clé, à la lecture.
   const r = art.ordonnerArticles('["01-doc", "02-a"]', ['01-doc', '02-a', '03-b'], ['01-doc']);
@@ -82,7 +74,7 @@ test('déplacement : le bord ne se dit pas, la frontière du DOI se dit', () => 
   const sans = ['02-doc'];
   // Au milieu du bloc des porteurs : rien à refuser.
   assert.strictEqual(art.refusDeplacement(ordre, '01-a', -1, sans), '');
-  // En tête et en queue de la liste : un bord, une évidence, aucun message.
+  // En tête et en queue de la liste : un bord, sans message.
   assert.strictEqual(art.refusDeplacement(ordre, '00-edito', -1, sans), 'bord');
   assert.strictEqual(art.refusDeplacement(ordre, '02-doc', 1, sans), 'bord');
   // La frontière : on ne remonte pas un article sans DOI au-dessus d'un porteur, et on
@@ -108,11 +100,11 @@ test('case « pas de DOI » : elle fait l’aller-retour et suit l’ordre du nu
 test('images : l’informative sans alternative se dit, la décorative non', () => {
   // Les trois cas demandés, dans un seul jeu.
   const r = art.resumeImages([
-    // 1. informative, sans texte alternatif : l'attribut est absent -> SIGNALÉE.
+    // 1. informative, sans texte alternatif : l'attribut est absent -> signalée.
     { relatif: 'figure-01.png', legende: 'Parcours des cohortes', alt: '', altDefini: false, horsFigure: false },
-    // 2. décorative : alt="" est explicite, c'est une décision -> PAS signalée.
+    // 2. décorative : alt="" est explicite, c'est une décision -> pas signalée.
     { relatif: 'deco.png', legende: 'Bandeau', alt: '', altDefini: true, horsFigure: false },
-    // 3. légende vide sur une figure -> SIGNALÉE, quel que soit le texte alternatif.
+    // 3. légende vide sur une figure -> signalée, quel que soit le texte alternatif.
     { relatif: 'figure-02.png', legende: '', alt: 'Répartition par canton', altDefini: true, horsFigure: false }
   ]);
   assert.strictEqual(r.total, 3);
@@ -123,8 +115,7 @@ test('images : l’informative sans alternative se dit, la décorative non', () 
 
 test('images : « sans légende ni numéro » n’a pas de légende à avoir', () => {
   // Même raison que la décorative : le gestionnaire vide et verrouille le champ légende
-  // quand l'image sort de la mise en figure. Reprocher cette absence serait reprocher à la
-  // rédaction ce qu'elle vient de décider.
+  // quand l'image sort de la mise en figure. C'est une décision de la rédaction.
   const r = art.resumeImages([
     { relatif: 'logo.png', legende: '', alt: '', altDefini: true, horsFigure: true }
   ]);
@@ -132,7 +123,7 @@ test('images : « sans légende ni numéro » n’a pas de légende à avoir', (
   assert.strictEqual(r.sansLegende, 0, 'une image hors figure est signalée sans légende');
   assert.strictEqual(r.horsFigure, 1);
   assert.strictEqual(r.sansAlt, 0, 'elle est décorative : pas de reproche non plus de ce côté');
-  // Hors figure MAIS informative sans alternative : là, il y a bien quelque chose à dire.
+  // Hors figure mais informative sans alternative : signalée.
   const parle = art.resumeImages([
     { relatif: 'schema.png', legende: '', alt: '', altDefini: false, horsFigure: true }
   ]);
@@ -147,13 +138,13 @@ test('DOI : la forme est celle de l’instance, et la lettre distingue les deux 
   assert.strictEqual(ojs.doiCalcule('fr', '2026', '06', 0), '10.57161/r2026-06-00');
   // Le numéro se complète à deux chiffres, la date complète donne son année.
   assert.strictEqual(ojs.doiCalcule('fr', '2026-09-08', '3', 5), '10.57161/r2026-03-05');
-  // Rien à inventer : sans année, sans numéro, ou pour un article qui n'en reçoit pas.
+  // Pas de DOI sans année, sans numéro, ou pour un article qui n'en reçoit pas.
   assert.strictEqual(ojs.doiCalcule('fr', '', '3', 1), '');
   assert.strictEqual(ojs.doiCalcule('fr', '2026', '', 1), '');
   assert.strictEqual(ojs.doiCalcule('fr', '2026', '3', -1), '');
   assert.strictEqual(ojs.doiCalcule('it', '2026', '3', 1), '', 'une revue inconnue n’a pas de lettre');
   // L'exemple du contrôle de forme est produit par le générateur, et son propre motif le
-  // reconnaît : un exemple recopié à la main finirait par mentir.
+  // reconnaît : un exemple recopié à la main finirait par diverger.
   for (const locale of ['fr', 'de']) {
     assert.match(ojs.FORME_DOI[locale].exemple, ojs.FORME_DOI[locale].motif);
   }
@@ -193,10 +184,9 @@ test('citations : les avertissements se regroupent par article, par leur code', 
 
 // ---- L'hôte, réellement activé, sur un numéro réel ----
 //
-// R2026-03 de la Revue, tel que l'instance le porte : un éditorial, sept articles du
-// dossier, un varia, une tribune libre, et une page de documentation. Les DOI relevés sur
-// ojs.szh.ch pour ce numéro sont 10.57161/r2026-03-01 à -09 pour les neuf articles publiés,
-// l'éditorial portant -00.
+// Le numéro R2026-03 de la Revue : un éditorial, sept articles du dossier, un varia, une
+// tribune libre et une page de documentation. Sur ojs.szh.ch, ses DOI vont de
+// 10.57161/r2026-03-01 à -09 pour les neuf articles, l'éditorial portant -00.
 
 function fiche(o) {
   const l = ['type: ' + o.type];
@@ -267,7 +257,7 @@ function numeroReel() {
       for (const n of ['figure-01.png', 'deco.png', 'figure-02.png']) {
         fs.writeFileSync(path.join(d, 'media', n), Buffer.alloc(64));
       }
-      // Et trois fichiers de portrait, qui ne DOIVENT PAS entrer dans le compteur.
+      // Et trois fichiers de portrait, qui n'entrent pas dans le compteur.
       fs.mkdirSync(path.join(d, 'portraits'), { recursive: true });
       for (const n of ['lise-gremion.original.jpg', 'lise-gremion.avec-fond.png',
                        'lise-gremion.sans-fond.png']) {
@@ -310,8 +300,8 @@ function doiDe(ligne) {
   return lignes[lignes.length - 1].valeurs[0].texte;
 }
 
-// Écrit une clé d'état dans le fichier du numéro et fait relire l'hôte : c'est le seul
-// chemin, l'état d'un numéro ne vivant nulle part ailleurs que dans son fichier.
+// Écrit une clé d'état dans le fichier du numéro, seul lieu de cet état, et fait relire
+// l'hôte.
 async function poserEtat(cles) {
   const yaml = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'yaml.js'));
   fs.writeFileSync(AUSGABE, yaml.serialiserAusgabe(fs.readFileSync(AUSGABE, 'utf8'), cles));
@@ -335,7 +325,7 @@ test('DOI : sur un numéro réel, l’éditorial porte 00 et la Documentation n�
   // Sa case est cochée et verrouillée : c'est la rubrique qui décide, pas la rédaction.
   assert.strictEqual(doc.sansDoi.coche, true);
   assert.strictEqual(doc.sansDoi.verrouille, true);
-  // Et le rang du DOI reste contigu : aucun trou, aucun saut.
+  // Le rang du DOI reste contigu, sans trou.
   assert.deepStrictEqual(attendus.map((d) => d.slice(-2)),
     ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09']);
 });
@@ -354,16 +344,15 @@ test('carte : l’aperçu est complet, et il ne porte aucun champ de saisie', as
   // Neuf champs par carte : rubrique, langue, titre, sous-titre, résumé, mots-clés,
   // auteur·e·s, licence, DOI.
   assert.strictEqual(page.compter('.apercu-rangee'), 9 * 11);
-  // Non éditable : la grille ne porte ni champ de texte ni liste déroulante. La seule
-  // exception assumée est la case « pas de DOI », qui n'est pas une métadonnée mais une
-  // décision de numéro (A7.1) : elle vit désormais SUR la ligne du DOI qu'elle concerne,
-  // donc dans la grille — les deux comptes suivants doivent donc coïncider.
+  // Non éditable : la grille ne porte ni champ de texte ni liste déroulante. Seule
+  // exception, la case « pas de DOI », décision de numéro plutôt que métadonnée, posée sur
+  // la ligne du DOI : les deux comptes suivants coïncident.
   assert.strictEqual(page.compter('.apercu-grille input'), 11,
     'un champ de saisie autre que la case « pas de DOI » s’est glissé dans l’aperçu');
   assert.strictEqual(page.compter('.apercu-grille select'), 0);
   assert.strictEqual(page.compter('.apercu-grille textarea'), 0);
   assert.strictEqual(page.compter('[data-sansdoi]'), 11, 'une case « pas de DOI » par article');
-  // Et l'aperçu montre vraiment les valeurs de la fiche, y compris ses deux langues.
+  // L'aperçu montre les valeurs de la fiche, y compris ses deux langues.
   const textes = page.textes().join(' | ');
   for (const attendu of ['Les transitions scolaires des élèves à besoins éducatifs particuliers',
     'Schulische Übergänge von Schülerinnen und Schülern',
@@ -380,7 +369,7 @@ test('carte : l’aperçu est complet, et il ne porte aucun champ de saisie', as
   assert.ok(textes.indexOf('celle du numéro') !== -1);
 });
 
-// ---- Lot G1 : six retouches de la carte --------------------------------------------
+// ---- La carte rendue ----------------------------------------------------------------
 
 function pageArticlesDe(charge) {
   const page = ouvrir({
@@ -428,10 +417,9 @@ test('carte : ses avertissements vivent dans l’encadré « À faire », group�
   const charge = derniereCharge(p);
   const idx = charge.lignes.findIndex((l) => l.cle === '01-gremion');
   // Deux constats d'images et deux de citations. Leur ton vient de lib/constats.js, comme
-  // dans la liste « À corriger » : l'image muette ferme la validation PDF/UA, donc l'export,
-  // et elle est rouge ; les trois autres partent tels quels et restent ambre. C'est tout
-  // l'intérêt d'une seule table — la carte ne peut plus dire bénin ce que la liste dit
-  // bloquant deux écrans plus loin.
+  // dans la liste « À corriger » : l'image sans texte alternatif fait échouer la validation
+  // PDF/UA, donc l'export, et elle est rouge ; les trois autres restent ambre. La carte et
+  // la liste disent la même gravité.
   const constats = charge.lignes[idx].constats;
   assert.strictEqual(constats.length, 4,
     'le corpus n’a plus les quatre constats connus de 01-gremion');
@@ -440,8 +428,7 @@ test('carte : ses avertissements vivent dans l’encadré « À faire », group�
     'les tons de la carte ne suivent plus la table : ' + constats.map((c) => c.ton).join(' | '));
   const page = pageArticlesDe(charge);
   const carte = page.conteneur().querySelectorAll('.szh-carte')[idx];
-  // Dans l'encadré des tâches, et dans aucun des deux endroits où ils ont vécu avant :
-  // ni la barre de titre, ni le corps de l'aperçu.
+  // Dans l'encadré des tâches, ni dans la barre de titre ni dans le corps de l'aperçu.
   assert.strictEqual(carte.querySelectorAll('.szh-taches .szh-constats--attention .szh-notif').length, 3,
     'les avertissements ne sont pas dans le groupe « Attention » de l’encadré « À faire »');
   assert.strictEqual(carte.querySelectorAll('.szh-taches .szh-constats--danger .szh-notif').length, 1,
@@ -454,8 +441,8 @@ test('carte : ses avertissements vivent dans l’encadré « À faire », group�
   assert.deepStrictEqual(carte.querySelectorAll('.szh-constats-titre').map((e) => e.textContent),
     [i18n.T('art.constats.attention'), i18n.T('art.constats.danger')],
     'les deux groupes ne portent pas leur titre, ou un groupe vide a été posé');
-  // Un article sans avertissement ne construit aucun groupe parasite : son encadré
-  // « À faire » n'a que ses tâches.
+  // Un article sans avertissement n'a pas de groupe vide : son encadré « À faire » n'a que
+  // ses tâches.
   const sans = charge.lignes.findIndex((l) => l.cle === '02-chanier');
   const carteSans = page.conteneur().querySelectorAll('.szh-carte')[sans];
   assert.strictEqual(carteSans.querySelectorAll('.szh-constats').length, 0,
@@ -470,9 +457,9 @@ test('carte : ce qui bloquera la publication a son propre groupe, sous celui des
   const avant2 = fs.readFileSync(cheminFiche('02-chanier'), 'utf8');
   const avant3 = fs.readFileSync(cheminFiche('03-guilley'), 'utf8');
   try {
-    // Le même DOI sur deux fiches : l'export OJS compte ce doublon parmi ses BLOQUANTS
-    // (lib/export-ojs.js, ojs.err.doi.double) et rien ne part du tout. C'est cette
-    // frontière-là qui décide du groupe, et non la gravité qu'on prête au défaut.
+    // Le même DOI sur deux fiches : l'export OJS compte ce doublon parmi ses bloquants
+    // (lib/export-ojs.js, ojs.err.doi.double) et rien ne part. C'est ce critère qui décide
+    // du groupe.
     const doiCommun = '10.57161/r2020-01-01';
     fs.writeFileSync(cheminFiche('02-chanier'),
       avant2.replace('title:', 'doi: "' + doiCommun + '"' + LF + 'title:'));
@@ -493,8 +480,8 @@ test('carte : ce qui bloquera la publication a son propre groupe, sous celui des
     assert.strictEqual(bloquants.length, 1, 'le groupe « Erreur / bloquant » ne porte pas le doublon');
     assert.ok(bloquants[0].classList.contains('szh-notif--danger'),
       'le message bloquant garde le ton d’un avertissement ordinaire');
-    // Les deux groupes cohabitent : le DOI manuel qui diverge du calculé reste, lui, un
-    // avertissement — et les titres se suivent dans l'ordre attention puis bloquant.
+    // Les deux groupes cohabitent : le DOI manuel qui diverge du calculé reste un
+    // avertissement, et les titres se suivent dans l'ordre attention puis bloquant.
     assert.deepStrictEqual(carte.querySelectorAll('.szh-constats-titre').map((e) => e.textContent),
       [i18n.T('art.constats.attention'), i18n.T('art.constats.danger')],
       'les deux groupes ne se suivent pas dans l’ordre attendu');
@@ -506,12 +493,11 @@ test('carte : ce qui bloquera la publication a son propre groupe, sous celui des
   }
 });
 
-// ---- A8 : le geste de la barre de titre, et l'aide qui a disparu ------------------
+// ---- La barre de titre de la carte ----------------------------------------------------
 //
-// « Ouvrir l'article » a quitté l'entête (point 4b) : le même geste ferme déjà le pied de
-// carte, plus bas dans ce fichier (« le pied suit l'ordre du travail »). Ne reste que la
-// bascule de l'aperçu, réduite au chevron (point 4c) — et le titre, qui porte maintenant
-// le même geste, en second bouton, synchronisé sur le même état.
+// « Ouvrir l'article » est au pied de la carte (voir « le pied suit l'ordre du travail »).
+// La barre de titre ne porte que la bascule de l'aperçu, le chevron ; le titre, bouton lui
+// aussi, fait la même bascule, synchronisée sur le même état.
 
 test('carte : le chevron ET le titre replient les métadonnées, ensemble (A8.3)', async () => {
   const p = await vue();
@@ -524,13 +510,13 @@ test('carte : le chevron ET le titre replient les métadonnées, ensemble (A8.3)
   assert.strictEqual(gestes.length, 1,
     'la barre de titre porte encore plus d’un geste : ' + gestes.length + ' bouton(s)');
   const bascule = gestes[0];
-  // Le titre lui-même est devenu un vrai <button> : la seconde commande du même geste.
+  // Le titre est un vrai <button> : la seconde commande de la même bascule.
   const titreBouton = carte.querySelector('.szh-tete-nom');
   assert.strictEqual(titreBouton.balise, 'button',
     'le titre n’est plus un bouton : il ne peut donc pas partager le geste du chevron');
 
-  // A8.3 : le pli ne cache que l'aperçu des métadonnées. Plus de texte visible sur le
-  // chevron — son libellé vit dans l’infobulle et l’aria-label, comme avant dans le texte.
+  // Le pli ne cache que l'aperçu des métadonnées. Le chevron n'a pas de texte visible :
+  // son libellé est dans l’infobulle et l’aria-label.
   const bloc = carte.querySelectorAll('.carte-apercu')[0];
   assert.ok(bloc, 'la carte n’a plus de bloc d’aperçu à replier');
   assert.strictEqual(bloc.hidden, false, 'l’aperçu arrive replié : le défaut doit tout montrer');
@@ -540,14 +526,15 @@ test('carte : le chevron ET le titre replient les métadonnées, ensemble (A8.3)
   assert.strictEqual(bascule.title, i18n.T('art.meta.cacher'));
   assert.strictEqual(bascule.getAttribute('aria-label'), i18n.T('art.meta.cacher'));
 
-  // Un clic sur le TITRE fait le même geste qu’un clic sur le chevron.
+  // Un clic sur le titre fait comme un clic sur le chevron.
   titreBouton.dispatchEvent({ type: 'click' });
   assert.strictEqual(bloc.hidden, true, 'un clic sur le titre ne replie pas l’aperçu');
   assert.strictEqual(bascule.getAttribute('aria-expanded'), 'false', 'le chevron n’a pas suivi le titre');
   assert.strictEqual(titreBouton.getAttribute('aria-expanded'), 'false');
   assert.strictEqual(bascule.title, i18n.T('art.meta.voir'));
 
-  // Et un clic sur le CHEVRON referme la boucle : les deux commandes restent synchronisées.
+  // Un clic sur le chevron revient à l'état de départ : les deux commandes restent
+  // synchronisées.
   bascule.dispatchEvent({ type: 'click' });
   assert.strictEqual(bloc.hidden, false, 'le chevron ne rouvre pas l’aperçu');
   assert.strictEqual(titreBouton.getAttribute('aria-expanded'), 'true', 'le titre n’a pas suivi le chevron');
@@ -558,9 +545,8 @@ test('carte : le chevron ET le titre replient les métadonnées, ensemble (A8.3)
   assert.ok(carte.querySelectorAll('.szh-constats .szh-notif').length > 0,
     'les avertissements sont partis avec l’aperçu');
 
-  // Et le pli survit à un re-rendu : enregistrer une métadonnée du numéro repose toutes
-  // les cartes, et redéplier ce qu’on vient de replier serait insupportable — ici, c'est
-  // l'inverse qu'on vérifie : l'aperçu est resté OUVERT après les deux clics ci-dessus.
+  // Le pli survit à un re-rendu (enregistrer une métadonnée du numéro repose toutes les
+  // cartes). Ici, l'aperçu doit être resté ouvert après les deux clics ci-dessus.
   page.envoyer(charge);
   assert.strictEqual(
     page.conteneur().querySelectorAll('.szh-carte')[idx].querySelectorAll('.carte-apercu')[0].hidden, false,
@@ -568,9 +554,8 @@ test('carte : le chevron ET le titre replient les métadonnées, ensemble (A8.3)
 });
 
 test('page : l’avertissement « aperçu seul » a quitté le gabarit et les libellés (A8.1)', () => {
-  // Il se répétait sous chaque liste d'articles pour dire ce que les deux boutons du pied
-  // de chaque carte disent déjà. Retiré des deux côtés : le gabarit ne le pose plus, et la
-  // clé ne traîne plus dans les libellés, où elle aurait survécu sans emploi.
+  // Cet avertissement répéterait ce que disent les deux boutons du pied de chaque carte :
+  // ni le gabarit ni les libellés ne le portent.
   const html = fs.readFileSync(path.join(COCKPIT, 'media', 'articles.html'), 'utf8');
   assert.strictEqual(html.indexOf('apercuAide'), -1,
     'le gabarit de la page pose encore le paragraphe « Aperçu seul »');
@@ -582,9 +567,8 @@ test('page : l’avertissement « aperçu seul » a quitté le gabarit et les li
 test('carte : l’avancement des tâches vit dans l’entête « À faire », plus en pastille (A7.5)', async () => {
   const p = await vue();
   const charge = derniereCharge(p);
-  // Le pied d'une carte d'article ne porte plus aucune pastille : ni l'avancement des
-  // tâches, qui vit dans l'entête « À faire », ni le compteur d'images, qui doublait le
-  // constat écrit juste au-dessus.
+  // Le pied d'une carte d'article ne porte aucune pastille : l'avancement des tâches est
+  // dans l'entête « À faire », et les images sont dites par le constat juste au-dessus.
   assert.ok(charge.lignes.every((l) => (l.pastilles || []).length === 0),
     'l’hôte envoie encore une pastille dans le pied, en double avec l’encadré « À faire »');
   const page = pageArticlesDe(charge);
@@ -599,9 +583,9 @@ test('carte : le pied suit l’ordre du travail, et « Ouvrir le texte » le fer
   const charge = derniereCharge(p);
   const idx = charge.lignes.findIndex((l) => l.cle === '01-gremion');   // au milieu : rien n’est désactivé
   const ligne = charge.lignes[idx];
-  // Pas posé par le composant, qui le mettrait en tête du pied : il vient en dernier
-  // dans `actions`. « Monter »/« Descendre » ont quitté ce pied — le classement se fait
-  // désormais dans le mode « Changer l'ordre », et nulle part ailleurs.
+  // Pas posé par le composant, qui le mettrait en tête du pied : il vient en dernier dans
+  // `actions`. « Monter »/« Descendre » n'y sont pas : le classement se fait dans le mode
+  // « Changer l'ordre ».
   assert.strictEqual(ligne.ouvrir, false);
   const dernier = ligne.actions[ligne.actions.length - 1];
   assert.strictEqual(dernier.id, 'ouvrir');
@@ -637,9 +621,9 @@ test('carte : les deux boutons ouvrent les bons formulaires, sur le bon article'
   assert.ok(HOTE.panneaux.length > avant);
 });
 
-// La barre de la vue porte les deux gestes de fin de numéro, comme celle des chapitres porte
-// ceux du livre. Paginer disparaît sur un numéro gelé, que la commande refuserait ; l'export
-// OJS reste, puisqu'on exporte justement un numéro gelé.
+// La barre de la vue porte les deux actions de fin de numéro, comme celle des chapitres pour
+// le livre. Paginer disparaît sur un numéro gelé, que la commande refuserait ; l'export OJS
+// reste, puisqu'il porte justement sur un numéro gelé.
 test('barre : « Paginer » et « Exporter pour OJS » hors du mode ordre, Paginer retiré d’un numéro gelé', async () => {
   let p = await vue();
   const ids = () => derniereCharge(p).boutons.map((b) => b.id);
@@ -675,8 +659,8 @@ test('fiches : l’hôte envoie le DOI calculé, et la case manuelle passe par s
   assert.ok(fiches, 'formulaire des métadonnées absent');
   await fiches._recepteur({ type: 'pret' });
   const charge = fiches.messages.filter((m) => m.type === 'valeurs').pop();
-  // Le DOI calculé voyage À CÔTÉ de la fiche, jamais dedans : c'est lui que le champ
-  // verrouillé affiche, et il est le même que celui de la carte de la vue « Articles ».
+  // Le DOI calculé est envoyé à côté de la fiche, pas dedans : le champ verrouillé
+  // l'affiche, identique à celui de la carte de la vue « Articles ».
   const par = {};
   for (const a of charge.articles) { par[a.slug] = a; }
   assert.strictEqual(par['00-editorial'].doiCalcule, '10.57161/r2026-03-00');
@@ -687,7 +671,7 @@ test('fiches : l’hôte envoie le DOI calculé, et la case manuelle passe par s
 
   // La case « Définir manuellement le DOI » : la webview demande, l'hôte pose la question
   // en modale et répond. Confirmé -> ok, refusé (Annuler) -> ok: false, et rien d'écrit :
-  // le doi manuel ne naît qu'à l'enregistrement de la carte.
+  // le DOI manuel n'est écrit qu'à l'enregistrement de la carte.
   const nAvant = HOTE.avertissements.length;
   HOTE.repondreModale('Définir manuellement');
   await fiches._recepteur({ type: 'doi-manuel-confirmer', slug: '01-gremion', sens: 'activer' });
@@ -709,20 +693,17 @@ test('carte : les images ne reprochent que ce qui manque, en toutes lettres et u
   const p = await vue();
   const ligne = derniereCharge(p).lignes.find((l) => l.cle === '01-gremion');
   const dits = ligne.constats.map((c) => c.texte).join(' | ');
-  // Trois images dans media/, et trois fichiers de portrait à côté : les photos des
-  // autrices et auteurs ne sont pas des figures, elles ne se reprochent donc pas. Une
-  // seule image informative sans texte alternatif — la décorative n'est pas comptée —
-  // et une seule légende vide ; si les portraits entraient dans le compte, ces deux
-  // constats en annonceraient quatre.
-  // Le même intitulé que la liste « À corriger » (defaut.figure-sans-alt, renommé le
-  // 29.09.2026) : on reconnaît le même défaut d'un écran à l'autre.
+  // Trois images dans media/ et trois fichiers de portrait à côté : les portraits ne sont
+  // pas des figures et ne sont pas signalés. Une seule image informative sans texte
+  // alternatif (la décorative ne compte pas) et une seule légende vide ; si les portraits
+  // comptaient, ces deux constats en annonceraient quatre.
+  // Même intitulé que dans la liste « À corriger » (defaut.figure-sans-alt).
   assert.match(dits, /Image sans description \(1\)/);
   assert.match(dits, /Image sans légende \(1\)/);
-  // Plus de pastille dans le pied : le compteur « 1 image(s) » y redisait, en abrégé et
-  // sans dire quoi, le reproche que l'encadré « À faire » écrit juste au-dessus.
+  // Pas de pastille dans le pied : l'encadré « À faire » dit déjà le défaut.
   assert.ok(!(ligne.pastilles || []).some((x) => /image/.test(x.texte || '')),
     'le compteur d’images est revenu en pastille : il double le constat');
-  // Un article sans image ne dit rien du tout de ses images.
+  // Un article sans image ne dit rien de ses images.
   const nu = derniereCharge(p).lignes.find((l) => l.cle === '02-chanier');
   assert.ok(!(nu.pastilles || []).some((x) => /image/.test(x.texte || '')));
   assert.ok(!nu.constats.some((c) => /image/.test(c.texte)));
@@ -736,7 +717,7 @@ test('carte : un appel de citation sans référence se dit sur la carte, avec so
     'l’article ne dit pas ses appels non liés : ' + dits.join(' | '));
   assert.ok(dits.some((t) => /^Appel ambigu \(1\)$/.test(t)),
     'l’appel ambigu ne suit pas l’intitulé de la liste : ' + dits.join(' | '));
-  // Et l'article que le journal ne nomme pas ne porte rien de la sorte.
+  // L'article que le journal ne nomme pas ne porte rien de la sorte.
   const autre = derniereCharge(p).lignes.find((l) => l.cle === '02-chanier');
   assert.ok(!autre.constats.some((c) => /citation/.test(c.texte)),
     'un constat s’est rattaché au mauvais article');
@@ -761,8 +742,8 @@ test('carte : le DOI manuel s’affiche étiqueté, et l’écart avec le calcul
     await HOTE.executer('szh.cockpit.rafraichir');
     await p._recepteur({ type: 'pret' });
     let charge = derniereCharge(p);
-    // La carte affiche CE QUI PART : le DOI manuel, étiqueté « manuel » — la provenance
-    // doit se voir d'un coup d'œil. Le constat nomme les deux valeurs.
+    // La carte affiche ce qui sera publié : le DOI manuel, étiqueté « manuel ». Le constat
+    // nomme les deux valeurs.
     const divergent = charge.lignes.find((l) => l.cle === '05-pagnamenta');
     assert.strictEqual(doiDe(divergent), '10.57161/r2020-09-09',
       'la carte n’affiche pas le DOI manuel qui part');
@@ -772,7 +753,7 @@ test('carte : le DOI manuel s’affiche étiqueté, et l’écart avec le calcul
       && c.texte.indexOf('10.57161/r2026-03-05') !== -1
       && c.texte.indexOf('partira vers OJS') !== -1),
       'l’écart avec le calculé ne se dit pas : ' + divergent.constats.map((c) => c.texte).join(' | '));
-    // Sans DOI manuel, le calculé s'affiche comme avant, avec sa propre étiquette.
+    // Sans DOI manuel, le calculé s'affiche avec sa propre étiquette.
     const calcule = charge.lignes.find((l) => l.cle === '01-gremion');
     assert.strictEqual(doiDe(calcule), '10.57161/r2026-03-01');
     assert.deepStrictEqual(ligneDoi(calcule).marques, ['calculé']);
@@ -783,8 +764,8 @@ test('carte : le DOI manuel s’affiche étiqueté, et l’écart avec le calcul
       && /rien ne partira vers OJS/.test(c.texte)),
       'le DOI manuel inutile ne se dit pas : ' + sans.constats.map((c) => c.texte).join(' | '));
 
-    // DOI incalculable — plus de date, et le dossier temporaire n'a pas d'année : le
-    // manuel s'affiche quand même, étiqueté, puisqu'il partira dès le numéro complet.
+    // DOI incalculable (pas de date, et le dossier temporaire n'a pas d'année) : le manuel
+    // s'affiche quand même, étiqueté, puisqu'il partira dès que le numéro sera complet.
     await poserEtat({ date: '' });
     await p._recepteur({ type: 'pret' });
     charge = derniereCharge(p);
@@ -792,7 +773,7 @@ test('carte : le DOI manuel s’affiche étiqueté, et l’écart avec le calcul
     assert.strictEqual(doiDe(incalc), '10.57161/r2020-09-09',
       'un DOI manuel disparaît de la carte quand le calcul est impossible');
     assert.deepStrictEqual(ligneDoi(incalc).marques, ['manuel']);
-    // Et sans manuel, l'incalculable se dit toujours.
+    // Sans manuel, l'incalculable est signalé.
     const nu = charge.lignes.find((l) => l.cle === '01-gremion');
     assert.match(doiDe(nu), /à calculer/, 'le DOI devrait être incalculable ici');
   } finally {
@@ -804,9 +785,9 @@ test('carte : le DOI manuel s’affiche étiqueté, et l’écart avec le calcul
 
 // ---- La forme et l'unicité du DOI manuel, sur la carte ------------------------------
 //
-// Miroir de la logique de l'export (voir la même distinction dans export-ojs.test.js) :
-// une forme étrangère à la revue et un DOI qui désigne aussi un autre article ne sont ni
-// l'un ni l'autre le simple « écart avec le calculé » qu'art.doi.fiche.autre dit déjà.
+// Même logique que l'export (voir export-ojs.test.js) : une forme étrangère à la revue, ou
+// un DOI qui désigne un autre article, est distinct du simple écart avec le calculé
+// (art.doi.fiche.autre).
 
 test('carte : un DOI manuel hors forme montre art.doi.forme, à la place de art.doi.fiche.autre', async () => {
   const p = await vue();
@@ -887,8 +868,8 @@ test('carte : un DOI manuel égal au calculé d’un voisin montre art.doi.doubl
   const cheminFiche = (slug) => path.join(REVUE, 'articles', slug, slug + '.meta.yaml');
   const avant = fs.readFileSync(cheminFiche('06-pirico'), 'utf8');
   try {
-    // Le calculé de 02-chanier (voir les « attendus » du tout premier contrôle DOI de ce
-    // fichier), sans qu'il ne porte lui-même aucun DOI manuel.
+    // Le calculé de 02-chanier (voir les « attendus » du premier contrôle DOI de ce
+    // fichier), qui ne porte lui-même aucun DOI manuel.
     const calculeVoisin = '10.57161/r2026-03-02';
     fs.writeFileSync(cheminFiche('06-pirico'),
       avant.replace('title:', 'doi: "' + calculeVoisin + '"' + LF + 'title:'));
@@ -910,11 +891,8 @@ test('carte : un DOI manuel égal au calculé d’un voisin montre art.doi.doubl
 
 test('déplacement : franchir la frontière du DOI est refusé, et le refus s’explique', async () => {
   const p = await vue();
-  // « Monter »/« Descendre » ont quitté le pied de la carte complète (point 4d) : la
-  // frontière du DOI ne s'annonce donc plus par un bouton désactivé sur la carte — elle
-  // reste appliquée par l'hôte, qui la refuse et l'explique, quel que soit le chemin par
-  // lequel le geste lui arrive (menu contextuel de l'arbre, ou une webview qui enverrait
-  // n'importe quel message).
+  // La frontière du DOI est appliquée par l'hôte, qui refuse et explique, quel que soit le
+  // chemin de la demande (menu contextuel de l'arbre, ou message d'une webview).
   const avant = fs.readFileSync(AUSGABE, 'utf8');
   await p._recepteur({ type: 'action', cle: '10-documentation', id: 'monter' });
   const etat = p.messages.filter((m) => m.type === 'etat').pop();
@@ -931,28 +909,27 @@ test('case « pas de DOI » : elle renumérote le numéro et range l’article �
   // L'ordre part avec : le fichier doit dire la même chose que l'écran.
   assert.match(texte, /^ordre-articles: \[.*"09-tribune", "08-dentz", "10-documentation"\]$/m,
     'l’ordre du fichier ne suit pas la règle : ' + texte);
-  // Et les DOI se sont resserrés : la tribune libre prend le rang que le varia occupait.
+  // Les DOI se resserrent : la tribune libre prend le rang du varia.
   const charge = derniereCharge(p);
   const par = {};
   for (const l of charge.lignes) { par[l.cle] = doiDe(l); }
   assert.strictEqual(par['09-tribune'], '10.57161/r2026-03-08');
   assert.match(par['08-dentz'], /aucun – décidé/);
-  // La case est cochée et NON verrouillée : c'est une décision, elle se reprend.
+  // La case est cochée et non verrouillée : c'est une décision, elle se reprend.
   const varia = charge.lignes.find((l) => l.cle === '08-dentz');
   assert.strictEqual(varia.sansDoi.coche, true);
   assert.strictEqual(varia.sansDoi.verrouille, false);
 
-  // Décochée, l'article retrouve un DOI — mais PAS sa place d'avant, et c'est voulu :
-  // l'ordre est une donnée du numéro, pas un souvenir. Il est descendu d'un cran quand la
-  // case l'a rangé à la fin, il reste là, et il porte donc maintenant le dernier rang. Les
-  // boutons de déplacement servent à le remonter si on le veut.
+  // Décochée, l'article retrouve un DOI mais pas sa place d'avant : l'ordre est une donnée
+  // du numéro. Rangé à la fin par la case, il y reste et porte le dernier rang ; les
+  // boutons de déplacement servent à le remonter.
   await p._recepteur({ type: 'sansdoi', cle: '08-dentz', coche: false });
   const revenu = derniereCharge(p);
   assert.deepStrictEqual(revenu.lignes.map((l) => l.cle).slice(8),
     ['09-tribune', '08-dentz', '10-documentation']);
   assert.strictEqual(doiDe(revenu.lignes.find((l) => l.cle === '09-tribune')), '10.57161/r2026-03-08');
   assert.strictEqual(doiDe(revenu.lignes.find((l) => l.cle === '08-dentz')), '10.57161/r2026-03-09');
-  // Et la clé est repartie : plus aucun article coché.
+  // La clé a disparu : aucun article coché.
   assert.ok(!/^articles-sans-doi: \[".+"\]$/m.test(fs.readFileSync(AUSGABE, 'utf8')),
     'la case décochée laisse un résidu dans le fichier du numéro');
   // On le remet où il était, pour les contrôles qui suivent.
@@ -961,8 +938,8 @@ test('case « pas de DOI » : elle renumérote le numéro et range l’article �
 
 // ---- Le gel de l'ordre : l'archivage seul ----
 //
-// Les deux sens, et le second est celui qui protège la distinction. Sans lui, remettre
-// refuserSiVerrouille() sur le réordonnancement passerait tous les contrôles.
+// Les deux sens. Le second (verrouillé mais non archivé) détecterait un
+// refuserSiVerrouille() posé sur le réordonnancement.
 
 test('ordre : un numéro VERROUILLÉ mais non archivé accepte encore un déplacement', async () => {
   const p = await vue();
@@ -973,7 +950,7 @@ test('ordre : un numéro VERROUILLÉ mais non archivé accepte encore un déplac
   assert.notStrictEqual(apres, avant,
     'le verrou a gelé l’ordre : un numéro verrouillé a ses TEXTES figés, pas sa séquence');
   assert.match(apres, /^ordre-articles: \["00-editorial", "02-chanier", "01-gremion"/m);
-  // Le verrou est bien posé, et il n'a simplement pas voix au chapitre sur l'ordre.
+  // Le verrou est posé, mais il ne décide pas de l'ordre.
   assert.match(apres, /^locked: true$/m);
   // La case « pas de DOI » suit la même règle : elle décide de l'ordre.
   await p._recepteur({ type: 'sansdoi', cle: '08-dentz', coche: true });
@@ -1003,7 +980,7 @@ test('ordre : un numéro ARCHIVÉ refuse le déplacement, et l’ordre ne bouge 
   assert.match(rendu, /^locked: true$/m, 'désarchiver a déverrouillé');
 });
 
-// ---- L'export : une absence VOULUE n'est pas un oubli ----
+// ---- L'export : une absence voulue n'est pas un oubli ----
 
 test('export : un article coché « pas de DOI » ne bloque plus l’export', () => {
   const revue = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-doi-'));
@@ -1042,7 +1019,7 @@ test('export : un article coché « pas de DOI » ne bloque plus l’export', ()
     .indexOf('<id type="doi" advice="update">10.57161/r2026-02-00</id>') !== -1,
     'le DOI calculé n’est pas parti');
 
-  // Avec la case : l'absence est voulue, l'export passe et le DIT.
+  // Avec la case : l'absence est voulue, l'export passe et le dit.
   monter([slug]);
   const r = ojs.genererExportOjs(revue, { config: config });
   assert.ok(r.avertissements.some((a) => /voulu|gewollt/i.test(a) || /décidé/.test(a)),
@@ -1053,10 +1030,10 @@ test('export : un article coché « pas de DOI » ne bloque plus l’export', ()
 
 // ---- Le fichier dérivé des DOI calculés ----
 //
-// Le bandeau DOI de la couverture (szh-article.html) doit imprimer le DOI courant alors
-// que plus rien ne le stocke : le cockpit dépose donc dois-calcules.yaml à côté
-// d'ausgabe.yaml, et pipeline/filters/szh-maquette.lua ne fait que le lire. Le calcul,
-// lui, ne vit qu'à un endroit — lib/articles.js — et ce fichier n'est qu'une projection.
+// Le bandeau DOI de la couverture (szh-article.html) imprime le DOI courant, qui n'est
+// stocké nulle part : le cockpit dépose dois-calcules.yaml à côté d'ausgabe.yaml, et
+// pipeline/filters/szh-maquette.lua le lit. Le calcul vit dans lib/articles.js ; ce
+// fichier n'en est qu'une copie.
 
 test('dois-calcules.yaml : porteurs seuls, write-if-changed, et numéro archivé intact', () => {
   // extension.js est déjà chargé par activerHote (le crochet vscode reste posé) : on
@@ -1088,8 +1065,8 @@ test('dois-calcules.yaml : porteurs seuls, write-if-changed, et numéro archivé
     'un article sans DOI a reçu une ligne : la maquette lui poserait un bandeau');
   assert.match(texte, /DÉRIVÉ/, 'l’en-tête ne dit pas que le fichier est dérivé');
 
-  // Write-if-changed : un second appel identique ne réécrit rien — SharePoint
-  // répliquerait chaque octet pour rien. La sentinelle est l'heure du fichier.
+  // Écriture seulement si le contenu change : un second appel identique ne réécrit rien,
+  // pour que SharePoint ne réplique pas pour rien. La sentinelle est l'heure du fichier.
   const sentinelle = new Date(2000, 0, 1);
   fs.utimesSync(chemin, sentinelle, sentinelle);
   ext._pur.ecrireDoisCalcules(fournisseur(slugs));
@@ -1102,7 +1079,7 @@ test('dois-calcules.yaml : porteurs seuls, write-if-changed, et numéro archivé
   assert.match(relu, /^02-a: 10\.57161\/r2026-03-00$/m);
   assert.match(relu, /^00-edito: 10\.57161\/r2026-03-01$/m);
 
-  // Numéro ARCHIVÉ : plus une écriture, même si le calcul donnerait autre chose.
+  // Numéro archivé : aucune écriture, même si le calcul donnerait autre chose.
   ausgabe(['archived: true']);
   ext._pur.ecrireDoisCalcules(fournisseur(slugs));
   assert.strictEqual(fs.readFileSync(chemin, 'utf8'), relu,

@@ -1,28 +1,21 @@
 #!/bin/bash
-# Build PDF + capture PNG de chaque page, pour tous les articles de test, puis les trois
-# verdicts d'ensemble : PDF/UA-1 du banc, corpus d'accessibilité, reproductibilité des
-# polices.
-# À lancer depuis WSL (distro SZH-Publishing) :
+# Banc de rendu : compile chaque article de test en PDF et en PNG par page, puis contrôle
+# PDF/UA-1, le corpus d'accessibilité, les livres, le CMJN, l'EPUB et les polices.
+# Dans la WSL SZH-Publishing :
 #   bash /mnt/c/.../szh-publishing-toolchain/test/build-render.sh [slug]
-# Prérequis rendu PNG : un venv Python avec pypdfium2 + Pillow (voir README.md),
-# chemin dans $SZH_RENDER (défaut : ~/pdfvenv/bin/python).
-# Prérequis du contrôle des polices : fontTools, présent dans le venv WeasyPrint
-# (/opt/weasyprint/bin/python) ; surchargeable par $SZH_FONTTOOLS.
+# Rendu PNG : un venv avec pypdfium2 et Pillow, dans $SZH_RENDER (défaut ~/pdfvenv/bin/python).
+# Polices, pypdf : le venv WeasyPrint (/opt/weasyprint/bin/python), ou $SZH_FONTTOOLS.
 #
-# Ordre des trois verdicts, et pourquoi celui-là : le contrôle des polices vient en
-# dernier, parce qu'il lit les PDF des DEUX dossiers de sorties — le banc et le corpus
-# d'accessibilité. Le passer avant la construction du corpus, c'est ne contrôler que la
-# moitié des PDF, et c'est justement le corpus qui porte les diacritiques polonais, turcs
-# et serbes.
+# Le contrôle des polices vient en dernier : il lit les PDF du banc et ceux du corpus
+# d'accessibilité, qui porte les diacritiques polonais, turcs et serbes.
 set -u
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 RENDER="${SZH_RENDER:-$HOME/pdfvenv/bin/python}"
 FONTPY="${SZH_FONTTOOLS:-/opt/weasyprint/bin/python}"
 VERAPDF="${VERAPDF:-/opt/verapdf-cli/verapdf}"
 VERAPDF_JAVA="${VERAPDF_JAVA:-/opt/jre-min}"
-# La bibliothèque de fiches Kirby du banc (docs/FORMAT-DOCUMENTATION-KIRBY.md) : test/ n'est
-# pas sous Revue\ ni Zeitschrift\, sa racine _NewsUndActu ne se découvre donc pas toute
-# seule — exportée ici pour que `make` (ligne ~35) et son documentation-kirby.py la voient.
+# Fiches Kirby du banc (docs/FORMAT-DOCUMENTATION-KIRBY.md). test/ n'est pas sous Revue\
+# ni Zeitschrift\ : la racine _NewsUndActu ne peut pas être trouvée seule, on la donne.
 export SZH_NEWS_RACINE="$REPO/test/news-racine"
 cd "$REPO/test" || exit 1
 only="${1:-}"
@@ -34,11 +27,10 @@ for d in articles/*/; do
   rm -rf "out/$slug"
   journal="out/$slug-build.log"
   mkdir -p out
-  # Le code de sortie est celui de make, pas celui du grep qui suit : sinon un
-  # échec dont le message ne contient aucun des mots cherchés passe pour un succès.
+  # On teste le code de sortie de make, pas celui du grep : un échec dont le message ne
+  # contient aucun mot cherché passerait sinon pour un succès.
   if make -f "$REPO/pipeline/Makefile" "out/$slug/$slug.pdf" > "$journal" 2>&1; then
-    # « [niveaux] » : un saut de niveau de titre écrasé par szh-niveaux.lua se dit là et
-    # nulle part ailleurs, et le mot « warning » n'apparaît pas dans un message français.
+    # « [niveaux] » : szh-niveaux.lua signale ainsi un saut de niveau de titre corrigé.
     grep -iE "nonempty|error|traceback|warning|\[niveaux\]" "$journal" || echo "  build ok"
   else
     echo "  ÉCHEC du build :"
@@ -52,33 +44,29 @@ for d in articles/*/; do
   else
     echo "  (rendu PNG ignoré : renderer introuvable en $RENDER)"
   fi
-  # Aucune légende de figure ne doit rester seule sur sa page : un défaut que le PDF ne
-  # signale pas et que la porte PDF/UA laisse passer.
+  # Aucune légende de figure ne doit rester seule sur sa page ; ni WeasyPrint ni veraPDF
+  # ne le signalent.
   if [ -x "$FONTPY" ] || command -v "$FONTPY" >/dev/null 2>&1; then
     "$FONTPY" figures-check.py "out/$slug/$slug.html" | sed 's/^/  /' || echec=1
   fi
 done
 
-# Verdict PDF/UA-1 sur tout le banc, la même porte que `make verifier-ua` — c'est elle qui
-# garde l'export d'un vrai numéro. Un défaut de balisage ne se voit sur aucun PNG : sans ce
-# passage, une régression de conformité traverserait le banc sans un mot.
-# Sur un slug isolé, on ne valide pas : la porte prend le numéro entier.
+# PDF/UA-1 sur tout le banc, par `make verifier-ua`, le contrôle de l'export d'un numéro.
+# Un défaut de balisage ne se voit sur aucun PNG. Sauté pour un slug isolé : la cible
+# prend le numéro entier.
 if [ -z "$only" ] && [ $echec -eq 0 ]; then
   echo "=== PDF/UA-1 ==="
-  # Journal puis sed, et non un tube : dans un tube, le code retenu serait celui du sed,
-  # et un PDF non conforme passerait pour un succès. Même piège que ci-dessus.
+  # Journal puis sed, et non un tube : dans un tube, le code retenu serait celui du sed.
   journal="out/.pdfua-banc.log"
   make -f "$REPO/pipeline/Makefile" verifier-ua > "$journal" 2>&1 || echec=1
   sed 's/^/  /' "$journal"
 fi
 
-# Corpus d'accessibilité : un second dossier de NUMÉRO, à part du banc — voir la longue
-# note de tête de accessibilite/ausgabe.yaml. Deux attentes, chacune une assertion :
-#   * sa porte PDF/UA doit rendre 0, comme celle du banc. Aucun de ses articles n'est
-#     volontairement non conforme ; c'est un choix, expliqué là-bas.
-#   * la paire française / allemande y diverge à dessein d'une légende de figure :
-#     verifier-numerotation DOIT donc rendre 1. S'il rend 0, la comparaison ne compare
-#     plus rien — un contrôle qui ne peut plus échouer est un contrôle mort.
+# Corpus d'accessibilité : un second numéro, à part du banc (voir
+# accessibilite/ausgabe.yaml). Deux attentes :
+#   * verifier-ua rend 0 ;
+#   * la paire française / allemande diffère exprès d'une légende de figure, donc
+#     verifier-numerotation doit rendre 1. S'il rend 0, ce contrôle ne détecte plus rien.
 if [ -z "$only" ]; then
   echo "=== Corpus d'accessibilité ==="
   cd "$REPO/test/accessibilite" || exit 1
@@ -86,9 +74,8 @@ if [ -z "$only" ]; then
   mkdir -p "$REPO/test/out"
   journal="$REPO/test/out/.a11y.log"
   if make -f "$REPO/pipeline/Makefile" all > "$journal" 2>&1; then
-    # « nonempty <title> » est attendu : la chaîne d'aperçu (commonmark_x) n'a pas de
-    # template, le Makefile lui pose un titre de repli. On l'écarte pour que la sortie du
-    # corpus ne montre que ce qui mérite un regard.
+    # « nonempty <title> » est attendu : l'aperçu (commonmark_x) n'a pas de template et le
+    # Makefile lui pose un titre de repli.
     grep -iE "error|traceback|\[niveaux\]" "$journal" | grep -v "nonempty" | sed 's/^/  /'
     if make -f "$REPO/pipeline/Makefile" verifier-ua >> "$journal" 2>&1; then
       echo "  porte PDF/UA du corpus : conforme (attendu)"
@@ -116,14 +103,11 @@ if [ -z "$only" ]; then
   cd "$REPO/test" || exit 1
 fi
 
-# Les deux LIVRES du banc : une monographie allemande en maquette « normal », un ouvrage
-# collectif français en maquette FALC. Ils gardent ce que la revue ne peut pas garder — la
-# numérotation qui court d'un chapitre à l'autre, le sommaire dont les numéros de page sont
-# posés à la pagination, l'ouverture de chapitre sur une belle page, la ligne d'auteur·e·s
-# d'un collectif — et surtout la conformité PDF/UA d'un document de plusieurs chapitres,
-# qu'un tableau mal placé suffit à faire tomber SANS ERREUR VISIBLE (voir
-# filters/szh-tableau-boite.lua).
-# Le verdict est bloquant : un livre non conforme part chez l'imprimeur et dans le commerce.
+# Les deux livres du banc : une monographie allemande en maquette « normal », un collectif
+# français en maquette FALC. Ils couvrent ce que la revue n'a pas : numérotation continue
+# entre chapitres, sommaire paginé, ouverture sur belle page, auteur·e·s d'un collectif,
+# et PDF/UA sur plusieurs chapitres, qu'un tableau mal placé suffit à casser sans erreur
+# visible (voir filters/szh-tableau-boite.lua). Un échec fait échouer le banc.
 if [ -z "$only" ]; then
   echo "=== Livres ==="
   for livre in livre-normal livre-falc; do
@@ -132,9 +116,7 @@ if [ -z "$only" ]; then
       rm -rf out
       journal="$REPO/test/out/.$livre.log"
       mkdir -p "$REPO/test/out"
-      # Les QUATRE sorties, pas seulement le PDF numérique : le PDF imprimeur et la
-      # couverture partent chez l'imprimeur, et la couverture est la seule qui lise le
-      # PDF intérieur — un dos calculé sur un compte de pages périmé ne se voit nulle part.
+      # Toutes les sorties : la couverture lit le PDF intérieur pour calculer le dos.
       if make -f "$REPO/pipeline/Makefile" livre livre-imprimeur livre-couverture livre-html-web livre-epub > "$journal" 2>&1; then
         grep -iE "error|traceback|warning|non balis" "$journal" | sed 's/^/    /' || true
       else
@@ -142,24 +124,20 @@ if [ -z "$only" ]; then
         sed -n '1,40p' "$journal" | sed 's/^/      /'
         exit 1
       fi
-      # La porte PDF/UA, la même que celle de la revue. « balisage PDF indisponible » dans
-      # le journal veut dire que WeasyPrint a lâché son baliseur et que le Makefile a
-      # rattrapé : le PDF existe, il n'est plus conforme, et rien d'autre ne le dirait.
+      # « non balisé » dans le journal : WeasyPrint a échoué à baliser et le Makefile a
+      # produit un PDF sans balises. Il existe mais n'est plus conforme.
       if grep -q "non balisé" "$journal"; then
         echo "    ✗ le PDF est sorti NON BALISÉ — la conformité PDF/UA est perdue :"
         grep -A 4 "non balisé" "$journal" | sed 's/^/      /'
         exit 1
       fi
-      # ⚠ Le verdict se lit sur l'ABSENCE de FAIL, jamais sur la présence d'un PASS.
-      # veraPDF rend une ligne par fichier, et un livre en a quatre : chercher « PASS »
-      # trouverait le premier et laisserait passer les trois autres. Un contrôle qui ne
-      # peut plus échouer est un contrôle mort.
-      # Le journal passe par un fichier et non par un tube : dans un tube, seul le code du
-      # dernier maillon compte, et un validateur absent rendrait 0.
+      # Verdict lu sur l'absence de FAIL : veraPDF rend une ligne par fichier, et un seul
+      # PASS ne dit rien des autres. Le journal passe par un fichier, pas par un tube, pour
+      # garder le code de sortie de veraPDF.
       if [ -x "$VERAPDF" ]; then
         ua="$REPO/test/out/.$livre.pdfua"
-        # Sauf la couverture d'impression : PDF/X-4, pas PDF/UA (une variante par PDF dans
-        # WeasyPrint). Elle est gardée plus bas par livre-sorties-check.py.
+        # Sauf la couverture d'impression, en PDF/X-4 (WeasyPrint ne pose qu'une variante
+        # par PDF) ; livre-sorties-check.py la contrôle.
         JAVA_HOME="$VERAPDF_JAVA" "$VERAPDF" --flavour ua1 --format text \
           $(ls out/*.pdf | grep -v -- '-couverture-impression\.pdf$') > "$ua" 2>&1
         if grep -q "^FAIL" "$ua" || ! grep -q "^PASS" "$ua"; then
@@ -171,8 +149,7 @@ if [ -z "$only" ]; then
       else
         echo "    (PDF/UA ignoré : veraPDF introuvable en $VERAPDF)"
       fi
-      # Folios, métadonnées, couverture d'impression (PDF/X-4 FOGRA52, aucun RGB, CMJN de
-      # référence exact), PNG au RGB exact, EPUB : test/livre-sorties-check.py.
+      # Folios, métadonnées, couverture d'impression, PNG, EPUB : livre-sorties-check.py.
       if [ -x "$FONTPY" ] || command -v "$FONTPY" >/dev/null 2>&1; then
         for c in chapitres/*/; do
           make -f "$REPO/pipeline/Makefile" livre-chapitre-pdf CHAPITRE="$(basename "$c")" >> "$journal" 2>&1 || exit 1
@@ -195,14 +172,9 @@ if [ -z "$only" ]; then
   done
 fi
 
-# CMJN du PDF imprimeur : pas sur le banc lui-même — `test/livre-normal/buch.yaml` garde
-# `profil-cmjn: ""` en dépôt, et la CI n'a de toute façon pas Ghostscript — mais sur une
-# COPIE temporaire, sous test/out/, où `profil-cmjn` est posé au profil ICC de l'image
-# (voir image/Containerfile). `livre-imprimeur` y tourne, puis cmjn-check.py relit le PDF
-# produit et vérifie ce que pipeline/cmjn.py promet : texte de labeur en noir K seul,
-# images converties, aucun `rg`/`RG` résiduel — voir l'en-tête de ce script pour les trois
-# défauts recherchés. Sauté proprement si Ghostscript ou le profil manquent : c'est le cas
-# de la CI, et c'était déjà le cas du banc avant ce contrôle.
+# CMJN du PDF imprimeur, sur une copie de livre-normal sous test/out/ : le banc garde
+# `profil-cmjn: ""`, et la copie reçoit le profil ICC de l'image (image/Containerfile).
+# cmjn-check.py relit le PDF produit. Sauté si Ghostscript ou le profil manquent (CI).
 if [ -z "$only" ]; then
   echo "=== CMJN (PDF imprimeur, noir K seul) ==="
   ICC_DIR="${SZH_ICC_DIR:-/opt/icc}"
@@ -214,7 +186,6 @@ if [ -z "$only" ]; then
     mkdir -p "$REPO/test/out"
     cp -r "$REPO/test/livre-normal" "$copie"
     rm -rf "$copie/out"
-    # Seule cette copie porte le profil : le banc committé reste à profil-cmjn: "".
     sed -i "s/^\([[:space:]]*profil-cmjn:\).*/\1 \"$ICC_NOM\"/" "$copie/buch.yaml"
     journal="$REPO/test/out/.cmjn.log"
     if ( cd "$copie" && make -f "$REPO/pipeline/Makefile" livre-imprimeur ) > "$journal" 2>&1; then
@@ -240,10 +211,9 @@ if [ -z "$only" ]; then
   fi
 fi
 
-# Modèles de couverture recherche et prospectrum (le banc livre-normal porte classique,
-# livre-falc le FALC) : sur une copie de livre-normal déjà compilé, gardée sous son nom
-# (les sorties s'appellent comme le dossier), où seul le bloc `couverture:` change. Mêmes
-# portes que les livres : PDF/UA-1 de l'écran, livre-sorties-check.py.
+# Modèles de couverture recherche et prospectrum (livre-normal porte classique, livre-falc
+# le FALC). Sur une copie de livre-normal, sous le même nom de dossier (les sorties en
+# prennent le nom), où seul le bloc `couverture:` change. Mêmes contrôles que les livres.
 if [ -z "$only" ]; then
   echo "=== Modèles de couverture ==="
   for modele in recherche prospectrum; do
@@ -253,8 +223,8 @@ if [ -z "$only" ]; then
     cp -a "$REPO/test/livre-normal" "$copie"
     if [ "$modele" = recherche ]; then
       bloc='couverture:\n  modele: recherche'
-      # Illustration en JPEG CMJN, comme celles qu'exportent InDesign et Photoshop : le PDF
-      # écran doit la recevoir en RGB (livre-sorties-check.py).
+      # Illustration en JPEG CMJN, comme en exportent InDesign et Photoshop : le PDF écran
+      # doit la recevoir en RGB (livre-sorties-check.py).
       "$FONTPY" -c "import sys; from PIL import Image; Image.open(sys.argv[1]).convert('CMYK').save(sys.argv[2], quality=90)" \
         "$REPO/test/livre-falc/couverture/illustration.jpg" "$copie/couverture/illustration.jpg"
     else
@@ -295,8 +265,8 @@ if [ -z "$only" ]; then
   done
 fi
 
-# Maquette normal : le banc livre-collectif (jeu de réglages du HfH-Reihe), puis les cotes
-# des deux bancs normal contre les livres de référence (test/livre-cotes-check.py).
+# Maquette normal : le banc livre-collectif (réglages de la HfH-Reihe), puis les cotes des
+# deux bancs normal comparées aux livres de référence (livre-cotes-check.py).
 if [ -z "$only" ]; then
   echo "=== Maquette normal (livre-collectif, cotes) ==="
   ( cd "$REPO/test/livre-collectif" || exit 1
@@ -337,9 +307,7 @@ if [ -z "$only" ]; then
   fi
 fi
 
-# EPUB : contrôle structurel sans dépendance externe (voir l'en-tête d'epub-check.py,
-# §4.5 de docs/ARCHITECTURE-LIVRES.md) — gardé par sa seule existence, ce script étant
-# d'un autre chantier que celui-ci.
+# EPUB : contrôle de structure sans dépendance externe (voir epub-check.py).
 if [ -z "$only" ] && [ -f "$REPO/test/epub-check.py" ]; then
   echo "=== EPUB (structure) ==="
   for livre in livre-normal livre-falc; do
@@ -350,11 +318,9 @@ if [ -z "$only" ] && [ -f "$REPO/test/epub-check.py" ]; then
   done
 fi
 
-# Reproductibilité des polices : aucun PDF ne doit embarquer une police absente de
-# pipeline/fonts/. Sans ce passage, un caractère non couvert par les faces livrées est
-# comblé par fontconfig avec ce qu'il trouve sur la machine, et le PDF cesse d'être le
-# même d'un poste à l'autre — sans que rien ne le dise. Aucun PNG ne le montrerait.
-# En dernier, et sur les deux dossiers de sorties : voir la note de tête.
+# Polices : aucun PDF ne doit embarquer une police absente de pipeline/fonts/. Sinon un
+# caractère non couvert est remplacé par fontconfig avec une police du poste, et le PDF
+# change d'un poste à l'autre. En dernier, sur les deux dossiers de sorties.
 if [ -z "$only" ]; then
   echo "=== Polices ==="
   if [ -x "$FONTPY" ] || command -v "$FONTPY" >/dev/null 2>&1; then
@@ -364,11 +330,8 @@ if [ -z "$only" ]; then
   else
     echo "  (contrôle ignoré : interpréteur fontTools introuvable en $FONTPY)"
   fi
-  # Les deux `--verifier` documentés mais appelés par personne (voir leur en-tête) :
-  # un caractère qui manquerait à nouveau après une réinstanciation des faces, ou une
-  # face de titre qui aurait changé de métrique (effet d'escalier L3), ne serait vu par
-  # rien d'automatique sans eux. Même traitement d'échec que polices-check.py ci-dessus :
-  # journal, préfixe, echec=1, jamais un vert par défaut si l'interprète manque.
+  # Les deux `--verifier` : un glyphe qui manque après une réinstanciation des faces, ou
+  # une face de titre dont les métriques ont changé (escalier des titres).
   if [ -x "$FONTPY" ] || command -v "$FONTPY" >/dev/null 2>&1; then
     journal="out/.glyphes-manquants.log"
     "$FONTPY" "$REPO/pipeline/fonts/glyphes-manquants.py" --verifier > "$journal" 2>&1 || echec=1
@@ -376,7 +339,7 @@ if [ -z "$only" ]; then
   else
     echo "  (glyphes manquants : contrôle ignoré, interpréteur fontTools introuvable en $FONTPY)"
   fi
-  # Sans dépendance (ni fontTools ni WeasyPrint, voir sa note de tête) : python3 seul.
+  # Sans dépendance : python3 suffit.
   if command -v python3 >/dev/null 2>&1; then
     journal="out/.metriques-titre.log"
     python3 metriques-titre.py --verifier > "$journal" 2>&1 || echec=1

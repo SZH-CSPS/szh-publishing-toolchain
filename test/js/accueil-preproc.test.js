@@ -374,9 +374,9 @@ if (CAS) {
     assert.strictEqual(types().pop(), MSG.ACCUEIL_PREPROC_ETAT);
   });
 
-  // La vraie CLI : avec --etapes, chaque étape s'écrit sur stderr dans la forme que lit l'hôte ;
-  // sans, la sortie que lit l'onglet WinForms ne change pas. Un verrou de Word suffit : il est
-  // refusé dès la première étape, sans manuscrit à fabriquer.
+  // La vraie CLI : avec --etapes, chaque étape s'écrit sur stderr sous la forme que lit l'hôte ;
+  // sans, la sortie reste celle que lit l'onglet WinForms. Un fichier verrou de Word (~$…)
+  // suffit : il est refusé dès la première étape, sans manuscrit à fabriquer.
   const { python, sansPython } = require('./gardes');
   test('préprocessing : la CLI dit ses étapes avec --etapes, et seulement avec', { skip: sansPython }, () => {
     const verrou = path.join(RECUS, '~$verrou.docx');
@@ -430,7 +430,7 @@ if (CAS) {
     }
   });
 
-  // Les gestes qui ferment l'Accueil, et le réglage, dans l'extension activée : chacun dans
+  // Les actions qui ferment l'Accueil, et le réglage, dans l'extension activée : chacune dans
   // son propre processus, le faux vscode ne s'activant qu'une fois.
   for (const cas of ['fermeture', 'dossier', 'desactivation']) {
     test('préprocessing : ' + cas + ' de l’Accueil pendant un nettoyage, et aucun enfant ne survit', () => {

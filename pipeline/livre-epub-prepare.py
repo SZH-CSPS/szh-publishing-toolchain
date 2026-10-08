@@ -1,70 +1,45 @@
 #!/usr/bin/env python3
-# livre-epub-prepare.py — prépare le HTML du livre pour la conversion EPUB.
+# Prépare le HTML du livre pour la conversion EPUB.
 #
-# Quatre passes, dans cet ordre, PENDANT que les <section class="szh-chapitre"> sont
-# encore en place — elles bornent chaque chapitre, et c'est ce qui permet de corriger
-# ce que szh-numerotation.lua numérote par invocation pandoc (donc par chapitre, chaque
-# chapitre recommençant à 1) avant que les frontières ne disparaissent :
+#   python3 livre-epub-prepare.py <html-in> <html-out>
 #
-# 1. dédoublonne les identifiants de description longue de tableau
-#    (id="szh-tabelle-desc-N", posé par szh-numerotation.lua sur le <div> visé par
-#    l'aria-describedby du tableau). Deux chapitres portant chacun un tableau à
-#    description longue produiraient sinon le même id="szh-tabelle-desc-1" une fois
-#    fusionnés en un seul document par livre-assembler.py — avant que pandoc ne découpe
-#    ce document en fichiers EPUB. Un doublon d'identifiant est invalide en XHTML, et
-#    l'aria-describedby du second tableau resterait ambigu (le premier id trouvé gagne).
-#    Mesuré en dupliquant temporairement le chapitre à tableau du banc — voir
-#    docs/ARCHITECTURE-LIVRES.md §4.5.
+# Les trois premières passes s'appliquent tant que les <section class="szh-chapitre">
+# bornent encore chaque chapitre : szh-numerotation.lua numérote par appel de pandoc, donc
+# chaque chapitre recommence à 1.
 #
-# 2. bascule en attributs style= le <style> des images décoratives que
-#    szh-numerotation.lua écrit en fin de chapitre (style_decors()). Mesuré : pandoc,
-#    à la conversion epub3, retrouve ce <style> de corps et le remonte dans le <head>
-#    du XHTML de chaque chapitre — mais VIDE, son contenu perdu (reproduit sur un HTML
-#    minimal ne portant que ce <style>). Sans ce détour, l'image décorative disparaît
-#    de l'EPUB : ni <img>, ni fond CSS, sans un mot. Les classes szh-decor-N ne sont
-#    elles non plus pas préfixées par chapitre (même compteur par invocation pandoc) :
-#    la correction doit donc rester dans les bornes de la <section> pour ne pas
-#    apparier la règle d'un chapitre à l'image décorative d'un autre.
+# 1. Identifiants de description longue de tableau (id="szh-tabelle-desc-N") : préfixés
+#    par le slug du chapitre. Sinon, une fois les chapitres réunis par livre-assembler.py,
+#    deux tableaux auraient le même id, invalide en XHTML, et l'aria-describedby du second
+#    serait ambigu.
 #
-# 3. retire le <div class="szh-onglet"> et le <div class="szh-pastille"> que le gabarit
-#    de chapitre pose en tout premier (et troisième) enfant, avant $body$ — donc avant le
-#    <h1> une fois la <section> retirée. epub.css les met déjà en display:none (onglet de
-#    tranche et pastille de numéro n'existent qu'en pagination) : morts pour l'EPUB.
-#    Mesuré (pour l'onglet, le premier des deux) : laissé en place, ce <div> traîne AVANT
-#    le <h1> du chapitre suivant, et pandoc --split-level=1 le range dans le fichier du
-#    chapitre PRÉCÉDENT (tout ce qui précède un <h1> appartient au split d'avant) — un
-#    fichier XHTML quasi-vide s'intercale entre les liminaires et le premier chapitre, et
-#    le <div> du dernier chapitre traîne à la fin de l'avant-dernier. Le <div> de l'onglet
-#    est vide et aria-hidden, rien n'y est perdu ; celui de la pastille porte un chiffre en
-#    texte (le numéro de sommaire) — laissé en place, il traînerait, lui, lisible, dans le
-#    mauvais chapitre. Même retrait pour les deux, même raison. Même défaut pour la ligne
-#    d'auteur·e·s posée au-dessus du titre (maquette normal, `auteurs-chapitre: dessus`) :
-#    elle passe juste après le <h1>, ce qui est aussi l'ordre de lecture d'une liseuse.
+# 2. Images décoratives : le <style> que szh-numerotation.lua écrit en fin de chapitre
+#    (style_decors()) devient des attributs style=. En epub3, pandoc déplace ce <style>
+#    dans le <head> mais le vide, et l'image disparaît. Les classes szh-decor-N n'étant pas
+#    propres au chapitre, la correction se fait section par section.
 #
-# 4. retire les <section class="szh-chapitre"> enveloppes et leurs </section>
-#    correspondants, de sorte que les <h1> soient au niveau racine et que pandoc puisse
-#    les utiliser pour découper (--split-level=1). Le reste du HTML reste inchangé —
-#    images, tables, notes, tout ce qui n'est pas une enveloppe de chapitre.
+# 3. Retrait des <div class="szh-onglet">, "szh-pastille" et "szh-picto-entete" que le
+#    gabarit place avant le <h1> (epub.css les masque déjà). Avec --split-level=1, pandoc
+#    range tout ce qui précède un <h1> dans le fichier précédent : ces <div> créeraient un
+#    fichier quasi vide et, pour la pastille, un numéro lisible dans le mauvais chapitre.
+#    Pour la même raison, une ligne d'auteurs placée au-dessus du titre
+#    (`auteurs-chapitre: dessus`) passe juste après le <h1>.
 #
-# Usage: python3 livre-epub-prepare.py <html-in> <html-out>
+# 4. Retrait des enveloppes <section class="szh-chapitre"> (et "szh-partie") : les <h1>
+#    passent au niveau racine, où pandoc découpe (--split-level=1). Le reste est inchangé.
 
 import sys
 import re
 
-# Une <section class="szh-chapitre">…</section> complète. Non-greedy jusqu'au premier
-# </section> : aucune <section> imbriquée n'apparaît dans un chapitre (pas de
-# --section-divs dans la chaîne pandoc de ce projet — mesuré sur le fragment compilé,
-# les <h2>/<h3> sortent en <hN> nus, jamais enveloppés).
+# Une <section class="szh-chapitre">…</section> complète, jusqu'au premier </section> : un
+# chapitre ne contient pas de <section> (la chaîne n'utilise pas --section-divs).
 RE_CHAPITRE = re.compile(r'<section[^>]*class="szh-chapitre"[^>]*>(?:[\s\S])*?</section>')
 RE_CHAPITRE_ID = re.compile(r'id="ch-([^"]+)"')
 
 
 def _segments(html):
-    """Découpe html en segments (est_chapitre, slug, texte). est_chapitre est vrai pour
-    une <section class="szh-chapitre">…</section> complète (slug tiré de son
-    id="ch-<slug>", ou None si l'attribut manque exceptionnellement) ; faux pour le texte
-    entre deux chapitres (liminaires, pièces hors chapitre). Les textes des segments,
-    remis bout à bout dans l'ordre, redonnent html à l'identique."""
+    """Découpe html en segments (est_chapitre, slug, texte) : une section de chapitre
+    complète (slug tiré de id="ch-<slug>", ou None), ou le texte entre deux chapitres.
+    Les textes mis bout à bout redonnent html."""
     segments = []
     fin = 0
     for m in RE_CHAPITRE.finditer(html):
@@ -79,9 +54,7 @@ def _segments(html):
 
 
 def dedoublonner_desc_tableaux(html):
-    """Préfixe szh-tabelle-desc-N par le slug du chapitre porteur. Voir le point 1 de
-    l'en-tête. Un chapitre sans id="ch-…" (ne devrait pas arriver) traverse inchangé :
-    pas pire que l'état actuel, seulement pas corrigé."""
+    """Point 1 de l'en-tête. Un chapitre sans id="ch-…" reste inchangé."""
     def traiter(est_chapitre, slug, texte):
         if est_chapitre and slug:
             return re.sub(r'szh-tabelle-desc-(\d+)',
@@ -93,17 +66,14 @@ def dedoublonner_desc_tableaux(html):
 
 # Le <style> unique qu'ajoute style_decors() en fin de chapitre.
 RE_STYLE_BLOCK = re.compile(r'<style>\s*([\s\S]*?)\s*</style>')
-# Une paire de règles pour une même classe .szh-decor-N : la boîte, puis le fond du
-# <span> interne. Le format exact vient de string.format() dans style_decors()
-# (szh-numerotation.lua) — une seule ligne par règle, pas d'accolade imbriquée.
+# Deux règles par classe .szh-decor-N : la boîte, puis le fond du <span> interne. Format
+# écrit par style_decors() (szh-numerotation.lua), sans accolade imbriquée.
 RE_REGLE_DECOR = re.compile(r'\.([\w-]+)\{([^{}]*)\}\s*\.\1>span\{([^{}]*)\}')
 
 
 def _inliner_decors_du_chapitre(texte):
-    """Applique le point 2 de l'en-tête à un seul chapitre (un seul appel, sur le texte
-    d'une <section class="szh-chapitre"> déjà isolée). Sans <style> ou sans règle
-    reconnue, texte revient inchangé — pandoc l'aurait de toute façon vidé, ce n'est
-    donc pas une régression que de le laisser tel quel."""
+    """Point 2 de l'en-tête, sur le texte d'une seule section de chapitre. Sans <style>
+    ni règle reconnue, le texte est rendu inchangé."""
     style_m = RE_STYLE_BLOCK.search(texte)
     if not style_m:
         return texte
@@ -124,8 +94,7 @@ def _inliner_decors_du_chapitre(texte):
         consomme = consomme or n > 0
     if not consomme:
         return texte
-    # Les règles inlinées ci-dessus remplacent le <style> : il ne sert plus à rien, et
-    # pandoc le viderait de toute façon à l'écriture de l'EPUB.
+    # Le <style> est remplacé par les attributs posés ci-dessus.
     return RE_STYLE_BLOCK.sub('', texte, count=1)
 
 
@@ -136,38 +105,31 @@ def inliner_decors(html):
     return ''.join(traiter(e, s, t) for e, s, t in _segments(html))
 
 
-# Les deux <div> que GABARIT_CHAPITRE écrit en premiers enfants de la section, avant
-# $body$ (voir templates/szh-livre-chapitre.html). Toujours cette forme exacte pour
-# l'onglet, sans autre attribut ; la pastille porte un chiffre ou rien entre ses balises
-# (--numero-chapitre, vide pour un chapitre hors sommaire) — [^<]* l'attrape dans les deux
-# cas. La couleur/l'onglet/la pastille vivent en variables CSS sur la <section> elle-même,
-# jamais sur ces <div>.
+# Les <div> que le gabarit de chapitre (templates/szh-livre-chapitre.html) écrit avant
+# $body$, dans cette forme exacte. La pastille contient un numéro, ou rien pour un
+# chapitre hors sommaire.
 RE_ONGLET = re.compile(r'<div class="szh-onglet" aria-hidden="true"></div>\s*')
 RE_PASTILLE = re.compile(r'<div class="szh-pastille" aria-hidden="true">[^<]*</div>\s*')
-# Le picto d'en-tête : même défaut, data-picto vide ou non. Vide, --embed-resources le
-# réécrit sans valeur (`data-picto`, pas `data-picto=""`).
+# Le picto d'en-tête. Vide, --embed-resources l'écrit `data-picto` sans valeur.
 RE_PICTO = re.compile(r'<div class="szh-picto-entete" data-picto(?:="[^"]*")? aria-hidden="true"></div>\s*')
 
 
 def retirer_onglets(html):
-    """Voir le point 3 de l'en-tête : morts pour l'EPUB (epub.css : display:none), et leur
-    seule présence avant chaque <h1> de chapitre fait sortir un fichier XHTML fantôme (ou,
-    pour la pastille, un chiffre égaré dans le mauvais chapitre) au découpage pandoc."""
+    """Point 3 de l'en-tête : retire onglets, pastilles et pictos d'en-tête."""
     html = RE_ONGLET.sub('', html)
     html = RE_PASTILLE.sub('', html)
     html = RE_PICTO.sub('', html)
     return html
 
 
-# La ligne d'auteur·e·s d'un chapitre (szh-livre-auteurs.lua, ou le bloc venu de l'import),
-# et le titre qui la suit quand elle est posée au-dessus (`auteurs-chapitre: dessus`).
+# La ligne d'auteurs d'un chapitre (szh-livre-auteurs.lua, ou bloc venu de l'import), suivie
+# du titre quand elle est placée au-dessus (`auteurs-chapitre: dessus`).
 RE_AUTEURS_AVANT_TITRE = re.compile(
     r'(<(p|div)\b[^>]*\bclass="szh-auteurs"[^>]*>[\s\S]*?</\2>\s*)(<h1\b[\s\S]*?</h1>\s*)')
 
 
 def auteurs_apres_titre(html):
-    """Voir le point 3 de l'en-tête : la ligne posée avant le <h1> tomberait dans le
-    fichier du chapitre précédent. Elle passe juste après le titre, dans chaque chapitre."""
+    """Point 3 de l'en-tête : place la ligne d'auteurs juste après le <h1>."""
     def traiter(est_chapitre, slug, texte):
         if not est_chapitre:
             return texte
@@ -177,28 +139,23 @@ def auteurs_apres_titre(html):
 
 
 def prepare_for_epub(html_content):
-    """Dédoublonne les descriptions de tableau, inline les images décoratives, retire les
-    onglets de tranche et pastilles morts, passe la ligne d'auteur·e·s sous le titre, puis
-    retire les <section class="szh-chapitre"> enveloppes (voir les points 1 à 4 de
-    l'en-tête du fichier)."""
+    """Applique les points 1 à 4 de l'en-tête."""
     html_content = dedoublonner_desc_tableaux(html_content)
     html_content = inliner_decors(html_content)
     html_content = retirer_onglets(html_content)
     html_content = auteurs_apres_titre(html_content)
 
-    # Remplace chaque <section>…</section> par son contenu (groupe 1). Les <section>
-    # ont souvent d'autres attributs (id, style, data-*), la regex les attrape en
-    # acceptant n'importe quels attributs après class="szh-chapitre".
+    # Chaque section de chapitre est remplacée par son contenu (attributs quelconques).
     pattern = r'<section[^>]*class="szh-chapitre"[^>]*>((?:[\s\S])*?)</section>'
     result = re.sub(pattern, r'\1', html_content)
-    # La section d'une partie (maquette normal), sœur des chapitres et sans section dans
-    # la sienne : son <h1> devient lui aussi un point de découpe.
+    # Section d'une partie (maquette normal), au même niveau que les chapitres : son <h1>
+    # devient aussi un point de découpe.
     result = re.sub(r'<section[^>]*class="szh-partie"[^>]*>((?:[\s\S])*?)</section>', r'\1', result)
 
     return result
 
 def main():
-    try:  # console Windows en cp1252 : un accent combinant (nom venu du partage) y plante.
+    try:  # console Windows en cp1252 : un accent combinant y ferait planter print().
         sys.stdout.reconfigure(encoding='utf-8')
         sys.stderr.reconfigure(encoding='utf-8')
     except Exception:

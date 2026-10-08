@@ -1,6 +1,5 @@
-﻿# Table des textes de l'interface (fr, de, en) : données pures. Dot-sourcée par
-# szh-common.ps1, avant que T (défini là-bas) ne s'en serve.
-# Compatibilité : Windows PowerShell 5.1 (proscrire ?. ?? ?: && ||).
+﻿# Textes de l'interface du lanceur (fr, de, en), lus par la fonction T de szh-common.ps1,
+# qui dot-source ce fichier. Compatibilité : Windows PowerShell 5.1.
 
 $script:SzhTextes = @{
   fr = @{
@@ -39,10 +38,9 @@ $script:SzhTextes = @{
     'etape.nettoyage'   = 'nettoyage'
     'err.empreinte'     = 'Le fichier téléchargé « {0} » est arrivé abîmé : sa signature ne correspond pas. Rien n’’a été installé – mieux vaut s’’arrêter que d’’installer un fichier douteux. Relancez la mise à jour : le fichier sera retéléchargé. Si cela se répète, c’’est la connexion qui coupe en cours de route.'
     'err.wsl'           = 'L’’environnement qui fabrique les PDF n’’a pas pu être installé. Fermez l’’éditeur et les numéros ouverts, puis relancez la mise à jour : l’’installation ne peut pas remplacer cet environnement pendant qu’’une compilation s’’en sert. Si cela ne suffit pas, redémarrez le poste. Sans lui, aucun PDF ne peut être produit.'
-    # Trois causes, trois gestes : « occupé » ci-dessus se ferme en fermant l'éditeur, mais
-    # un dossier déjà pris ne se ferme pas et la virtualisation ne s'active pas sans le
-    # service informatique. Un seul message pour les trois envoyait le support fermer un
-    # éditeur qui n'avait rien à voir — c'est arrivé.
+    # Un message par cause, car chacune demande une action différente : fermer l'éditeur
+    # (« occupé » ci-dessus), relancer ou redémarrer (dossier pris), appeler le service
+    # informatique (virtualisation).
     'err.wsl.dossier'   = 'L’’environnement qui fabrique les PDF n’’a pas pu être installé : son dossier est déjà pris sur ce poste, sans appartenir à votre compte. Relancez la mise à jour – elle sait écarter ce reste d’’une installation précédente. Si le message revient, redémarrez le poste puis relancez-la : un environnement en marche tient encore ses fichiers.'
     'err.wsl.moteur'    = 'L’’environnement qui fabrique les PDF s’’est installé mais refuse de démarrer. C’’est presque toujours la virtualisation, désactivée dans le firmware du poste ou par une stratégie : le service informatique doit l’’activer (VT-x / AMD-V, et la plateforme d’’hyperviseur Windows). Sans elle, aucun PDF ne peut être produit sur ce poste.'
     'err.espace'        = 'Il ne reste que {0} Go libres sur le disque C:, et il en faut {1} pour installer l’’environnement qui fabrique les PDF. Rien n’’a été installé. Faites de la place, puis relancez la mise à jour.'
@@ -57,12 +55,9 @@ $script:SzhTextes = @{
     'err.rassure'       = 'Pas d’’inquiétude : vos textes et vos revues ne sont pas touchés.'
     'err.retry'         = 'La mise à jour réessaiera toute seule. Si le problème persiste : {0}'
     'err.menu'          = '[E] préparer un e-mail au support   [O] ouvrir le journal   [autre touche] fermer'
-    # Repli de Get-SzhCourriel (szh-common.ps1) quand le rendu Twig est hors d'atteinte
-    # (VSCodium ou l'extension du cockpit absents, script manquant...) : un texte minimal,
-    # jamais un second moteur -- volontairement différent du gabarit habituel. Chaîne à
-    # double guillemets (retours `n) : comme les autres messages multi-lignes de ce fichier
-    # (lien.introuvable...), hors de portée de test/typo-check.py,
-    # qui ne lit que les valeurs entre apostrophes sur une seule ligne.
+    # Texte minimal de Get-SzhCourriel (szh-common.ps1) quand le rendu Twig est impossible
+    # (VSCodium ou cockpit absent). test/typo-check.py ne lit que les valeurs entre
+    # apostrophes sur une ligne : les chaînes entre guillemets doubles lui échappent.
     'courriel.repli.sujet' = 'SZH – problème sur le poste {0}'
     'courriel.repli.corps' = "Bonjour,`n`nLa mise à jour de l'outil Revue a rencontré un problème. Ce message est un repli, envoyé sans le gabarit habituel.`n`nÉtape   : {0}`nDétail  : {1}`nJournal : {2}`n`nMerci de joindre le fichier journal ci-dessus à ce message."
     'dl.format'         = '{0:N1} / {1:N1} Mo'
@@ -98,7 +93,7 @@ $script:SzhTextes = @{
     'arch.err.verrou'           = "Le dossier est encore utilisé par une autre application après {0} s — rien n'a été déplacé. Fermez l'éditeur et l'aperçu PDF, puis réessayez."
     'arch.err.emplacement'      = 'Le numéro « {0} » ne dit pas de quelle revue il fait partie : on ne sait donc pas dans quel dossier le ranger. Rien n’’a été déplacé. Ouvrez ce numéro dans l’’éditeur, choisissez la revue dans « Métadonnées du numéro », enregistrez, puis relancez l’’archivage.'
     'arch.err.suite'            = 'Rien n’’a été déplacé : la revue est restée où elle était. En cas de doute : {0}'
-    # Variante pour un livre (buch.yaml) : seulement là où « revue » serait visible et faux.
+    # Variantes pour un livre, là où le mot « revue » serait visible.
     'arch.titre.livre'          = 'Archivage du livre'
     'arch.titre.des.livre'      = 'Désarchivage du livre'
     'arch.ok.livre'             = 'Livre déplacé : {0}'
@@ -115,16 +110,13 @@ $script:SzhTextes = @{
     'openmd.introuvable'  = "Ce fichier est introuvable.`n`nIl a peut-être été déplacé ou renommé, ou OneDrive ne l'a pas encore synchronisé."
     'openmd.horsrevue'    = "Ce fichier ne fait pas partie d'une revue : l'aperçu et la régénération ne seront pas actifs.`n`nIl s'ouvre quand même, pour le lire ou le corriger."
     'openmd.reseau'       = "Ce fichier est dans un dossier réseau. Il s'ouvre, mais la fabrication du PDF et l'aperçu ne fonctionnent pas depuis un chemin réseau.`n`nPour travailler dessus, copiez la revue dans OneDrive ou sur le disque de ce poste."
-    # Raccourcis du menu Démarrer. Ces deux premiers noms sont ceux des fichiers .lnk :
-    # les changer renomme les entrées du menu (l'ancienne est retirée, jamais doublée).
-    # raccourci.maj.nom ne nomme plus aucun raccourci actuel : elle sert seulement à la
-    # désinstallation, pour reconnaître et retirer l'ancien .lnk d'un poste venu d'une version
-    # antérieure (Get-SzhRaccourcisObsoletes, szh-shell.ps1). Ne pas changer sa valeur.
+    # Raccourcis du menu Démarrer. raccourci.maj.nom ne nomme plus de raccourci posé : il sert
+    # à reconnaître et retirer l'ancien .lnk (Get-SzhRaccourcisObsoletes, szh-shell.ps1). Sa
+    # valeur ne doit pas changer.
     'raccourci.maj.nom'   = 'Mise à jour de l’’outil Revue'
     'raccourci.maj.desc'  = 'Installer la dernière version de l’’outil Pronto. Une fenêtre s’’ouvre et montre ce qui se passe.'
     'raccourci.lanceur.desc' = 'Ouvrir une revue, une Zeitschrift ou un livre SZH'
-    # Demande du dossier partage SharePoint (ancrage) quand rien ne l'a trouve tout seul --
-    # szh-ancrage.ps1, Resolve-SzhAncrage/Request-SzhAncrageUtilisateur.
+    # Demande du dossier partagé SharePoint quand il n'a pas été trouvé (szh-ancrage.ps1).
     'ancrage.demande.titre' = 'Dossier partagé SharePoint introuvable'
     'ancrage.demande.texte' = 'L’’outil n’’a pas trouvé automatiquement le dossier partagé SharePoint des revues et des livres. Indiquez un dossier qui s’’y trouve, ou qui contient le dossier « Daten_Allgemein - General ».'
     'ancrage.demande.echec' = 'Ce dossier ne mène pas au dossier partagé recherché : un dossier nommé « Daten_Allgemein - General », sous le dossier indiqué ou au-dessus de lui. Choisissez un autre dossier.'
@@ -180,8 +172,7 @@ $script:SzhTextes = @{
     'err.rassure'       = 'Keine Sorge: Ihre Texte und Zeitschriften sind nicht betroffen.'
     'err.retry'         = 'Die Aktualisierung versucht es später automatisch erneut. Falls das Problem bleibt: {0}'
     'err.menu'          = '[E] E-Mail an den Support vorbereiten   [O] Protokoll öffnen   [andere Taste] schliessen'
-    # Ersatztext von Get-SzhCourriel (szh-common.ps1), wenn das Twig-Rendering nicht
-    # erreichbar ist -- siehe den gleichen Kommentar im fr-Block weiter oben.
+    # Texte minimal de Get-SzhCourriel : voir le bloc fr.
     'courriel.repli.sujet' = 'SZH – Problem auf dem Arbeitsplatz {0}'
     'courriel.repli.corps' = "Guten Tag,`n`nBei der Aktualisierung des SZH-Redaktionstools ist ein Problem aufgetreten. Diese Meldung ist ein Ersatztext ohne die übliche Vorlage.`n`nSchritt  : {0}`nDetail   : {1}`nProtokoll: {2}`n`nBitte hängen Sie die oben genannte Protokolldatei an diese Nachricht an."
     'dl.format'         = '{0:N1} / {1:N1} MB'
@@ -204,7 +195,7 @@ $script:SzhTextes = @{
     'lanceur.versions.vide'     = 'Keine Version auf diesem Computer verfügbar.'
     'lanceur.versions.note'     = 'Angeboten wird nur die neueste Version jedes Stands.'
     'lanceur.versions.avert'    = "Ein Versionswechsel ersetzt das Layout, die PDF-Erzeugungsumgebung und die Editor-Erweiterungen.`n`nSchliessen Sie zuerst die Redaktionsfenster und starten Sie den Editor am Ende neu.`n`nVersion {0} installieren?"
-    # Archivieren / Dearchivieren (archive-revue.ps1)
+    # Archivage et désarchivage (archive-revue.ps1)
     'arch.titre'                = 'Archivierung der Zeitschrift'
     'arch.titre.des'            = 'Dearchivierung der Zeitschrift'
     'arch.attente'              = 'Warten auf das Schliessen des Editors…'
@@ -216,7 +207,7 @@ $script:SzhTextes = @{
     'arch.err.verrou'           = "Der Ordner wird nach {0} s noch von einer anderen Anwendung verwendet — es wurde nichts verschoben. Schliessen Sie den Editor und die PDF-Vorschau und versuchen Sie es erneut."
     'arch.err.emplacement'      = 'Die Ausgabe «{0}» sagt nicht, zu welcher Zeitschrift sie gehört: darum ist nicht bekannt, in welchen Ordner sie kommt. Es wurde nichts verschoben. Öffnen Sie diese Ausgabe im Editor, wählen Sie die Zeitschrift unter «Metadaten der Ausgabe», speichern Sie und starten Sie die Archivierung erneut.'
     'arch.err.suite'            = 'Es wurde nichts verschoben: die Zeitschrift ist an ihrem Platz geblieben. Bei Zweifeln: {0}'
-    # Variante für ein Buch (buch.yaml) : nur wo «Zeitschrift» sichtbar und falsch wäre.
+    # Variantes pour un livre, là où le mot « Zeitschrift » serait visible.
     'arch.titre.livre'          = 'Archivierung des Buchs'
     'arch.titre.des.livre'      = 'Dearchivierung des Buchs'
     'arch.ok.livre'             = 'Buch verschoben: {0}'
@@ -228,18 +219,16 @@ $script:SzhTextes = @{
     'raccourci.desc.revue'      = 'Diese Zeitschrift im Editor öffnen'
     'raccourci.nom.livre'       = 'Ouvrir le livre'
     'raccourci.desc.livre'      = 'Dieses Buch im Editor öffnen'
-    # Doppelklick auf eine .md-Datei (open-md.ps1): nur die anormalen Fälle.
+    # Double-clic sur un .md (open-md.ps1) : messages des cas anormaux seulement.
     'openmd.vide'         = "Keine Datei zum Öffnen.`n`nDieser Befehl wird per Doppelklick auf eine .md-Datei verwendet."
     'openmd.introuvable'  = "Diese Datei wurde nicht gefunden.`n`nSie wurde vielleicht verschoben oder umbenannt, oder OneDrive hat sie noch nicht synchronisiert."
     'openmd.horsrevue'    = "Diese Datei gehört zu keiner Zeitschrift: Vorschau und Neuerzeugung sind nicht aktiv.`n`nSie wird trotzdem geöffnet, zum Lesen oder Korrigieren."
     'openmd.reseau'       = "Diese Datei liegt in einem Netzwerkordner. Sie wird geöffnet, aber die PDF-Erzeugung und die Vorschau funktionieren von einem Netzwerkpfad aus nicht.`n`nKopieren Sie die Zeitschrift zum Arbeiten nach OneDrive oder auf die Festplatte dieses Computers."
-    # Verknüpfungen im Startmenü. Die ersten beiden Namen sind Dateinamen (.lnk):
-    # werden sie geändert, wird der Eintrag umbenannt — der alte wird entfernt, nie doppelt.
+    # Raccourcis du menu Démarrer : voir le bloc fr.
     'raccourci.maj.nom'   = 'Aktualisierung des Redaktionstools'
     'raccourci.maj.desc'  = 'Die neueste Version des SZH-Redaktionstools installieren. Ein Fenster öffnet sich und zeigt, was geschieht.'
     'raccourci.lanceur.desc' = 'Eine Revue, eine Zeitschrift oder ein Buch des SZH öffnen'
-    # Anfrage nach dem freigegebenen SharePoint-Ordner (Ancrage), wenn nichts automatisch
-    # gefunden wurde -- szh-ancrage.ps1, Resolve-SzhAncrage/Request-SzhAncrageUtilisateur.
+    # Demande du dossier partagé SharePoint (szh-ancrage.ps1).
     'ancrage.demande.titre' = 'Freigegebener SharePoint-Ordner nicht gefunden'
     'ancrage.demande.texte' = 'Das Werkzeug hat den freigegebenen SharePoint-Ordner der Zeitschriften und Bücher nicht automatisch gefunden. Wählen Sie einen Ordner, der darin liegt, oder der den Ordner «Daten_Allgemein - General» enthält.'
     'ancrage.demande.echec' = 'Dieser Ordner führt nicht zum gesuchten freigegebenen Ordner: ein Ordner namens «Daten_Allgemein - General», unterhalb des gewählten Ordners oder darüber. Wählen Sie einen anderen Ordner.'
@@ -295,8 +284,7 @@ $script:SzhTextes = @{
     'err.rassure'       = 'No worries: your texts and journals are not affected.'
     'err.retry'         = 'The update will retry automatically. If the problem persists: {0}'
     'err.menu'          = '[E] prepare a support e-mail   [O] open the log   [any other key] close'
-    # Fallback text for Get-SzhCourriel (szh-common.ps1) when the Twig rendering is out of
-    # reach -- see the same comment in the fr block above.
+    # Texte minimal de Get-SzhCourriel : voir le bloc fr.
     'courriel.repli.sujet' = 'SZH – problem on workstation {0}'
     'courriel.repli.corps' = "Hello,`n`nThe SZH journal tool update ran into a problem. This is a fallback message, sent without the usual template.`n`nStep  : {0}`nDetail: {1}`nLog   : {2}`n`nPlease attach the log file above to this message."
     'dl.format'         = '{0:N1} / {1:N1} MB'
@@ -319,7 +307,7 @@ $script:SzhTextes = @{
     'lanceur.versions.vide'     = 'No version available on this computer.'
     'lanceur.versions.note'     = 'Only the latest version of each state is offered.'
     'lanceur.versions.avert'    = "Switching version replaces the layout, the PDF build environment and the editor extensions.`n`nClose the writing windows first, then restart the editor when it is done.`n`nInstall version {0}?"
-    # Archiving / unarchiving a journal (archive-revue.ps1)
+    # Archivage et désarchivage (archive-revue.ps1)
     'arch.titre'                = 'Archiving the journal'
     'arch.titre.des'            = 'Unarchiving the journal'
     'arch.attente'              = 'Waiting for the editor to close…'
@@ -331,7 +319,7 @@ $script:SzhTextes = @{
     'arch.err.verrou'           = "The folder is still in use by another application after {0} s — nothing was moved. Close the editor and the PDF preview, then try again."
     'arch.err.emplacement'      = 'Issue “{0}” does not say which journal it belongs to, so there is no folder to file it in. Nothing has been moved. Open the issue in the editor, pick the journal under “Issue metadata”, save, then run the archiving again.'
     'arch.err.suite'            = 'Nothing was moved: the journal stayed where it was. If in doubt: {0}'
-    # Variant for a book (buch.yaml): only where “journal” would be visible and wrong.
+    # Variantes pour un livre, là où le mot « journal » serait visible.
     'arch.titre.livre'          = 'Archiving the book'
     'arch.titre.des.livre'      = 'Unarchiving the book'
     'arch.ok.livre'             = 'Book moved: {0}'
@@ -343,18 +331,16 @@ $script:SzhTextes = @{
     'raccourci.desc.revue'      = 'Open this journal in the editor'
     'raccourci.nom.livre'       = 'Ouvrir le livre'
     'raccourci.desc.livre'      = 'Open this book in the editor'
-    # Double-click on a .md file (open-md.ps1): abnormal cases only.
+    # Double-clic sur un .md (open-md.ps1) : messages des cas anormaux seulement.
     'openmd.vide'         = "No file to open.`n`nThis shortcut is meant to be used by double-clicking a .md file."
     'openmd.introuvable'  = "This file cannot be found.`n`nIt may have been moved or renamed, or OneDrive has not synced it yet."
     'openmd.horsrevue'    = "This file is not part of a journal: the preview and automatic rebuild will not be active.`n`nIt opens anyway, so you can read or fix it."
     'openmd.reseau'       = "This file sits on a network folder. It opens, but PDF building and the preview do not work from a network path.`n`nTo work on it, copy the journal to OneDrive or to this computer's disk."
-    # Start menu shortcuts. The first two names are .lnk file names: changing them
-    # renames the menu entry — the old one is removed, never left as a duplicate.
+    # Raccourcis du menu Démarrer : voir le bloc fr.
     'raccourci.maj.nom'   = 'Update the journal tool'
     'raccourci.maj.desc'  = 'Install the latest version of the SZH journal tool. A window opens and shows what is going on.'
     'raccourci.lanceur.desc' = 'Open an SZH journal, Zeitschrift or book'
-    # Asking for the shared SharePoint folder (anchor) when nothing was found automatically --
-    # szh-ancrage.ps1, Resolve-SzhAncrage/Request-SzhAncrageUtilisateur.
+    # Demande du dossier partagé SharePoint (szh-ancrage.ps1).
     'ancrage.demande.titre' = 'Shared SharePoint folder not found'
     'ancrage.demande.texte' = 'The tool could not automatically find the shared SharePoint folder for journals and books. Pick a folder that is inside it, or that contains the "Daten_Allgemein - General" folder.'
     'ancrage.demande.echec' = 'This folder does not lead to the shared folder being searched for: one named "Daten_Allgemein - General", below the folder you picked or above it. Choose another folder.'

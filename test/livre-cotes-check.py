@@ -2,7 +2,7 @@
 
     /opt/weasyprint/bin/python test/livre-cotes-check.py test/livre-normal
 
-Les valeurs sont celles des livres de référence (docs/ARCHITECTURE-LIVRES.md § 5.1). Une
+Les valeurs sont celles des livres de référence (docs/ARCHITECTURE-LIVRES.md). Une
 ligne FAIL par écart, code de sortie 1 s'il y en a ; le verdict se lit sur l'absence de FAIL.
 """
 import os

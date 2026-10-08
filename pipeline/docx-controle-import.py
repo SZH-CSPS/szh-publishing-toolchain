@@ -1,58 +1,44 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# docx-controle-import.py — le FILET DE SÉCURITÉ de l'import d'un Word : après assemblage, il
-# compare ce que la chaîne a LU dans le document à ce qu'elle a ÉCRIT dans l'article, et il
-# rattrape ce qui manque au lieu de le laisser disparaître (décision de Robin, 29.09.2026 :
-# « assure-toi que JAMAIS rien ne puisse disparaître »).
+# Contrôle de complétude de l'import d'un Word : compare ce que la chaîne a lu dans le
+# document à ce qu'elle a écrit dans l'article, et remet ce qui manque plutôt que de le
+# perdre.
 #
 #   docx-controle-import.py --avant-medias <fichier.docx> <slug> <dossier-article> <etat>
 #   docx-controle-import.py --apres-medias <slug> <dossier-article> <etat> [<stats-medias>]
 #
-# Deux passes, appelées par import-docx.sh, parce que les images changent de nom entre les
-# deux (import-medias.py renomme media/image3.png en <slug>-fig-01.png, et PURGE ce qu'aucun
-# texte ne cite) :
+# Deux passes, appelées par import-docx.sh, car import-medias.py renomme les images
+# (media/image3.png -> <slug>-fig-01.png) et supprime celles que le texte ne cite pas :
 #
-# 1. --avant-medias, juste après pandoc, avant la purge :
-#    a. VALEURS. Chaque légende, texte alternatif, crédit et source qu'un bloc figure ou
-#       tableau du gabarit portait (lignes FI, FG, FT de $SZH_META, écrites par
-#       pronto-lire.py) doit se retrouver dans l'article — .md (légendes, attributs, texte) ou
-#       tables/*.html (<caption>, data-*). Une valeur introuvable est REMISE dans le texte,
-#       visible, sous son étiquette (« Légende : … »), juste avant sa figure quand on la
-#       retrouve, en fin d'article sinon — et un avertissement le dit
-#       (bloc-valeur-non-reprise). szh-legendes.lua garde déjà visibles les blocs qu'il n'a
-#       pas su poser ; ce contrôle attrape les cas que personne n'a imaginés.
-#    b. IMAGES. Chaque image du corps du Word (w:drawing / v:imagedata qui porte une image
-#       embarquée) doit être citée par le .md ou par un tables/*.html. Sont exclues d'office :
-#       celles des tableaux consommés (lignes T : photos d'autrices, rangées dans portraits/
-#       par import-medias.py), le logo de licence de tête (ligne G de docx-meta.py), et le
-#       contenu d'un mc:Fallback (doublon de rendu d'une même image). Une image absente dont
-#       le fichier est encore dans media/ est remise en fin d'article — c'est ce qui la sauve
-#       de la purge d'import-medias.py, qui supprime tout fichier que le texte ne cite pas.
-#    c. TEXTE DES TABLEAUX. Chaque tableau de premier niveau du corps du Word doit se retrouver
-#       dans l'article : ses cellules non vides, en texte normalisé, dans le .md ou dans
-#       tables/*.html. Un tableau que le lecteur a consommé (lignes T : métadonnées, autrices
-#       et auteurs) n'y est pas, il est passé dans la fiche : ses cellules se cherchent alors
-#       dans la fiche (.meta.yaml), les instructions du lecteur et l'appariement des photos —
-#       sans les paragraphes « SZH Cle » et « SZH Aide » du gabarit, qui sont des étiquettes
-#       et ne vont nulle part. On ne se fie PAS au seul numéro T : c'est faute d'avoir
-#       recompté les tableaux comme les autres maillons que le lecteur a pu consommer le mauvais
-#       (tableau placé dans un contrôle de contenu Word). Un tableau dont le texte manque n'est
-#       pas remis dans l'article, il est nommé (tableau-texte-perdu).
-#    Les images remises sont notées dans <etat> (JSON), pour la seconde passe.
+# 1. --avant-medias, juste après pandoc :
+#    a. Valeurs. Chaque légende, texte alternatif, crédit et source d'un bloc figure ou
+#       tableau du gabarit (lignes FI, FG, FT de $SZH_META, écrites par pronto-lire.py) doit
+#       se retrouver dans le .md ou dans tables/*.html. Sinon elle est remise dans le texte
+#       sous son étiquette (« Légende : … »), avant sa figure si on la trouve, en fin
+#       d'article sinon, avec l'avertissement bloc-valeur-non-reprise.
+#    b. Images. Chaque image du corps du Word doit être citée par le .md ou un
+#       tables/*.html. Exclues : celles des tableaux consommés (lignes T, photos des
+#       auteurs), le logo de licence de tête (ligne G de docx-meta.py) et le contenu des
+#       mc:Fallback (doublons). Une image absente dont le fichier est dans media/ est
+#       remise en fin d'article, ce qui la protège de la suppression.
+#    c. Texte des tableaux. Les cellules non vides de chaque tableau de premier niveau
+#       doivent se retrouver dans le .md ou tables/*.html. Pour un tableau consommé
+#       (lignes T), on cherche leurs mots dans la fiche, les instructions du lecteur et
+#       l'appariement des photos, sans les étiquettes « SZH Cle » et « SZH Aide ». Les
+#       tableaux sont recomptés comme dans docx-tables.py (un tableau dans un contrôle de
+#       contenu Word compte). Un texte manquant n'est pas remis, mais signalé
+#       (tableau-texte-perdu).
+#    Les images remises sont notées dans <etat> (JSON) pour la seconde passe.
 #
-# 2. --apres-medias, après import-medias.py : les noms sont définitifs.
-#    a. Les images remises à la première passe sont nommées dans un avertissement
-#       (image-absente-import), sous leur nom final (le renommage est relu dans les stats
-#       d'import-medias.py, <stats-medias>).
-#    b. TEXTE ALTERNATIF D'UN GROUPE. Toute image d'un bloc `::: {.szh-grille}` sans attribut
-#       alt= est nommée (figure-alt-a-completer) : dans un groupe, les images qui suivent la
-#       première n'ont pas de légende propre, et sans alt elles sortaient décoratives, muettes
-#       pour un lecteur d'écran, sans que rien ne le dise.
+# 2. --apres-medias, sur les noms définitifs :
+#    a. Les images remises sont signalées (image-absente-import) sous leur nom final, lu
+#       dans les statistiques d'import-medias.py (<stats-medias>).
+#    b. Toute image d'un bloc `::: {.szh-grille}` sans alt= est signalée
+#       (figure-alt-a-completer) : dans un groupe, seule la première a une légende, et une
+#       image sans alt serait décorative, muette pour un lecteur d'écran.
 #
-# Jamais bloquant : l'article est déjà converti, ce contrôle ne peut que rattraper et dire.
-# Code retour 0 même sur une erreur de lecture (dite sur stderr). stdlib uniquement ; pandoc
-# (déjà requis par la chaîne) sert à relire le .md en AST JSON — sans lui, repli sur une
-# recherche dans le texte brut, plus grossière mais jamais muette.
+# Non bloquant : code 0 même sur une erreur de lecture (dite sur stderr). Le .md est relu
+# par pandoc en JSON ; sans pandoc, la recherche se fait dans le texte brut.
 
 import json
 import os
@@ -72,15 +58,15 @@ from ooxml_lecture import W, A, WP, R, V, MC, ASVG
 
 PREFIXE = '[import-avertissement]'
 
-# Étiquettes sous lesquelles une valeur est remise dans le texte : celles du gabarit, que la
-# rédaction reconnaît (manuscrit_gabarit.CHAMPS_BLOC, pronto_modele.CANON_FIGURE).
+# Étiquettes des valeurs remises dans le texte : celles du gabarit
+# (manuscrit_gabarit.CHAMPS_BLOC, pronto_modele.CANON_FIGURE).
 CHAMPS = (('legende', 'Légende'), ('alt', 'Texte alternatif'), ('credit', 'Copyright'),
           ('source', 'Source'), ('note', 'Note'))
 NOMS_DE = {'legende': 'Legende', 'alt': 'Alternativtext', 'credit': 'Copyright',
            'source': 'Quelle', 'note': 'Notiz'}
 
-# Le numéro manuel du Word qui part de la légende (szh-legendes.lua, nettoyer_figure) : une
-# légende « Figure 2 : Vue » se retrouve « Vue » dans l'article, et c'est bien elle.
+# Numéro manuel que szh-legendes.lua (nettoyer_figure) retire de la légende : « Figure 2 :
+# Vue » devient « Vue » dans l'article.
 RE_NUMERO_FIGURE = re.compile(
     r'^(?:figure|fig\.?|abb\.?|abbildung|illustration|grafik|tableau|tabelle|table)\s*\d+'
     r'[a-z]?\s*[:.\-–—]?\s*', re.I)
@@ -97,9 +83,9 @@ def sans_barre(t):
 
 
 def cle(t):
-    """Forme de comparaison : NFC, casse ignorée, espaces spéciales et blancs compactés,
-    tirets et points de suspension unifiés, guillemets retirés — tout ce que pandoc (smart)
-    ou la typographie peuvent changer à une valeur sans en changer le sens."""
+    """Forme de comparaison qui ignore ce que pandoc (smart) ou la typographie changent :
+    NFC, casse, espaces spéciales et blancs regroupés, tirets et points de suspension
+    unifiés, guillemets retirés."""
     t = unicodedata.normalize('NFC', str(t or '')).casefold()
     for a in (' ', ' ', ' ', ' '):
         t = t.replace(a, ' ')
@@ -139,7 +125,7 @@ def lire_instructions(chemin):
 
 
 # ---------------------------------------------------------------------------------
-# Ce que l'article porte : le .md relu par pandoc, et tables/*.html.
+# Ce que contient l'article : le .md relu par pandoc, et tables/*.html.
 
 def _inlines_texte(inlines, sortie):
     for x in inlines or []:
@@ -200,7 +186,7 @@ def _blocs_texte(blocs, sortie):
 
 
 def texte_du_md(chemin_md):
-    """(texte relu par pandoc, texte brut) — le premier vide si pandoc n'a pas pu relire."""
+    """(texte relu par pandoc, texte brut), le premier vide si pandoc échoue."""
     try:
         with open(chemin_md, encoding='utf-8') as f:
             brut = f.read()
@@ -221,9 +207,9 @@ def texte_du_md(chemin_md):
 
 
 class _TexteHtml(HTMLParser):
-    """`avec_images` : le src et l'alt d'un <img> comptent comme du texte. Bon pour retrouver une
-    valeur de bloc (un alt écrit dans le Word), mauvais pour une cellule : le Word n'en porte
-    pas, et mêlés à une cellule « texte / image / texte » ils la rendent introuvable."""
+    """`avec_images` : le src et l'alt d'un <img> comptent comme du texte. Utile pour
+    retrouver une valeur de bloc (un alt), pas pour une cellule : mêlés à son texte, ils la
+    rendraient introuvable."""
 
     def __init__(self, avec_images=False):
         super().__init__(convert_charrefs=True)
@@ -278,16 +264,16 @@ def echapper_md(texte):
 
 
 def _debut_de_bloc(lignes, i):
-    """Remonte de la ligne `i` au début de son bloc markdown (ligne vide au-dessus) — et, si
-    ce bloc est à l'intérieur d'un « ::: {…} » ouvert juste avant, jusqu'à son ouverture."""
+    """Remonte de la ligne `i` au début de son bloc markdown (après la ligne vide qui le
+    précède)."""
     while i > 0 and lignes[i - 1].strip() != '':
         i -= 1
     return i
 
 
 def _fin_du_corps(lignes):
-    """Où poser ce qu'on ne sait pas situer : avant la référence de bibliographie détachée
-    (elle doit rester la dernière section), sinon tout à la fin."""
+    """Où placer ce qu'on ne sait pas situer : avant le bloc de bibliographie, qui reste en
+    dernier, sinon tout à la fin."""
     for i, l in enumerate(lignes):
         if l.startswith('::: {.szh-biblio'):
             return i
@@ -304,8 +290,8 @@ def inserer_paragraphes(lignes, position, paragraphes):
 
 
 def ancre_du_bloc(lignes, bloc, numeros_tables):
-    """L'indice de ligne avant lequel remettre les valeurs d'un bloc : sa figure (FI), la
-    référence de son tableau (FT) — ou None."""
+    """Indice de la ligne avant laquelle remettre les valeurs d'un bloc : sa figure (FI) ou
+    la référence de son tableau (FT). None si introuvable."""
     cibles = []
     if bloc['lettre'] == 'FI':
         for entree in bloc['cible'].split(';'):
@@ -327,8 +313,8 @@ def ancre_du_bloc(lignes, bloc, numeros_tables):
 # Images du Word.
 
 def images_du_word(chemin_docx, t_ordinaux):
-    """[{'noms': [...], 'nom_word': str, 'avant_texte': bool}] — une entrée par image du CORPS,
-    dans l'ordre du document, hors tableaux consommés (lignes T) et hors mc:Fallback."""
+    """[{'noms': [...], 'nom_word': str, 'avant_texte': bool}] : une entrée par image du
+    corps, dans l'ordre, hors tableaux consommés (lignes T) et hors mc:Fallback."""
     with zipfile.ZipFile(chemin_docx) as z:
         racine = ET.fromstring(z.read('word/document.xml'))
         rels = ooxml_lecture.charger_rels_images(z, sans_externes=True)
@@ -336,8 +322,8 @@ def images_du_word(chemin_docx, t_ordinaux):
     if corps is None:
         return []
     images = []
-    # `texte_vu` : un texte du corps a-t-il déjà été rencontré ? Une image vue AVANT est en
-    # tête de document — seule place où le logo de licence (ligne G) est retiré exprès.
+    # `texte_vu` : du texte a-t-il déjà été rencontré ? Une image vue avant est en tête de
+    # document, seule place d'où le logo de licence (ligne G) est retiré.
     etat = {'texte_vu': False}
 
     def noter(element):
@@ -373,7 +359,7 @@ def images_du_word(chemin_docx, t_ordinaux):
                 etat['texte_vu'] = True
             parcourir(enfant, dans_table_consommee)
 
-    # Les tableaux consommés (lignes T) se reconnaissent à leur numéro, celui de docx-tables.py.
+    # Tableaux consommés (lignes T), reconnus à leur rang compté comme dans docx-tables.py.
     consommes = {id(tbl) for ordinal, tbl in tableaux_de_la_racine(racine) if ordinal in t_ordinaux}
 
     def premier_niveau(element):
@@ -420,13 +406,13 @@ def _texte_paragraphe(p):
 
 
 def _cellule_texte(tc, sans_etiquettes):
-    """Le texte d'une cellule, paragraphes séparés par une espace. `sans_etiquettes` écarte les
-    paragraphes de style « SZH Cle » / « SZH Aide » (étiquettes et aide du gabarit)."""
+    """Texte d'une cellule, paragraphes séparés par une espace. `sans_etiquettes` écarte
+    les paragraphes de style « SZH Cle » et « SZH Aide » (étiquettes et aide du gabarit)."""
     pars = []
     for p in tc.iter(W + 'p'):
         if sans_etiquettes:
             style = p.find(W + 'pPr/' + W + 'pStyle')
-            # Même forme normalisée que la reconnaissance du gabarit : « SZH-Cle » vaut « SZHCle ».
+            # Nom normalisé comme pour le gabarit : « SZH-Cle » vaut « SZHCle ».
             if style is not None and RE_STYLE_ETIQUETTE.match(
                     pronto_modele.normaliser_nom_style(style.get(W + 'val'))):
                 continue
@@ -435,24 +421,23 @@ def _cellule_texte(tc, sans_etiquettes):
 
 
 def tableaux_de_la_racine(racine):
-    """[(ordinal, tbl)] — les tableaux de premier niveau du document, numérotés par la fonction
-    de docx-tables.py elle-même (w:sdt, zone de texte et mc:Fallback compris) : les ordinaux des
-    lignes T et FG sont ceux de ce maillon, et les recopier ici les ferait diverger."""
+    """[(rang, tbl)] des tableaux de premier niveau, comptés par la fonction même de
+    docx-tables.py, dont viennent les rangs des lignes T et FG."""
     docx_tables = szh_commun.charger_module_a_tiret('docx-tables.py')
     return [(ordinal, tbl) for ordinal, (tbl, _) in
             enumerate(docx_tables.tableaux_de_premier_niveau(racine), start=1)]
 
 
 def tableaux_du_word(chemin_docx):
-    """[(ordinal, tbl)] — voir tableaux_de_la_racine."""
+    """[(rang, tbl)], voir tableaux_de_la_racine."""
     with zipfile.ZipFile(chemin_docx) as z:
         racine = ET.fromstring(z.read('word/document.xml'))
     return tableaux_de_la_racine(racine)
 
 
 def sans_blancs(t):
-    """Forme de recherche d'une cellule : cle() sans aucune espace. Le HTML de tables/ colle les
-    paragraphes d'une cellule sans blanc entre eux, le Word les sépare."""
+    """cle() sans aucune espace : le HTML de tables/ colle les paragraphes d'une cellule,
+    le Word les sépare."""
     return cle(t).replace(' ', '')
 
 
@@ -472,13 +457,13 @@ def mots(texte):
 
 
 def tableaux_perdus(chemin_docx, t_ordinaux, ignores, reference, mots_fiche):
-    """[(ordinal, [textes introuvables])] — voir 1.c. `reference` : .md et tables/, sans
-    blancs ; `mots_fiche` : les mots de la fiche, des instructions du lecteur et de
-    l'appariement des photos, et d'eux seuls. Un tableau consommé est passé dans la fiche,
-    champ par champ : on n'y retrouve pas ses cellules entières, mais leurs mots. Chaque cellule
-    se juge à part : moins de la moitié de ses mots (ceux d'au moins trois caractères, sinon
-    tous) dans `mots_fiche`, et elle est perdue. Le corps de l'article n'entre pas dans cette
-    liste : un résumé perdu dont le sujet revient dans le texte ne doit pas passer."""
+    """[(rang, [textes introuvables])], voir 1.c de l'en-tête. `reference` : .md et
+    tables/, sans blancs. `mots_fiche` : les mots de la fiche, des instructions du lecteur
+    et de l'appariement des photos.
+    Un tableau consommé est passé dans la fiche champ par champ : on y cherche les mots de
+    chaque cellule. Une cellule est perdue si moins de la moitié de ses mots (de trois
+    lettres ou plus, sinon tous) sont dans `mots_fiche`. Le corps de l'article n'est pas
+    utilisé : un résumé perdu dont le sujet revient dans le texte serait masqué."""
     perdus = []
     for ordinal, tbl in tableaux_du_word(chemin_docx):
         if ordinal in ignores:
@@ -527,7 +512,7 @@ def avant_medias(chemin_docx, slug, dossier, chemin_etat):
         print('[controle-import] %s illisible : contrôle sauté' % chemin_md, file=sys.stderr)
         return 0
 
-    # Numéro de tables/table-NN.html de chaque ordinal : docx-tables.py saute les T et les FG.
+    # Numéro de tables/table-NN.html de chaque rang : docx-tables.py saute les T et les FG.
     sautes = set(t_ordinaux) | {int(b['cible']) for b in blocs
                                 if b['lettre'] == 'FG' and b['cible'].isdigit()}
     numeros_tables, n = {}, 0
@@ -564,8 +549,7 @@ def avant_medias(chemin_docx, slug, dossier, chemin_etat):
                     % (v, NOMS_DE[c], 'neben seiner Abbildung' if ancre is not None
                        else 'am Ende des Artikels'))
 
-    # Texte des tableaux : voir 1.c. Les tableaux de groupes d'images (FG) n'ont pas de texte à
-    # perdre ici : leurs valeurs sont contrôlées plus haut.
+    # Texte des tableaux (1.c). Les groupes d'images (FG) sont contrôlés plus haut.
     try:
         fiche = lire_texte(os.path.join(dossier, slug + '.meta.yaml'))
         fiche += lire_texte(os.getenv('SZH_META')) + lire_texte(os.getenv('SZH_PHOTOS'))
@@ -588,7 +572,7 @@ def avant_medias(chemin_docx, slug, dossier, chemin_etat):
                 'gefunden). Prüfen Sie die Tabelle im Word und übernehmen Sie sie von Hand in '
                 'den Artikel.' % (ordinal, extrait, len(textes)))
 
-    # Images : tout ce que le corps du Word portait doit être cité quelque part.
+    # Images (1.b) : chaque image du corps du Word doit être citée.
     remises_images = []
     try:
         images = images_du_word(chemin_docx, t_ordinaux)
@@ -596,9 +580,9 @@ def avant_medias(chemin_docx, slug, dossier, chemin_etat):
         print('[controle-import] images du Word illisibles : %s' % e, file=sys.stderr)
         images = []
     texte_citations = '\n'.join(lignes) + '\n' + texte_brut_des_tables(dossier)
-    # Les images que szh-meta.lua a retirées EXPRÈS (logo de licence de tête, ligne G) : il
-    # les note, une par ligne, dans $SZH_RETRAITS. Sans ce fichier (appel hors
-    # import-docx.sh), repli grossier : les G premières images vues avant tout texte.
+    # Images retirées volontairement par szh-meta.lua (logo de licence, ligne G), notées
+    # dans $SZH_RETRAITS. Sans ce fichier (appel hors import-docx.sh) : les G premières
+    # images vues avant tout texte.
     retraits = None
     chemin_retraits = os.getenv('SZH_RETRAITS')
     if chemin_retraits and os.path.exists(chemin_retraits):
@@ -611,7 +595,7 @@ def avant_medias(chemin_docx, slug, dossier, chemin_etat):
             continue
         if retraits is not None:
             if any(n in retraits for n in img['noms']):
-                continue                      # retirée exprès, et dite ailleurs
+                continue                      # retirée volontairement
         elif logos_restants > 0 and img['avant_texte']:
             logos_restants -= 1
             continue
@@ -742,7 +726,7 @@ def principal(argv):
             return avant_medias(argv[2], argv[3], argv[4], argv[5])
         if len(argv) in (5, 6) and argv[1] == '--apres-medias':
             return apres_medias(argv[2], argv[3], argv[4], argv[5] if len(argv) == 6 else '')
-    except Exception as e:                     # jamais bloquant : dit, puis rend la main
+    except Exception as e:                     # non bloquant : signalé, code 0
         print('[controle-import] contrôle interrompu : %s' % e, file=sys.stderr)
         return 0
     print('usage : docx-controle-import.py --avant-medias <docx> <slug> <dossier> <etat>\n'

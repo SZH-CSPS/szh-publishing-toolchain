@@ -1,27 +1,11 @@
-// test/js/manuscrit-vale-orthographe.test.js : les deux familles Vale ajoutées pour la
-// rédaction — CSPS.TraitUnion (huit règles, pipeline/vale/styles/CSPS/TraitUnion/*.yml,
-// écrites à la main) et CSPS.Orthographe.Rectifiee-* (neuf catégories, GÉNÉRÉES par
-// outils-dev/lexique/generer-orthographe.py depuis pipeline/vale/lexique/
-// orthographe-rectifiee.csv). Contrat : docs/ARCHITECTURE-nettoyeur-manuscrit.md, §7.
+// Deux familles de règles Vale : CSPS.TraitUnion (huit règles écrites à la main,
+// pipeline/vale/styles/CSPS/TraitUnion/*.yml) et CSPS.Orthographe.Rectifiee-* (neuf
+// catégories générées par outils-dev/lexique/generer-orthographe.py depuis
+// pipeline/vale/lexique/orthographe-rectifiee.csv). Voir
+// docs/ARCHITECTURE-nettoyeur-manuscrit.md.
 //
-// Ce fichier éprouve :
-//   1. un positif et un négatif pour chacune des huit règles TraitUnion ;
-//   2. un positif et un négatif pour chacune des neuf catégories Orthographe.Rectifiee-* ;
-//   3. les quatre exceptions de la famille circonflexe (dû, sûr, mûr, jeûne) et le verbe
-//      « croître » nu (mais pas ses dérivés accroître/décroître) ne lèvent JAMAIS rien —
-//      décidées comme jamais mécanisées (voir le CSV, colonne absente) ;
-//   4. generer-orthographe.py est idempotent (même CSV -> mêmes octets, deux exécutions) ;
-//   5. chaque paire du CSV a une trace dans le YAML généré — un mot du CSV absent du YAML
-//      (sabotage : un fichier généré manuellement tronqué) fait rougir le contrôle ;
-//   6. la chaîne complète (manuscrit-nettoyer.py, DANS la WSL comme en production) : un
-//      manuscrit fondé sur un vrai fichier du corpus porte bien les deux familles dans
-//      `alertes.liste`, `dans_docx: 'revision'` pour chacune (action=fix, suggested non vide).
-//
-//   node --test test/js/manuscrit-vale-orthographe.test.js
-//
-// Détection de vale FAITE ICI (comme test/js/manuscrit-vale.test.js et le contrôle n°13 de
-// test/js/manuscrit-nettoyer.test.js : « jamais dans test/js/gardes.js, hors périmètre de ce
-// chantier »). Sans vale : t.skip('vale absent'), sauf SZH_VALE_OBLIGATOIRE=1.
+// vale est cherché sur le PATH, puis dans la WSL. Absent, les tests sautent, sauf si
+// SZH_VALE_OBLIGATOIRE=1.
 'use strict';
 
 const test = require('node:test');
@@ -44,9 +28,6 @@ const DISTRO = 'SZH-Publishing';
 function python(args, entree) {
   return gardes.python(args, { input: entree, maxBuffer: 64 * 1024 * 1024 });
 }
-
-// ---------------------------------------------------------------------------------
-// Détection de vale — même patron que manuscrit-vale.test.js : PATH d'abord, wsl.exe en repli.
 
 function detecterValeSurPath() {
   try {
@@ -83,9 +64,6 @@ const sansVale = exiger('SZH_VALE_OBLIGATOIRE',
   _valeOk ? false : 'vale absent (ni sur le PATH, ni dans la distro ' + DISTRO
     + ' via wsl.exe)');
 
-// ---------------------------------------------------------------------------------
-// Appel à manuscrit_vale.py --analyser — même patron que manuscrit-vale.test.js.
-
 function analyser(paragraphesCorps, langue) {
   const r = python([MANUSCRIT_VALE, '--analyser'], JSON.stringify({
     paragraphes_corps: paragraphesCorps, paragraphes_biblio: [], langue
@@ -105,12 +83,6 @@ function analyser(paragraphesCorps, langue) {
 function analyserCorps(texte, langue) {
   return analyser([{ source: 0, texte, role: '' }], langue || 'fr');
 }
-
-// ---------------------------------------------------------------------------------
-// Contrôle n°1 — un positif et un négatif pour chacune des huit règles TraitUnion. Les
-// sabotages minimaux (un par règle, documentés au rapport) : retirer une paire précise du
-// bloc `swap:` de son fichier — la règle ne se déclenche alors plus DU TOUT sur ce cas
-// précis, l'assertion positive rougit.
 
 const CAS_TRAIT_UNION = [
   { regle: 'CSPS.TraitUnion.ComposesFiges',
@@ -159,16 +131,8 @@ for (const cas of CAS_TRAIT_UNION) {
     });
 }
 
-// ---------------------------------------------------------------------------------
-// Contrôle n°2 — un positif et un négatif pour chacune des neuf catégories
-// Orthographe.Rectifiee-*. Niveau `warning` partout (décision de la rédaction du 21.09.2026 :
-// la Revue écrit en orthographe rectifiée, une graphie traditionnelle est une faute
-// résiduelle, jamais une politique à trancher — voir le rapport).
-//
-// Sabotage minimal (un par catégorie) : dans orthographe-rectifiee.csv, retirer la ligne
-// correspondante puis régénérer — l'assertion positive rougit (plus aucune règle ne connaît
-// ce mot).
-
+// La Revue écrit en orthographe rectifiée : une graphie traditionnelle est une faute
+// (warning, corrigée en révision Word).
 const CAS_ORTHOGRAPHE = [
   { regle: 'CSPS.Orthographe.Rectifiee-Circonflexe',
     positif: () => analyserCorps('Le coût de cette mesure reste élevé.'),
@@ -220,16 +184,8 @@ for (const cas of CAS_ORTHOGRAPHE) {
     });
 }
 
-// ---------------------------------------------------------------------------------
-// Contrôle n°3 — les exceptions de la famille circonflexe ne lèvent JAMAIS rien : dû, sûr,
-// mûr, jeûne (et leurs formes citées), et le verbe « croître » NU (mais pas ses dérivés
-// accroître/décroître, qui perdent bien l'accent — couverts par le CSV). Ces mots sont
-// simplement ABSENTS du CSV (jamais un motif qui les exclurait explicitement) : ce contrôle
-// prouve l'absence, pas une exclusion active.
-//
-// Sabotage minimal : ajouter la ligne `sûr;sur;circonflexe;...` au CSV et régénérer — la
-// première assertion rougirait (une alerte apparaîtrait sur « sûr »).
-
+// Ces exceptions sont simplement absentes du CSV. accroître et décroître, eux, perdent
+// l'accent.
 test('les exceptions du circonflexe (dû, sûr, mûr, jeûne, croître nu) ne lèvent jamais rien',
   { skip: sansVale }, () => {
     const sortie = analyserCorps(
@@ -239,8 +195,7 @@ test('les exceptions du circonflexe (dû, sûr, mûr, jeûne, croître nu) ne l�
     assert.deepStrictEqual(orthographe, [],
       'aucune règle Orthographe ne doit toucher ces mots : ' + JSON.stringify(orthographe));
 
-    // accroître/décroître, eux, PERDENT bien l'accent (pas des exceptions) — preuve que
-    // l'absence ci-dessus n'est pas due à un défaut plus large de la règle.
+    // Contre-épreuve : la règle fonctionne sur les dérivés.
     const derives = analyserCorps('Ce phénomène va décroître puis accroître à nouveau.');
     const trouves = derives.alertes.filter(
       (a) => a.rule === 'CSPS.Orthographe.Rectifiee-Circonflexe');
@@ -248,17 +203,6 @@ test('les exceptions du circonflexe (dû, sûr, mûr, jeûne, croître nu) ne l�
       'accroître et décroître doivent être signalés (pas des exceptions) : '
       + JSON.stringify(derives.alertes));
   });
-
-// ---------------------------------------------------------------------------------
-// Contrôle n°4 — generer-orthographe.py est idempotent : deux exécutions sur le même CSV,
-// dans un dossier de styles isolé, rendent des octets identiques, fichier par fichier.
-//
-// Sabotage minimal : dans generer-orthographe.py::construire_paires, retirer le `sorted(...)`
-// autour de `paires.items()` — l'ordre d'un dict Python dépend alors de l'ordre d'insertion,
-// donc de l'ordre des lignes du CSV : ce contrôle resterait vert tant que le CSV ne change
-// pas d'ordre entre les deux exécutions (rien à régénérer), mais rougirait dès qu'une ligne
-// est réordonnée sans que le contenu change — un défaut réel que ce contrôle est fait pour
-// attraper, pas la stabilité d'un CSV inchangé.
 
 test('generer-orthographe.py est idempotent (même CSV -> mêmes octets)', { skip: sansPython }, () => {
   const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-orthographe-idem-'));
@@ -284,14 +228,8 @@ test('generer-orthographe.py est idempotent (même CSV -> mêmes octets)', { ski
   }
 });
 
-// ---------------------------------------------------------------------------------
-// Contrôle n°5 — chaque paire du CSV a une trace dans le YAML généré : un mot du CSV absent
-// du YAML doit faire rougir ce contrôle. Prouvé par sabotage RÉEL (pas seulement décrit) :
-// voir le rapport pour le tableau sabotage -> rouge/vert. Le sabotage ici prend la forme d'un
-// dossier de styles ISOLÉ dont on a supprimé une ligne d'un fichier généré à la main, comme
-// le ferait un générateur qui oublierait un mot — jamais une modification des fichiers
-// versionnés du dépôt (interdite par la discipline du chantier).
-
+// Le YAML est généré dans un dossier temporaire ; le cas fautif retire un mot de sa copie en
+// mémoire.
 test('un mot du CSV absent du YAML généré fait rougir le contrôle de complétude',
   { skip: sansPython }, () => {
     const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-orthographe-completude-'));
@@ -309,13 +247,9 @@ test('un mot du CSV absent du YAML généré fait rougir le contrôle de complé
       const contenuComplet = fs.readdirSync(styles)
         .map((nom) => fs.readFileSync(path.join(styles, nom), 'utf8')).join('\n');
 
-      // Le motif écrit dans le YAML n'est jamais le mot brut : `\b` l'encadre et re.escape()
-      // échappe l'espace et le trait d'union (`vingt\ et\ un`, `week\-end`), l'apostrophe
-      // simple est doublée dans une valeur YAML entre guillemets simples (`presqu''île`).
-      // Comparer le mot BRUT du CSV à ce texte échappé demande donc de défaire ces trois
-      // échappements avant toute recherche de sous-chaîne — sinon CHAQUE mot à espace ou
-      // trait d'union semblerait « absent » alors qu'il est bien présent (mesuré en écrivant
-      // ce contrôle : 33 faux « manquants » avant cette normalisation).
+      // Le YAML porte les mots échappés : re.escape() devant l'espace et le trait d'union
+      // (`vingt\ et\ un`, `week\-end`), apostrophe doublée entre guillemets simples
+      // (`presqu''île`). On défait ces échappements avant de chercher le mot brut du CSV.
       function normaliser(contenu) {
         return contenu.replace(/''/g, "'").replace(/\\(.)/g, '$1');
       }
@@ -325,13 +259,10 @@ test('un mot du CSV absent du YAML généré fait rougir le contrôle de complé
         return lignesCsv.filter((mot) => !normalise.includes(mot));
       }
 
-      // Vert : aucun mot du CSV n'est absent du YAML généré normalement.
       assert.deepStrictEqual(completude(contenuComplet), [],
         'chaque paire du CSV doit apparaître dans le YAML généré');
 
-      // Sabotage RÉEL : on retire de la copie en mémoire toutes les occurrences d'un mot
-      // précis du CSV (« coût », catégorie circonflexe), comme le ferait un générateur qui
-      // aurait oublié cette ligne.
+      // Cas fautif : « coût » retiré de la copie, comme par un générateur qui l'oublierait.
       const motSabote = 'coût';
       assert.ok(lignesCsv.includes(motSabote), 'le mot de sabotage doit exister dans le CSV');
       const contenuSabote = contenuComplet.split(motSabote).join('');
@@ -343,19 +274,8 @@ test('un mot du CSV absent du YAML généré fait rougir le contrôle de complé
     }
   });
 
-// ---------------------------------------------------------------------------------
-// Contrôle n°6 — LA CHAÎNE COMPLÈTE, DANS LA WSL comme en production (même patron que le
-// contrôle n°12/13 de test/js/manuscrit-nettoyer.test.js) : les deux nouvelles familles
-// apparaissent dans `alertes.liste`, `dans_docx: 'revision'` pour chacune.
-//
-// Le fichier réel `tmp/corpus-relecture/lot-A/3_VF_Chanier-Delorme_Article CSPS_290626.docx`
-// nommé par le brief a été vérifié (pandoc -t plain, WSL, 21.09.2026) : aucune des 185 paires
-// Orthographe ni des 284 paires TraitUnion n'y apparaît telle quelle (article déjà propre,
-// vocabulaire fermé par construction — voir le rapport). La fixture ci-dessous reprend donc
-// un VRAI paragraphe extrait de ce fichier (le début de son introduction, inchangé) et y
-// AJOUTE un paragraphe supplémentaire portant un déclencheur de chaque famille — jamais une
-// réécriture du fichier réel lui-même (qui n'est de toute façon jamais modifié, lecture
-// seule).
+// Chaîne complète, par la CLI du nettoyeur dans la WSL. Le .docx fabriqué reprend un
+// paragraphe d'un manuscrit réel, suivi d'un paragraphe qui déclenche les deux familles.
 
 const PARAGRAPHE_REEL_3VF = "Depuis l'accord intercantonal (CDIP, 2007) en faveur de mesures "
   + "dites inclusives à l'école, de nombreux élèves, autrefois scolarisés dans la filière "
@@ -402,10 +322,6 @@ function ligneUniqueJson(stdout) {
 test('chaîne complète (DANS la WSL) : TraitUnion et Orthographe apparaissent dans '
   + "alertes.liste avec dans_docx: 'revision'",
   { skip: sansPython || sansPandocWsl }, () => {
-    // Pas d'exigence sur le fichier du corpus (tmp/corpus-relecture/lot-A) : ce contrôle
-    // n'en lit rien, son paragraphe est recopié ci-dessus (PARAGRAPHE_REEL_3VF). tmp/ est
-    // hors git et s'efface sans prévenir ; exiger qu'il existe faisait échouer le test pour
-    // un fichier dont il ne dépend pas.
     const base = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-vale-orthographe-chaine-'));
     try {
       const entree = path.join(base, 'article.docx');
@@ -413,7 +329,7 @@ test('chaîne complète (DANS la WSL) : TraitUnion et Orthographe apparaissent d
         { texte: "Scolariser en classe régulière : reprise d'un extrait du corpus", style: 'Heading1' },
         { texte: 'Introduction', style: 'Heading1' },
         { texte: PARAGRAPHE_REEL_3VF },
-        // Déclencheurs : un par famille, sur des passages DISTINCTS pour ne jamais collisionner.
+        // Un déclencheur par famille, sur des passages distincts.
         { texte: "Le dossier se trouve au dessus de l'armoire, et le coût de la mesure reste élevé." },
         { texte: 'References', style: 'Heading1' },
         { texte: 'Dupont, J. (2020). Un ouvrage important. Editions Test.' },
@@ -423,20 +339,14 @@ test('chaîne complète (DANS la WSL) : TraitUnion et Orthographe apparaissent d
 
       const r = gardes.python([NETTOYEUR, entree, '--produit', 'revue', '--sortie', sortie,
         '--sans-reseau'], { maxBuffer: 64 * 1024 * 1024, timeout: 120000 });
-      // Code de sortie non nul dès qu'une alerte `error` existe (contrat de la CLI, contrôle
-      // n°2 de test/js/manuscrit-nettoyer.test.js) : la fixture ci-dessus déclenche aussi une
-      // alerte structurelle 'error' sans rapport avec ce chantier (résumé absent, gabarit
-      // minimal) — 0 OU 1 est donc un succès du POINT DE VUE DE CE CONTRÔLE, comme
-      // manuscrit-vale.test.js le fait déjà pour --analyser ; un statut différent est un vrai
-      // plantage.
+      // La CLI sort en 1 dès qu'une alerte error existe ; ce .docx minimal en lève
+      // (résumé absent). Seul un autre code est un plantage.
       assert.ok(r.status === 0 || r.status === 1,
         'la CLI doit rendre 0 ou 1 dans la WSL, jamais planter : ' + r.stderr + ' / ' + r.stdout);
       const obj = ligneUniqueJson(r.stdout);
 
-      // La ligne stdout ne porte que le RÉSUMÉ (alertes_total, alertes_error...) : la liste
-      // complète, avec `dans_docx` sur chaque alerte, est dans le rapport JSON écrit sur
-      // disque (obj.sortie_rapport, un chemin WSL — reconverti en chemin Windows pour le lire
-      // depuis ce processus Node).
+      // stdout ne porte que le résumé. La liste des alertes est dans le rapport JSON, dont
+      // le chemin WSL se convertit en chemin Windows pour Node.
       const rapport = JSON.parse(fs.readFileSync(versCheminWindows(obj.sortie_rapport), 'utf8'));
       const liste = rapport.alertes.liste;
       const traitUnion = liste.filter((a) => a.rule === 'CSPS.TraitUnion.ComposesFiges');

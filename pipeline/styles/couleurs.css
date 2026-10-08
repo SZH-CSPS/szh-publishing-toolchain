@@ -18,12 +18,12 @@
  *     500 → 0,66    600 → 0,59    700 → 0,52    800 → 0,444   900 → 0,38    950 → 0,31
  * « rouge-200 » et « poireau-200 » sont donc aussi clairs l'un que l'autre : changer la
  * couleur annuelle ne change pas la densité de la maquette.
- * Le 800 vaut 0,444 et non 0,45 : ce n'est pas une coquille. À 0,45 la garantie du cran
- * tombait à 89,51 et ne franchissait 90 que par la tolérance, alors que ce cran est le
- * fond de tableau le plus utilisé (alias -fonce) et porte du texte de 13,6 px.
+ * Le 800 vaut 0,444 et non 0,45 : à 0,45, le pire des six |Lc| serait 89,51, sous 90 hors
+ * tolérance, alors que ce cran (alias -fonce) est le fond de tableau qui porte du texte
+ * de 13,6 px.
  *
- * Ce que garantit chaque cran — le |Lc| est le pire des six teintes, mesuré, et
- * test/apca-check.py le revérifie teinte par teinte :
+ * Ce que garantit chaque cran (le |Lc| est le pire des six teintes ; test/apca-check.py le
+ * revérifie teinte par teinte) :
  *   50 / 100         texte noir dès 14 px      |Lc| ≥ 91    (100 · 91)
  *   200              texte noir dès 18 px      |Lc| ≥ 80    (< 90 : ni corps ni tableau)
  *   300              texte noir, gros titre    |Lc| ≥ 68
@@ -74,8 +74,8 @@
   --c-rouge-marque:        var(--c-rouge-700);   /* alias du cran de charte, pas un hex de plus */
 
   /* ── Capucine ───────────────────────────────────────────────────────────────
-     Charte #EB5E51, clarté 0,661 : à un millième du cran 500, que le calcul retrouvait
-     déjà au 1/255 près. Le remplacement ne coûte rien. */
+     Charte #EB5E51, clarté 0,661 : à un millième du cran 500, presque identique à la
+     valeur calculée. */
   --c-capucine-50:         #FFF2F0;   /* L 0,97 — texte noir  : Lc +100 — dès 14 px */
   --c-capucine-100:        #FFE0DB;   /* L 0,93 — texte noir  : Lc  +92 — dès 14 px */
   --c-capucine-200:        #FFC4BB;   /* L 0,87 — texte noir  : Lc  +80 — dès 18 px seulement */
@@ -111,7 +111,7 @@
   /* ── Poireau ────────────────────────────────────────────────────────────────
      Charte #51A66D, clarté 0,657 : prend le cran 500 pour trois millièmes. C'est la teinte
      qui fixe les garanties des crans sombres calculés, ses Lc y étant les plus faibles des
-     six — et c'est elle qui a commandé le déplacement du cran 800 à 0,444. */
+     six ; c'est pour elle que le cran 800 est à 0,444. */
   --c-poireau-50:          #ECF9EF;   /* L 0,97 — texte noir  : Lc +100 — dès 14 px */
   --c-poireau-100:         #D7EFDC;   /* L 0,93 — texte noir  : Lc  +93 — dès 14 px */
   --c-poireau-200:         #B9E0C2;   /* L 0,87 — texte noir  : Lc  +82 — dès 18 px seulement */
@@ -168,12 +168,12 @@
        -fonce  = 800        (fond à texte blanc, |Lc| ≥ −90).
      100 et 800 plutôt que 200 et 700, parce que ces deux alias sont les fonds de tableau
      et que le texte d'un tableau est à 13,6 px : le seuil applicable est 90, or les crans
-     200 et 700 plafonnent à 80. Conséquence pour le rouge seul : sa charte quitte le rôle
-     de fond « négatif », qui revient au cran 800 (#9F001F) ; elle reste partout ailleurs.
-     ⚠ Pour changer l'intensité d'un fond de tableau, pointez l'alias vers un autre cran
-     (par exemple -50 au lieu de -100) : accent-css.py suit ce renvoi. Ne recopiez jamais
-     un hex ici, il finirait désynchronisé, et ne pointez -clair ou -fonce sur aucun des
-     crans 200 à 700 : à 13,6 px, aucun ne tient le seuil de 90. */
+     200 et 700 plafonnent à 80. Pour le rouge, le fond « négatif » est donc le cran 800
+     (#9F001F) et non la couleur de charte.
+     Pour changer l'intensité d'un fond de tableau, pointez l'alias vers un autre cran (par
+     exemple -50 au lieu de -100) : accent-css.py suit ce renvoi. N'y recopiez pas de hex,
+     et ne pointez -clair ou -fonce sur aucun des crans 200 à 700, qui ne tiennent pas 90
+     à 13,6 px. */
   --c-rouge-normal:       var(--c-rouge-marque);
   --c-rouge-clair:        var(--c-rouge-100);
   --c-rouge-fonce:        var(--c-rouge-800);

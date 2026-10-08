@@ -1,25 +1,20 @@
-/* Profil imprimeur : fond perdu et traits de coupe. Empilée en dernier, après la charte
-   (normal.css ou falc.css) et avant .szh-accent.css — voir templates/szh-livre.html pour
-   l'ordre complet des feuilles.
+/* Profil imprimeur : fond perdu et traits de coupe. Empilée après la charte (normal.css ou
+   falc.css) et avant partage-filtres.css et l'accent (voir CSS_LIVRE_IMPRIMEUR dans
+   profils/livre.mk). Voir docs/ARCHITECTURE-LIVRES.md.
 
-   Ce que ce fichier ajoute, et rien de plus (voir docs/ARCHITECTURE-LIVRES.md §4.3) :
-     1. `bleed` et `marks: crop cross` sur la page ;
-     2. ce qui doit déborder dans ce fond perdu — ici, l'onglet de tranche FALC ;
-     3. la neutralisation des liens hypertexte, qui n'ont aucun sens sur du papier.
+   Ce fichier ajoute :
+     1. `bleed` et `marks: crop cross` sur la page, que WeasyPrint gère seul (MediaBox
+        agrandi du fond perdu, TrimBox juste, traits de coupe dessinés) ;
+     2. l'onglet de tranche FALC prolongé dans le fond perdu ;
+     3. des liens sans couleur ni soulignement.
 
-   Ce que ce fichier n'ajoute pas : le CMJN. Mesuré, pas supposé : WeasyPrint 69 honore
-   `bleed` et `marks: crop cross` nativement (un essai sur ce poste sort un MediaBox agrandi
-   du fond perdu, un TrimBox juste, et les traits de coupe dessinés) — les traits de coupe ne
-   demandent donc aucun outil supplémentaire, ni Ghostscript, ni rootfs à refaire. Le CMJN, en
-   revanche, est un chantier à part entière, non résolu (texte noir vs plaque noire), documenté
-   au §4.3 : ce PDF imprimeur sort en RVB, ce qui reste préférable à un CMJN faux.
+   WeasyPrint produit ce PDF en RVB. La conversion en CMJN se fait ensuite, si buch.yaml
+   nomme un profil (impression.profil-cmjn), par pipeline/cmjn.py et Ghostscript (cible
+   livre-imprimeur de profils/livre.mk).
 
-   ⚠ `--fond-perdu` ci-dessous doit rester la même valeur que celle donnée à `bleed` : ce
-   n'est pas un jeton relié à `buch.yaml` (la clé `impression.fond-perdu-mm` du livre n'est
-   pas lue ici — il n'existe pas, pour cette feuille statique, d'équivalent d'accent-css.py
-   qui l'y ferait passer). Un livre demandant un autre fond perdu que 3 mm devra soit changer
-   les deux valeurs ci-dessous à la main, soit qu'on écrive ce petit générateur — ouvert,
-   non traité par cette tâche. 3 mm est la valeur par défaut déjà documentée dans buch.yaml. */
+   `--fond-perdu` est la valeur donnée à `bleed`. Elle n'est pas reliée à
+   `impression.fond-perdu-mm` de buch.yaml : pour un autre fond perdu que 3 mm (la valeur
+   par défaut de buch.yaml), il faut la changer ici. */
 :root { --fond-perdu: 3mm; }
 
 @page {
@@ -32,24 +27,19 @@
    la pastille comme l'onglet tombent déjà juste. Il ne reste qu'à prolonger l'onglet du
    fond perdu côté extérieur. Une seule règle pour les deux côtés : dans @left-top (ltr),
    seule la marge gauche compte ; dans @right-top (direction: rtl, falc.css), seule la
-   droite — l'autre est recalculée, la boîte étant surcontrainte.
-   ⚠ Mesurer contre le TrimBox en coordonnées PDF brutes : pymupdf rend les tracés depuis
-   le coin du MediaBox, soit 3 mm de décalage qui ont déjà fait « corriger » ce qui était
-   bon. */
+   droite ; l'autre est recalculée, la boîte étant surcontrainte.
+   Pour vérifier, mesurer contre le TrimBox en coordonnées PDF brutes : pymupdf compte
+   depuis le coin du MediaBox, soit 3 mm de décalage. */
 .szh-onglet {
   width: calc(var(--onglet-largeur, 0mm) + var(--fond-perdu));
   margin-left: calc(-1 * var(--fond-perdu));
   margin-right: calc(-1 * var(--fond-perdu));
 }
 
-/* ═══ Liens hypertexte : décision ═════════════════════════════════════════════
-   Un lien vivant n'a aucun sens sur du papier : personne ne clique une page imprimée.
-   Décision : on ne retire pas les liens eux-mêmes (ancres internes du sommaire et des
-   appels de citation, ORCID, DOI…) — ils ne coûtent rien et permettent quand même de
-   suivre un renvoi si ce PDF imprimeur est malgré tout ouvert à l'écran. On retire
-   seulement l'affordance visuelle héritée du web — la couleur et le soulignement qui
-   annoncent « ceci est cliquable » — pour qu'un renvoi interne ou une URL s'imprime
-   comme le reste du texte de labeur, ainsi qu'il se lit dans un livre relié. */
+/* ═══ Liens hypertexte ═════════════════════════════════════════════════════════
+   Les liens restent (ancres du sommaire et des citations, ORCID, DOI) et servent si ce PDF
+   est ouvert à l'écran. Seuls la couleur et le soulignement sont retirés : sur papier, un
+   renvoi ou une URL s'imprime comme le reste du texte. */
 a, a:link, a:visited { color: inherit; text-decoration: none; }
 
 /* Le repère du sommaire déborde comme la marque de chapitre : même largeur visible, plus le

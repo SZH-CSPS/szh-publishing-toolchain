@@ -1,21 +1,21 @@
-# Largeur des colonnes de tableau : les feuilles réelles (socle, print, partage-filtres)
-# rendues par WeasyPrint, jugées sur les boîtes mises en page.
+# Vérifie la largeur des colonnes de tableau : rend deux tableaux avec les feuilles du
+# dépôt (socle, print, partage-filtres) et juge les boîtes mises en page par WeasyPrint.
 #
 #   /opt/weasyprint/bin/python3 test/tableaux-largeurs-check.py
-#   (depuis WSL, distro SZH-Publishing ; en CI : "$RUNNER_TEMP/weasyprint/bin/python")
+#   (dans la WSL SZH-Publishing ; en CI : "$RUNNER_TEMP/weasyprint/bin/python")
 #
-# Ce qui est garanti (print.css, règles des cellules) :
+# Ce qui est vérifié (règles des cellules dans print.css) :
 #   1. une étiquette courte ne se coupe pas : « Punkte » et « Hilfe » restent entiers,
 #      dans un tableau importé comme dans un tableau de l'éditeur (.szh-tableau) ;
 #   2. un tableau de 9 colonnes allemandes courtes tient dans la page : la césure des
 #      mots composés doit rester permise.
-# Le tableau d'étiquettes est celui de massie 2025-02 (Hilfenhierarchie), réduit.
+# Le tableau d'étiquettes reprend, réduit, celui d'un article de 2025 (Hilfenhierarchie).
 import os
 import sys
 
 from weasyprint import CSS, HTML
 
-# SZH_STYLES : une autre copie des feuilles, pour éprouver le contrôle sur l'ancien réglage.
+# SZH_STYLES : une autre copie des feuilles, pour tester le contrôle sur un autre réglage.
 STYLES = os.environ.get('SZH_STYLES') or os.path.join(
     os.path.dirname(os.path.abspath(__file__)), '..', 'pipeline', 'styles')
 FEUILLES = ['socle.css', 'print.css', 'partage-filtres.css']

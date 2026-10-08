@@ -1,14 +1,13 @@
-// Les deux gestes qui touchent au disque et qu'un verrou Windows faisait dérailler.
+// Archiver un numéro et supprimer un article, deux actions sur le disque qu'un verrou
+// Windows peut gêner.
 //
 //   node --test test/js/archivage-suppression.test.js
 //
-// Mesuré le 12.09.2026 sur le poste de Robin, sur deux numéros réels :
-//   - 2027-03 : l'archivage s'est annulé parce que `out/` refusait de disparaître, alors
-//     que windows/archive-revue.ps1 le supprime lui-même après la fermeture de la fenêtre ;
-//   - 2027-01 : le déplacement n'a pas abouti, et le numéro est resté marqué archivé parmi
-//     les numéros en cours, sans qu'aucun geste du cockpit ne sache plus le ranger.
-// Et un troisième, plus ancien : supprimer un article laissait un trou dans la
-// numérotation des dossiers (01, 03, 04), que « Changer l'ordre » seul refermait.
+// Cas vérifiés :
+//   - l'archivage continue quand `out/` résiste : windows/archive-revue.ps1 le supprime
+//     lui-même après la fermeture de la fenêtre ;
+//   - un numéro marqué archivé mais resté parmi les numéros en cours peut être rangé ;
+//   - supprimer un article referme la numérotation des dossiers (pas de trou 01, 03, 04).
 'use strict';
 
 const test = require('node:test');
@@ -18,10 +17,9 @@ const path = require('path');
 
 const COCKPIT = path.resolve(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit');
 
-// ⚠ AVANT toute activation : lib/cycle-vie.js prend lancerArchivage par déstructuration au
-// chargement du module, un monkeypatch posé après coup ne changerait donc rien à ce qu'il a
-// déjà capturé. Le vrai toolkit est installé sur le poste de développement : sans cette
-// neutralisation, archiver le numéro d'essai lancerait pour de bon wscript.exe dessus.
+// Avant toute activation : lib/cycle-vie.js capture lancerArchivage par déstructuration au
+// chargement, un remplacement posé après coup serait sans effet. Sans cette neutralisation,
+// archiver le numéro d'essai lancerait wscript.exe avec le toolkit installé du poste.
 const archivage = require(path.join(COCKPIT, 'lib', 'archivage.js'));
 const lancements = [];
 archivage.lancerArchivage = (action) => { lancements.push(action); return null; };
@@ -59,12 +57,12 @@ test('suppression : les dossiers restants sont renumérotés, fichiers compris',
   HOTE.repondreModale(T('modale.supprimer.bouton'));
   await HOTE.executer('szh.supprimerArticle', { slug: '02-sans-fiche' });
 
-  // Le rang compte à partir de ZÉRO (prefixeOrdre(), lib/articles.js) : le premier article
-  // restant reprend « 00- », pas « 01- ».
+  // Le rang compte à partir de zéro (prefixeOrdre(), lib/articles.js) : le premier article
+  // restant reprend « 00- ».
   assert.deepStrictEqual(dossiers(), ['00-essai', '01-troisieme', '02-quatrieme'],
     'le trou laissé par l’article supprimé n’a pas été refermé');
-  // Le fichier suit son dossier : « 03-troisieme.md » sous « 01-troisieme » n'est lu par
-  // personne — ni par le Makefile, ni par l'arbre du cockpit.
+  // Le fichier suit son dossier : ni le Makefile ni l'arbre du cockpit ne liraient
+  // « 03-troisieme.md » sous « 01-troisieme ».
   assert.ok(fs.existsSync(path.join(ARTICLES, '01-troisieme', '01-troisieme.md')),
     'le .md est resté sous son ancien nom');
   assert.ok(!fs.existsSync(path.join(ARTICLES, '01-troisieme', '03-troisieme.md')),
@@ -91,9 +89,8 @@ test('suppression : le dernier rang ne renomme rien, et le dit simplement', asyn
 test('archivage : un out/ qui refuse de partir n’annule plus le geste', async () => {
   fs.mkdirSync(path.join(REVUE, 'out'), { recursive: true });
   fs.writeFileSync(path.join(REVUE, 'out', 'a.pdf'), 'PDF');
-  // Le verrou Windows, tel que le rédacteur l'a rencontré : EPERM sur le DOSSIER out/.
-  // Simulé au niveau du rappel plutôt qu'en faisant vraiment échouer fs, pour ne pas
-  // attendre les dix secondes de reprises de lib/supprimer.js.
+  // Le verrou Windows : EPERM sur le dossier out/. Simulé au niveau du rappel plutôt que
+  // dans fs, pour ne pas attendre les dix secondes de reprises de lib/supprimer.js.
   // Requis ici et non en tête : lib/cycle-vie.js demande « vscode », que hote-factice.js
   // n'intercepte qu'une fois chargé.
   require(path.join(COCKPIT, 'lib', 'cycle-vie.js'))
@@ -111,8 +108,8 @@ test('archivage : un out/ qui refuse de partir n’annule plus le geste', async 
     'le script de déplacement n’a pas été lancé');
   assert.deepStrictEqual(HOTE.erreurs.slice(avantErreurs), [],
     'un out/ qui résiste ne doit pas produire de message bloquant');
-  // Et le rédacteur est prévenu, sans qu'on lui demande un geste inutile : le script
-  // supprimera out/ lui-même, une fois la fenêtre fermée.
+  // Le rédacteur est prévenu, sans action demandée : le script supprimera out/ lui-même,
+  // une fois la fenêtre fermée.
   const dits = HOTE.avertissements.join(' | ');
   assert.match(dits, /documents produits/,
     'rien n’a été dit sur les documents produits restés en place : ' + dits);
@@ -121,8 +118,8 @@ test('archivage : un out/ qui refuse de partir n’annule plus le geste', async 
 // ---- Rattraper un numéro marqué archivé mais resté sur place ----------------------
 
 test('archivage : un numéro marqué archivé mais non déplacé peut être rangé', async () => {
-  // L'état dans lequel 2027-01 s'est retrouvé : les deux drapeaux sont écrits AVANT le
-  // déplacement, celui-ci a échoué, et le test précédent laisse exactement cet état.
+  // Les deux drapeaux sont écrits avant le déplacement ; celui-ci a échoué. Le test
+  // précédent laisse exactement cet état.
   const avantLancements = lancements.length;
   let questionPosee = '';
   const original = HOTE.stub.window.showInformationMessage;

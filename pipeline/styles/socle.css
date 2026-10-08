@@ -1,28 +1,22 @@
-/* Socle de la maquette SZH/CSPS : les polices et les jetons, et rien d'autre.
-   Lu par toutes les sorties — le PDF, et la maquette web à venir — et empilé avant elles
-   par le Makefile (--css=socle.css --css=print.css --css=out/.szh-accent.css, dans cet
-   ordre). Une variable se déclare ici, une fois ; les feuilles de sortie ne font que la
-   consommer.
+/* Socle de la maquette SZH/CSPS : les polices et les jetons. Empilé par le Makefile avant
+   les feuilles de sortie (--css=socle.css --css=print.css --css=out/.szh-accent.css, dans
+   cet ordre). Une variable se déclare ici, une fois ; les feuilles de sortie la lisent.
 
-   Ce qui a sa place ici : une famille, une taille, une interligne, une encre, un filet —
-   tout ce qui se nomme et se réutilise. Ce qui n'y a pas sa place : une règle qui met en
-   page. Une boîte, une marge, un @page, une grille appartiennent à la feuille de leur
-   média, parce que le papier et l'écran n'en veulent pas la même chose.
+   Ici : ce qui se nomme et se réutilise (famille, taille, interligne, encre, filet). Les
+   règles de mise en page (boîte, marge, @page, grille) vont dans la feuille de leur média.
 
-   ⚠ Deux pièges connus :
-   * Le socle vient toujours du toolkit, même quand un dossier de revue porte son propre
-     styles/print.css (le Makefile préfère alors celui-là). Une feuille locale hérite donc
-     de ces jetons sans les redéclarer — c'est voulu, et c'est le seul moyen qu'elle ne
-     dérive pas.
-   * L'accent annuel doit rester après : out/.szh-accent.css surcharge les replis gris du
-     §2 ci-dessous. Empilé avant, il n'aurait aucun effet et le PDF sortirait en gris.
+   Pièges :
+   * Le socle vient toujours du toolkit, même quand un dossier de revue a son propre
+     styles/print.css : la feuille locale hérite des jetons sans les redéclarer.
+   * L'accent annuel vient après : out/.szh-accent.css surcharge les replis gris de la
+     section 2. Empilé avant, il serait sans effet et le PDF sortirait en gris.
 
-   Les couleurs annuelles elles-mêmes vivent dans couleurs.css, échelle APCA à clarté fixe,
-   et sont vérifiées par test/apca-check.py. */
+   Les couleurs annuelles sont dans couleurs.css (échelle APCA à clarté fixe), vérifiées
+   par test/apca-check.py. */
 
 /* ═══ 1. Polices empaquetées (OFL, voir ../fonts/README.md) ═══════════════════
-   Open Sans est instanciée à largeur 87,5 %, une face par poids : WeasyPrint 69 refuse
-   les intervalles de poids en @font-face et son rendu des axes variables est partiel. */
+   Open Sans est instanciée à largeur 87,5 %, une face par poids : WeasyPrint refuse les
+   intervalles de poids en @font-face et rend mal les axes variables. */
 @font-face { font-family: 'Open Sans'; font-weight: 400; font-style: normal;
   src: url("../fonts/OpenSans-SemiCondensed-Regular.ttf") format('truetype'); }
 @font-face { font-family: 'Open Sans'; font-weight: 600; font-style: normal;
@@ -31,10 +25,9 @@
   src: url("../fonts/OpenSans-SemiCondensed-Bold.ttf") format('truetype'); }
 @font-face { font-family: 'Open Sans'; font-weight: 400; font-style: italic;
   src: url("../fonts/OpenSans-SemiCondensed-Italic.ttf") format('truetype'); }
-/* Les deux italiques grasses (29.09.2026). Sans elles, `***gras italique***` et un `**gras**`
-   dans une citation (italique) tombaient sur l'italique 400 : WeasyPrint ne simule pas la
-   graisse, le gras disparaissait sans un mot — mesuré (usWeightClass 400 dans le PDF). 700
-   pour strong, 600 pour un mot en italique dans un titre (.szh-title est en 600). */
+/* Les deux italiques grasses : WeasyPrint ne simule pas la graisse, et sans elles un gras
+   dans une citation en italique sortirait en italique 400. 700 pour strong, 600 pour un mot
+   en italique dans un titre (.szh-title est en 600). */
 @font-face { font-family: 'Open Sans'; font-weight: 600; font-style: italic;
   src: url("../fonts/OpenSans-SemiCondensed-SemiBoldItalic.ttf") format('truetype'); }
 @font-face { font-family: 'Open Sans'; font-weight: 700; font-style: italic;
@@ -44,14 +37,13 @@
 @font-face { font-family: 'IBM Plex Mono'; font-weight: 500; font-style: normal;
   src: url("../fonts/IBMPlexMono-Medium.ttf") format('truetype'); }
 
-/* Petites capitales : `[Piaget]{.smallcaps}`. Seule règle du socle qui ne soit ni une face
-   ni un jeton, et elle est ici parce qu'elle dépend des faces : Open Sans n'a pas de
-   petites capitales en amont, WeasyPrint ne les simule pas (il ne sait que demander 'smcp'
-   à la police), et ce sont nos faces qui les portent — ../fonts/petites-capitales.py. Toutes
-   les sorties empilent le socle ; la règle vaut donc pour le PDF, l'aperçu et le livre.
-   `span.smallcaps` et non `.smallcaps` : le `<style>` que pandoc écrit dans l'en-tête porte
-   `span.smallcaps{font-variant: small-caps;}`, dont le raccourci remet les ligatures à
-   `normal` ; à spécificité égale, la feuille liée, écrite après, l'emporte.
+/* Petites capitales : `[Piaget]{.smallcaps}`. Règle placée ici parce qu'elle dépend des
+   faces : WeasyPrint ne simule pas les petites capitales, il demande 'smcp' à la police,
+   et ce sont nos faces qui les portent (../fonts/petites-capitales.py). Elle vaut pour le
+   PDF, l'aperçu et le livre.
+   `span.smallcaps` pour égaler la spécificité de la règle `span.smallcaps{font-variant:
+   small-caps;}` que pandoc écrit dans l'en-tête (son raccourci remet les ligatures à
+   `normal`) ; la feuille liée, écrite après, l'emporte.
    Ligatures coupées : fi et fl se forment avant 'smcp' et resteraient en bas de casse. */
 span.smallcaps { font-variant-caps: small-caps; font-variant-ligatures: no-common-ligatures;
   letter-spacing: 0.03em; }
@@ -63,56 +55,38 @@ span.smallcaps { font-variant-caps: small-caps; font-variant-ligatures: no-commo
   --title-family: var(--font-sans);
 
   /* Encres sur papier, du plus contrasté au moins : ink Lc +105, ink2 +95, ink3 +91.
-     ink3 sert aux 9 px de l'en-tête courant et du pied : seuil 90, donc pas plus clair que
-     ceci (#5b5b66 n'en donnait que 83). Le plus petit texte de la maquette n'est plus ces
-     9 px depuis le 08.09.2026 mais l'exposant du « Nᵒ » de l'en-tête, à 0,72 em — il n'y
-     gagne aucun droit : sous 14 px APCA ne documente aucun niveau et apca.seuil_pour()
-     rend 90 comme plancher, le même qu'ici. */
+     ink3 sert aux 9 px de l'en-tête courant et du pied : seuil 90, donc pas plus clair.
+     L'exposant du « Nᵒ » de l'en-tête, à 0,72 em, est plus petit encore ; sous 14 px,
+     apca.seuil_pour() rend 90 comme plancher. */
   --c-ink:   #16161f;  --c-ink2: #3d3d49;  --c-ink3: #484853;
   --c-nuit:  #252B46;                       /* hero bleu nuit */
   /* Encres claires du hero, miroir de ink2/ink3 en polarité inverse : plus le numéro est
      haut, moins il y a de contraste. Mesurées sur --c-nuit : hero2 Lc −95 (sous-titre,
-     DOI, licence), hero3 Lc −91 (étiquettes de 9,5 px). Sous #EAEBF1, un texte du hero
-     passe sous le seuil de 90 ; le blanc franc reste réservé au titre, au dossier et aux
-     auteur·e·s, qui restent ainsi le premier plan. */
+     DOI, licence), hero3 Lc −91 (étiquettes de 9,5 px). Plus sombre que #EAEBF1, un texte
+     du hero passe sous le seuil de 90. Le blanc franc est réservé au titre, au dossier et
+     aux auteurs, au premier plan. */
   --c-hero2: #F1F2F7;  --c-hero3: #EAEBF1;
   /* Filet des pages courantes et du bloc auteurs. 1 px sur papier : seuil non textuel de
-     30, que #d0cdc4 manquait (Lc +27). */
+     30. */
   --c-rule:  #C9C6BE;
 
   --body-size: 0.875rem;   /* corps : rem (accessibilité HTML) ; ~14px/10,5pt à l'export */
   --leading:   1.55;
 
-  /* ═══ Échelle typographique partagée (09.09.2026) ═══════════════════════════════════
-     Les corps de caractères — et le seul interlettrage — qui vivaient jusqu'ici en dur
-     dans print.css : titre et sous-titre du hero, méta (auteur·e·s, DOI), licence,
-     étiquettes du hero, en-tête/pied courants, mots-clés, texte de tableau. Ce qui leur
-     donne leur place ICI et non dans print.css, doctrine en tête de ce fichier : ils sont
-     partagés ENTRE MÉDIAS (la maquette web à venir les lira comme le PDF) ET ENTRE
-     LANGAGES (voir l'avertissement ci-dessous) — une boîte ou une marge ne l'est jamais,
-     un corps de texte l'est presque toujours.
-     Nommés avec « corps », comme --body-size ci-dessus ; cohérence à l'intérieur de ce
-     groupe plutôt qu'alignement sur le mélange français/anglais des jetons plus anciens
-     de ce fichier — ce dernier compte moins.
-     ⚠ CE GROUPE EST LU HORS DU CSS, par deux fichiers qui ne l'importent pas comme feuille
-     de style mais qui en LISENT les jetons directement dans ce fichier texte (09.09.2026 :
-     avant cette date ils en RECOPIAIENT la valeur à la main, chacun sa propre copie du
-     nombre — ce lot a supprimé les deux copies) :
-       * pipeline/filters/szh-titre-lignes.lua lit --corps-titre-hero (TAILLE) et
-         --interlettrage-titre-hero (INTERLETTRAGE = jeton × TAILLE) pour mesurer l'escalier
-         du titre de couverture. Si la lecture échoue, il écrit un message sur stderr,
-         nommant le jeton et le fichier, et DÉSACTIVE l'escalier : WeasyPrint replie alors
-         le titre comme n'importe quel autre, une dégradation visible mais sûre — jamais une
-         taille devinée ;
-       * test/apca-check.py lit les huit tailles de ce groupe dans TAILLE_HERO_TITRE,
-         TAILLE_HERO_SOUSTITRE, TAILLE_HERO_META, TAILLE_HERO_LICENCE, TAILLE_HERO_ETIQUETTE,
-         TAILLE_COURANTE, TAILLE_KW et TAILLE_TABLEAU. Si la lecture échoue, il s'arrête net
-         avec un message explicite et un code de sortie non nul : ici l'échec doit être
-         FRANC, parce qu'un contrôle de contraste mesuré sur une taille devinée donnerait un
-         feu vert sans valeur — pire que pas de contrôle du tout.
-     Changer une valeur ici n'est donc plus ce qui casse : elle se propage seule aux deux
-     lecteurs. Ce qui casse, c'est de RENOMMER ou SUPPRIMER un jeton de ce groupe — la
-     lecture ne le retrouve plus, et chacun des deux fichiers réagit comme décrit ci-dessus. */
+  /* ═══ Échelle typographique partagée ═════════════════════════════════════════════════
+     Corps de caractères et interlettrage du hero (titre, sous-titre, méta, licence,
+     étiquettes), de l'en-tête et du pied courants, des mots-clés et des tableaux. Ils sont
+     ici parce qu'ils servent à plusieurs médias et sont lus hors du CSS.
+
+     Deux fichiers lisent ces jetons dans ce fichier texte :
+       * pipeline/filters/szh-titre-lignes.lua lit --corps-titre-hero et
+         --interlettrage-titre-hero pour composer l'escalier du titre de couverture. Si la
+         lecture échoue, il le signale sur stderr et désactive l'escalier ;
+       * test/apca-check.py lit les huit tailles du groupe. Si la lecture échoue, il
+         s'arrête en erreur : un contrôle de contraste sur une taille devinée ne vaudrait
+         rien.
+     Une valeur se change ici librement. Renommer ou supprimer un jeton casse ces deux
+     lecteurs. */
   --corps-titre-hero:         25px;      /* .szh-title (titre de couverture) */
   --corps-soustitre-hero:     15px;      /* .szh-subtitle */
   --interlettrage-titre-hero: -0.005em;  /* .szh-title */
@@ -137,21 +111,20 @@ span.smallcaps { font-variant-caps: small-caps; font-variant-ligatures: no-commo
   --c-bullet-marker: #000000;
   --c-num-marker:    #000000;
 
-  /* Plafond de hauteur d'une image de figure. En pagination, 100vh vaut la zone de
-     contenu de la page — 958,5 px en A4 avec les marges de print.css, mesuré sur
-     WeasyPrint 69 ; à l'écran, la hauteur de la fenêtre. Les 20vh qui restent paient les
-     marges de la figure et sa légende, soit six lignes de crédits.
-     Sans ce plafond, une image en portrait ramenée à la largeur de la colonne dépasse la
-     page : la figure ne tient plus d'un bloc et sa légende part seule. */
+  /* Plafond de hauteur d'une image de figure. Sous WeasyPrint, 100vh vaut la zone de
+     contenu de la page (958,5 px en A4 avec les marges de print.css) ; à l'écran, la
+     hauteur de la fenêtre. Les 20vh restants laissent la place aux marges de la figure et
+     à sa légende (six lignes de crédits).
+     Sans plafond, une image en portrait à la largeur de la colonne dépasse la page, et la
+     légende part seule. */
   --plafond-figure: 80vh;
 }
 
-/* Accents des tableaux stylés de l'éditeur maison (.szh-tableau). Mêmes règles du jeu que
-   la couleur annuelle ci-dessus : ce sont des replis neutres, qu'accent-css.py surcharge à
-   la compilation depuis couleurs.css — WeasyPrint 69 n'implémentant pas color-mix(), tout
-   dérivé de couleur est précalculé. Contrastes garantis en APCA à 13,6 px, la taille du
-   texte de tableau : seuil 90, vérifié paire par paire par test/apca-check.py.
-   La mise en forme qui les consomme est au §7 de print.css. */
+/* Accents des tableaux de l'éditeur maison (.szh-tableau). Replis neutres, comme la couleur
+   annuelle : accent-css.py les surcharge depuis couleurs.css. WeasyPrint n'a pas
+   color-mix(), d'où des couleurs dérivées précalculées. Contraste APCA à 13,6 px (texte de
+   tableau) : seuil 90, vérifié par test/apca-check.py.
+   La mise en forme qui les utilise est dans la section 7 de print.css. */
 :root {
   --szh-accent-clair: #ededed;    /* fond « couleur annuelle » (texte noir : Lc +95) : en-têtes/total */
   --szh-accent-fonce: #4a4a4a;    /* fond « negatif » (texte blanc : Lc −95) : en-têtes/total */

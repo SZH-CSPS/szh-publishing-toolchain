@@ -2,10 +2,8 @@
 //
 //   node --test test/js/import-illisible.test.js
 //
-// Avant : docx-meta.py et pronto-lire.py rendaient 0 sur un zip tronqué, sans fiche ni
-// instructions ; le refus de l'import ne venait que, par hasard, de l'échec d'un maillon
-// suivant. Maintenant les deux lecteurs sortent en échec avec un constat au rédacteur
-// (fichier-illisible, fr puis de), et import-docx.sh refuse avant de créer quoi que ce soit.
+// Sur un zip tronqué, docx-meta.py et pronto-lire.py sortent en échec avec le constat
+// fichier-illisible (fr puis de), et import-docx.sh refuse avant de créer quoi que ce soit.
 'use strict';
 
 const test = require('node:test');

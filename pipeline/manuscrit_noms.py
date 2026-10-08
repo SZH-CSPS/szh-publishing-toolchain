@@ -1,28 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# manuscrit_noms.py — attribution prénom/nom au sein d'un segment de nom DÉJÀ reconnu.
-# Contrat : docs/ARCHITECTURE-nettoyeur-manuscrit.md, §3 ; périmètre exact fixé par le
-# contrat de lot (lot A, CONTRAT-noms.md, non committé — voir le rapport de livraison).
+# Dans un segment déjà reconnu comme un nom de personne, dit quel mot est le prénom et
+# lequel est le nom (« Guilley Edith » ou « Edith Guilley »). Savoir si une ligne est une
+# ligne d'auteurs relève de docx-meta.nom_plausible(). Voir
+# docs/ARCHITECTURE-nettoyeur-manuscrit.md.
 #
-# Le nettoyeur confondait deux questions distinctes :
-#   (a) segmentation — cette ligne est-elle une ligne d'auteurs, quels segments sont des
-#       personnes ? Répondu par docx-meta.nom_plausible(), test purement typographique — ce
-#       module n'y touche pas.
-#   (b) attribution — dans un segment déjà reconnu comme un nom, qui est le prénom, qui est
-#       le nom ? Répondu jusqu'ici par docx-meta.decouper_prenom_nom() : « premier jeton =
-#       prénom », une convention posée qui ne consulte aucun indice et ne peut jamais échouer
-#       bruyamment (« Guilley Edith » rend prénom=Guilley, nom=Edith, à l'envers, en silence).
-# Ce module possède le problème (b), et lui seul.
-#
-# Module PUR, comme manuscrit_modele.py : ne sait rien de Word, ni du modèle riche, ni des
-# alertes. Il reçoit des CHAÎNES et des DICTS, rien d'autre — c'est l'appelant (manuscrit_
-# entete.py, ou tout autre) qui lui fait remonter les indices tirés d'ailleurs (casse mise en
-# forme du modèle riche, e-mail du bloc, noms certifiés par la bibliographie du manuscrit).
-#
-# Réutilisé depuis pipeline/heritage_meta.py, la bibliothèque de docx-meta.py :
-# sans_titres_academiques() et PARTICULES. Rien n'est recopié.
-#
-# stdlib seule.
+# Le module ne connaît ni Word, ni le modèle riche, ni les alertes : il reçoit des chaînes et
+# des dicts. L'appelant (manuscrit_entete.py) lui fournit les indices tirés d'ailleurs : casse
+# mise en forme, e-mail du bloc, noms certifiés par la bibliographie du manuscrit.
+# sans_titres_academiques() et PARTICULES viennent de pipeline/heritage_meta.py.
+# Bibliothèque standard seule.
 
 import json
 import os
@@ -40,35 +27,27 @@ import heritage_meta as hm
 
 
 # ---------------------------------------------------------------------------------
-# Le pliage — un jeton (minuscule, accents retirés, ponctuation de bord retirée) est la
-# seule unité que ce module compare : à la base lexicale, à un autre jeton, à une partie
-# locale d'e-mail. Les caractères INTERNES (le tiret d'un prénom composé, « Anne-Françoise »)
-# ne sont jamais touchés — seule la ponctuation de BORD (§3.2 du contrat) l'est.
+# Pliage. Le module ne compare que des jetons pliés (minuscules, sans accents, sans
+# ponctuation de bord). Les caractères internes, comme le tiret de « Anne-Françoise », restent.
 
 _PONCTUATION_BORD = ".,;:!?()[]{}«»\u201c\u201d\u2018\u2019'\"-"
 
 
 def _plier(jeton):
-    """Pliage d'un jeton (§3.2 du contrat) : NFD puis retrait des marques combinantes
-    (accents), casse ramenée au minuscule, ponctuation de bord retirée. Jamais d'exception
-    sur une entrée vide ou None — rend '' dans ce cas, comme toute question sans réponse
-    dans ce module (§2 de la maison : « en cas de doute, rien »)."""
+    """NFD, accents retirés, minuscules, ponctuation de bord retirée. Rend '' pour une
+    entrée vide ou None."""
     t = unicodedata.normalize('NFD', (jeton or '').strip().lower())
     t = ''.join(c for c in t if not unicodedata.combining(c))
     return t.strip(_PONCTUATION_BORD)
 
 
-PARTICULES = hm.PARTICULES  # réutilisées telles quelles, jamais recopiées (docx-meta.py).
+PARTICULES = hm.PARTICULES
 
 
 def _candidat_debut(jetons):
-    """Le jeton de TÊTE d'un segment, pour les signaux email/biblio/lexique — le premier
-    jeton, SAUF s'il s'agit d'une particule isolée (« De Chambrier Anne-Françoise », ordre
-    inverse À PARTICULE, mesuré comme motif réel — voir _repartir() plus bas pour le même cas
-    en sens du découpage) : une particule seule n'est jamais un nom de famille reconnu par
-    une base ou une bibliographie, c'est le jeton SUIVANT qui porte l'information. Sans cette
-    garde, « De Chambrier » testait « de » contre la base — toujours muet, jamais faux, mais
-    jamais utile non plus."""
+    """Le jeton de tête d'un segment, plié, pour les signaux email, biblio et lexique : le
+    premier jeton, ou le suivant si le premier est une particule (« De Chambrier
+    Anne-Françoise ») : une particule seule ne figure dans aucune base."""
     if not jetons:
         return ''
     if len(jetons) >= 2 and _plier(jetons[0]) in PARTICULES:
@@ -77,8 +56,8 @@ def _candidat_debut(jetons):
 
 
 def _candidat_fin(jetons):
-    """Le jeton de QUEUE, DERNIER jeton NON-particule (§3.2 du contrat : un nom composé se
-    teste sur son dernier jeton non-particule, « Sermier Dessemontet », « de Chambrier »)."""
+    """Le jeton de queue, plié : le dernier jeton qui n'est pas une particule. Un nom
+    composé se teste ainsi sur son dernier mot (« Sermier Dessemontet », « de Chambrier »)."""
     for j in reversed(jetons):
         p = _plier(j)
         if p not in PARTICULES:
@@ -87,20 +66,12 @@ def _candidat_fin(jetons):
 
 
 # ---------------------------------------------------------------------------------
-# La base lexicale — silencieuse de bout en bout : aucune source n'est obligatoire, une
-# source absente ou illisible ne lève jamais, elle réduit seulement `disponible`.
+# Base lexicale. Aucune source n'est obligatoire : une source absente ou illisible ne lève
+# pas, elle laisse seulement `disponible` à False.
 
-# Mots d'institution qui polluent parfois le champ nom/prénom d'une fiche OJS (une ligne mal
-# saisie au dépôt) — liste FERMÉE et courte, mesurée le 22.09.2026 sur les 1157 fiches de
-# C:\ProgramData\SZH\auteurs.json : 4 fiches écartées en tout (« Edition »/« SZH/CSPS » dans
-# les deux champs, sous trois graphies : « SZH/CSPS », « SZH-CSPS », « Edition SZH/CSPS »),
-# dont 3 déjà interceptées par le seul motif chiffre/@// ci-dessus et UNE (« Edition »
-# / « SZH-CSPS », aucun chiffre ni arobase ni barre oblique) qui n'existe QUE grâce à cette
-# liste de mots — c'est elle qui justifie de la garder en plus du motif chiffre/@//. Moins que
-# les 12 jetons annoncés par le contrat de lot (§3.2), écart signalé dans le rapport de
-# livraison plutôt que corrigé en silence. Quelques mots plausibles pour d'autres postes/
-# exports sont ajoutés par prudence (jamais mesurés faux positifs sur CE corpus, gardés pour
-# la robustesse du filtre).
+# Mots d'institution saisis par erreur dans le nom ou le prénom d'une fiche OJS (par exemple
+# « Edition » / « SZH-CSPS »). Ils complètent le motif chiffre, @ ou / de _bruit_fiche(), qui
+# ne voit pas « SZH-CSPS ».
 INSTITUTIONS_BRUIT = {
     'szh', 'csps', 'szh/csps', 'edition', 'éditions', 'revue', 'zeitschrift',
     'universite', 'universitat', 'institut', 'hep', 'fondation', 'centre', 'redaction',
@@ -108,9 +79,8 @@ INSTITUTIONS_BRUIT = {
 
 
 def _bruit_fiche(champ):
-    """Une fiche est écartée EN ENTIER (jamais un champ deviné à sa place, §2 de la maison)
-    si son nom OU son prénom contient un chiffre, une arobase, une barre oblique, ou vaut,
-    une fois plié, un mot de la liste d'institutions ci-dessus (§3.2 du contrat)."""
+    """Vrai si le champ contient un chiffre, une arobase, une barre oblique, ou un mot de
+    INSTITUTIONS_BRUIT. L'appelant écarte alors la fiche entière."""
     if re.search(r'[0-9@/]', champ or ''):
         return True
     for mot in (champ or '').split():
@@ -120,11 +90,9 @@ def _bruit_fiche(champ):
 
 
 def _resoudre_chemin_base_auteurs(chemin_fourni):
-    """Ordre de recherche, chacun facultatif (§3.2 du contrat) : le chemin donné par
-    l'appelant, sinon SZH_AUTEURS_CACHE (même nom de variable que lib/auteurs-ojs.js côté
-    cockpit), sinon la base de production, WSL puis Windows — jamais l'inverse : un test qui
-    n'en fournit AUCUN des trois doit tomber sur `disponible=False`, jamais sur une exception,
-    d'où le `try` autour de chaque essai d'ouverture plus bas plutôt qu'ici."""
+    """Chemin de la base d'auteurs : celui donné par l'appelant, sinon SZH_AUTEURS_CACHE
+    (même variable que lib/auteurs-ojs.js), sinon la base du poste, vue de la WSL puis de
+    Windows. None si rien n'existe."""
     if chemin_fourni:
         return chemin_fourni
     variable = os.environ.get('SZH_AUTEURS_CACHE')
@@ -137,12 +105,9 @@ def _resoudre_chemin_base_auteurs(chemin_fourni):
 
 
 def _charger_base_auteurs(chemin_fourni, prenoms, noms):
-    """Enrichit `prenoms`/`noms` (dict jeton plié -> poids entier) depuis la base OJS du
-    poste, format v2 : {"auteurs": [{"prenom": "...", "nom": "...", ...}, ...]} — mesuré le
-    22.09.2026 : 1157 fiches, 601 prénoms distincts, 1043 noms distincts. Rend (n_retenues,
-    n_ecartees) ou (None, None) si la source est absente ou illisible — jamais d'exception qui
-    sort de cette fonction, une base de production mal formée ne doit jamais faire tomber un
-    module qui ne fait QUE la lire."""
+    """Enrichit `prenoms` et `noms` (jeton plié → poids) depuis la base OJS du poste, au
+    format {"auteurs": [{"prenom": "...", "nom": "...", ...}, ...]}. Rend (n_retenues,
+    n_ecartees), ou (None, None) si la source est absente ou illisible ; ne lève pas."""
     chemin = _resoudre_chemin_base_auteurs(chemin_fourni)
     if not chemin:
         return None, None
@@ -165,9 +130,7 @@ def _charger_base_auteurs(chemin_fourni, prenoms, noms):
             continue
         if not nom_brut or not prenom_brut:
             continue   # fiche incomplète : n'enrichit ni l'un ni l'autre dictionnaire.
-        # Le couple prénom/nom d'une fiche OJS est STRUCTUREL (deux champs distincts, jamais
-        # deviné) — d'où la confiance de cette source par rapport au lexique de bibliographie
-        # (§3.2 du contrat) : chaque fiche vote pour SON prénom ET SON nom, jamais l'inverse.
+        # Une fiche OJS sépare prénom et nom en deux champs : chacun vote pour son côté.
         jeton_nom = _candidat_fin(nom_brut.split())
         jeton_prenom = _candidat_debut(prenom_brut.split())
         if jeton_nom:
@@ -179,9 +142,8 @@ def _charger_base_auteurs(chemin_fourni, prenoms, noms):
 
 
 def _charger_fichier_lexique(dossier_fourni, nom_fichier, cible):
-    """Un jeton plié par ligne, `#` en commentaire (§3.2 du contrat) — fabriqué par le lot C
-    (outils-dev/lexique/generer-noms.py), ce module se contente de le lire s'il existe.
-    Absent -> 0, jamais une exception."""
+    """Lit un fichier de lexique (un jeton plié par ligne, `#` en commentaire) dans `cible`
+    et rend le nombre de jetons lus ; 0 si le fichier manque."""
     dossier = dossier_fourni or os.path.join(_ICI, 'lexique')
     chemin = os.path.join(dossier, nom_fichier)
     try:
@@ -194,15 +156,9 @@ def _charger_fichier_lexique(dossier_fourni, nom_fichier, cible):
         ligne = ligne.split('#', 1)[0].strip()
         if not ligne:
             continue
-        # Chemin rapide : ces fichiers sont DÉJÀ pliés (leur en-tête le dit), et replier un
-        # jeton plié est l'identité. Une ligne purement ASCII et déjà en minuscules n'a donc
-        # ni accent à retirer ni casse à ramener ; il ne resterait que la ponctuation de bord,
-        # qu'un fichier plié ne porte plus non plus. Mesuré le 22.09.2026 sur les 38 000 jetons
-        # des deux index publics : 110 ms de chargement par _plier() sur chaque ligne, 29 ms
-        # par ce test — la normalisation NFD est à elle seule l'essentiel du coût. Le test est
-        # CONSERVATEUR : tout ce qu'il ne reconnaît pas repasse par _plier(), un fichier mal
-        # plié (édité à la main, contre la consigne) reste donc lu correctement, seulement
-        # plus lentement.
+        # Raccourci : les fichiers sont déjà pliés, et une ligne ASCII en minuscules n'a rien
+        # à replier. On évite ainsi la normalisation NFD, l'essentiel du temps de chargement
+        # (environ 4 fois plus lent). Toute autre ligne repasse par _plier().
         if ligne.isascii() and ligne.islower():
             jeton = ligne
         else:
@@ -213,11 +169,9 @@ def _charger_fichier_lexique(dossier_fourni, nom_fichier, cible):
     return n
 
 
-# Les fichiers de lexique du dépôt, dans l'ordre de chargement (§5.5 quater du contrat) :
-# (nom du fichier, côté qu'il alimente, libellé pour la trace des sources). Constante de
-# MODULE plutôt que liste écrite dans charger() : outils-dev/lexique/banc-noms.py la lit pour
-# mesurer exactement ce que la production charge. Sans elle, le banc recopierait la liste, et
-# un quatrième fichier ajouté ici le ferait mesurer en silence autre chose que ce qui tourne.
+# Fichiers de lexique du dépôt, dans l'ordre de chargement : (fichier, côté alimenté,
+# libellé pour la trace des sources). outils-dev/lexique/banc-noms.py lit cette constante
+# pour mesurer exactement ce que la production charge.
 FICHIERS_LEXIQUE = (
     ('noms-famille.txt', 'noms', 'noms de famille des bibliographies du corpus'),
     ('noms-frequents.txt', 'noms', 'noms de famille fréquents, sources publiques'),
@@ -226,10 +180,9 @@ FICHIERS_LEXIQUE = (
 
 
 class BaseNoms:
-    """Prénoms et noms connus, avec leur provenance. Un JETON PLIÉ (minuscule, accents
-    retirés) -> un poids entier (le nombre de fiches/lignes qui le portent — seule sa
-    positivité compte pour les signaux, jamais sa valeur exacte). Absente = toutes les
-    questions rendent 0, jamais une erreur (§3.2 du contrat)."""
+    """Prénoms et noms connus, avec leur provenance : jeton plié → poids (nombre de fiches
+    ou de lignes qui le portent ; les signaux ne regardent que s'il est positif). Une base
+    vide rend 0 à toute question."""
 
     __slots__ = ('disponible', 'sources', '_prenoms', '_noms')
 
@@ -245,39 +198,23 @@ class BaseNoms:
 
     @classmethod
     def charger(cls, chemin_base_auteurs=None, chemin_lexique=None):
-        """Charge, dans l'ordre, les sources du §3.2 du contrat — toutes facultatives et
-        silencieuses si absentes ou illisibles. Jamais appelée d'elle-même par ce module :
-        c'est l'appelant (la CLI, §6.1 du contrat) qui décide quand la base est chargée — un
-        module PUR ne va jamais chercher un fichier de production tout seul.
+        """Charge la base OJS du poste puis les fichiers de FICHIERS_LEXIQUE, tous
+        facultatifs. C'est l'appelant (la CLI) qui décide quand charger la base.
 
-        TROIS fichiers de lexique, dans cet ordre (§5.5 quater du contrat) — deux alimentent
-        les noms, un les prénoms :
-          noms-famille.txt      les noms certifiés par les bibliographies du corpus local
+          noms-famille.txt      noms certifiés par les bibliographies du corpus
                                 (outils-dev/lexique/generer-noms.py) ;
-          noms-frequents.txt    les noms de famille les plus portés, et
-          prenoms-frequents.txt les prénoms les plus portés — moissonnés sur des sources
-                                PUBLIQUES (OFS, INSEE) par
+          noms-frequents.txt    noms de famille les plus portés ;
+          prenoms-frequents.txt prénoms les plus portés. Ces deux-là viennent de sources
+                                publiques (OFS, INSEE), par
                                 outils-dev/lexique/moissonner-noms-publics.py.
 
-        ⚠ `prenoms-frequents.txt` n'est PAS la réapparition de `prenoms.txt`, retiré le
-        22.09.2026 au matin. Celui-là était le champ `prenom` de la base OJS de la maison,
-        c'est-à-dire une dérivée de données d'auteurs dans un dépôt appelé à devenir public,
-        et c'est sa PROVENANCE qui l'a fait supprimer, jamais son existence. Celui-ci ne
-        connaît pas `auteurs.json` et n'a aucun moyen de la lire : il vient des registres de
-        population de l'OFS et de l'INSEE. Les deux index restent d'ailleurs SÉPARÉS l'un de
-        l'autre, ce qui est la garantie de fond : deux listes de jetons nus ne reconstituent
-        aucune personne, un couple prénom↔nom oui.
+        Aucun fichier du dépôt ne dérive de la base d'auteurs OJS, qui n'a pas sa place dans
+        un dépôt public. Prénoms et noms restent dans deux listes séparées : deux listes de
+        mots ne reconstituent aucune personne, un couple prénom-nom oui.
 
-        Pourquoi l'index de prénoms est nécessaire et pas seulement souhaitable : le signal
-        (`_signal_lexique`, plus bas) COMPARE deux hypothèses. Ne nourrir que les noms de
-        famille ne renforce qu'un plateau de la balance. Mesuré en leave-one-out le
-        22.09.2026 (banc : outils-dev/lexique/banc-noms.py) sur 1152 fiches : 30 000 noms
-        publics SEULS laissent 130 fiches muettes (11,3 %) ; les mêmes plus 8 000 prénoms
-        n'en laissent que 22 (1,9 %) et font passer les décisions justes de 987 à 1086 — et
-        les deux index complets, tels qu'ils sont livrés, à 1110 (96,4 %) pour 7 muettes. Sans
-        base OJS sur le poste (poste neuf, runner CI), c'est désormais ce fichier-là qui tient
-        le côté prénom — là où, entre la suppression du 22.09 au matin et ce lot,
-        `poids_prenom()` valait toujours 0."""
+        L'index de prénoms est nécessaire : _signal_lexique() compare deux hypothèses, et
+        sans lui un côté de la comparaison reste vide. C'est lui qui tient le côté prénom sur
+        un poste sans base OJS (poste neuf, CI)."""
         base = cls()
         prenoms, noms = {}, {}
         n_retenues, n_ecartees = _charger_base_auteurs(chemin_base_auteurs, prenoms, noms)
@@ -297,10 +234,9 @@ class BaseNoms:
 
     @classmethod
     def depuis_dict(cls, donnees):
-        """Base EN LIGNE, sans toucher au disque : {"prenoms": [...], "noms": [...]}, des
-        jetons déjà pliés ou non (pliés ici de toute façon). C'est la forme que prend `base`
-        dans l'entrée du mode --diagnostic (§3.7 du contrat) — pour qu'un test n'ait JAMAIS
-        besoin d'un fichier du poste, jamais du chemin de production."""
+        """Base fournie en données, sans disque : {"prenoms": [...], "noms": [...]}, jetons
+        pliés ici. C'est la forme de `base` dans l'entrée du mode --diagnostic, pour que les
+        tests se passent des fichiers du poste."""
         base = cls()
         donnees = donnees or {}
         for jeton in donnees.get('prenoms') or []:
@@ -323,15 +259,12 @@ class BaseNoms:
         return self._noms.get(_plier(jeton), 0)
 
 
-_BASE_VIDE = BaseNoms()   # rendue par toute question posée à `base=None` — jamais un test de
-                          # None dispersé dans chaque signal ci-dessous.
+_BASE_VIDE = BaseNoms()   # tient lieu de `base=None`, sans test de None dans chaque signal
 
 
 # ---------------------------------------------------------------------------------
-# Les signaux — chacun rend (ordre | None, poids, motif). Un signal muet rend (None, 0, '').
-# Forces nommées (§3.3 du contrat) : 3 = certaine, 2 = probable. Aucune autre valeur n'existe
-# dans ce module — un signal qui inventerait sa propre force casserait la règle de
-# combinaison de trancher() ci-dessous, qui ne connaît que ces deux paliers.
+# Signaux. Chacun rend (ordre ou None, poids, motif) ; un signal muet rend (None, 0, '').
+# Deux forces seulement, 3 = certaine et 2 = probable : trancher() ne connaît que ces paliers.
 
 ORDRE_DIRECT = 'prenom_nom'     # « Edith Guilley »
 ORDRE_INVERSE = 'nom_prenom'    # « Guilley Edith »
@@ -339,17 +272,15 @@ ORDRE_INVERSE = 'nom_prenom'    # « Guilley Edith »
 FORCE_CERTAINE = 3
 FORCE_PROBABLE = 2
 
-# Niveaux de confiance, du plus sûr au moins sûr (§3.4 du contrat).
+# Niveaux de confiance, du plus sûr au moins sûr.
 CONFIANCE = ('certaine', 'probable', 'propagee', 'defaut')
 
 
 def _jetons_marques_majuscule(jetons, indices):
-    """Positions (0-based) dont la casse EFFECTIVE est intégralement capitale — tapée (le
-    jeton lui-même est en MAJUSCULES, au moins 2 lettres, pour ignorer un jeton d'une seule
-    lettre ou sans lettre du tout) OU mise en forme (indices['majuscules'] /
-    indices['petites_capitales'], deux ensembles de positions fournis par l'appelant depuis
-    manuscrit_modele.FORME_CLES — ce module ne sait pas lire un fragment de modèle riche, il
-    ne connaît que la position qu'on lui donne)."""
+    """Positions (à partir de 0) des jetons entièrement en capitales : tapés ainsi (au moins
+    deux lettres) ou mis en forme. La mise en forme arrive par indices['majuscules'] et
+    indices['petites_capitales'], positions que l'appelant tire de
+    manuscrit_modele.FORME_CLES."""
     marques = set()
     for i, j in enumerate(jetons):
         lettres = [c for c in j if c.isalpha()]
@@ -365,12 +296,9 @@ def _jetons_marques_majuscule(jetons, indices):
 
 
 def _signal_casse(jetons, indices):
-    """casse — force certaine (§3.3 du contrat) : un jeton (ou un bloc de jetons CONTIGU, en
-    tête ou en queue) en majuscules ou en petites capitales quand les autres ne le sont pas
-    -> ce bloc est le NOM. Ne joue JAMAIS si AUCUN jeton n'est marqué, si TOUS le sont (un
-    titre en capitales n'est pas un nom marqué), ou si le bloc marqué n'est ni en tête ni en
-    queue (une marque isolée au milieu d'un nom à trois jetons ne permet pas de trancher
-    sûrement de quel côté est le nom — silence plutôt qu'un pari, §2 de la maison)."""
+    """Force certaine. Un bloc contigu de jetons en capitales, en tête ou en queue, quand
+    les autres ne le sont pas : ce bloc est le nom. Muet si aucun ou tous les jetons sont
+    marqués (un titre en capitales), ou si le bloc est au milieu."""
     n = len(jetons)
     marques = _jetons_marques_majuscule(jetons, indices)
     if not marques or len(marques) >= n:
@@ -385,16 +313,11 @@ def _signal_casse(jetons, indices):
 
 
 def _signal_email(jetons, indices):
-    """email — force certaine (§3.3 du contrat). La partie locale est découpée sur '.', '-'
-    et '_' en sous-parties pliées ; le nom de famille y apparaît d'ordinaire EN ENTIER (une
-    adresse professionnelle abrège volontiers le prénom, rarement le nom) — c'est cette
-    asymétrie qui tranche : un seul des deux jetons candidats (tête/queue du segment, §3.2 —
-    une particule de tête ne compte jamais, _candidat_debut) retrouvé ENTIER dans la partie
-    locale, l'autre absent (même réduit à une initiale) -> celui qui est retrouvé est le nom.
-    Les deux retrouvés (une adresse « prenom.nom » complète des deux côtés) ou aucun -> aucune
-    façon sûre de savoir lequel joue quel rôle, silence (§2 de la maison). Une adresse
-    institutionnelle (aucun séparateur ET aucun jeton du segment dedans — « redaction@szh.ch »)
-    est écartée avant tout : ce n'est l'adresse de personne."""
+    """Force certaine. La partie locale de l'e-mail est découpée sur '.', '-' et '_'. Une
+    adresse professionnelle abrège volontiers le prénom, rarement le nom : si un seul des
+    jetons de tête et de queue s'y retrouve en entier, c'est le nom. Muet si les deux ou
+    aucun s'y retrouvent. Une adresse institutionnelle (« redaction@szh.ch » : ni séparateur
+    ni jeton du segment) est ignorée."""
     email = (indices or {}).get('email') or ''
     if '@' not in email:
         return None, 0, ''
@@ -406,7 +329,7 @@ def _signal_email(jetons, indices):
     tous_pliés = {_plier(j) for j in jetons if _plier(j)}
     a_separateur = ('.' in locale) or ('-' in locale)
     if not a_separateur and not (tous_pliés & set(subs)):
-        return None, 0, ''   # adresse institutionnelle : aucun repère, jamais celle d'un nom.
+        return None, 0, ''   # adresse institutionnelle
     j0 = _candidat_debut(jetons)
     jn = _candidat_fin(jetons)
     e0 = bool(j0) and j0 in subs
@@ -419,11 +342,9 @@ def _signal_email(jetons, indices):
 
 
 def _signal_biblio(jetons, indices):
-    """biblio — force probable (§3.3 du contrat) : `indices['noms_biblio']`, un ensemble de
-    jetons DÉJÀ PLIÉS certifiés noms de famille par la bibliographie du manuscrit lui-même
-    (forme APA « Nom, P. », que ce module ne sait pas lire — c'est l'appelant qui les fournit,
-    §4.2 du contrat de lot). Un seul des deux jetons candidats (tête/queue, mêmes candidats
-    que le signal email ci-dessus) présent dans l'ensemble -> il est le nom."""
+    """Force probable. `indices['noms_biblio']` : noms de famille que la bibliographie du
+    manuscrit certifie (forme APA « Nom, P. »), fournis par l'appelant. Si un seul des
+    jetons de tête et de queue y figure, c'est le nom."""
     certifies = (indices or {}).get('noms_biblio') or ()
     certifies = {_plier(j) for j in certifies if _plier(j)}
     if not certifies:
@@ -439,44 +360,20 @@ def _signal_biblio(jetons, indices):
     return None, 0, ''
 
 
-# Marge minimale entre les deux scores du signal lexique pour trancher. TRANCHÉ le 22.09.2026
-# par le superviseur, après mesure — la formule d'origine du contrat (marge = 2, « les deux
-# jetons concordants d'un côté et rien de l'autre ») a été essayée puis ÉCARTÉE : elle ne
-# tranche presque rien. Leave-one-out sur les 1155 fiches de C:\ProgramData\SZH\auteurs.json
-# (chaque auteur retiré avant d'être jugé par le reste de la base ; mesuré indépendamment par
-# ce lot et par le superviseur, chiffres accordés à l'arrondi près) :
-#
-#   marge | tranché juste  | à l'envers   | indécis      | muet
-#   ------|----------------|--------------|--------------|-------------
-#     1   | 792 (68,6 %)   | 9   (0,8 %)  | 34  (2,9 %)  | 320 (27,7 %)
-#     2   | 139 (12,0 %)   | 3   (0,3 %)  | 693 (60,0 %) | 320 (27,7 %)
-#
-# Avec pipeline/lexique/noms-famille.txt en renfort (seule source du lot C mesurable ici —
-# prenoms.txt est dérivé de cette même base et fuiterait la mesure), toujours à marge 1 :
-# 834 juste (72,2 %), 12 à l'envers (1,0 %), 280 muet (24,2 %).
-#
-# Pourquoi marge = 1 malgré son 0,8-1,0 % d'erreur : quand le lexique se TAIT, le repli n'est
-# pas « aucune décision » — c'est la convention prénom-nom (§3.4, étape 5), laquelle est
-# FAUSSE sur tout manuscrit écrit à l'envers, exactement le cas que ce lot existe pour
-# corriger. Un signal qui se trompe à moins de 1 % bat donc la convention partout où il
-# parle. Et le lexique pèse FORCE_PROBABLE (2) : la casse et l'e-mail, à FORCE_CERTAINE (3),
-# le recouvrent dès qu'ils sont présents (§3.4, étape 2) — une erreur lexicale n'est donc
-# jamais le dernier mot, seulement un repli meilleur que la convention aveugle.
+# Écart minimal entre les deux scores du signal lexique pour trancher. Mesurée sur la base
+# d'auteurs OJS (chaque fiche jugée par le reste de la base), la marge 1 tranche juste dans
+# environ 70 % des cas et à l'envers dans moins de 1 % ; la marge 2 ne tranche presque
+# rien. Quand le lexique se tait, le repli est la convention prénom-nom, fausse sur tout
+# nom écrit à l'envers : un signal à moins de 1 % d'erreur vaut mieux. Et la casse ou
+# l'e-mail, de force certaine, l'emportent sur lui.
 MARGE_LEXIQUE = 1
 
 
 def _signal_lexique(jetons, base):
-    """lexique — force probable (§3.3 du contrat). `score_direct` = (le candidat de tête
-    connu comme prénom) + (le candidat de queue connu comme nom) ; `score_inverse`,
-    symétrique. Tranche dès que l'un des deux scores dépasse STRICTEMENT l'autre
-    (MARGE_LEXIQUE = 1, voir la mesure au-dessus de la constante) : un seul jeton concordant
-    d'un côté et rien de l'autre suffit déjà — la marge plus stricte (2, les deux jetons
-    concordants d'un côté) a été mesurée et écartée, elle ne tranchait presque rien. Une
-    égalité stricte (score_direct == score_inverse, par exemple les deux jetons connus à la
-    fois comme prénom ET comme nom ailleurs dans la base) reste muette : c'est le seul cas
-    réellement indécis à cette marge. Le lexique n'est JAMAIS un filtre (§3.3) : une base
-    absente ou muette sur ces deux jetons ne rejette jamais le segment, elle rend seulement
-    (None, 0, '') comme tout autre signal silencieux."""
+    """Force probable. `score_direct` = (jeton de tête connu comme prénom) + (jeton de queue
+    connu comme nom) ; `score_inverse` est symétrique. Tranche dès qu'un score dépasse
+    l'autre d'au moins MARGE_LEXIQUE ; muet en cas d'égalité. Le lexique ne rejette jamais
+    un segment : une base muette rend seulement (None, 0, '')."""
     if base is None or not base.disponible:
         return None, 0, ''
     j0 = _candidat_debut(jetons)
@@ -495,17 +392,12 @@ def _signal_lexique(jetons, base):
 
 
 # ---------------------------------------------------------------------------------
-# La décision — règle de combinaison explicite et traçable (§3.4 du contrat).
+# Décision : combinaison des signaux.
 
 def trancher(jetons, indices=None, base=None):
-    """{'ordre', 'confiance', 'motif', 'conflit', 'signaux'} — voir le §3.4 du contrat pour
-    la règle de combinaison exacte, reprise ici pas à pas. `jetons` : la liste BRUTE (telle
-    que tapée, casse conservée — le signal casse en a besoin) des mots du segment, déjà
-    débarrassé des titres académiques par l'appelant (hm.sans_titres_academiques(), §3.6).
-    Moins de 2 jetons : aucun ordre à trancher, rendu directement sans consulter aucun
-    signal (même esprit que le « un seul jeton » de decoupe(), §3.6 — appliqué ici aussi par
-    prudence, pour qu'un appelant qui invoquerait trancher() seul sur un jeton isolé ne
-    tombe jamais sur un signal mal formé)."""
+    """Rend {'ordre', 'confiance', 'motif', 'conflit', 'signaux'}. `jetons` : les mots du
+    segment tels que tapés (le signal casse a besoin de la casse), sans titres académiques
+    (hm.sans_titres_academiques()). Moins de 2 jetons : ordre direct, sans signal."""
     if len(jetons) < 2:
         return {'ordre': ORDRE_DIRECT, 'confiance': 'defaut',
                 'motif': 'un seul jeton, aucun ordre à trancher', 'conflit': False,
@@ -526,10 +418,8 @@ def trancher(jetons, indices=None, base=None):
                 'motif': 'aucun indice, convention prénom-nom appliquée', 'conflit': False,
                 'signaux': []}
 
-    # 2. Le meilleur poids d'un côté est CERTAINE (>= 3) et rien de poids >= 3 ne dit le
-    # contraire -> confiance='certaine'. Un signal plus faible qui contredirait ne bloque
-    # jamais cette branche (§3.4 : seuls deux signaux de poids >= 3 en désaccord la font
-    # tomber au conflit plus bas).
+    # Des signaux certains tous d'accord donnent 'certaine', quoi que disent les signaux
+    # plus faibles. Deux signaux certains en désaccord passent à la somme ci-dessous.
     forts = [s for s in signaux if s['poids'] >= FORCE_CERTAINE]
     if forts:
         ordres_forts = {s['ordre'] for s in forts}
@@ -538,7 +428,7 @@ def trancher(jetons, indices=None, base=None):
             return {'ordre': s['ordre'], 'confiance': 'certaine', 'motif': s['motif'],
                     'conflit': False, 'signaux': signaux}
 
-    # 3. Sinon, si la somme d'un côté dépasse STRICTEMENT celle de l'autre -> 'probable'.
+    # Sinon, le côté dont la somme des poids est la plus forte donne 'probable'.
     somme_direct = sum(s['poids'] for s in signaux if s['ordre'] == ORDRE_DIRECT)
     somme_inverse = sum(s['poids'] for s in signaux if s['ordre'] == ORDRE_INVERSE)
     if somme_direct != somme_inverse:
@@ -547,9 +437,7 @@ def trancher(jetons, indices=None, base=None):
         return {'ordre': ordre, 'confiance': 'probable', 'motif': meilleur['motif'],
                 'conflit': False, 'signaux': signaux}
 
-    # 4. Sommes égales : soit des signaux se contredisent à poids égal (deux ordres présents)
-    # -> conflit=True, ordre=DIRECT (la convention), confiance='defaut' ; soit (cas qui ne se
-    # présente pas en pratique avec des poids > 0 sur un seul ordre) rien à trancher non plus.
+    # Sommes égales avec deux ordres présents : conflit, convention prénom-nom.
     ordres_presents = {s['ordre'] for s in signaux}
     if len(ordres_presents) > 1:
         noms_signaux = ', '.join(sorted(s['signal'] for s in signaux))
@@ -558,25 +446,20 @@ def trancher(jetons, indices=None, base=None):
                           'prénom-nom appliquée par défaut' % noms_signaux),
                 'conflit': True, 'signaux': signaux}
 
-    # 5. Aucun signal (déjà rendu plus haut) ou signaux d'un seul côté qui s'annulent
-    # trivialement : convention par défaut, sans conflit.
     return {'ordre': ORDRE_DIRECT, 'confiance': 'defaut',
             'motif': 'aucun indice, convention prénom-nom appliquée', 'conflit': False,
             'signaux': signaux}
 
 
 def trancher_groupe(segments, base=None):
-    """[decision, ...] — une decision par segment (même schéma que trancher()), après
-    propagation (§3.5 du contrat). `segments` : [{'jetons': [...], 'indices': {...}}, ...] —
-    la même fonction sert au groupe « ligne de byline » et au groupe « document entier »,
-    c'est l'appelant qui choisit la portée en construisant cette liste.
+    """Une décision par segment (schéma de trancher()), après propagation. `segments` :
+    [{'jetons': [...], 'indices': {...}}, ...] ; l'appelant choisit la portée (une ligne
+    d'auteurs ou le document entier).
 
-    Propagation : si au moins un segment est tranché ('certaine' ou 'probable') et
-    qu'AUCUN autre segment tranché ne dit l'ordre contraire, tous les segments restés en
-    'defaut' SANS CONFLIT adoptent cet ordre avec confiance='propagee' et un motif qui nomme
-    le segment donneur. Deux segments tranchés qui se contredisent -> AUCUNE propagation, les
-    deux gardent leur décision propre (et aucun 'defaut' n'est touché non plus : sans
-    consensus, rien ne se propage)."""
+    Propagation : si les segments tranchés ('certaine' ou 'probable') s'accordent tous sur
+    un ordre, les segments restés en 'defaut' sans conflit l'adoptent, avec la confiance
+    'propagee' et un motif qui nomme le segment donneur. S'ils se contredisent, rien ne se
+    propage."""
     decisions = []
     for seg in segments:
         jetons = seg.get('jetons') or []
@@ -604,33 +487,19 @@ def trancher_groupe(segments, base=None):
 
 
 # ---------------------------------------------------------------------------------
-# Le découpage proprement dit (§3.6 du contrat).
+# Découpage.
 
 def _est_initiale_pointee(jeton):
-    # Un jeton reduit a une seule lettre suivie d'un point ("C.", "E." accentue ou non,
-    # casse indifferente) : jamais un nom de famille a lui seul, toujours l'initiale d'un
-    # second prenom intercalaire. Ajout du 22.09.2026, mesure en leave-one-out sur la base
-    # reelle (C:\ProgramData\SZH\auteurs.json, 1155 fiches) : 8 fiches sur 1155 (0,7 %) ont
-    # un prenom OJS de la forme "Susan C. A.", "Bernard N.", "Markus P."... - une initiale
-    # intercalaire qu'un decoupage "premier jeton = prenom" ne pouvait pas representer avant
-    # cet ajout. Convention anglo-saxonne (second prenom reduit a l'initiale), probablement
-    # plus frequente encore dans les manuscrits reels que dans cette base : les co-autrices
-    # et coauteurs anglo-saxons l'emploient couramment dans leur signature.
+    # Une lettre suivie d'un point (« C. ») : l'initiale d'un second prénom, comme dans
+    # « Susan C. A. Burkhardt » ou « Bernard N. Schumacher », jamais un nom à elle seule.
     return len(jeton) == 2 and jeton[1] == '.' and jeton[0].isalpha()
 
 
 def _absorber_prenom_compose(jetons):
-    """(prenom_jetons, reste) : le premier jeton — l'ANCRE, toujours incluse, jamais testée
-    elle-meme — prolonge tant que le jeton SUIVANT est un tiret isole ou une INITIALE
-    POINTEE (_est_initiale_pointee ci-dessus, ajout du 22.09.2026 : "Susan C. A. Burkhardt"
-    -> prenom "Susan C. A.", nom "Burkhardt"). Ne consomme jamais le dernier jeton de la
-    liste : il en reste toujours au moins un pour le nom.
-    Le tiret isolé (un prénom composé tapé avec des espaces autour du tiret — rare, mais
-    chaque jeton restant qu'il laisse derrière lui garde les particules attachées au nom
-    SANS code dédié : elles font simplement partie de `reste`) et l'initiale pointée
-    s'absorbent l'un et l'autre de la même façon, un jeton (ou une paire tiret+mot) à la
-    fois. `jetons` a au moins 2 éléments (garanti par l'appelant, decoupe()/_repartir()
-    ci-dessous)."""
+    """Rend (prenom_jetons, reste). Le premier jeton est toujours le prénom ; il se prolonge
+    tant que le jeton suivant est un tiret isolé (« Anne - Françoise ») ou une initiale
+    pointée (« Susan C. A. Burkhardt » → prénom « Susan C. A. »). Le dernier jeton reste au
+    nom. `jetons` a au moins 2 éléments."""
     i = 1
     while i < len(jetons) - 1:
         if jetons[i] in ('-', '\u2013', '\u2014'):
@@ -643,17 +512,10 @@ def _absorber_prenom_compose(jetons):
 
 
 def _borne_prenom_inverse(jetons):
-    # Index de debut (inclus) du bloc prenom en ordre inverse. PAS un simple renversement de
-    # la liste puis reemploi de _absorber_prenom_compose : la structure interne du prenom
-    # (ancre puis initiales) ne s'inverse jamais elle-meme, seule SA PLACE dans le segment
-    # change ("Susan C. A. Burkhardt" en direct <-> "Burkhardt Susan C. A." en inverse,
-    # jamais "Burkhardt A. C. Susan"). On remonte donc depuis la fin, en absorbant les
-    # initiales pointees une a une ; le premier jeton non-initiale rencontre est l'ancre du
-    # prenom (le vrai prenom donne, jamais lui-meme une initiale dans les cas mesures) et
-    # arrete la remontee. La boucle ne descend jamais en dessous de l'index 1, ce qui laisse
-    # toujours au moins jetons[0] pour le nom. Pas de symetrie pour le tiret isole ici : aucun
-    # cas mesure ne le reclame cote inverse, et deviner sans preuve casserait plus que ca ne
-    # repare (contrat, "en cas de doute, rien, et on le dit").
+    # Indice de début du prénom en ordre inverse. Seule la place du prénom change, pas son
+    # ordre interne (« Burkhardt Susan C. A. ») : on ne peut donc pas retourner la liste. On
+    # remonte depuis la fin à travers les initiales pointées ; le premier autre jeton est le
+    # prénom. jetons[0] reste toujours au nom. Le tiret isolé n'est pas traité de ce côté.
     j = len(jetons) - 1
     while j > 1 and _est_initiale_pointee(jetons[j]):
         j -= 1
@@ -661,33 +523,15 @@ def _borne_prenom_inverse(jetons):
 
 
 def _repartir(jetons, ordre):
-    """(prenom, nom) selon `ordre` — direct : premier jeton, prolongé à travers un tiret
-    isolé ou une chaîne d'initiales pointées (_absorber_prenom_compose ci-dessus) = prénom,
-    le RESTE (particules comprises, §3.6) = nom. Inverse : symétrique depuis la fin
-    (_borne_prenom_inverse ci-dessus) = prénom, le reste = nom. Les particules ne réclament
-    aucun traitement séparé : elles restent naturellement du côté du nom, quel que soit
-    l'ordre, puisqu'elles ne sont jamais l'ancre absorbée comme prénom (« Anne-Françoise de
-    Chambrier » -> prénom Anne-Françoise, nom "de Chambrier" ; « De Chambrier Anne-
-    Françoise » -> nom "De Chambrier", prénom Anne-Françoise, §3.6 du contrat, les deux
-    exemples de référence).
+    """Rend (prenom, nom) selon `ordre`. Direct : le prénom est en tête
+    (_absorber_prenom_compose), le reste est le nom. Inverse : le prénom est en queue
+    (_borne_prenom_inverse). Les particules restent du côté du nom : « Anne-Françoise de
+    Chambrier » → nom « de Chambrier » ; « De Chambrier Anne-Françoise » → nom
+    « De Chambrier ».
 
-    ⚠ LIMITE CONNUE, documentée et non corrigée (mesurée le 22.09.2026, même leave-one-out
-    que _est_initiale_pointee ci-dessus, sur les mêmes 1155 fiches) : 12 fiches sur 1155
-    (1,0 %) ont un VRAI prénom composé à l'ESPACE, sans initiale ni tiret — « Salomé Calina »
-    (nom Schneiter), « Laura Marie » (nom Maaß), « Dennis Christian », « Barbara Maria »…
-    Rien, dans le texte seul, ne distingue « Laura Marie Maaß » (prénom composé « Laura
-    Marie », nom « Maaß ») de « Laura Marie-Maaß » tapé sans son trait d'union, ou d'un
-    troisième jeton qui serait en réalité un second nom de famille : les trois se présentent
-    EXACTEMENT de la même façon à cette fonction (plusieurs jetons, aucun n'est une initiale
-    pointée, aucun tiret isolé). Deviner ici romprait la propriété de sûreté mesurée sur la
-    base réelle (les signaux ne fabriquent jamais une inversion à tort, §0 du rapport de
-    livraison) sans rien garantir en échange — cette découpe-là reste donc « ancre + le
-    reste = nom », comme avant cet ajout : faux sur ces 12 fiches, mais faux de façon
-    repérable (une coupe optimiste, jamais un prénom et un nom permutés) plutôt qu'un pari
-    qui tomberait aussi souvent à faux qu'à juste. Seule une base qui connaît le prénom
-    composé EN ENTIER (le signal lexique, §3.3) pourrait lever ce doute un jour — hors du
-    périmètre de cette fonction, qui ne voit que du texte (§5.1 du contrat : « en cas de
-    doute, rien, et on le dit »)."""
+    Limite connue : un prénom composé séparé par une espace (« Laura Marie Maaß ») donne le
+    prénom « Laura » et le nom « Marie Maaß ». Le texte seul ne le distingue pas d'un double
+    nom de famille ; on garde cette coupe, fausse mais repérable, plutôt que de parier."""
     if ordre == ORDRE_INVERSE:
         j = _borne_prenom_inverse(jetons)
         return ' '.join(jetons[j:]), ' '.join(jetons[:j])
@@ -695,40 +539,23 @@ def _repartir(jetons, ordre):
     return ' '.join(prenom_j), ' '.join(reste)
 
 
-# Alias PUBLIC de la répartition, pour l'appelant qui a déjà tranché l'ordre par
-# trancher_groupe() et n'a donc plus besoin de decoupe() (manuscrit_entete.py : la
-# propagation §3.5 décide l'ordre pour TOUTE la ligne, la répartition se fait ensuite segment
-# par segment). Même convention que docx-meta.sans_titres_academiques : un alias plutôt qu'un
-# appel au nom souligné par-dessus la frontière du module.
-#
-# ⚠ Posé le 22.09.2026 par le superviseur pour SUPPRIMER une copie, pas par goût de symétrie :
-# manuscrit_entete.py portait sa propre réimplémentation de cet algorithme, et les deux
-# avaient DÉJÀ divergé au moment où on l'a mesuré — la copie ignorait les initiales pointées
-# (« Bernard N. Schumacher » -> prénom « Bernard », nom « N. Schumacher ») et renversait
-# naïvement la liste en ordre inverse (« Burkhardt Susan C. A. » -> prénom « A. », nom
-# « Burkhardt Susan C. »), c'est-à-dire exactement la variante que _borne_prenom_inverse()
-# ci-dessus documente comme fausse. Les deux fichiers de test étaient verts : aucun ne
-# croisait les deux modules sur une initiale. Une décision, un seul propriétaire (§3 du
-# contrat d'architecture) — la duplication d'un algorithme de décision n'est pas négociable.
+# Nom public de la répartition, pour manuscrit_entete.py : il tranche l'ordre d'une ligne
+# entière par trancher_groupe(), puis répartit segment par segment. Ne pas recopier cet
+# algorithme ailleurs.
 repartir = _repartir
 
 
 def _jetons_depuis_texte(texte):
-    """Titres académiques ôtés (hm.sans_titres_academiques(), c'est ce qui manque à
-    docx-meta.auteurs_depuis_byline() côté cellules — voir §3.6 du contrat), l'obèle qui
-    accompagne parfois un nom (†, même convention que docx-meta.py) retiré, puis découpage
-    sur l'espace."""
+    """Les mots du texte, sans titres académiques (hm.sans_titres_academiques()) ni obèle
+    (†)."""
     t = hm.sans_titres_academiques(texte) or ''
     t = t.replace('\u2020', ' ').strip()
     return t.split()
 
 
 def decoupe(texte, indices=None, base=None):
-    """{'prenom', 'nom', 'ordre', 'confiance', 'motif', 'conflit'} (§3.6 du contrat) — un
-    seul segment. `texte` passe d'abord par hm.sans_titres_academiques(). Un seul jeton :
-    tout dans `nom`, confiance='defaut', comme le faisait déjà docx-meta.decouper_prenom_nom()
-    (jamais de régression sur ce cas, seulement sur celui à 2 jetons ou plus qu'il tranchait
-    à l'aveugle)."""
+    """Rend {'prenom', 'nom', 'ordre', 'confiance', 'motif', 'conflit'} pour un segment. Un
+    seul mot va tout entier dans `nom`, avec la confiance 'defaut'."""
     jetons = _jetons_depuis_texte(texte)
     if len(jetons) < 2:
         return {'prenom': '', 'nom': ' '.join(jetons), 'ordre': ORDRE_DIRECT,
@@ -743,12 +570,9 @@ def decoupe(texte, indices=None, base=None):
 
 
 # ---------------------------------------------------------------------------------
-# Mode diagnostic — patron EXACT de manuscrit_entete.py (voir sa fonction principal()) :
-# --diagnostic, un JSON sur stdin, une ligne JSON sur stdout. `base` voyage EN LIGNE (§3.7 du
-# contrat) : un test n'a ainsi jamais besoin d'un fichier du poste. Les segments passent par
-# trancher_groupe() (jamais des decoupe() indépendants) : c'est la seule façon, depuis cette
-# CLI, d'exercer la propagation (§3.5) sur plusieurs segments reçus ensemble — decoupe() lui-
-# même, à un seul segment, ne peut jamais la déclencher.
+# Mode diagnostic, comme manuscrit_entete.py : --diagnostic, un JSON sur stdin, une ligne
+# JSON sur stdout. `base` arrive dans le JSON, pour que les tests se passent des fichiers du
+# poste. Les segments passent ensemble par trancher_groupe(), pour exercer la propagation.
 
 def principal(argv):
     if '--diagnostic' not in argv[1:]:

@@ -1,13 +1,11 @@
-// Le filet de sécurité de l'import regarde aussi le TEXTE des tableaux du Word.
+// Le filet de sécurité de l'import (pipeline/docx-controle-import.py) contrôle aussi le
+// texte des tableaux du Word.
 //
 //   node --test test/js/import-controle-tableaux.test.js
 //
-// Avant : pipeline/docx-controle-import.py ne contrôlait que les images et les valeurs de
-// bloc. Un tableau de données perdu par la chaîne (cas d'un tableau placé dans un contrôle de
-// contenu Word, que le lecteur a pris pour un tableau d'auteurs) disparaissait sans un mot.
-// Maintenant chaque tableau de premier niveau du Word doit se retrouver dans l'article
-// (.md ou tables/*.html) ; un tableau que le lecteur a consommé (ligne T) se retrouve, mot à
-// mot, dans la fiche ou les instructions. Sinon : l'avertissement tableau-texte-perdu.
+// Chaque tableau de premier niveau du Word doit se retrouver dans l'article (.md ou
+// tables/*.html) ; un tableau que le lecteur a consommé (ligne T) se retrouve, mot à mot,
+// dans la fiche ou les instructions. Sinon : l'avertissement tableau-texte-perdu.
 //
 // Le contrôle seul, sur un article fabriqué à la main (sans WSL ni pandoc).
 'use strict';
@@ -93,8 +91,8 @@ test('tableaux du Word : un tableau déclaré consommé (T) dont le texte n’es
   { skip: sansPython }, () => {
     const base = F.dossierJetable();
     try {
-      // Le lecteur a consommé le tableau 1 — mais c'est le tableau de données, pas l'autrice :
-      // rien de ce qu'il porte n'est dans la fiche. Le numéro T ne suffit pas à l'absoudre.
+      // Le lecteur a consommé le tableau 1, celui des données : rien de ce qu'il porte n'est
+      // dans la fiche. Le numéro T ne suffit pas.
       const fiche = 'authors:\n- prenom: "Jeanne"\n  nom: "Exemple"\n  affiliation: "Haute école de test"\n';
       const dits = controle(base, { md: MD, tables: [HTML_AUTRICE], fiche, instructions: 'T\t1\n' });
       assert.strictEqual(dits.length, 1, dits.join('\n'));
@@ -195,8 +193,8 @@ test('tableau consommé : une troisième autrice absente de la fiche est signal�
     assert.match(dits[0], /Lucie/);
   });
 
-// Le seuil : une cellule est perdue sous la moitié de ses mots connus de la fiche. Dix mots,
-// quatre connus (perdue) puis cinq (sauve) : un seuil plus lâche ou plus strict fait rougir l'un.
+// Le seuil : une cellule est perdue si moins de la moitié de ses mots sont dans la fiche.
+// Dix mots, quatre connus (perdue) puis cinq (retrouvée).
 const DIX_MOTS = 'alpha bravo charlie delta echo foxtrot golf hotel india juliet';
 for (const [connus, attendu] of [[4, 1], [5, 0]]) {
   test('tableau consommé : une cellule de dix mots dont ' + connus + ' sont dans la fiche '

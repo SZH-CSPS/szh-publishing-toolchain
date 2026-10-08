@@ -1,15 +1,11 @@
-/* Charte EPUB 3 : une mise en page sobre pour les liseuses électroniques.
+/* Charte EPUB 3 : une mise en page sobre pour les liseuses. Empilée après le socle (sans
+   ses @font-face) et avant l'accent (voir la cible EPUB de profils/livre.mk).
 
-   Ce qui n'existe pas en EPUB et qu'on omet donc d'emblée :
-   - @page, @bottom-left, @bottom-right : pagination et folios
-   - float: footnote : les notes deviennent des vraies notes de fin (correctes en EPUB)
-   - `position: running()` : la notion de page n'existe pas
-   - fond perdu, traits de coupe : sans pertinence hors impression
+   Absent en EPUB, donc omis : @page et folios, float: footnote (pandoc fait de vraies
+   notes de fin), `position: running()`, fond perdu et traits de coupe.
 
-   À la différence de web.css (l'autre sortie sans @page), cette feuille ne réinvente
-   pas le design : elle ajoute seulement ce qu'il faut pour qu'un EPUB se lise bien sur
-   une liseuse, sans mettre en page en millimètres. Les éléments de livre (chapitre,
-   sommaire, liminaires) sont donc ici, pas dans l'enveloppe EPUB à l'extérieur.
+   Ce qu'il faut pour bien lire sur une liseuse, en unités d'écran : chapitres, sommaire,
+   liminaires.
 */
 
 /* ═══ 1. Racine et corps ════════════════════════════════════════════════════════ */
@@ -21,9 +17,8 @@ body {
   color: var(--c-ink);
   margin: 0;
   padding: 1em;
-  /* Pas de justification extrême en EPUB : la mesure varie selon le zoom et la largeur
-     de l'appareil, et forcer justify sur du texte recomposable crée des espacements
-     énormes sur petits écrans. Lisibilité avant forme. */
+  /* Pas de justification : la mesure varie avec l'appareil et le zoom, et un texte
+     justifié aurait de grands blancs sur petit écran. */
   text-align: left;
   hyphens: auto;
 }
@@ -39,10 +34,8 @@ h1 { font-size: 1.5em; }
 h2 { font-size: 1.3em; }
 h3 { font-size: 1.1em; }
 h4, h5, h6 { font-size: 1em; }
-/* `[Piaget]{.smallcaps}`. L'EPUB n'empile pas le socle, qui porte la même règle pour les
-   autres sorties, et --css remplace la feuille par défaut de pandoc, qui la portait. La
-   liseuse compose dans sa police : elle simule les petites capitales si la police n'en a
-   pas, ce que WeasyPrint, lui, ne fait pas (voir socle.css). */
+/* `[Piaget]{.smallcaps}`. La liseuse compose dans sa propre police et simule les petites
+   capitales si besoin (ce que WeasyPrint ne fait pas, voir socle.css). */
 span.smallcaps { font-variant: small-caps; }
 
 /* ═══ 3. Structure du livre ════════════════════════════════════════════════════ */
@@ -62,8 +55,7 @@ span.smallcaps { font-variant: small-caps; }
 
 /* L'onglet de tranche n'existe qu'en pagination : caché en EPUB. */
 .szh-onglet { display: none; }
-/* Même raison : la pastille de numéro (livre/falc.css) est un running element promu en
-   coin de page, sans équivalent sur une liseuse. */
+/* De même la pastille de numéro (livre/falc.css), élément courant de coin de page. */
 .szh-pastille { display: none; }
 
 /* ═══ 4. Liminaires ════════════════════════════════════════════════════════════ */
@@ -171,9 +163,8 @@ th { font-weight: 700; }
 }
 
 /* ═══ 9. Notes ═════════════════════════════════════════════════════════════════ */
-/* En EPUB, pandoc produit des vraies notes de fin liées, c'est mieux que ce qu'on
-   pourrait faire en CSS. szh-notes.lua ne s'applique donc pas à epub3 : les notes
-   restent des Note pandoc, que le writer epub3 transforme en sections liées. */
+/* szh-notes.lua ne s'applique pas en epub3 : pandoc fait des Note de vraies notes de fin
+   liées. */
 .szh-note {
   font-size: 0.85em;
   color: var(--c-ink2);
@@ -204,11 +195,9 @@ a:visited { color: var(--c-nuit); }
 .szh-sommaire a { color: inherit; text-decoration: none; }
 
 /* ═══ 12. Encadré falc-header « écouter cette histoire » ══════════════════════
-   partage-filtres.css (.szh-qr) n'est pas chargée en EPUB non plus (voir livre.mk, la
-   cible epub ne passe que cette feuille) : même repli qu'en web.css. Ce qui compte sur une
-   liseuse, exactement comme à l'écran : le lien reste navigable (href + aria-label déjà
-   sur le <a>) même si le QR ne s'y scanne pas depuis le même appareil. Renommé depuis
-   .szh-ecouter* (23.09.2026, voir base.css). */
+   partage-filtres.css (.szh-qr) n'est pas chargée en EPUB : même repli qu'en web.css. Le
+   lien reste navigable (href et aria-label sur le <a>), même si le QR ne se scanne pas
+   depuis l'appareil qui l'affiche. */
 .szh-falc-header {
   display: flex; flex-wrap: wrap; align-items: flex-start; gap: 1em;
   background: var(--c-rule);
@@ -223,5 +212,5 @@ a:visited { color: var(--c-nuit); }
   background-repeat: no-repeat; background-size: contain;
 }
 .szh-falc-header-image { flex: 0 0 auto; width: 7em; height: 7em; object-fit: cover; }
-/* Running element de pagination : sans objet en EPUB, comme .szh-onglet ci-dessus. */
+/* Élément courant de pagination : sans objet en EPUB, comme .szh-onglet. */
 .szh-picto-entete { display: none; }

@@ -1,22 +1,19 @@
-// Un article importé sans bibliographie reçoit désormais <slug>.biblio.md quand même —
-// vide — et son marqueur en fin de texte ; un fichier vide n'imprime rien à la
-// compilation, ni titre, ni section, ni cadre. Voir pipeline/filters/szh-biblio-detacher.lua
-// et pipeline/filters/szh-citations.lua (fonction est_vide, exposée sur SZH_CITATIONS).
+// Un article importé sans bibliographie reçoit quand même un <slug>.biblio.md vide et son
+// marqueur en fin de texte. Un fichier vide n'imprime rien à la compilation : ni titre, ni
+// section, ni cadre. Voir pipeline/filters/szh-biblio-detacher.lua et
+// pipeline/filters/szh-citations.lua (est_vide, exposée sur SZH_CITATIONS).
 //
-//   node --test "test/js/*.test.js"
+//   node --test test/js/biblio-vide.test.js
 //
-// CE QUI NE DOIT PAS SE CONFONDRE, et que ce fichier éprouve séparément :
-//   * un fichier de bibliographie VIDE (ou seulement des blancs, y compris les blancs
-//     invisibles que la typographie maison pose partout — insécable U+00A0, espace fine
-//     insécable U+202F, BOM U+FEFF) est un état NORMAL et silencieux, comme si l'article
-//     n'avait jamais eu de bibliographie ;
-//   * un fichier ABSENT reste l'anomalie que « biblio-introuvable » signale toujours —
-//     l'encadré rouge de szh-citations.lua ne doit RIEN perdre de sa portée.
+// Deux cas à ne pas confondre, vérifiés séparément :
+//   * un fichier vide, ou fait seulement de blancs (y compris U+00A0, U+202F et le BOM
+//     U+FEFF que pose la typographie maison), est un état normal et silencieux ;
+//   * un fichier absent est une anomalie, que « biblio-introuvable » signale par l'encadré
+//     rouge de szh-citations.lua.
 //
-// Exécuté directement avec `pandoc lua`, sans passer par wsl.exe : pandoc embarque son
-// propre interprète Lua (voir reimport-biblio.test.js, qui mesure pandoc de la même façon
-// pour la même raison — ces contrôles tournent en local, pas dans une distribution). Un
-// poste sans pandoc sur le PATH saute ces contrôles, bruyamment, jamais en silence.
+// Exécuté avec `pandoc lua`, sans wsl.exe : pandoc embarque son propre interprète Lua (comme
+// dans reimport-biblio.test.js). Un poste sans pandoc sur le PATH saute ces contrôles en le
+// disant.
 'use strict';
 
 const test = require('node:test');
@@ -33,9 +30,9 @@ const CITATIONS = path.join(RACINE, 'pipeline', 'filters', 'szh-citations.lua');
 
 const LF = String.fromCharCode(10);
 
-// Détection centralisée (test/js/gardes.js, sansPandoc). SZH_LUA_OBLIGATOIRE, distinct de
-// SZH_PANDOC_OBLIGATOIRE (gardes.js) : un poste sans pandoc peut être un poste normal, mais
-// une CI qui tourne ces contrôles-là ne doit jamais se contenter d'un saut.
+// Détection par test/js/gardes.js (sansPandoc). SZH_LUA_OBLIGATOIRE, distinct de
+// SZH_PANDOC_OBLIGATOIRE, transforme le saut en échec, pour une CI qui doit jouer ces
+// contrôles.
 function sauterSansPandoc(t, raison) {
   if (process.env.SZH_LUA_OBLIGATOIRE) { assert.fail('Lua non vérifié : ' + raison); }
   console.warn('\n*** Lua non vérifié : ' + raison + ' — le filtre n’est pas éprouvé en '
@@ -79,7 +76,7 @@ test('szh-biblio-detacher : sans bibliographie dans le Word, le fichier se crée
       assert.strictEqual(r.status, 0, 'harnais Lua sorti en ' + r.status + ' : ' + r.stderr);
       assert.doesNotMatch(r.stdout, /^NIL/m,
         'le filtre ne rend plus de document : le fichier et son marqueur ont disparu');
-      // Le marqueur rejoint la fin de l'article — le texte d'origine reste devant lui.
+      // Le marqueur rejoint la fin de l'article, après le texte d'origine.
       assert.match(r.stdout, /BLOC 1 Para/);
       assert.match(r.stdout, /DIV 2 szh-biblio src=essai\.biblio\.md/,
         'le marqueur n’est pas posé en fin d’article, avec le bon src=');

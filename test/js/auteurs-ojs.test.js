@@ -1,12 +1,12 @@
 // La liste des auteur·e·s publiés : parseur OAI-PMH, normalisation, fusion, cache.
 //
-//   node --test "test/js/*.test.js"
+//   node --test test/js/auteurs-ojs.test.js
 //
-// AUCUN réseau ici : le moissonnage prend sa fonction de récupération en paramètre, et les
-// tests lui donnent une table de fixtures XML — y compris du XML tronqué et hostile, qui
-// doit rendre moins de records, jamais une exception. Le cache passe par SZH_AUTEURS_CACHE
-// pour ne pas toucher C:\ProgramData ; l'écriture atomique de lib/yaml.js ne doit pas
-// laisser de temporaire derrière elle.
+// Sans réseau : le moissonnage reçoit sa fonction de récupération en paramètre, et les
+// tests lui donnent des réponses XML figées, y compris du XML tronqué ou hostile, qui doit
+// rendre moins de records sans lever d'exception. Le cache passe par SZH_AUTEURS_CACHE pour
+// ne pas toucher C:\ProgramData ; l'écriture atomique de lib/yaml.js ne laisse pas de
+// fichier temporaire.
 'use strict';
 
 const test = require('node:test');
@@ -26,9 +26,8 @@ const {
   resoudreRedirection, recupererHttps, moissonner, rafraichir
 } = auteursOjs;
 
-// La forme d'une entrée d'auteur·e après fusion : neuf clés, toutes présentes. Écrire
-// l'attendu à la main dans chaque test ferait dériver les tests du module à la première
-// clé ajoutée ; ici, une seule ligne suit.
+// La forme d'une entrée d'auteur·e après fusion : neuf clés, toutes présentes, définies à
+// un seul endroit pour tous les tests.
 function entree(champs) {
   return Object.assign({
     prenom: '', nom: '', affiliation: '', ror: '',
@@ -36,7 +35,7 @@ function entree(champs) {
   }, champs);
 }
 
-// ---- Fixtures : ce qu'OJS 3.5 répond réellement (relevé le 25.08.2026) ------------
+// ---- Réponses figées : ce qu'OJS 3.5 répond --------------------------------------------
 
 function enveloppe(corps) {
   return '<?xml version="1.0" encoding="UTF-8"?>\n' +
@@ -60,10 +59,9 @@ function record(datestamp, creators, options) {
     '\t\t\t\t<setSpec>revue:ART</setSpec>\n\t\t\t</header>' + corps + '\n\t\t</record>';
 }
 
-// Le même record, mais en marcxml — le format que le moissonnage lit désormais, parce que
-// lui seul porte l'affiliation ($u). `auteurs` = [[nomComplet, ...affiliations]].
-// L'indentation erratique et le <record> MARC imbriqué dans le <record> OAI sont ceux de
-// l'instance : c'est exactement ce que le parseur doit encaisser.
+// Le même record en marcxml, le format que lit le moissonnage, seul à porter l'affiliation
+// ($u). `auteurs` = [[nomComplet, ...affiliations]]. L'indentation erratique et le <record>
+// MARC imbriqué dans le <record> OAI sont ceux de l'instance réelle.
 function recordMarc(datestamp, auteurs, options) {
   const o = options || {};
   const statut = o.deleted ? ' status="deleted"' : '';
@@ -84,9 +82,8 @@ function recordMarc(datestamp, auteurs, options) {
     '\t\t\t\t<setSpec>revue:ART</setSpec>\n\t\t\t</header>' + corps + '\n\t\t</record>';
 }
 
-// Une réponse de l'API ROR, telle qu'elle arrive vraiment : `ror_display` y porte
-// « lang: "en" », et non pas une langue absente. C'est ce détail qui décide du repli quand
-// une institution n'a ni libellé français ni libellé allemand.
+// Une réponse de l'API ROR : `ror_display` y porte « lang: "en" », pas une langue absente.
+// Ce détail décide du repli quand une institution n'a ni libellé français ni allemand.
 function reponseRor() {
   return JSON.stringify({
     names: [
@@ -110,8 +107,7 @@ function cacheTemporaire(nom) {
   return path.join(dossier, 'auteurs.json');
 }
 
-// Chaque test qui touche le cache pose son propre fichier : pas d'état partagé, et jamais
-// C:\ProgramData.
+// Chaque test qui touche le cache pose son propre fichier, hors de C:\ProgramData.
 function avecCache(nom, fn) {
   const avant = process.env.SZH_AUTEURS_CACHE;
   process.env.SZH_AUTEURS_CACHE = cacheTemporaire(nom);
@@ -225,8 +221,8 @@ test('normaliserCreator : « Nom, Prénom », et la décision assumée sans virg
   assert.deepStrictEqual(normaliserCreator('Wood de Wilde, Hilary'),
     { prenom: 'Hilary', nom: 'Wood de Wilde' });
   assert.deepStrictEqual(normaliserCreator('  Morand ,   Robin  '), { prenom: 'Robin', nom: 'Morand' });
-  // Sans virgule : PAS d'heuristique « dernier mot = nom » — trop fragile sur les
-  // particules et les noms composés. Tout part dans `nom`, prénom vide.
+  // Sans virgule, pas d'heuristique « dernier mot = nom », trop fragile sur les particules
+  // et les noms composés : tout va dans `nom`, prénom vide.
   assert.deepStrictEqual(normaliserCreator('Robin Morand'), { prenom: '', nom: 'Robin Morand' });
   // Virgules surnuméraires : la première coupe, le reste suit le prénom.
   assert.deepStrictEqual(normaliserCreator('Morand, Robin, junior'),
@@ -254,7 +250,7 @@ test('fusionnerAuteurs : ajout, mise à jour par datestamp plus récent, jamais 
     { prenom: 'Anne', nom: 'Dupont', datePublication: '2023-05-05T00:00:00Z' }
   ];
   const fusion = fusionnerAuteurs(existants, [
-    // Plus récent : la date ET la graphie du nom sont mises à jour (règle actée).
+    // Plus récent : la date et la graphie du nom sont mises à jour.
     { prenom: 'ROBIN', nom: 'MORAND', datePublication: '2026-06-06T00:00:00Z' },
     // Plus ancien : rien ne bouge.
     { prenom: 'anne', nom: 'dupont', datePublication: '2020-01-01T00:00:00Z' },
@@ -290,14 +286,13 @@ test('moissonner : suit les resumptionToken, from incrémental, fin sur token vi
     if (!(url in pages)) { throw new Error('URL inattendue : ' + url); }
     return pages[url];
   };
-  // Format explicite : ce test garde la PAGINATION, pas le format, et le defaut est
-  // passe a marcxml.
+  // Format explicite : ce test vérifie la pagination ; le défaut est marcxml.
   const records = await moissonner(recuperer, base, '2026-07-01', 'oai_dc');
   assert.strictEqual(records.length, 3);
   assert.deepStrictEqual(records.map((r) => r.creators[0]),
     ['Morand, Robin', 'Dupont, Anne', 'Nu\u00f1ez, Mar\u00eda']);
   assert.strictEqual(urls.length, 3, 'le token vide doit arrêter la boucle');
-  // La reprise par token ne porte PAS metadataPrefix : OAI-PMH l'interdit.
+  // La reprise par token ne porte pas metadataPrefix : OAI-PMH l'interdit.
   assert.ok(urls[1].indexOf('metadataPrefix') === -1, 'metadataPrefix envoyé avec un token');
 });
 
@@ -359,10 +354,9 @@ test('cache : absent, corrompu ou difforme -> cache vide, sans exception', () =>
   });
 });
 
-// Le piège le plus coûteux du lot. Un cache d'avant marcxml ne porte que des noms : s'il
-// gardait sa dateFetch, le moissonnage repartirait en incrémental depuis cette date et
-// n'irait chercher que les articles publiés DEPUIS. Les affiliations des mille et quelques
-// auteur·e·s déjà en cache ne seraient jamais récupérées — jamais, et sans un mot.
+// Un cache v1 (oai_dc) ne porte que des noms. S'il gardait sa dateFetch, le moissonnage
+// incrémental ne lirait que les articles publiés depuis, et les affiliations des auteur·e·s
+// déjà en cache ne seraient jamais récupérées.
 test('cache : un fichier v1 garde ses auteurs mais REPART de zéro (dateFetch à null)', () => {
   avecCache('migration', (chemin) => {
     fs.writeFileSync(chemin, JSON.stringify({
@@ -398,8 +392,7 @@ test('cache : écriture atomique puis relecture, sans temporaire résiduel', () 
   });
 });
 
-// Les bornes se calculent sur la constante : le jour où la cadence rebouge, ce test suit
-// tout seul plutôt que de mentir sur ce qu'il garde.
+// Les bornes se calculent sur la constante : le test suit si la cadence change.
 test('cacheFrais : la fenêtre de fraîcheur, ses bornes et l’horloge repassée en arrière', () => {
   const maintenant = Date.parse('2026-08-25T12:00:00Z');
   const jour = 24 * 3600 * 1000;
@@ -457,9 +450,8 @@ test('rafraichir : moissonnage des deux revues, fusion et dateFetch avancée', a
     const urls = [];
     const recuperer = async (url) => {
       urls.push(url);
-      // Le MÊME `recuperer` sert l'OAI et l'API ROR — c'est ainsi en production, où le
-      // transport est unique. Un test qui ne répondrait qu'à l'OAI laisserait la
-      // résolution échouer en silence et ne verrait rien.
+      // Le même `recuperer` sert l'OAI et l'API ROR, comme en production. S'il ne répondait
+      // qu'à l'OAI, la résolution ROR échouerait sans bruit.
       if (url.indexOf('api.ror.org') !== -1) { return reponseRor(); }
       if (url.indexOf('revue-a') !== -1) {
         return pageListRecords([recordMarc('2026-08-10T00:00:00Z', [['Morand, Robin', 'SZH/CSPS']])]);
@@ -493,8 +485,8 @@ test('rafraichir : moissonnage des deux revues, fusion et dateFetch avancée', a
     const robin = cache.auteurs.filter((a) => a.nom === 'Morand')[0];
     assert.strictEqual(robin.datePublication, '2026-08-12T00:00:00Z');
     assert.strictEqual(robin.affiliation, 'SZH/CSPS', 'une affiliation vide n’écrase pas la remplie');
-    // Le ROR rencontré est résolu, et rangé sous son identifiant NU — c’est cette clé que
-    // le cockpit relit pour afficher l’affiliation dans la langue de la revue.
+    // Le ROR rencontré est résolu et rangé sous son identifiant nu : c’est la clé que le
+    // cockpit relit pour afficher l’affiliation dans la langue de la revue.
     const anne = cache.auteurs.filter((a) => a.nom === 'Dupont')[0];
     assert.strictEqual(anne.ror, 'https://ror.org/01swzsf04');
     assert.deepStrictEqual(cache.ror['01swzsf04'],
@@ -562,11 +554,11 @@ test('rafraichir : premier moissonnage sans cache -> pas de from, cache créé',
   });
 });
 
-// ---- Gardes du client réseau (transport injecté : toujours aucun réseau) --------------
+// ---- Gardes du client réseau (transport injecté, sans réseau) ---------------------------
 //
-// recupererHttps prend un transport et un délai total en options, réservés aux tests : on
-// rejoue ici les trois pannes — redirection détournée, réponse démesurée, serveur qui
-// égoutte — sans socket ni attente réelle.
+// recupererHttps accepte un transport et un délai total en options, pour les tests. On
+// rejoue trois pannes (redirection détournée, réponse démesurée, serveur qui répond goutte
+// à goutte) sans socket ni attente réelle.
 
 const { EventEmitter } = require('node:events');
 
@@ -642,8 +634,8 @@ test('recupererHttps : le délai TOTAL coupe un serveur qui ne conclut jamais', 
   let requete = null;
   const transport = fauxTransport((url, req) => {
     requete = req;
-    // Un morceau arrive, puis plus rien : le timeout d'inactivité socket n'existe pas dans
-    // ce faux transport — seule la garde du délai total peut sortir de là.
+    // Un morceau arrive, puis plus rien. Ce faux transport n'a pas de délai d'inactivité :
+    // seule la garde du délai total peut en sortir.
     return { code: 200, morceaux: ['<OAI-PMH>'], sansFin: true };
   });
   const debut = Date.now();
@@ -654,12 +646,11 @@ test('recupererHttps : le délai TOTAL coupe un serveur qui ne conclut jamais', 
   assert.strictEqual(requete.detruit, true, 'la requête doit être détruite au délai total');
 });
 
-// ---- marcxml, ROR, précédence : ce que le passage à marcxml a introduit ---------------
+// ---- marcxml, ROR, précédence ------------------------------------------------------------
 
-// Le fragment ci-dessous est copié TEL QUEL de l'instance (revue française, 29.08.2026),
-// verrues comprises : indentation erratique, <subfield code="u"> vide, et un <record>
-// MARC21 imbriqué dans le <record> OAI — deux balises de même nom, dont la première à
-// fermer est l'intérieure. Un parseur écrit sur du XML propre s'y casse.
+// Fragment copié tel quel de l'instance (revue française), avec ses défauts : indentation
+// erratique, <subfield code="u"> vide, et un <record> MARC21 imbriqué dans le <record> OAI,
+// deux balises de même nom dont la première à fermer est l'intérieure.
 const FRAGMENT_REEL = [
   '<record>',
   '\t\t\t<header>',
@@ -698,9 +689,9 @@ test('extraireRecordsMarc : le XML réel de l’instance, verrues comprises', ()
   assert.deepStrictEqual(records[0].auteurs.map((a) => a.nomComplet),
     ['Wood de Wilde, Hilary', 'Lanners, Romain', 'Schaer, Marie'],
     'les datafields 720, 100 et 700 comptent tous les trois, dans l’ordre du document');
-  // Le datafield 245 est le TITRE : le relever ferait un auteur nommé comme l’article.
+  // Le datafield 245 est le titre : le relever ferait un auteur nommé comme l’article.
   assert.strictEqual(records[0].auteurs.length, 3, 'un datafield hors 100/700/720 a été pris');
-  // Un $u vide n’est pas une affiliation vide : il n’est pas une affiliation du tout.
+  // Un $u vide n’est pas une affiliation.
   assert.deepStrictEqual(records[0].auteurs[0].affiliations, []);
   assert.deepStrictEqual(records[0].auteurs[1].affiliations, ['SZH/CSPS']);
   const auteurs = recordsEnAuteurs(records);
@@ -714,16 +705,15 @@ test('extraireRecordsMarc : XML tronqué au milieu d’un datafield, sans except
   const tronque = enveloppe('\t<ListRecords>\n' + FRAGMENT_REEL.slice(0, 900));
   const records = extraireRecordsMarc(tronque);
   assert.ok(Array.isArray(records), 'un XML tronqué doit rendre une liste, jamais lever');
-  // Et les formes franchement hostiles ne lèvent pas non plus.
+  // Les formes hostiles ne lèvent pas non plus.
   for (const x of ['', null, undefined, '<record><datafield tag="100"', '<<<>>>']) {
     assert.ok(Array.isArray(extraireRecordsMarc(x)));
   }
 });
 
-// Cas RÉEL : trois auteur·e·s des deux revues déclarent deux ou trois affiliations. MARC
-// autorise $u répété. Les recoller en une chaîne fabriquait « https://ror.org/A
-// https://ror.org/B » — ni un ROR reconnaissable, ni un nom d’institution lisible :
-// l’affiliation était perdue, en silence.
+// MARC autorise $u répété, et des auteur·e·s déclarent plusieurs affiliations. Les recoller
+// en une chaîne donnerait « https://ror.org/A https://ror.org/B », ni un ROR ni un nom
+// d’institution.
 test('extraireRecordsMarc : $u répété reste une liste, et la première affiliation est retenue', () => {
   const xml = pageListRecords([recordMarc('2025-01-01T00:00:00Z', [
     ['Khemka, Ishita', 'https://ror.org/00wyq5s37', 'https://ror.org/00bgtad15'],
@@ -750,9 +740,9 @@ test('rorCanonique et idRor : URL, identifiant nu, et tout ce qui n’en est pas
   }
   assert.strictEqual(rorCanonique('http://ror.org/01swzsf04'), 'https://ror.org/01swzsf04');
   assert.strictEqual(rorCanonique('  HTTPS://ROR.ORG/01SWZSF04  '), 'https://ror.org/01swzsf04');
-  // Ce qui doit être refusé. Le dernier est le plus important : une valeur qui CONTIENT un
-  // motif de ROR n’est pas un ROR, et l’accepter publierait dans OJS l’identifiant d’une
-  // institution qui n’est pas la bonne — pire qu’un champ vide, et sans avertissement.
+  // Ce qui doit être refusé. Surtout le dernier : une valeur qui contient un motif de ROR
+  // n’est pas un ROR, et l’accepter publierait dans OJS l’identifiant d’une autre
+  // institution, sans avertissement.
   for (const faux of ['https://ror.org/', '12345', '', null, undefined,
     'https://orcid.org/0000-0002-1825-0097', '0iiiiii00',
     'Université de Genève 012345678']) {
@@ -766,8 +756,7 @@ test('resoudreRor : les libellés rangés, les échecs sautés, les connus jamai
   assert.deepStrictEqual(noms, {
     '01swzsf04': { fr: 'Université de Genève', de: '', en: 'University of Geneva' }
   });
-  // Un id qui échoue est SAUTÉ, pas mis en cache : on le retentera le mois suivant plutôt
-  // que de figer une absence de libellé pour toujours.
+  // Un id qui échoue est sauté, pas mis en cache : il sera retenté le mois suivant.
   const partiel = await resoudreRor(async (url) => {
     if (url.indexOf('01swzsf04') !== -1) { return reponseRor(); }
     throw new Error('HTTP 404');
@@ -775,17 +764,17 @@ test('resoudreRor : les libellés rangés, les échecs sautés, les connus jamai
   assert.deepStrictEqual(Object.keys(partiel), ['01swzsf04']);
   // Un JSON illisible ne lève pas davantage.
   assert.deepStrictEqual(await resoudreRor(async () => 'pas du json', ['01swzsf04'], {}), {});
-  // Déjà connu : aucune requête. Les deux formes de `connus` sont acceptées, parce que les
-  // deux appelants existent — le Set des clés, et la table cache.ror elle-même.
+  // Déjà connu : aucune requête. `connus` accepte les deux formes de ses appelants : le Set
+  // des clés, ou la table cache.ror elle-même.
   const interdit = async () => { throw new Error('requête interdite : id déjà connu'); };
   assert.deepStrictEqual(await resoudreRor(interdit, ['01swzsf04'], new Set(['01swzsf04'])), {});
   assert.deepStrictEqual(await resoudreRor(interdit, ['01swzsf04'], { '01swzsf04': { fr: 'x' } }), {});
 });
 
 test('resoudreRor : sans libellé français ni allemand, le repli anglais sauve l’affiliation', async () => {
-  // Cas réel de la HfH : ROR ne lui connaît qu’un libellé allemand et un libellé
-  // d’affichage. Une institution sans ni l’un ni l’autre existe aussi — et sans le repli,
-  // son affiliation sortirait VIDE dans la modale.
+  // ROR ne connaît à la HfH qu’un libellé allemand et un libellé d’affichage. D’autres
+  // institutions n’ont ni français ni allemand : sans le repli, leur affiliation sortirait
+  // vide dans la modale.
   const seulementAffichage = JSON.stringify({
     names: [{ lang: 'en', types: ['ror_display', 'label'], value: 'Some Institute' }]
   });
@@ -794,9 +783,8 @@ test('resoudreRor : sans libellé français ni allemand, le repli anglais sauve 
     'ror_display porte lang:"en" sur l’instance — exiger une langue absente le manquerait toujours');
 });
 
-// Concurrence bornée : 45 institutions en série, une par une, prendraient des dizaines de
-// secondes au démarrage de l'hôte. Ni illimité non plus — l'API ROR verrait 45 requêtes
-// d'un coup depuis la même adresse.
+// Concurrence bornée : 45 institutions une par une prendraient des dizaines de secondes au
+// démarrage de l'hôte, et 45 requêtes d'un coup seraient trop pour l'API ROR.
 test('resoudreRor : au plus 4 requêtes en vol à la fois', async () => {
   let enCours = 0;
   let maxEnCours = 0;
@@ -814,11 +802,9 @@ test('resoudreRor : au plus 4 requêtes en vol à la fois', async () => {
   assert.strictEqual(maxEnCours, 4, 'la concurrence devrait monter jusqu’à 4, pas moins');
 });
 
-// Échéance globale : un poste hors ligne ne doit pas laisser resoudreRor tourner sans fin.
-// L'horloge est injectable, comme balayerCorpus() de lib/auteurs-corpus.js — cinq minutes
-// réelles ne se testent pas en attendant cinq minutes. Même principe que son test « la
-// borne de temps coupe » : l'horloge bondit à chaque regard, et le budget est vérifié
-// avant de démarrer chaque requête — jamais en cours de route.
+// Échéance globale : sur un poste hors ligne, resoudreRor ne tourne pas sans fin. L'horloge
+// est injectable, comme pour balayerCorpus() de lib/auteurs-corpus.js : elle bondit à chaque
+// lecture, et le budget est vérifié avant chaque requête.
 test('resoudreRor : une échéance globale coupe les requêtes restantes', async () => {
   let appels = 0;
   const recuperer = async () => { appels++; return reponseRor(); };
@@ -841,9 +827,8 @@ test('resoudreRor : une échéance suffisante laisse passer toutes les requêtes
   assert.strictEqual(Object.keys(noms).length, 2);
 });
 
-// Un id qui échoue est déjà silencieux (retenté le mois prochain). Mais un poste hors
-// ligne qui rate TOUTES les institutions ne doit plus se taire complètement : une seule
-// ligne de journal, pas une par institution qui noierait la console.
+// Un id qui échoue est silencieux (retenté le mois suivant). Si toutes les institutions
+// échouent (poste hors ligne), une seule ligne de journal le dit.
 test('resoudreRor : une résolution qui échoue globalement se dit, une seule fois', async () => {
   const original = console.warn;
   const lignes = [];
@@ -859,8 +844,7 @@ test('resoudreRor : une résolution qui échoue globalement se dit, une seule fo
   assert.match(lignes[0], /\[auteurs-ojs\]/, 'la ligne doit porter le même préfixe que le reste du module');
 });
 
-// Et le cas normal — au moins une institution résolue — ne doit RIEN journaliser : ce
-// n'est un échec global que si tout a échoué.
+// Si au moins une institution est résolue, rien n'est journalisé.
 test('resoudreRor : une résolution partiellement réussie ne journalise rien', async () => {
   const original = console.warn;
   const lignes = [];
@@ -877,15 +861,15 @@ test('resoudreRor : une résolution partiellement réussie ne journalise rien', 
   assert.strictEqual(lignes.length, 0, 'une résolution partielle ne doit rien journaliser : ' + JSON.stringify(lignes));
 });
 
-// La règle de précédence entre les deux sources. Le corpus, c’est ce que la rédaction a
-// tapé à la main dans les fiches meta.yaml ; OJS, c’est ce qui a été publié. Sur les
-// champs d’enrichissement, la saisie maison fait foi.
+// Précédence entre les deux sources. Le corpus est ce que la rédaction a saisi dans les
+// fiches meta.yaml ; OJS est ce qui a été publié. Sur les champs d’enrichissement, le corpus
+// fait foi.
 test('fusionnerAuteurs : le corpus écrase, OJS ne remplit que le vide, le vide n’efface rien', () => {
   const deOjs = (c) => entree(Object.assign({ source: 'oai' }, c));
   const duCorpus = (c) => entree(Object.assign({ source: 'corpus' }, c));
 
   // OJS pose un nom et une affiliation ; le corpus ajoute fonction et e-mail, et corrige
-  // l’affiliation. Tout ce qu’il apporte gagne.
+  // l’affiliation. Le corpus l’emporte.
   let f = fusionnerAuteurs(
     [deOjs({ prenom: 'Robin', nom: 'Morand', affiliation: 'SZH/CSPS' })],
     [duCorpus({ prenom: 'Robin', nom: 'Morand', affiliation: 'SZH CSPS',
@@ -905,7 +889,7 @@ test('fusionnerAuteurs : le corpus écrase, OJS ne remplit que le vide, le vide 
   assert.strictEqual(f[0].orcid, 'https://orcid.org/0000-0002-1825-0097',
     'OJS doit quand même remplir ce qui était vide');
 
-  // Une valeur vide n’efface jamais une valeur remplie, quelle que soit la source.
+  // Une valeur vide n’efface pas une valeur remplie, quelle que soit la source.
   f = fusionnerAuteurs(
     [duCorpus({ prenom: 'Robin', nom: 'Morand', fonction: 'Collaborateur', email: 'r@szh.ch' })],
     [duCorpus({ prenom: 'Robin', nom: 'Morand', fonction: '', email: '' })]);

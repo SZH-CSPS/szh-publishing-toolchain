@@ -1,23 +1,16 @@
 // DOM minimal pour exécuter le script d'une webview hors de l'éditeur.
 //
-// Pourquoi : les webviews du cockpit sont du JavaScript sans dépendance qui construit ses
-// pages en DOM. Rien ne l'exécutait jamais avant qu'un rédacteur n'ouvre le formulaire — et
-// une erreur au rendu ne se voit pas : la page garde son titre et son bouton, les cartes
-// n'arrivent jamais, et aucun message ne le dit. C'est arrivé deux fois. Ce module donne de
-// quoi charger le script assemblé et lui envoyer un message, dans un contexte où une
-// exception remonte au test.
+// Une erreur au rendu d'une webview ne se voit pas dans l'éditeur : la page garde son titre,
+// les cartes n'arrivent pas, sans message. Ce module charge le script assemblé et lui envoie
+// des messages, dans un contexte où une exception remonte au test.
 //
 // N'implémente que ce que les webviews utilisent : createElement(NS), textContent,
-// appendChild/insertBefore/replaceChild (repositionnent vraiment, comme le vrai DOM — un
-// nœud n'est jamais dupliqué), dataset, classList,
-// value/checked/disabled/readOnly, childNodes/firstChild/nodeType/tagName
-// (l'éditeur de tableau relit ses cellules nœud par nœud), et des sélecteurs réduits
-// (« .classe », « balise », « [data-x] », « [data-x="v"] », « balise[data-x=v] », un
-// attribut HTML ordinaire quelconque — « [name=v] », « [type="radio"] », plusieurs crochets
-// accolés comme « input[name="…"][value="…"] » —, combinés par un espace). Les
-// gestionnaires posés par addEventListener sont retenus et
-// dispatchEvent({ type }) les déclenche : de quoi simuler un changement de <select> ou un
-// clic — le formulaire des métadonnées permute ses langues sur ce geste.
+// appendChild/insertBefore/replaceChild (qui déplacent le nœud sans le dupliquer), dataset,
+// classList, value/checked/disabled/readOnly, childNodes/firstChild/nodeType/tagName, et des
+// sélecteurs réduits (« .classe », « balise », « [data-x] », « [data-x="v"] »,
+// « balise[data-x=v] », tout attribut ordinaire comme « [name=v] », plusieurs crochets
+// accolés comme « input[name="…"][value="…"] », combinés par un espace). Les gestionnaires
+// posés par addEventListener sont retenus, et dispatchEvent({ type }) les déclenche.
 'use strict';
 
 const fs = require('fs');
@@ -41,11 +34,8 @@ function chargerAvecVscodeFactice(chemin) {
 }
 
 // Un seul crochet « [data-x] », « [data-x="v"] », « [data-x='v'] » ou attribut ordinaire
-// « [name=v] », « [type="radio"] ». L'attribut posé par setAttribute (table `attributs`,
-// via getAttribute) fait foi en premier ; s'il manque, on retombe sur la propriété de même
-// nom que le script de la page pose souvent directement (name, value, type, checked…),
-// car rendre() écrit couramment `input.name = …` sans jamais appeler setAttribute — c'est
-// le cas du radio de media/accueil.js (reglagesPage, cocher()), sélecteur `input[name="…"][value="…"]`.
+// « [name=v] », « [type="radio"] ». L'attribut posé par setAttribute fait foi ; à défaut,
+// la propriété de même nom, que les pages posent souvent directement (`input.name = …`).
 function correspondAttribut(e, segment) {
   const mData = segment.match(/^\[data-([a-z-]+)(?:=("?)([^"\]]*)\2)?\]$/);
   if (mData) {
@@ -64,10 +54,8 @@ function correspondAttribut(e, segment) {
 }
 
 function correspond(e, motif) {
-  // Balise facultative devant, puis une suite de « .classe » et « [attribut] » dans
-  // n'importe quel ordre — « balise », « .classe », « .a.b », « p.occ.visible »,
-  // « select[data-x=v] », « input[name="…"][value="…"] » (deux crochets accolés, comme
-  // dans media/accueil.js, cocher()).
+  // Balise facultative, puis une suite de « .classe » et « [attribut] » dans n'importe quel
+  // ordre : « .a.b », « p.occ.visible », « input[name="…"][value="…"] ».
   const m = motif.match(/^([a-z]*)((?:\.[a-zA-Z0-9_-]+|\[[^\]]*\])*)$/);
   if (!m) { return false; }
   const balise = m[1];
@@ -76,10 +64,8 @@ function correspond(e, motif) {
   return segments.every((s) => (s[0] === '.' ? e.classes.has(s.slice(1)) : correspondAttribut(e, s)));
 }
 
-// Une liste de sélecteurs séparés par des virgules — « input, select, button » — rend
-// l'union, dans l'ordre du document et sans doublon, comme le vrai DOM. Le formulaire des
-// réglages s'en sert pour verrouiller d'un coup tous les contrôles d'un bloc ; sans cette
-// forme, le harnais rendait une liste vide et le verrou paraissait ne rien faire.
+// Une liste de sélecteurs séparés par des virgules (« input, select, button ») rend l'union,
+// sans doublon, comme le vrai DOM.
 function chercher(racine, selecteur) {
   const listes = String(selecteur).split(',').map((x) => x.trim()).filter((x) => x !== '');
   if (listes.length > 1) {
@@ -142,25 +128,18 @@ function element(balise) {
     get nodeType() { return this.balise === '#texte' ? 3 : 1; },
     get nodeValue() { return this.balise === '#texte' ? this._texte : null; },
     get tagName() { return this.balise.toUpperCase(); },
-    // Comme le vrai DOM : le texte d'un élément est le sien PLUS celui de ses descendants.
-    // Sans cette descente, toute page qui compose un libellé en nœuds — une part de nom
-    // mise en gras, par exemple — se lirait vide dans les tests, et le harnais réclamerait
-    // du innerHTML là où le DOM est justement la bonne réponse.
+    // Comme le vrai DOM : le texte d'un élément inclut celui de ses descendants.
     get textContent() {
       if (this.enfants.length === 0) { return this._texte; }
       return this._texte + this.enfants.map((c) => c.textContent).join('');
     },
     set textContent(v) { this._texte = v === undefined || v === null ? '' : String(v); this.enfants = []; },
-    // Un <select> expose ses <option>, comme le vrai DOM : une page qui contrôle qu'une
-    // valeur stockée figure bien dans sa liste (media/documentation.js, poserValeurChoix)
-    // lèverait sans cela sur `sel.options.length`.
+    // Un <select> expose ses <option> (lu par media/documentation.js, poserValeurChoix).
     get options() { return this.enfants.filter((c) => c.balise === 'option'); },
     get firstChild() { return this.enfants[0] || null; },
     get className() { return Array.from(this.classes).join(' '); },
     set className(v) { this.classes = new Set(String(v || '').split(/\s+/).filter(Boolean)); },
-    // `el.id = x` doit se voir à `getAttribute('id')`, comme dans le vrai DOM : sans cet
-    // aller-retour, une page qui pose l'id par la seule propriété (et non les deux, comme
-    // le faisaient plusieurs pages avant leur nettoyage) semblait ne porter aucun id ici.
+    // `el.id = x` se voit à `getAttribute('id')`, comme dans le vrai DOM.
     get id() { return this.attributs.id === undefined ? '' : this.attributs.id; },
     set id(v) { this.attributs.id = String(v); },
     classList: {
@@ -174,10 +153,8 @@ function element(balise) {
     },
     appendChild(c) { c.parent = e; e.enfants.push(c); return c; },
     removeChild(c) { e.enfants = e.enfants.filter((x) => x !== c); return c; },
-    // Comme le vrai DOM : insère AVANT `ref`, ou en fin de liste si `ref` est absent ou
-    // introuvable — jamais en fin de liste dans tous les cas. Retire d'abord `c` de sa
-    // position chez `e`, s'il y était déjà (le motif « appendChild, puis insertBefore pour
-    // repositionner » ne doit pas le dupliquer).
+    // Comme le vrai DOM : insère avant `ref`, ou en fin de liste si `ref` est absent ou
+    // introuvable. Retire d'abord `c` de sa position s'il était déjà là.
     insertBefore(c, ref) {
       c.parent = e;
       e.enfants = e.enfants.filter((x) => x !== c);
@@ -203,15 +180,10 @@ function element(balise) {
     // Déclenche les gestionnaires posés par addEventListener. L'objet passé tient lieu
     // d'événement ; toute exception d'un gestionnaire remonte au test, c'est voulu.
     //
-    // Bouillonnement : seulement si `ev.bubbles` est vrai (comme `new Event(t, {bubbles:
-    // true})`, jamais un simple `{ type: 'x' }` écrit à la main dans un test) — sans cette
-    // garde, un événement construit sans intention de bouillonner se mettrait à réveiller
-    // des écouteurs délégués sur des ancêtres, dans des tests qui n'ont jamais eu à s'en
-    // soucier. C'est le cas d'une grille dont le DOM interne est reconstruit à chaque ajout
-    // ou retrait de rangée (media/_commun.js, SZH.motsCles) : ses écouteurs sont posés en
-    // délégation sur un conteneur qui survit, et un `input.dispatchEvent(new Event('input',
-    // { bubbles: true }))` posé par la page (par ex. media/_fiches.js, choisir()) doit les
-    // atteindre comme un vrai navigateur le ferait.
+    // Remonte aux ancêtres seulement si `ev.bubbles` est vrai (`new Event(t, { bubbles:
+    // true })`), pas pour un simple `{ type: 'x' }` écrit dans un test. Les écouteurs
+    // délégués (SZH.motsCles de media/_commun.js) reçoivent ainsi les événements que la page
+    // émet avec bubbles (media/_fiches.js, choisir()).
     dispatchEvent(evt) {
       const ev = evt || {};
       if (!ev.preventDefault) { ev.preventDefault = () => {}; }
@@ -236,9 +208,8 @@ function element(balise) {
       while (n) { if (correspond(n, s)) { return n; } n = n.parent; }
       return null;
     },
-    // `_focused`/`_scrolled` : posés sur l'élément lui-même, pas sur un état partagé de la
-    // page — un test qui veut prouver « ce champ précis a reçu le curseur » (revue F03,
-    // focaliserChamp/focaliser) n'a qu'à relire l'élément qu'il a retrouvé par [data-cle].
+    // `_focused`/`_scrolled` sont posés sur l'élément : un test relit l'élément qu'il a
+    // retrouvé pour savoir s'il a reçu le curseur.
     focus() { e._focused = true; }, click() { e.dispatchEvent({ type: 'click' }); },
     scrollIntoView() { e._scrolled = true; },
     getBoundingClientRect() { return { top: 0, left: 0, width: 0, height: 0 }; }
@@ -278,11 +249,9 @@ function ouvrir(opts) {
     createTextNode: (t) => Object.assign(element('#texte'), { _texte: String(t) }),
     createDocumentFragment: () => element('#fragment'),
     getElementById: (id) => (parId[id] = parId[id] || element('div')),
-    // Les conteneurs de page (cartes, zones, sections…) ne sont pas rattachés à <body> — la
-    // page les prend par getElementById et les garde en mémoire, comme dans l'éditeur (voir
-    // racineDom() plus bas). Un `document.querySelector` qui ne regardait que sous <body>
-    // (racine quasi toujours vide ici) ne trouvait donc jamais rien : on cherche dans <body>
-    // ET dans chaque racine que la page a demandée par son id, sans doublon.
+    // Les conteneurs de page (cartes, sections…) ne sont pas rattachés à <body> : la page
+    // les prend par getElementById. La recherche porte donc sur <body> et sur chaque racine
+    // demandée par son id, sans doublon.
     querySelector: (s) => {
       for (const racine of [document.body].concat(Object.values(parId))) {
         const trouve = chercher(racine, s)[0];
@@ -318,10 +287,8 @@ function ouvrir(opts) {
     FileReader: function () {
       this.readAsDataURL = (f) => { if (f && f._dataUrl) { this.result = f._dataUrl; this.onload(); } };
     },
-    // Un événement construit à la main (`new Event('input', { bubbles: true })`), comme le
-    // fait media/_fiches.js pour prévenir un écouteur délégué après une écriture
-    // programmatique. `dispatchEvent` (plus haut) lit `bubbles` sur l'objet qu'on lui passe,
-    // qu'il vienne d'ici ou d'un simple littéral `{ type: 'x' }` posé par un test.
+    // `new Event('input', { bubbles: true })`, utilisé par media/_fiches.js. dispatchEvent
+    // lit `bubbles` sur l'objet reçu.
     Event: function (type, opts) {
       this.type = type;
       this.bubbles = !!(opts && opts.bubbles);
@@ -340,12 +307,9 @@ function ouvrir(opts) {
   vm.runInContext(script, contexte, { filename: opts.page + '.js' });
 
   const racineDom = () => {
-    // Le conteneur de la page : « cartes » pour les formulaires de fiches, « sections » pour
-    // la Documentation (qui garde son sommaire dans un second conteneur, « sommaire », pris
-    // par son nom dans les tests), « corps » pour le gestionnaire des médias, « lignes »
-    // pour les vues d'ensemble. Ces éléments ne sont pas rattachés à <body> — la page les
-    // prend par leur identifiant, comme dans l'éditeur — d'où cette recherche par nom
-    // plutôt qu'un parcours depuis la racine.
+    // Le conteneur de la page, pris par son id : « cartes » (fiches), « sections »
+    // (Documentation, dont le « sommaire » se prend par son nom), « corps » (médias),
+    // « lignes » (vues d'ensemble).
     return parId.cartes || parId.sections || parId.corps || parId.lignes || document.body;
   };
   return {
@@ -375,9 +339,8 @@ function ouvrir(opts) {
   };
 }
 
-// Concatène extension.js et tous les lib/**/*.js : une fonction de libellés qui migre vers
-// un module de lib/ (découpage d'extension.js, comme lib/medias-hote.js) doit continuer de
-// s'y trouver — même préalable que sourceExtensionEtLib (test/js/hote-factice.js).
+// Concatène extension.js et tous les lib/**/*.js : une fonction de libellés peut vivre dans
+// l'un ou l'autre (comme sourceExtensionEtLib de test/js/hote-factice.js).
 function sourceExtensionEtLib(cockpit) {
   const morceaux = [fs.readFileSync(path.join(cockpit, 'extension.js'), 'utf8')];
   const empiler = (base) => {
@@ -391,9 +354,8 @@ function sourceExtensionEtLib(cockpit) {
   return morceaux.join('\n');
 }
 
-// Libellés que l'hôte injecte, relus dans extension.js (ou dans le module de lib/ qui a
-// hérité de la fonction) : le test parle la même langue que la page réelle, sans recopier
-// une liste qui divergerait.
+// Libellés que l'hôte injecte, relus dans le code source : le test utilise les mêmes textes
+// que la page réelle.
 function libellesHote(racine, fonctions) {
   const cockpit = path.join(racine, 'vscodium-extension', 'szh-cockpit');
   const { T } = chargerAvecVscodeFactice(path.join(cockpit, 'lib', 'i18n.js'));

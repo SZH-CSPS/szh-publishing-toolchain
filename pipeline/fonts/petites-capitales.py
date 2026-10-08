@@ -3,30 +3,24 @@
 #
 #   /opt/weasyprint/bin/python pipeline/fonts/petites-capitales.py [--verifier]
 #
-# Pourquoi : Open Sans n'a pas de petites capitales, et WeasyPrint ne les simule pas. Il
-# traduit `font-variant: small-caps` en fonctionnalité 'smcp' et rien d'autre ; la
-# simulation de Pango (PANGO_VARIANT_SMALL_CAPS) n'est jamais appelée. Sans 'smcp' dans
-# la face, `[Piaget]{.smallcaps}` s'imprimait donc en bas de casse ordinaire, sans un
-# avertissement — mesuré le 29.09.2026 sur WeasyPrint 70 et Pango 1.56.
+# Open Sans n'a pas de petites capitales, et WeasyPrint ne les simule pas : il traduit
+# `font-variant: small-caps` en 'smcp', sans repli. Sans 'smcp' dans la face,
+# `[Piaget]{.smallcaps}` sort en bas de casse, sans avertissement (WeasyPrint 70, Pango
+# 1.56).
 #
-# Ce qu'on fabrique : pour chaque minuscule dont la capitale est dans la face, un glyphe
-# « <nom>.sc », dessin de la capitale réduit à ECHELLE, et une substitution simple
-# minuscule -> petite capitale sous 'smcp'. La capitale est prise dans la face de graisse
-# SUPÉRIEURE (voir SOURCES) : réduite, une capitale de même graisse aurait des fûts trop
-# maigres à côté des minuscules — c'est le défaut connu des petites capitales simulées.
-# Réduite à 80 %, la capitale semi-grasse retrouve à peu près le fût de la romaine.
+# Pour chaque minuscule dont la capitale existe, on ajoute un glyphe « <nom>.sc » (la
+# capitale réduite à ECHELLE) et une substitution minuscule -> petite capitale sous 'smcp'.
+# La capitale vient de la face de graisse supérieure (SOURCES) : réduite, une capitale de
+# même graisse aurait des fûts trop maigres à côté des minuscules.
 #
-# Ce qui reste hors d'atteinte : ß n'a pas de capitale d'un seul caractère (« SS ») et
-# reste en bas de casse. Les ligatures fi/fl précèdent 'smcp' dans l'ordre des lookups :
-# la feuille qui appelle les petites capitales coupe donc les ligatures (socle.css).
+# Limites : ß n'a pas de capitale en un caractère et reste en bas de casse. Les ligatures
+# fi/fl passent avant 'smcp' : socle.css les coupe là où il appelle les petites capitales.
 #
-# Le texte, lui, ne change pas : la couche texte du PDF garde « Piaget » en bas de casse,
-# ce qu'un copier-coller et un lecteur d'écran lisent. C'est l'avantage sur un
-# `text-transform: uppercase`, qui réécrit le texte.
+# La couche texte du PDF garde « Piaget » en bas de casse (copier-coller, lecteur d'écran),
+# contrairement à `text-transform: uppercase`.
 #
-# Idempotent : une face qui porte déjà 'smcp' est laissée telle quelle. À rejouer, comme
-# glyphes-manquants.py, après toute reprise des faces depuis le master variable.
-# `--verifier` ne réécrit rien et sort 1 si une face n'a pas ses petites capitales.
+# Idempotent. À relancer, comme glyphes-manquants.py, après toute régénération des faces.
+# `--verifier` n'écrit rien et sort 1 si une face n'a pas ses petites capitales.
 #
 # Licence : Open Sans est sous OFL 1.1 sans Reserved Font Name (OFL-OpenSans.txt) ; les
 # glyphes ajoutés sont dérivés des faces Open Sans elles-mêmes.
@@ -45,8 +39,8 @@ from fontTools.ttLib.tables import otTables
 
 DOSSIER = Path(__file__).resolve().parent
 
-# Face à compléter -> face d'où tirer les capitales, d'une graisse au-dessus. Le gras n'a
-# pas de face plus grasse livrée : il prend les siennes, un peu plus maigres.
+# Face à compléter -> face d'où tirer les capitales, d'une graisse au-dessus. Le gras, sans
+# face plus grasse, prend les siennes.
 SOURCES = {
     'OpenSans-SemiCondensed-Regular.ttf':        'OpenSans-SemiCondensed-SemiBold.ttf',
     'OpenSans-SemiCondensed-SemiBold.ttf':       'OpenSans-SemiCondensed-Bold.ttf',
@@ -56,10 +50,9 @@ SOURCES = {
     'OpenSans-SemiCondensed-BoldItalic.ttf':     'OpenSans-SemiCondensed-BoldItalic.ttf',
 }
 
-# Hauteur de la petite capitale, en fraction de la capitale : 1170 unités sur 2048 pour
-# une capitale de 1462 et une hauteur d'x de 1096 — un peu au-dessus de l'x, comme les
-# petites capitales dessinées. Uniforme : une réduction plus large que haute changerait
-# l'angle de l'italique.
+# Hauteur de la petite capitale en fraction de la capitale : 1170 unités sur 2048 (capitale
+# 1462, hauteur d'x 1096), un peu au-dessus de l'x. Réduction uniforme, pour garder l'angle
+# de l'italique.
 ECHELLE = 0.80
 
 FONCTIONNALITE = 'smcp'
@@ -142,8 +135,8 @@ def completer(chemin, chemin_source, verifier_seulement):
     jeu = source.getGlyphSet()
     table = {}
     for minuscule, capitale in paires(font, source):
-        # Décomposé : les capitales accentuées sont des composites, dont les composants
-        # (la lettre de base, l'accent) n'ont pas de sens à l'échelle réduite.
+        # Décomposé : les capitales accentuées sont des composites, dont les composants ne
+        # peuvent pas être réduits séparément.
         trace = DecomposingRecordingPen(jeu)
         jeu[capitale].draw(trace)
         pen = TTGlyphPen(None)

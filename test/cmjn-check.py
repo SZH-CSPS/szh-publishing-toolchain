@@ -5,29 +5,22 @@
     python3 test/cmjn-check.py <pdf-imprimeur.pdf> [autre.pdf …]
     python3 test/cmjn-check.py --python /opt/weasyprint/bin/python <pdf…>   (relance sous ce venv)
 
-pypdf n'est installé que dans le venv WeasyPrint de l'image (/opt/weasyprint/bin/python,
-voir image/requirements.txt) : lancé sous un python3 système qui ne l'a pas, ce script se
-relance lui-même sous l'interprète détecté (--python explicite, sinon $SZH_CMJN_PYTHON,
-sinon /opt/weasyprint/bin/python) — la même règle que CMJN_PYTHON dans
-pipeline/profils/livre.mk.
+pypdf n'existe que dans le venv WeasyPrint de l'image. Sans lui, le script se relance sous
+--python, sinon $SZH_CMJN_PYTHON, sinon /opt/weasyprint/bin/python (même règle que
+CMJN_PYTHON dans pipeline/profils/livre.mk).
 
-Trois défauts recherchés, ceux que pipeline/cmjn.py doit précisément empêcher :
+Trois défauts recherchés, ceux que pipeline/cmjn.py doit empêcher :
 
-1. Un opérateur `rg`/`RG` (RVB) survivant dans un flux de contenu de page : la passe de
-   pipeline/cmjn.py n'a converti que ce qu'elle reconnaît, et Ghostscript n'a pas fini le
-   travail — ou n'est jamais passé.
+1. Un opérateur `rg`/`RG` (RVB) dans un flux de contenu de page : ni pipeline/cmjn.py ni
+   Ghostscript ne l'a converti.
 
-2. Le texte de labeur qui n'est pas en noir K seul (`0 0 0 1 k`). Recherché comme
-   pipeline/cmjn.py cherche son propre travail : le dernier opérateur de couleur de
-   remplissage posé avant un `BT` (début de bloc texte). S'il est « presque noir » au sens
-   de pipeline/cmjn.py (is_dark_neutral, même seuil) mais n'est pas exactement K seul,
-   c'est le défaut mesuré sur ce projet (voir docs/ARCHITECTURE-LIVRES.md §4.3) : un
-   Ghostscript qui reconvertit un noir déjà posé en quadrichromie, ou en C+M+J sans plaque
-   noire.
+2. Un texte de labeur qui n'est pas en noir K seul (`0 0 0 1 k`). On lit le dernier
+   opérateur de couleur de remplissage avant chaque `BT` (début de bloc texte) : s'il est
+   presque noir sans être K seul, Ghostscript a reconverti le noir en quadrichromie, ou en
+   C+M+J sans plaque noire (voir docs/ARCHITECTURE-LIVRES.md).
 
-3. Un XObject image resté en DeviceRGB (ou un espace dérivé — ICCBased à 3 composantes,
-   CalRGB) : Ghostscript n'a converti ni les couleurs de la maison (ce n'est pas son rôle)
-   ni cette image (ça l'est).
+3. Une image restée en DeviceRGB ou dans un espace dérivé (ICCBased à 3 composantes,
+   CalRGB) : Ghostscript ne l'a pas convertie.
 
 Sortie : 0 si tout est en ordre, 1 si un défaut est trouvé, 2 en cas d'erreur d'usage ou
 d'environnement (pypdf introuvable, PDF illisible). Un bilan par page est imprimé.
@@ -75,25 +68,18 @@ def _assurer_pypdf(argv):
 
 _assurer_pypdf(sys.argv)
 
-import pypdf  # noqa: E402  — après la relance éventuelle, sous le bon interprète
+import pypdf  # noqa: E402  (après la relance éventuelle)
 
 
-# Même seuil de noirceur que pipeline/cmjn.py::is_dark_neutral, mais SANS son critère de
-# neutralité (spread < tolérance) : ce dernier reconnaît un RVB proche du gris avant
-# conversion, alors qu'ici on juge une sortie CMJN déjà convertie, où un vrai défaut —
-# noir quadri, ou C+M+J sans plaque K — ne revient PAS forcément gris neutre une fois
-# reconverti en RVB approché. Mesuré sur trois noirs de Ghostscript
-# (0.722/0.675/0.671/0.882, 0.89/0.784/0.616/0.969, 1/1/1/0) : les trois tombent sous
-# ce seuil de noirceur au premier canal, avec un spread RVB approché de 6 à 12 % — au-delà
-# de 0.05, ce qui les aurait fait manquer si le critère de neutralité était resté. Les sept
-# couleurs de la maison, elles, restent toutes au-dessus (« Nuit », la plus sombre, à ~0,40)
-# : le seuil seul suffit à les épargner, sans avoir besoin de neutralité en plus.
+# Même seuil de noirceur que pipeline/cmjn.py::is_dark_neutral, sans son critère de
+# neutralité : un noir quadri ou C+M+J sorti de Ghostscript (par exemple
+# 0.89/0.784/0.616/0.969) n'est pas un gris neutre une fois ramené en RVB. Les couleurs de
+# la maison restent au-dessus du seuil (« Nuit », la plus sombre, vers 0,40).
 SEUIL_SOMBRE = 0.35
 TOLERANCE_K_SEUL = 0.005
 
 RE_RG = re.compile(r'(?<![A-Za-z])[\d.]+\s+[\d.]+\s+[\d.]+\s+(rg|RG)(?![A-Za-z])')
-# Couleur de remplissage posée par k/K (4 nombres) ou par scn sous un espace CMJN (rare,
-# mais possible si Ghostscript ou une image vectorielle passe par cs/scn plutôt que k).
+# Couleur de remplissage posée par k/K (4 nombres) ou par scn sous un espace CMJN.
 RE_COULEUR_CMJN = re.compile(
     r'([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+(k|K|scn)(?![A-Za-z])')
 RE_BT = re.compile(r'(?<![A-Za-z])BT(?![A-Za-z])')
@@ -101,9 +87,8 @@ RE_ET = re.compile(r'(?<![A-Za-z])ET(?![A-Za-z])')
 
 
 def _semble_noir(c, m, y, k):
-    """Converti en RVB approché (sans profil, juste (1-x)(1-k)) puis jugé assez sombre pour
-    être pris pour du texte noir — sans exiger la neutralité : voir le commentaire de
-    SEUIL_SOMBRE, plus haut, pour pourquoi ce critère seul suffit ici."""
+    """Vrai si la couleur, ramenée en RVB approché ((1-x)(1-k), sans profil), passe sous
+    SEUIL_SOMBRE."""
     r, g, b = (1 - c) * (1 - k), (1 - m) * (1 - k), (1 - y) * (1 - k)
     return max(r, g, b) < SEUIL_SOMBRE
 
@@ -114,8 +99,8 @@ def _est_k_seul(c, m, y, k):
 
 
 def _flux_page(page):
-    """Décompresse et concatène le(s) flux de contenu d'une page, en latin-1 — même
-    convention que pipeline/cmjn.py::convert_stream."""
+    """Flux de contenu d'une page, décompressé, en latin-1 comme dans
+    pipeline/cmjn.py::convert_stream."""
     contenu = page.get_contents()
     if contenu is None:
         return ''
@@ -126,10 +111,10 @@ def _flux_page(page):
 
 
 def _texte_avant_bt_defauts(donnees):
-    """Liste des défauts « texte pas en K seul » : pour chaque BT, le dernier opérateur de
-    couleur CMJN posé depuis le ET précédent (ou le début du flux) doit, s'il semble noir,
-    être exactement K seul. Ghostscript réordonne parfois q/cm entre la couleur et BT — on
-    ne suppose donc pas l'adjacence stricte, seulement « le dernier avant »."""
+    """Défauts « texte noir pas en K seul ». Pour chaque BT, le dernier opérateur de couleur
+    CMJN depuis le ET précédent doit, s'il semble noir, être exactement K seul. Ghostscript
+    glisse parfois q/cm entre la couleur et BT : on prend le dernier opérateur avant BT,
+    pas forcément l'opérateur adjacent."""
     defauts = []
     debut_segment = 0
     for m_bt in RE_BT.finditer(donnees):
@@ -141,8 +126,7 @@ def _texte_avant_bt_defauts(donnees):
             c, mm, y, k = (float(dernier.group(i)) for i in (1, 2, 3, 4))
             if _semble_noir(c, mm, y, k) and not _est_k_seul(c, mm, y, k):
                 defauts.append(dernier.group(0).strip())
-        # Prochain segment : depuis le ET qui suit ce BT (bornage grossier mais suffisant :
-        # on ne cherche que le dernier opérateur de couleur, pas une pile d'états precise).
+        # Segment suivant : à partir du ET qui ferme ce BT.
         m_et = RE_ET.search(donnees, m_bt.end())
         debut_segment = m_et.end() if m_et else m_bt.end()
     return defauts

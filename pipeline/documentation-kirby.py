@@ -1,27 +1,21 @@
 #!/usr/bin/env python3
 """Convertisseur Documentation Kirby -> markdown pandoc.
 
-Lit un dossier d'article Documentation (arborescence Kirby écrite par Pronto : voir
-docs/FORMAT-DOCUMENTATION-KIRBY.md) et le contrat pipeline/kirby/champs-documentation.json,
-et écrit sur stdout (ou dans --sortie) le markdown intermédiaire que szh-rubrique.lua et
-szh-ressource.lua composent ensuite. Bibliothèque standard seulement (pas de PyYAML) : les
-deux formes de YAML que Kirby écrit ici (une liste d'un nom de fichier, une liste de
-structures pour le suivi) sont lues par un petit analyseur maison, restreint à ces deux
-formes — voir parse_yaml_liste_simple() et parse_yaml_liste_structuree().
+Lit un dossier d'article Documentation (arborescence Kirby écrite par Pronto, voir
+docs/FORMAT-DOCUMENTATION-KIRBY.md) et la description des champs
+pipeline/kirby/champs-documentation.json. Écrit sur stdout (ou dans --sortie) le markdown
+que szh-rubrique.lua et szh-ressource.lua mettent ensuite en forme.
 
-Aucune logique de présentation ici (traduction de jeton, format de date, pastille,
-suivi imprimé…) : ce script ne fait que transcrire les champs Kirby en attributs de Div,
-dans les noms du JSON. La présentation vit dans szh-ressource.lua et szh-rubrique.lua, qui
-lisent le même JSON — un seul endroit où changer un libellé.
+Le script ne fait que transcrire les champs Kirby en attributs de Div, sous les noms du
+JSON ; la présentation (libellés, dates, pastilles…) est dans les filtres Lua, qui lisent
+le même JSON. Les deux formes de YAML que Kirby écrit ici sont lues par
+parse_yaml_liste_simple() et parse_yaml_liste_structuree() (pas de PyYAML).
 
-Les fiches ne vivent plus dans le numéro (docs/FORMAT-DOCUMENTATION-KIRBY.md, 23.09.2026) :
-elles viennent de la bibliothèque partagée <racine>\\_NewsUndActu\\Fiches\\, retrouvée en
-remontant les parents depuis --article (trouver_dossier_numero, trouver_racine_news), sauf
-surcharge explicite (--racine-news ou SZH_NEWS_RACINE, pour les tests et le banc). Seules
-les fiches dont le fichier de LA langue du numéro porte Ausgabe: <id de ausgabe.yaml>
-entrent dans le document ; l'ordre suit leur champ Ordre (système, jamais saisi), avec
-avertissement sur stderr — jamais un retri silencieux — s'il manque, est dupliqué, ou
-contredit le tri du contrat.
+Les fiches viennent de la bibliothèque partagée <racine>/_NewsUndActu/Fiches/, trouvée en
+remontant depuis --article, ou donnée par --racine-news ou SZH_NEWS_RACINE (tests). Seules
+entrent les fiches dont le fichier dans la langue du numéro porte Ausgabe: <id
+d'ausgabe.yaml>. Elles sont rangées selon leur champ Ordre (calculé par Pronto) ; un
+Ordre absent, en double ou contraire au tri du JSON est signalé sur stderr, sans retri.
 
 Usage :
     python3 documentation-kirby.py --article articles/07-documentation \
@@ -43,9 +37,8 @@ PREFIXE_MSG = '[documentation-kirby]'
 # ── Lecteurs restreints (bibliothèque standard seulement) ──────────────────────────────
 
 def lire_scalaire_yaml(chemin, cle):
-    """Une clé de premier niveau (colonne 0) d'un petit fichier YAML — <slug>.meta.yaml
-    ici, jamais du YAML arbitraire. Guillemets simples ou doubles ôtés ; sinon valeur
-    brute. Rend None si le fichier est absent ou la clé introuvable."""
+    """Valeur d'une clé de premier niveau d'un petit fichier YAML (<slug>.meta.yaml,
+    ausgabe.yaml), sans ses guillemets. None si le fichier ou la clé manque."""
     if not os.path.isfile(chemin):
         return None
     motif = re.compile(r'^' + re.escape(cle) + r':\s*(.*)$')
@@ -77,11 +70,10 @@ def parse_yaml_liste_simple(valeur):
 
 
 def parse_yaml_liste_structuree(valeur):
-    """`Suivi:` + ligne vide + une liste YAML de structures (voir
-    docs/FORMAT-DOCUMENTATION-KIRBY.md, saisie `structure`) : un « - » seul sur sa ligne
-    ouvre une entrée, les lignes indentées « cle: valeur » qui suivent la remplissent.
-    Accepte les valeurs entre guillemets doubles (écriture normale) ou simples (ce
-    qu'écrit le Panel de Kirby), et les scalaires nus."""
+    """`Suivi:` + ligne vide + une liste YAML de structures (saisie `structure`) : un « - »
+    seul sur sa ligne ouvre une entrée, les lignes « cle: valeur » qui suivent la
+    remplissent. Valeurs entre guillemets doubles, simples (écrits par le Panel de Kirby)
+    ou nues."""
     entrees = []
     courante = None
     motif_cle = re.compile(r'^([a-z][a-z0-9_]*):\s*(.*)$')
@@ -106,7 +98,7 @@ def parse_yaml_liste_structuree(valeur):
 
 def kirby_key(cle):
     """`title` -> `Title`, `dossier_references` -> `Dossier_references` : initiale en
-    majuscule, le reste inchangé (docs/FORMAT-DOCUMENTATION-KIRBY.md, §Syntaxe)."""
+    majuscule, le reste inchangé."""
     if not cle:
         return cle
     return cle[0].upper() + cle[1:]
@@ -144,12 +136,11 @@ def parse_kirby_txt(texte):
     return champs
 
 
-# ── Ordre des fiches : comparaison, jamais un retri silencieux ─────────────────────────
+# ── Ordre attendu des fiches, pour contrôle ─────────────────────────────────────────────
 
 def cle_naturelle(s):
-    """Clé de comparaison localeCompare-like : diacritiques repliés, casse ignorée,
-    et les suites de chiffres comparées numériquement plutôt que caractère à caractère
-    (docs/FORMAT-DOCUMENTATION-KIRBY.md : « numeric true »)."""
+    """Clé de tri comme localeCompare avec numeric: true : sans accents ni casse, les
+    suites de chiffres comparées comme des nombres."""
     s = s or ''
     nfd = unicodedata.normalize('NFKD', s)
     sans_accents = ''.join(c for c in nfd if not unicodedata.combining(c))
@@ -197,11 +188,10 @@ def ordre_attendu(champs, fiches):
 # ── Lecture de l'arborescence ────────────────────────────────────────────────────────────
 
 def deduire_langue(dossier_article, slug, champs, dossier_numero=None):
-    """La langue de CET article (et donc celle de sa bibliothèque de fiches Kirby) :
-    lang: du .meta.yaml, puis le seul documentation.<lang>.txt présent, puis — repli aligné
-    sur la cascade des autres filtres (szh-commun.lua, langue_de() : fiche -> jeton de revue
-    -> ausgabe.yaml) — le jeton `revue:` de ausgabe.yaml traduit par champs['revues']. Rien
-    de silencieux : aucun repli qui ne trouve rien sort en erreur."""
+    """Langue de l'article, donc de ses fiches : `lang:` du .meta.yaml, sinon le seul
+    documentation.<lang>.txt présent, sinon le jeton `revue:` d'ausgabe.yaml traduit par
+    champs['revues'] (même ordre que langue_de() de szh-commun.lua). Chaque repli est
+    signalé ; sans réponse, le script s'arrête en erreur."""
     langues = champs.get('langues', ['fr', 'de'])
     meta = os.path.join(dossier_article, slug + '.meta.yaml')
     brut = lire_scalaire_yaml(meta, 'lang')
@@ -209,7 +199,7 @@ def deduire_langue(dossier_article, slug, champs, dossier_numero=None):
         lang = brut.strip().lower()[:2]
         if lang in langues:
             return lang
-    # Repli : le fichier documentation.<lang>.txt présent le dit, s'il n'y en a qu'un.
+    # Repli : le documentation.<lang>.txt présent, s'il est seul.
     candidats = sorted(
         m.group(1) for m in (
             re.match(r'^documentation\.(\w+)\.txt$', n) for n in os.listdir(dossier_article)
@@ -234,9 +224,8 @@ def deduire_langue(dossier_article, slug, champs, dossier_numero=None):
 # ── Racine de la bibliothèque _NewsUndActu ──────────────────────────────────────────────
 
 def trouver_dossier_numero(dossier_article):
-    """Remonte les parents depuis le dossier de l'article jusqu'au premier qui porte
-    ausgabe.yaml : LE dossier du numéro. None si aucun (banc réduit d'un test unitaire qui
-    n'en a pas) — pas une erreur en soi, seulement l'absence de bibliothèque de fiches."""
+    """Premier dossier parent qui contient ausgabe.yaml : le dossier du numéro. None si
+    aucun (cas de certains tests) : il n'y a alors pas de fiches."""
     d = os.path.abspath(dossier_article)
     while True:
         if os.path.isfile(os.path.join(d, 'ausgabe.yaml')):
@@ -248,11 +237,10 @@ def trouver_dossier_numero(dossier_article):
 
 
 def trouver_racine_news(dossier_numero, racine_news=None):
-    """<racine> de _NewsUndActu depuis le dossier du numéro (celui qui porte ausgabe.yaml) :
-    argument explicite, puis SZH_NEWS_RACINE (tests, banc), puis découverte par les NOMS de
-    dossiers (docs/FORMAT-DOCUMENTATION-KIRBY.md, §Arborescence) — jamais en comptant des
-    crans : un numéro archivé est un cran plus bas qu'un numéro en cours
-    (<racine>\\_Archive\\Revue\\<num> contre <racine>\\Revue\\<num>)."""
+    """Racine qui contient _NewsUndActu : argument, puis SZH_NEWS_RACINE, puis déduite des
+    noms des dossiers parents du numéro. On ne compte pas les niveaux : un numéro archivé
+    (<racine>/_Archive/Revue/<num>) est un niveau plus bas qu'un numéro en cours
+    (<racine>/Revue/<num>)."""
     if racine_news and racine_news.strip():
         return os.path.abspath(racine_news.strip())
     env = os.environ.get('SZH_NEWS_RACINE')
@@ -272,17 +260,13 @@ def trouver_racine_news(dossier_numero, racine_news=None):
 
 
 def lire_fiches_bibliotheque(racine, lang, id_numero, champs):
-    """Fiches de <racine>\\_NewsUndActu\\Fiches\\<dossier du type>\\<slug>\\<type>.<lang>.txt
-    rattachées à CE numéro (Ausgabe == id_numero) dans SA langue (types[].dossier, docs/
-    FORMAT-DOCUMENTATION-KIRBY.md, §Une fiche, 23.09.2026). Aucune rétrocompatibilité avec
-    l'ancien rangement à plat Fiches\\<slug>\\. Un sous-dossier de Fiches qui n'est le
-    `dossier` d'aucun type du contrat est ignoré (avertissement) : pourrait être un dossier
-    système ou un type retiré du contrat, pas une erreur en soi. Un fichier de langue dont le
-    type (déduit de son nom) ne correspond pas au dossier qui le contient est signalé sur
-    stderr et JAMAIS lu — un classement à la main qui contredirait le contrat ne doit jamais
-    entrer en silence dans un document. `_Statuts` est un voisin de Fiches, jamais dedans —
-    un nom préfixé `_` est quand même écarté par prudence, le format l'interdisant de toute
-    façon."""
+    """Fiches <racine>/_NewsUndActu/Fiches/<dossier du type>/<slug>/<type>.<lang>.txt
+    rattachées à ce numéro (Ausgabe == id_numero), dans cette langue.
+    Avec un avertissement sur stderr :
+      * un sous-dossier qui n'est le `dossier` d'aucun type du JSON est ignoré ;
+      * un fichier dont le type (tiré de son nom) ne correspond pas à son dossier n'est
+        pas lu.
+    Les noms commençant par `_` sont ignorés."""
     dossier_fiches = os.path.join(racine, '_NewsUndActu', 'Fiches')
     fiches = []
     if not os.path.isdir(dossier_fiches):
@@ -325,7 +309,7 @@ def lire_fiches_bibliotheque(racine, lang, id_numero, champs):
             with open(os.path.join(chemin_slug, candidats[0]), encoding='utf-8') as f:
                 fields = parse_kirby_txt(f.read())
             if (fields.get('Ausgabe') or '').strip() != id_numero:
-                continue  # orpheline, ou rattachée à un autre numéro : pas la nôtre.
+                continue  # sans numéro, ou d'un autre numéro
             ordre_brut = (fields.get('Ordre') or '').strip()
             ordre = int(ordre_brut) if re.fullmatch(r'\d+', ordre_brut) else None
             fiches.append({'dossier': slug, 'chemin': chemin_slug, 'type': type_,
@@ -334,11 +318,9 @@ def lire_fiches_bibliotheque(racine, lang, id_numero, champs):
 
 
 def trier_fiches_numero(champs, fiches):
-    """Trie par le champ système Ordre (recalculé par Pronto à chaque enregistrement d'une
-    fiche du numéro) ; avertit sur stderr sans jamais retrier en silence un cas anormal :
-    Ordre absent, en double, ou qui contredit le tri du contrat (ordre_attendu, calculé
-    depuis ordreTypes + le tri de chaque type — la même fonction qui faisait foi avant que
-    les fiches ne quittent le numéro)."""
+    """Trie par le champ Ordre (recalculé par Pronto à chaque enregistrement d'une fiche
+    du numéro). Avertit sur stderr si Ordre manque, est en double, ou contredit le tri du
+    JSON (ordre_attendu : ordreTypes puis le tri de chaque type). Ordre fait foi."""
     attendu = ordre_attendu(champs, fiches)
     sans_ordre = [f['dossier'] for f in fiches if f['ordre'] is None]
     if sans_ordre:
@@ -373,10 +355,8 @@ def echapper_attribut(v):
 
 
 def formater_dest_markdown(chemin):
-    """Un chemin d'image entre `< >` s'il porte un espace (p. ex. « OneDrive - SZH CSPS » du
-    chemin de la bibliothèque partagée) : la syntaxe markdown ![](dest) coupe dest au premier
-    espace (place réservée au titre), CommonMark demande alors <dest> pour un chemin qui en
-    contient un."""
+    """Chemin d'image entre `< >` s'il contient une espace (« OneDrive - SZH CSPS ») :
+    sinon markdown coupe la destination à la première espace."""
     return f'<{chemin}>' if ' ' in chemin else chemin
 
 
@@ -433,13 +413,9 @@ def emettre_fiche(champs, type_, fiche):
         lignes.append(descriptif)
         lignes.append('')
     if image:
-        # Chemin ABSOLU, jamais relatif au dossier de l'article : la fiche vit dans la
-        # bibliothèque partagée _NewsUndActu\Fiches\<slug>\, hors du numéro (donc à une
-        # distance qui varie — numéro en cours ou archivé — et parfois hors de son arbre),
-        # aucune distance relative fixe n'existe. `fiche['chemin']` (posé par
-        # lire_fiches_bibliotheque) et le dossier de l'article viennent du même processus
-        # Python, donc de la même vue du système de fichiers (Windows ou /mnt/c sous WSL) —
-        # pas de conversion à faire ici.
+        # Chemin absolu : la fiche est hors du numéro, à une distance qui varie (numéro en
+        # cours ou archivé). Il vient du même processus que le dossier de l'article, donc
+        # de la même vue du système de fichiers (Windows ou /mnt/c).
         chemin_image = os.path.join(fiche['chemin'], image).replace('\\', '/')
         lignes.append(f'![]({formater_dest_markdown(chemin_image)}){{alt=""}}')
         lignes.append('')
@@ -465,10 +441,8 @@ def convertir(dossier_article, champs_path, racine_news=None):
 
     slug = os.path.basename(os.path.normpath(dossier_article))
 
-    # Le numéro : ausgabe.yaml, retrouvé en remontant les parents. Absent (banc réduit d'un
-    # test unitaire) : pas d'erreur en soi, seulement aucune fiche Kirby à rattacher. Présent
-    # mais sans id : erreur nette, jamais un repli silencieux (docs/FORMAT-DOCUMENTATION-
-    # KIRBY.md, §Le numéro).
+    # Le numéro : ausgabe.yaml, trouvé en remontant. Absent : pas de fiches. Présent mais
+    # sans `id:` : erreur.
     dossier_numero = trouver_dossier_numero(dossier_article)
     id_numero = None
     if dossier_numero:
@@ -511,24 +485,18 @@ def convertir(dossier_article, champs_path, racine_news=None):
             groupe = [f for f in fiches if f['type'] == section]
             if not groupe:
                 continue
-            # Enveloppe de section, composée par szh-rubrique.lua (pas szh-ressource.lua,
-            # qui tourne trop tôt dans la chaîne pour poser un titre non numéroté — voir
-            # son commentaire de tête) : un <h2> non numéroté, dans l'esprit d'une rubrique,
-            # tiré de types[].libelle. Sans elle, une section de fiches n'avait aucun titre
-            # imprimé — constaté le 23.09.2026 sur le banc réel.
-            # Identifiant non vide obligatoire (#doc-section-<type>) : un Div SANS
-            # identifiant dont le premier enfant est un Header voit le writer html5 de
-            # pandoc lui voler cet identifiant en le promouvant en <section> — même piège
-            # que documenté en tête de szh-rubrique.lua pour les rubriques, qui posent
-            # toujours le leur (#doc-<cle>) pour la même raison.
+            # Enveloppe de section : szh-rubrique.lua y pose un <h2> non numéroté tiré de
+            # types[].libelle (szh-ressource.lua passe trop tôt dans la chaîne pour cela).
+            # L'identifiant est obligatoire : un Div sans identifiant dont le premier enfant
+            # est un Header devient une <section> qui prend l'identifiant du titre (voir
+            # l'en-tête de szh-rubrique.lua).
             lignes.append(f'::: {{#doc-section-{section} .szh-ressources-section type="{section}"}}')
             lignes.append('')
             for fiche in groupe:
                 lignes.extend(emettre_fiche(champs, section, fiche))
             lignes.append(':::')
             lignes.append('')
-        # Une clé d'ordreSections qui ne serait ni une rubrique ni un type n'a rien à
-        # produire : le contrat serait fautif, pas ce script — rien n'est écrit.
+        # Une clé d'ordreSections qui n'est ni rubrique ni type ne produit rien.
 
     sortie = '\n'.join(lignes)
     sortie = re.sub(r'\n{3,}', '\n\n', sortie).strip('\n') + '\n'
@@ -536,7 +504,7 @@ def convertir(dossier_article, champs_path, racine_news=None):
 
 
 def main():
-    try:  # console Windows en cp1252 : un accent combinant (avertissement, titre importé) y plante.
+    try:  # console Windows en cp1252 : un accent combinant y ferait planter print().
         sys.stdout.reconfigure(encoding='utf-8')
         sys.stderr.reconfigure(encoding='utf-8')
     except Exception:
@@ -556,7 +524,7 @@ def main():
     if args.imprimer_racine_news:
         dossier_numero = trouver_dossier_numero(args.article or '.')
         if not dossier_numero:
-            sys.exit(1)  # rien sur stdout : le $(wildcard) du Makefile qui la consomme reste vide.
+            sys.exit(1)  # rien sur stdout : DOC_FICHES du Makefile reste vide
         print(trouver_racine_news(dossier_numero, args.racine_news))
         return
 

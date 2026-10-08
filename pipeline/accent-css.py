@@ -1,26 +1,19 @@
 #!/usr/bin/env python3
-# accent-css.py — expose la couleur annuelle (`couleur` d'ausgabe.yaml) en variables CSS
-# d'accent, dans un unique bloc :root consommé à la fois par les tableaux .szh-tableau et
-# par la maquette :
-#   --szh-accent-clair  fond à texte noir : en-têtes, zébrage et total « couleur »
-#   --szh-accent-fonce  fond « negatif » à texte blanc
-#   --c-annual* / --annual-*   jetons de la couverture et du corps
+# Écrit la couleur annuelle du numéro (`couleur` d'ausgabe.yaml) en variables CSS, dans un
+# bloc :root lu par les tableaux et par la maquette :
+#   --szh-accent-clair         fond à texte noir : en-têtes, zébrage, total « couleur »
+#   --szh-accent-fonce         fond « negatif » à texte blanc
+#   --c-annual* / --annual-*   variables de la couverture et du corps
 #
 #   python3 accent-css.py <ausgabe.yaml>   ->  bloc :root sur stdout
 #
-# Les crans de chaque couleur sont éditables dans styles/couleurs.css ; ce script y lit la
-# couleur choisie et réémet les variations que consomment les tableaux. Sans couleur
-# valide, il n'écrit qu'un commentaire : le repli gris de print.css s'applique et le PDF
-# d'un numéro sans couleur reste identique. Si couleurs.css est absent ou incomplet, les
-# valeurs sont recalculées par apca.py, avec les mêmes cibles donc les mêmes résultats.
-# WeasyPrint 69 n'implémente pas color-mix() et n'exécute aucun JS : tous les jetons
-# dérivés sont précalculés ici.
+# Les crans de chaque couleur se règlent dans styles/couleurs.css. S'il est absent ou
+# incomplet, apca.py les recalcule avec les mêmes cibles. Sans couleur valide, le script
+# n'écrit qu'un commentaire et les gris de print.css s'appliquent.
+# WeasyPrint n'a pas color-mix() : toutes les valeurs dérivées sont calculées ici.
 #
-# Les contrastes sont calculés en APCA (module apca.py) et un seuil APCA dépend de la
-# taille du texte : celui des tableaux est à 13,6 px et le corps à 14 px, donc les deux
-# fonds d'accent se jugent à 90, pas à 75.
-#
-# stdlib uniquement (apca.py est à côté, donc importable tel quel).
+# Contrastes en APCA (apca.py). Le seuil dépend de la taille du texte : 13,6 px dans les
+# tableaux, 14 px dans le corps, donc Lc 90 pour les deux fonds d'accent.
 
 import sys
 import os
@@ -36,19 +29,14 @@ PALETTE = {
 
 
 def lire_couleur(chemin):
-    # 'utf-8-sig' : un ausgabe.yaml écrit par un outil Windows peut porter un BOM UTF-8,
-    # qui collerait à la première clé et la rendrait invisible, perdant silencieusement la
-    # couleur annuelle. Le sérialiseur du cockpit préserve un BOM existant, donc le cas
-    # est atteignable.
+    # 'utf-8-sig' : un outil Windows peut avoir posé un BOM, qui collerait à la première clé.
     try:
         with open(chemin, encoding='utf-8-sig') as f:
             contenu = f.read()
     except OSError:
         return None
     for ligne in contenu.splitlines():
-        # Ancré en tout début de ligne : une clé `couleur:` indentée sous un autre bloc
-        # (par exemple `impression:` ou une entrée de liste) n'est pas la couleur annuelle
-        # du numéro et ne doit pas être prise pour elle.
+        # En début de ligne seulement : une clé `couleur:` indentée appartient à un autre bloc.
         m = re.match(r'couleur\s*:\s*(.*)$', ligne)
         if not m:
             continue
@@ -64,9 +52,8 @@ def lire_couleur(chemin):
 
 
 def couleurs_css():
-    """Contenu de styles/couleurs.css (à côté de ce script), commentaires retirés, ou
-    '' si absent. Ses commentaires citent des noms de variables : les retirer évite
-    qu'une phrase d'explication soit prise pour une déclaration."""
+    """Contenu de styles/couleurs.css sans ses commentaires (qui citent des noms de
+    variables), ou '' si absent."""
     chemin = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'styles', 'couleurs.css')
     try:
         with open(chemin, encoding='utf-8') as f:
@@ -76,11 +63,9 @@ def couleurs_css():
 
 
 def resoudre_variable(css, nom, sauts=4):
-    """Valeur hex d'une variable de couleurs.css, en suivant les renvois `var(--autre)`.
-    Les alias -normal/-clair/-fonce pointent vers un cran de la grille ou vers la marque,
-    donc un seul hex par cran et par teinte : la revue peut éditer un cran sans risque de
-    désynchronisation. None si la variable est absente ou si la chaîne de renvois
-    n'aboutit pas à un hex."""
+    """Valeur hex d'une variable de couleurs.css, en suivant les renvois `var(--autre)`
+    (les alias -normal/-clair/-fonce renvoient à un cran). None si la variable manque ou
+    si les renvois n'aboutissent pas à un hex."""
     for _ in range(sauts):
         m = re.search(re.escape(nom) + r'\s*:\s*([^;\n]+);', css)
         if not m:
@@ -109,10 +94,9 @@ def variations_depuis_css(nom):
 
 
 def teintes_neutres_depuis_css():
-    """Teintes neutres des tableaux (--szh-gris-clair, --szh-zebre), éditées dans
-    styles/couleurs.css et indépendantes de la couleur annuelle : ré-émises telles
-    quelles pour qu'une modification de couleurs.css atteigne le PDF. Dict {var: hex},
-    vide si couleurs.css est absent ou incomplet — c'est alors le repli de print.css."""
+    """Teintes neutres des tableaux (--szh-gris-clair, --szh-zebre) lues dans
+    couleurs.css, indépendantes de la couleur annuelle. Dict {var: hex}, vide si
+    couleurs.css manque (print.css a alors ses propres valeurs)."""
     css = couleurs_css()
     out = {}
     for var in ('--szh-gris-clair', '--szh-zebre'):
@@ -125,23 +109,18 @@ def teintes_neutres_depuis_css():
 # ---- Repli : recalcul APCA si couleurs.css est absent ou incomplet -------------------
 
 def variations_calculees(hexa):
-    """Mêmes valeurs que couleurs.css, recalculées sur la grille à clarté fixe :
-      -normal = la charte (hex d'entrée intact, elle occupe l'un des crans) ;
-      -clair  = cran 100 (fond à texte noir,  Lc garanti +91) ;
-      -fonce  = cran 800 (fond à texte blanc, Lc garanti −90).
-    Le texte d'un tableau étant à 13,6 px, son seuil est 90 : c'est ce qui exclut les
-    crans 200 et 700, qui plafonnent à 80. Pour le rouge, -fonce n'est donc plus la charte
-    #D31932 mais le cran 800. La grille et les alias vivent dans apca.py (CLARTES,
-    ALIAS) : ce repli ne peut pas produire une autre palette que celle du fichier CSS."""
+    """Mêmes valeurs que couleurs.css, recalculées sur la grille d'apca.py (CLARTES, ALIAS) :
+      -normal = la couleur de la charte, inchangée ;
+      -clair  = cran 100 (fond à texte noir,  Lc +91) ;
+      -fonce  = cran 800 (fond à texte blanc, Lc −90).
+    Le seuil 90 du texte des tableaux exclut les crans 200 et 700 (Lc 80 au plus)."""
     ech = apca.echelle(hexa)
     return {nom: ech[niveau] for nom, niveau in apca.ALIAS}
 
 
-# ---- Jetons de la maquette : précalcul des color-mix() et du contraste ----------
-# WeasyPrint 69 n'implémente pas color-mix() et n'exécute aucun JS : tous les jetons
-# dérivés de la couleur annuelle que consomme print.css sont donc précalculés ici. Les
-# formules reprennent la maquette à l'identique et APCA sert de garde-fou — on ne s'en
-# écarte que lorsqu'une paire texte/fond n'atteint pas son seuil (test/apca-check.py).
+# ---- Variables de la maquette : color-mix() et contraste calculés ici ----------
+# Les formules sont celles de la maquette ; on ne s'en écarte que si une paire texte/fond
+# n'atteint pas son seuil APCA (test/apca-check.py).
 
 def melange(hex_a, hex_b, poids_a):
     """color-mix(in srgb, A poids_a, B) : mélange sRGB par canal (gamma, comme CSS)."""
@@ -149,24 +128,19 @@ def melange(hex_a, hex_b, poids_a):
     return apca.vers_hex(tuple(a[i] * poids_a + b[i] * (1 - poids_a) for i in range(3)))
 
 
-# Filet ou bordure de couleur sur le papier blanc : le plancher APCA du non-textuel est
-# 30, on vise 45 pour qu'un trait de 1 px reste franchement visible. Seule la moutarde
-# (Lc 30 sur blanc) est concernée et elle est légèrement assombrie. Ce seuil ne dépend pas
-# de la taille : un filet n'est pas du texte.
+# Filet ou bordure de couleur sur blanc : le minimum APCA hors texte est 30, on vise 45
+# pour qu'un trait de 1 px reste bien visible. Seule la moutarde (Lc 30) est assombrie.
 LC_FILET_CONFORT = 45.0
 
 
 def jetons_annuels(hexa):
-    """Tous les jetons --c-annual* / --annual-* dérivés de la couleur annuelle.
+    """Variables --c-annual* / --annual-* dérivées de la couleur annuelle.
 
-    Contraste jugé en APCA :
-      --c-annual-ui : les traits fins d'une couleur trop pâle sur blanc sont assombris
-        jusqu'à LC_FILET_CONFORT ; les barres épaisses gardent var(--c-annual).
-      --c-kw-bg : fond des puces de mots-clés (.szh-kw), qui portent du texte noir de
-        10 px. Le mélange de la maquette (22 % couleur) n'atteint 90 ni en rouge (82) ni en
-        capucine (89) ; corriger demanderait de toucher la maquette, donc
-        test/apca-check.py le signale « à arbitrer » plutôt que de le valider à un seuil
-        complaisant."""
+      --c-annual-ui : couleur des traits fins, assombrie jusqu'à LC_FILET_CONFORT si elle
+        est trop pâle ; les barres épaisses gardent --c-annual.
+      --c-kw-bg : fond des mots-clés (.szh-kw, texte noir de 10 px). Le mélange à 22 %
+        n'atteint pas Lc 90 en rouge (82) ni en capucine (89) : test/apca-check.py le
+        signale « à arbitrer »."""
     texte, _ = apca.meilleure_polarite(hexa)
     return [
         ('--c-annual',          hexa),
@@ -181,13 +155,12 @@ def jetons_annuels(hexa):
 def main(argv):
     chemin = argv[1] if len(argv) > 1 else 'ausgabe.yaml'
     hexa = lire_couleur(chemin)
-    neutres = teintes_neutres_depuis_css()   # --szh-gris-clair / --szh-zebre (éditables)
+    neutres = teintes_neutres_depuis_css()
     lignes = []
     if hexa in PALETTE:
         v = variations_depuis_css(PALETTE[hexa]) or variations_calculees(hexa)
         lignes.append('  --szh-accent-clair: %s;' % v['clair'])
         lignes.append('  --szh-accent-fonce: %s;' % v['fonce'])
-        # Jetons de la maquette : même source, un seul bloc.
         for var, hexv in jetons_annuels(hexa):
             lignes.append('  %s: %s;' % (var, hexv))
     for var, hexv in neutres.items():

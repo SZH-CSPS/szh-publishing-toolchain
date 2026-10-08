@@ -1,11 +1,11 @@
 // Enrichissement du cache des auteurs avec les données du corpus local.
 //
-//   node --test "test/js/*.test.js"
+//   node --test test/js/auteurs-corpus.test.js
 //
-// AUCUN PowerShell ici : racinesCorpus prend sa fonction d'exécution en paramètre, et les
-// tests la remplacent par une table de fixtures. Le cache passe par SZH_AUTEURS_CACHE pour
-// ne pas toucher C:\ProgramData. L'arborescence factice monte un corpus complet avec des
-// pièges : absence de ausgabe.yaml, fichiers non-meta, mtime invariants.
+// Sans PowerShell : racinesCorpus reçoit sa fonction d'exécution en paramètre, et les tests
+// la remplacent par une table de réponses. Le cache passe par SZH_AUTEURS_CACHE pour ne pas
+// toucher C:\ProgramData. L'arborescence factice contient des pièges : dossier sans
+// ausgabe.yaml, fichiers autres que .meta.yaml, mtime inchangés.
 'use strict';
 
 const test = require('node:test');
@@ -32,11 +32,10 @@ function cacheTemporaire(nom) {
   return path.join(dossier, 'auteurs.json');
 }
 
-// balayerCorpus() est asynchrone (I/O par fs.promises, un `await` par entrée, pour ne pas
-// geler l'hôte d'extensions sur un corpus de plusieurs milliers de fiches). `fn` est donc
-// TOUJOURS attendu avant que le `finally` ne restaure la variable d'environnement — sans
-// ce await, la restauration surviendrait avant que le balayage, encore en vol, ait fini
-// de lire le cache, et un test en polluerait un autre.
+// balayerCorpus() est asynchrone (un `await` par entrée, pour ne pas geler l'hôte
+// d'extensions sur des milliers de fiches). `fn` est donc attendu avant que le `finally`
+// restaure la variable d'environnement, sinon un balayage encore en cours lirait le cache
+// d'un autre test.
 async function avecCacheAsync(nom, fn) {
   const avant = process.env.SZH_AUTEURS_CACHE;
   process.env.SZH_AUTEURS_CACHE = cacheTemporaire(nom);
@@ -226,10 +225,8 @@ test('balayerCorpus : le plafond de fichiers coupe proprement, complet=false, r�
   });
 });
 
-// La borne de temps, celle qui protège d'un OneDrive qui s'hydrate au compte-gouttes.
-// Elle était morte : le code comparait `maintenant` à lui-même, et le test d'origine ne
-// regardait que le cas où l'on ne coupe pas — il passait quoi qu'il arrive. L'horloge est
-// donc injectée, et on vérifie les DEUX côtés de la borne.
+// La borne de temps protège d'un OneDrive qui télécharge les fichiers au compte-gouttes.
+// L'horloge est injectée, et on vérifie les deux côtés de la borne.
 test('balayerCorpus : la borne de temps coupe, et ne coupe pas quand le budget suffit', async () => {
   await avecCacheAsync('delai', async () => {
     const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-corpus-test-'));

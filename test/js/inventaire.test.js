@@ -98,8 +98,8 @@ function lanceurJs(p, env) {
   }
 }
 
-// Les listes de numéros n'ont plus de jumeau PowerShell : elles sont prouvées en clair par
-// chaque test ; la parité porte sur les racines, que le socle et le module calculent chacun.
+// Les listes de numéros n'existent que côté Node, et chaque test les vérifie directement ;
+// la parité porte sur les racines, que PowerShell et le module calculent chacun.
 function comparer(ps, js) {
   assert.strictEqual(js.base, ps.racineBase, 'racine active');
   assert.strictEqual(js.modeTest, ps.modeTest, 'mode test');
@@ -122,7 +122,7 @@ test('inventaire : mêmes racines que le socle PowerShell, en emplacement de tes
   const ps = lanceurPowerShell(p, env);
   const js = lanceurJs(p, env);
   comparer(ps, js);
-  // Ce que la parité protège, dit en clair : sans quoi deux listes vides seraient « égales ».
+  // Les valeurs attendues, explicites : deux listes vides seraient sinon « égales ».
   assert.deepStrictEqual(js.produits.revue.enCours.map((e) => e.nom), ['2026-03', '2026-02']);
   assert.deepStrictEqual(js.produits.revue.archives.map((e) => e.nom), ['2026-01', '2021-01', '2020-05']);
   assert.deepStrictEqual(js.produits.revue.hors, { nombre: 2, dossier: path.join(p.racine, 'Ancien') });

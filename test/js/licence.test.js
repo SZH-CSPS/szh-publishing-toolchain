@@ -3,23 +3,18 @@
 //
 //   node --test "test/js/*.test.js"
 //
-// Le défaut gardé ici est un seul, vu de trois côtés. « Cet article est sous licence
-// Creative Commons CC-BY 4.0 » était écrit en dur dans szh-maquette.lua, l'adresse du
-// lien en dur dans le gabarit HTML, et une troisième copie de cette adresse en dur dans
-// lib/export-ojs.js. Aucun champ de fiche ne pouvait les contredire : un article reprenant
-// une figure « © Getty » sortait avec ce crédit sous l'image ET la mention CC-BY 4.0 sur
-// sa couverture, et partait ainsi dans OJS.
+// La licence est dite à trois endroits : la mention de couverture (szh-maquette.lua), le
+// lien du gabarit HTML et l'export OJS (lib/export-ojs.js). Ce fichier vérifie que :
+//   * une fiche sans `licence` prend la licence de la revue, sans autre changement ;
+//   * les trois lisent la même table ;
+//   * « droits réservés » ne fabrique aucune adresse ;
+//   * le champ survit à un aller-retour par le formulaire : la carte de la webview ne porte
+//     pas tout, et ecrireCartesArticles() relit le reste du fichier ;
+//   * l'export avertit quand une figure porte un crédit « © » sous une licence libre.
 //
-// Ce que ce fichier tient :
-//   * une fiche sans `licence` sort exactement comme avant que le champ existe ;
-//   * les trois consommateurs lisent la même table, et cette table n'a plus de jumelle ;
-//   * « droits réservés » ne fabrique aucune adresse, nulle part ;
-//   * le champ survit à un aller-retour par le formulaire — la carte de la webview ne
-//     porte pas tout, et c'est ecrireCartesArticles() qui relit du fichier le reste.
-//
-// Le rendu lui-même se vérifie en compilant (voir le rapport de ce chantier) ; ici on
-// garde ce qui se recopie d'un fichier à l'autre, plus le formulaire réellement exécuté
-// et l'hôte réellement activé.
+// Le rendu se vérifie en compilant (test/build-render.sh) ; ici on contrôle ce qui se
+// recopie d'un fichier à l'autre, le formulaire réellement exécuté et l'hôte réellement
+// activé.
 'use strict';
 
 const test = require('node:test');
@@ -58,8 +53,8 @@ test('fiche d’article : la licence est lue et réécrite telle quelle', () => 
 });
 
 test('fiche d’article : sans licence, rien n’est écrit et rien ne change', () => {
-  // C'est le cas de tous les articles des numéros en cours. La fiche doit ressortir
-  // caractère pour caractère, et la licence appliquée être celle de la revue.
+  // La fiche ressort caractère pour caractère, et la licence appliquée est celle de la
+  // revue.
   const src = 'type: article' + LF + 'lang: fr' + LF + 'title:' + LF + '  fr: "T"' + LF;
   const relu = yaml.analyserMeta(src);
   assert.strictEqual(relu.licence, '');
@@ -69,8 +64,8 @@ test('fiche d’article : sans licence, rien n’est écrit et rien ne change', 
 });
 
 test('fiche d’article : une licence hors liste vaut « non déclarée »', () => {
-  // Une valeur inattendue ne doit jamais s'imprimer : la couverture retombe sur la
-  // licence de la revue, comme pour une fiche muette.
+  // Une valeur inattendue ne s'imprime pas : la couverture prend la licence de la revue,
+  // comme pour une fiche sans licence.
   for (const brute of ['cc-by', 'cc0', 'CC-BY-5.0', 'domaine public', '', 'http://x']) {
     assert.strictEqual(yaml.normaliserLicence(brute), '',
       'valeur acceptée à tort : ' + JSON.stringify(brute));
@@ -108,22 +103,20 @@ function licencesDuLua() {
 }
 
 test('licences : une seule table, deux fichiers', () => {
-  // lib/yaml.js décide, szh-maquette.lua imprime. Une table qui diverge, et le formulaire
-  // offrirait une licence dont la couverture ne saurait rien dire — ou l'inverse.
+  // lib/yaml.js valide, szh-maquette.lua imprime : les deux tables doivent concorder.
   assert.deepStrictEqual(licencesDuLua(), yaml.LICENCES_ARTICLE.map((l) => ({
     cle: l.cle, nom: l.nom, url: l.url
   })));
   const mDefaut = MAQUETTE.match(/local LICENCE_DEFAUT = '([^']+)'/);
   assert.ok(mDefaut, 'LICENCE_DEFAUT introuvable dans szh-maquette.lua');
   assert.strictEqual(mDefaut[1], yaml.LICENCE_DEFAUT);
-  // Six licences Creative Commons 4.0 — la suite complète — et le cas des droits réservés.
+  // Les six licences Creative Commons 4.0, et les droits réservés.
   assert.strictEqual(yaml.LICENCES_ARTICLE.length, 7);
   assert.strictEqual(yaml.LICENCES_ARTICLE.filter((l) => l.url !== '').length, 6);
 });
 
 test('couverture : la mention par défaut n’a pas bougé d’un caractère', () => {
-  // Ce que trois numéros déjà publiés portent. La phrase est maintenant composée du
-  // gabarit localisé et du sigle ; le résultat doit rester identique.
+  // La phrase des numéros déjà publiés, composée du gabarit localisé et du sigle.
   const attendu = {
     de: 'Dieser Artikel steht unter der Lizenz Creative Commons CC-BY 4.0',
     fr: 'Cet article est sous licence Creative Commons CC-BY 4.0',
@@ -148,8 +141,7 @@ test('couverture : la mention par défaut n’a pas bougé d’un caractère', (
 });
 
 test('plus une seule adresse de licence en dur hors de la table', () => {
-  // Le défaut d'origine : la même URL recopiée dans trois fichiers, dont deux ne
-  // pouvaient plus être corrigés depuis la fiche.
+  // L'URL n'est écrite qu'à un endroit.
   assert.ok(GABARIT.indexOf('creativecommons') === -1,
     'le gabarit HTML écrit encore une adresse de licence en dur');
   assert.ok(OJS_SRC.indexOf('creativecommons') === -1,
@@ -159,11 +151,11 @@ test('plus une seule adresse de licence en dur hors de la table', () => {
   assert.match(GABARIT, /\$if\(licence-url\)\$/, 'le gabarit ne teste pas l’absence d’adresse');
   assert.match(GABARIT, /<a href="\$licence-url\$">\$licence-texte\$<\/a>/);
   // Un <a> enfant direct du conteneur inline-flex ne reçoit aucune annotation /Link sous
-  // WeasyPrint 70 : DOI et licence n'étaient plus cliquables (mesuré, 30.09.2026).
+  // WeasyPrint 70 : DOI et licence ne seraient plus cliquables.
   assert.ok(!/class="szh-(doi|licence)"><a /.test(GABARIT),
     'le lien du DOI ou de la licence est redevenu l’enfant direct de son conteneur flex');
-  // ⚠ PDF/UA-1 7.18.5 : le <a> ne contient que du texte, la flèche reste dehors. Et la
-  // branche sans lien n'a ni <a> ni flèche.
+  // PDF/UA-1 7.18.5 : le <a> ne contient que du texte, la flèche reste dehors. La branche
+  // sans lien n'a ni <a> ni flèche.
   const sansLien = GABARIT.slice(GABARIT.indexOf('$else$', GABARIT.indexOf('$if(licence-url)$')),
     GABARIT.indexOf('$endif$', GABARIT.indexOf('$if(licence-url)$')));
   assert.match(sansLien, /<span class="szh-licence">\$licence-texte\$<\/span>/);
@@ -172,8 +164,8 @@ test('plus une seule adresse de licence en dur hors de la table', () => {
 });
 
 test('szh-maquette : la licence est lue dans la fiche de l’article, pas dans le numéro', () => {
-  // Par la même porte que la langue : la fusion de pandoc ne dit pas de quel fichier une
-  // clé vient, et une `licence:` posée dans ausgabe.yaml s'appliquerait à tout le numéro.
+  // Comme pour la langue : la fusion de pandoc ne dit pas de quel fichier vient une clé, et
+  // une `licence:` posée dans ausgabe.yaml s'appliquerait à tout le numéro.
   assert.match(MAQUETTE, /lire_cle\(slug \.\. '\.meta\.yaml', 'licence'\)/);
   assert.ok(MAQUETTE.indexOf("meta['licence-url']") !== -1, 'le filtre ne pose pas l’adresse');
   assert.match(MAQUETTE, /licence_url ~= '' and pandoc\.MetaString\(licence_url\) or nil/,
@@ -199,8 +191,7 @@ test('licences : un libellé par entrée, en français et en allemand', () => {
 });
 
 test('un seul sélecteur pour la langue et pour la licence', () => {
-  // La règle que le propriétaire répète : aucune duplication de composant. Le <select> de
-  // la langue a été généralisé, il n'a pas été recopié.
+  // Pas de composant dupliqué : le <select> de la langue sert aussi à la licence.
   assert.match(COMMUN, /function choixFerme\(opts\)/, 'le sélecteur partagé a disparu');
   assert.strictEqual((COMMUN.match(/document\.createElement\('select'\)/g) || []).length, 1,
     'un second <select> est fabriqué à la main dans _commun.js');
@@ -215,8 +206,8 @@ test('un seul sélecteur pour la langue et pour la licence', () => {
 test('les deux formulaires de cartes recoivent la liste des licences', () => {
   // « Métadonnées des articles » et « Vérification de l'import » partagent le même
   // fragment de carte : un panneau qui oublierait la liste afficherait un <select> vide,
-  // sans erreur et sans qu'aucune page ne s'en plaigne.
-  // Concaténé à lib/ : préalable au découpage d'extension.js, voir hote-factice.js.
+  // sans erreur.
+  // Concaténé à lib/ (sourceExtensionEtLib, hote-factice.js).
   const ext = sourceExtensionEtLib(COCKPIT);
   const envois = ext.split("types: typesTraduits()").slice(1);
   assert.strictEqual(envois.length, 2, 'le nombre d’envois de cartes a changé');
@@ -269,7 +260,7 @@ test('métadonnées des articles : chaque carte offre le choix de la licence', (
   assert.deepStrictEqual(declare.enfants.map((o) => o.value),
     yaml.LICENCES_ARTICLE.map((l) => l.cle));
   assert.strictEqual(declare.value, 'droits-reserves', 'la licence de la fiche n’est pas reprise');
-  // Fiche muette : le formulaire montre la licence par défaut, celle qui s'imprimera.
+  // Fiche sans licence : le formulaire montre la licence par défaut, celle qui s'imprimera.
   assert.strictEqual(selectLicence(page, 'article-sans').value, yaml.LICENCE_DEFAUT);
   // Les libellés sont ceux de l'hôte, et l'intitulé est apparié au champ.
   for (const opt of declare.enfants) {
@@ -281,9 +272,8 @@ test('métadonnées des articles : chaque carte offre le choix de la licence', (
 });
 
 test('collecter() rend la licence, et ne rend pas la source', () => {
-  // La carte que la webview renvoie est reconstruite, elle ne relit pas le fichier : ce
-  // qu'elle ne porte pas, c'est ecrireCartesArticles() qui le rapatrie. Le contrôle
-  // suivant en dépend.
+  // La carte que la webview renvoie est reconstruite sans relire le fichier : ce qu'elle
+  // ne porte pas, ecrireCartesArticles() le reprend (voir le contrôle suivant).
   const bloc = FICHES.slice(FICHES.indexOf('function collecter(carte)'));
   const corps = bloc.slice(0, bloc.indexOf(LF + '    }'));
   assert.match(corps, /select\[data-cle=licence\]/, 'collecter() ne relit pas la licence');
@@ -304,8 +294,8 @@ test('la fiche garde sa licence et sa source après un enregistrement du formula
     'doi: "10.57161/r2026-03-05"', 'title:', '  fr: "Titre"',
     'author:', '- prenom: "Anne"', '  nom: "Dupont"', ''].join(LF));
 
-  // L'arbre d'abord : c'est son premier parcours qui donne sa racine au fournisseur, et
-  // sans racine le panneau ne s'ouvre pas.
+  // L'arbre d'abord : son premier parcours donne sa racine au fournisseur, sans laquelle
+  // le panneau ne s'ouvre pas.
   await hote.arbre().getChildren();
   await hote.executer('szh.apercuMetadonnees');
   const p = hote.panneauDeType('szhApercuMetadonnees');
@@ -321,9 +311,9 @@ test('la fiche garde sa licence et sa source après un enregistrement du formula
   const carteEnvoyee = charge.articles.filter((a) => a.slug === '01-essai')[0];
   assert.strictEqual(carteEnvoyee.valeurs.licence, 'cc-by-nc-nd-4.0');
 
-  // Ce que la webview renvoie : la forme exacte de collecter() dans media/_fiches.js —
-  // pas de `source`, pas de `_inconnues`. C'est le piège : un champ promu en clé de
-  // première classe sans être rapatrié ici se perd à chaque enregistrement.
+  // Ce que la webview renvoie, sous la forme de collecter() (media/_fiches.js) : ni
+  // `source` ni `_inconnues`. Une clé que ecrireCartesArticles() ne reprend pas du fichier
+  // se perd à chaque enregistrement.
   await p._recepteur({
     type: 'enregistrer', auto: true,
     articles: {
@@ -339,7 +329,7 @@ test('la fiche garde sa licence et sa source après un enregistrement du formula
   assert.ok(apres.indexOf('source: "' + nomWord + '"') !== -1,
     'la source du Word a été perdue par le formulaire');
   assert.strictEqual(yaml.analyserMeta(apres).licence, 'cc-by-sa-4.0');
-  // Et une carte muette sur la licence repart sans la clé, donc sous celle de la revue.
+  // Une carte sans licence repart sans la clé, donc sous celle de la revue.
   await p._recepteur({
     type: 'enregistrer', auto: true,
     articles: { '01-essai': { type: 'article', lang: 'fr', title: { fr: 'Titre' } } }
@@ -440,8 +430,8 @@ test('export OJS : en droits réservés, aucune adresse n’est fabriquée', () 
 });
 
 test('export OJS : un crédit de figure tiers sous licence CC est nommé, sans bloquer', () => {
-  // Le cas d'origine : « © Getty » sous l'image, CC-BY 4.0 sur la couverture. Ce lien
-  // n'est pas vérifiable par la machine — c'est un avertissement, jamais un refus.
+  // « © Getty » sous l'image, CC-BY 4.0 sur la couverture : la contradiction n'est pas
+  // vérifiable par la machine, c'est un avertissement et non un refus.
   const sortie = exporter({
     licence: null,
     figures: ['copyright="© Getty Images" source="Getty"', 'copyright="© SZH"']
@@ -452,7 +442,7 @@ test('export OJS : un crédit de figure tiers sous licence CC est nommé, sans b
   assert.match(dits[0], /© Getty Images/, 'l’avertissement ne cite pas le crédit');
   assert.match(dits[0], /CC-BY 4\.0/, 'l’avertissement ne dit pas quelle licence est annoncée');
   assert.ok(dits[0].indexOf('f-02.png') === -1, 'un crédit de la maison a été signalé');
-  // Et l'export a bien abouti.
+  // L'export a abouti.
   assert.match(sortie.xml, /<licenseUrl>/);
 });
 
@@ -462,12 +452,12 @@ test('export OJS : les crédits de la maison et des auteur·e·s ne disent rien'
     assert.deepStrictEqual(avertsLicence(sortie), [],
       'crédit signalé à tort : ' + credit);
   }
-  // Une figure sans crédit du tout ne pose évidemment aucune question.
+  // Une figure sans crédit ne déclenche rien.
   assert.deepStrictEqual(avertsLicence(exporter({ licence: null, figures: ['alt="rien"'] })), []);
 });
 
 test('export OJS : en droits réservés, le crédit de figure ne se plaint plus', () => {
-  // La contradiction a disparu : l'article ne promet plus rien qu'une figure démente.
+  // Sous « droits réservés », la figure créditée ne contredit plus la licence.
   const sortie = exporter({
     licence: 'droits-reserves', figures: ['copyright="© Getty Images"']
   });
@@ -479,13 +469,10 @@ test('export OJS : en droits réservés, le crédit de figure ne se plaint plus'
 // ── La flèche « lien sortant » du DOI et de la licence ─────────────────────────────────
 //
 // Les deux mentions du hero sont des liens, et chacune porte un <span class="szh-arrow">
-// vide, dont print.css fait une image de fond. Sa position verticale ne tient qu'à une
-// marge basse, dont le rôle n'a rien d'évident à la lecture : .szh-doi / .szh-licence
-// sont des `inline-flex` en
-// `align-items: center`, qui centrent la boîte de MARGE de leur enfant — une marge basse
-// de N remonte donc l'encre de N/2. Retirer cette marge en la prenant pour du blanc
-// superflu redescendrait les deux flèches à mi-hauteur du texte, ce qui est précisément le
-// défaut corrigé le 12.09.2026.
+// vide, dont print.css fait une image de fond. Sa position verticale tient à une marge
+// basse : .szh-doi et .szh-licence sont des `inline-flex` en `align-items: center`, qui
+// centrent la boîte de marge de leur enfant, si bien qu'une marge basse de N remonte
+// l'encre de N/2. Sans cette marge, les flèches descendraient à mi-hauteur du texte.
 
 const lireFichier = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
 
@@ -504,7 +491,7 @@ test('flèche du hero : les deux mentions du gabarit la portent', () => {
 });
 
 // pandoc replie les lignes longues du gabarit, et WeasyPrint recopie le retour tel quel dans
-// /Title, /Subject et le XMP (mesuré le 30.09.2026 : « défis\net apports »).
+// /Title, /Subject et le XMP (par exemple « défis\net apports »).
 test('gabarit d’article : titre et description du document sans repli de ligne', () => {
   const gabarit = lireFichier('pipeline', 'templates', 'szh-article.html');
   const titre = gabarit.match(/<title>(.*)<\/title>/);
@@ -516,8 +503,8 @@ test('gabarit d’article : titre et description du document sans repli de ligne
 });
 
 // WeasyPrint 70 balise tout <svg> inline en /Figure et n'en lit le texte de remplacement que
-// dans un <title> : un décor en <svg> fait tomber PDF/UA-1 sur chaque article (mesuré le
-// 23.09.2026). Filigrane et flèches sont donc des fonds CSS.
+// dans un <title> : un décor en <svg> ferait échouer PDF/UA-1 sur chaque article. Filigrane
+// et flèches sont donc des fonds CSS.
 test('gabarit d’article : aucun <svg> inline, les décors du hero sont des fonds', () => {
   const gabarit = lireFichier('pipeline', 'templates', 'szh-article.html')
     .replace(/<!--[\s\S]*?-->/g, '');
@@ -532,7 +519,7 @@ test('gabarit d’article : aucun <svg> inline, les décors du hero sont des fon
 
 test('flèche du hero : sa remontée tient à une marge basse, et reste sous le plafond mesuré', () => {
   const css = lireFichier('pipeline', 'styles', 'print.css');
-  // Ancré en début de ligne : `.szh-hero .szh-arrow` (la couleur, §6) porte le même nom et
+  // Ancré en début de ligne : `.szh-hero .szh-arrow` (la couleur) porte le même nom et
   // serait trouvé le premier.
   const regle = css.match(/^\.szh-arrow\s*\{[^}]*\}/m);
   assert.ok(regle, 'règle .szh-arrow introuvable dans print.css');
@@ -541,7 +528,7 @@ test('flèche du hero : sa remontée tient à une marge basse, et reste sous le 
   const px = Number(marge[1]);
   assert.ok(px > 0, 'une marge nulle ne remonte rien');
   // Au-delà de 2 px, la boîte de marge dépasse la ligne de texte et pousse le contenu du
-  // hero vers le bas — mesuré au rendu : +1 px à 3 px de marge, +7 px à 4 px.
+  // hero vers le bas (+1 px à 3 px de marge, +7 px à 4 px).
   assert.ok(px <= 2, 'marge de ' + px + ' px : au-delà de 2 px, la ligne du hero se met à descendre');
 });
 

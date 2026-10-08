@@ -1,13 +1,8 @@
-// rapport-manuscrit.twig : la page HTML du rapport du nettoyeur de manuscrit, et la vue
-// (construireVueRapportManuscrit, outils/rendre-gabarit.js) qui la nourrit -- §7/§7 bis/
-// §7 ter/§9/§10 de docs/ARCHITECTURE-nettoyeur-manuscrit.md. Le moteur de gabarits
-// (lib/gabarits.js) n'a ni arithmétique ni indexation par crochets : plafonner une liste
-// d'occurrences, grouper par famille puis par règle, juger une image (lib/qualite-image.js)
-// se font donc AVANT le rendu, dans construireVueRapportManuscrit -- ce fichier éprouve
-// cette fonction directement (rapide, un cas par test) ET, une fois, le vrai sous-processus
-// `node outils/rendre-gabarit.js`.
-//
-//   node --test test/js/manuscrit-rapport.test.js
+// Page HTML du rapport du nettoyeur de manuscrit (rapport-manuscrit.twig) et la vue qui la
+// nourrit (construireVueRapportManuscrit, outils/rendre-gabarit.js). Voir
+// docs/ARCHITECTURE-nettoyeur-manuscrit.md. Le moteur de gabarits n'a ni arithmétique ni
+// indexation : plafonner, grouper et juger les images se fait dans la vue, avant le rendu.
+// Les cas appellent la vue directement ; un test passe par le vrai sous-processus.
 'use strict';
 
 const test = require('node:test');
@@ -26,9 +21,8 @@ const { construireVueRapportManuscrit } = require(CHEMIN_RENDRE_GABARIT);
 
 const SOURCE_TWIG = fs.readFileSync(CHEMIN_TWIG, 'utf8');
 
-// Rend directement via lib/gabarits.js -- même fonction de vue que le vrai
-// outils/rendre-gabarit.js (require()-ée depuis lui, jamais recopiée), sans repasser par un
-// sous-processus à chaque cas : voir le test dédié plus bas pour le câblage réel.
+// Rend en direct par lib/gabarits.js, avec la fonction de vue importée de
+// outils/rendre-gabarit.js.
 function rendre(rapport, produit) {
   const vue = construireVueRapportManuscrit(rapport);
   const blocs = compiler(SOURCE_TWIG, 'rapport-manuscrit.twig')
@@ -36,7 +30,7 @@ function rendre(rapport, produit) {
   return blocs.contenu || '';
 }
 
-// ---- Un parseur minimal : balises appariées, sur les conteneurs structurants de la page --
+// Contrôle minimal : les balises structurantes sont appariées.
 function compterBalise(html, nom) {
   const ouvre = (html.match(new RegExp('<' + nom + '(?:\\s[^>]*)?>', 'g')) || []).length;
   const ferme = (html.match(new RegExp('</' + nom + '>', 'g')) || []).length;
@@ -52,8 +46,7 @@ function assertBienForme(html, etiquette) {
   assert.match(html, /<\/html>\s*$/, etiquette + ' : ne se termine pas par </html>');
 }
 
-// Aucune URL externe, hors https://doi.org (la seule autorisée par le contrat de ce test) --
-// une page qui en chargerait une romprait le contrat « sans réseau » du rapport.
+// Le rapport s'ouvre sans réseau : seule https://doi.org est admise.
 function assertSansUrlExterne(html, etiquette) {
   const trouvees = html.match(/https?:\/\/[^\s"'<>]*/g) || [];
   for (const url of trouvees) {
@@ -62,7 +55,7 @@ function assertSansUrlExterne(html, etiquette) {
   }
 }
 
-// ---- (a) un JSON minimal fabriqué, une famille à deux règles, un peu de tout -------------
+// (a) JSON minimal fabriqué : une famille à deux règles et un peu de tout.
 const RAPPORT_MINIMAL = {
   entree: '/mnt/c/Users/exemple/manuscrit-exemple.docx',
   produit: 'revue', langue: 'fr', gabarit: 'B',
@@ -140,7 +133,7 @@ const RAPPORT_MINIMAL = {
   }
 };
 
-// ---- (b) un refus ---------------------------------------------------------------------
+// (b) Un refus.
 const RAPPORT_REFUS = {
   entree: '/mnt/c/Users/exemple/manuscrit-refuse.docx',
   refus: true, code_refus: 'suivi-modifications',
@@ -148,13 +141,11 @@ const RAPPORT_REFUS = {
   code_sortie: 2
 };
 
-// ---- (c) un JSON réel (lot-A, 1_Résumé-article-revue-CSPS), chemin anonymisé -----------
-// Copié depuis tmp/corpus-relecture/lot-A (hors git, voir CONSIGNES du chantier) : seuls
-// `entree`/`sortie_docx` ont été changés pour un chemin générique, le reste -- alertes,
-// décisions, en-tête -- est EXACTEMENT ce que le nettoyeur a produit sur ce manuscrit.
+// (c) Rapport réellement produit par le nettoyeur sur un manuscrit du corpus de relecture.
+// Seuls `entree` et `sortie_docx` sont remplacés par un chemin générique.
 const RAPPORT_REEL = JSON.parse(`{"entree":"/mnt/c/Users/exemple/manuscrit-reel.docx","produit":"revue","langue":"fr","gabarit":"B","analyse_seule":false,"sans_typo":false,"sortie_docx":"/mnt/c/Users/exemple/manuscrit-reel-nettoye.docx","compteurs":{"signes_total":4184,"signes_bibliographie":1494,"nb_references":6,"commentaires":0,"note_commentaires":null,"images":{"total":0,"sans_alt":0,"details":[]}},"decisions":{"entete":{"donnees":{"titre":"De la diversité des élèves à la diversité des professionnel-le-s","sous_titre":"Quels soutiens à l’activité enseignante ?","auteurs":[],"resume":"","langue_resume":"","resumes_autres":{},"mots_cles":[],"doi":"","ligne_revue":"","langue_produit":"fr"},"indices_consommes":{"0":"titre","1":"sous_titre","3":"auteurs","4":"auteurs","5":"auteurs","6":"auteurs"},"trace":[{"source":0,"decision":"titre","motif":"premier paragraphe non vide du document"},{"source":1,"decision":"sous_titre","motif":"même signature que le titre, deuxième ligne (finit par « : »)"},{"source":3,"decision":"auteur_info_non_attribuee","motif":"ligne de la zone auteurs, mais non attribuée : plusieurs noms déclarés ensemble juste avant, ou aucun auteur connu pour la recevoir"},{"source":4,"decision":"auteur_info_non_attribuee","motif":"ligne de la zone auteurs, mais non attribuée : plusieurs noms déclarés ensemble juste avant, ou aucun auteur connu pour la recevoir"},{"source":5,"decision":"auteur_info_non_attribuee","motif":"ligne de la zone auteurs, mais non attribuée : plusieurs noms déclarés ensemble juste avant, ou aucun auteur connu pour la recevoir"},{"source":6,"decision":"auteur_info_non_attribuee","motif":"ligne de la zone auteurs, mais non attribuée : plusieurs noms déclarés ensemble juste avant, ou aucun auteur connu pour la recevoir"}]},"titres":{"stats":{"total_paragraphes":28,"total_declares":0,"niveaux_utilises":[],"niveaux_recherches":[1,2,3],"promus":1,"adoptes":0,"retrogrades":0,"conserves_declares":0,"non_promus":4,"exclus":23,"exclus_par_categorie":{"vide":17,"bibliographie":5,"coordonnees":1},"promus_liste":0,"total_titres_retenus":1,"rejet_contrainte_niveaux":false,"groupes_rabattus_niveau3":0,"signal_nombre_inhabituel":false,"styles_exclus":[]},"trace":[{"portee":"document","source":null,"style":"","decision":"etat_declare","motif":"aucun style de titre déclaré : recherche des trois niveaux par mise en forme (passe 3)"},{"portee":"document","source":null,"style":"","decision":"groupe_promu","motif":"groupe : 12.0 pt, gras, police Times New Roman, 2 à 2 mots, 1 occurrence(s) réparties → niveau 1"},{"portee":"paragraphe","source":2,"style":"heading 2","decision":"exclu_vide","niveau_declare":2,"niveau_retenu":0,"motif":"jamais un titre par déduction : paragraphe vide"},{"portee":"paragraphe","source":17,"style":"","decision":"promue","niveau_declare":0,"niveau_retenu":1,"motif":"promu titre (niveau 1) : groupe 12.0 pt, gras, police Times New Roman, 2 mot(s)"}]},"formatage":{"stats":{"paragraphes_nettoyes":13,"paragraphes_inchanges":10,"paragraphes_vides_retires":5,"signalements":0},"trace":[{"portee":"paragraphe","source":2,"decision":"nettoye","signalements":[],"motif":"alignement/retrait manuels retirés"}]},"typographie":{"traces":["manuscrit-typo : 11 unité(s) normalisée(s) via pandoc en 397.8 ms."],"abandons":[],"avertissements":["[typo-avertissement] majuscule-accentuee | article « - » | une majuscule non accentuée subsiste dans le corps (« Etat », « Ecole ») : le Guide du typographe les accentue. Le filtre ne corrige que les titres, un mot anglais pouvant s’écrire de même — à trancher à la relecture. | [de] ein Grossbuchstabe ohne Akzent ist im Text geblieben (« Etat », « Ecole »): der Guide du typographe akzentuiert sie. Der Filter korrigiert nur die Titel, da ein englisches Wort gleich geschrieben sein kann – bei der Korrektur zu entscheiden."],"statut":"appliquee"},"ecriture":{"stats":{"paragraphes":23,"blocs_figure":0,"blocs_tableau":0,"images":0,"liens":0,"listes_non_reportees":0,"notes_ecrites":0},"trace":[]}},"alertes":{"total":1,"error":0,"warning":1,"suggestion":0,"liste":[{"rule":"Typo.majuscule-accentuee","severity":"warning","action":"report","para":null,"span":null,"found":"majuscule-accentuee","suggested":null,"message":"une majuscule non accentuée subsiste dans le corps (« Etat », « Ecole ») : le Guide du typographe les accentue. Le filtre ne corrige que les titres, un mot anglais pouvant s’écrire de même — à trancher à la relecture."}],"groupes":{"par_famille":{"Typo":1},"par_regle":{"Typo.majuscule-accentuee":{"total":1,"exemples":[]}}}}}`);
 
-// ---- fixture dédiée au plafond : une règle à 25 occurrences ----------------------------
+// Une règle à N occurrences, pour le plafond d'affichage.
 function fabriquerRapportPlafond(nOccurrences) {
   const liste = [];
   for (let i = 0; i < nOccurrences; i++) {
@@ -184,8 +175,6 @@ function fabriquerRapportPlafond(nOccurrences) {
 }
 const RAPPORT_PLAFOND = fabriquerRapportPlafond(25);
 
-// =========================================================================================
-
 test('(a) le JSON minimal rend du HTML bien formé, en français et en allemand', () => {
   for (const produit of ['revue', 'zeitschrift']) {
     const html = rendre(RAPPORT_MINIMAL, produit);
@@ -193,10 +182,8 @@ test('(a) le JSON minimal rend du HTML bien formé, en français et en allemand'
   }
 });
 
-// Un paragraphe de cellule signalé (gras intégral) porte désormais le `.source` du TABLEAU
-// porteur (manuscrit_modele.py, §5.2 : jamais la position locale à la cellule, qui produisait
-// un « paragraphe 0 » indiscernable d'une cellule à l'autre) et `dans_tableau: true` -- la
-// page doit le dire, en clair, à côté du numéro.
+// Un paragraphe de cellule porte le `source` du tableau qui le contient (manuscrit_modele.py)
+// et `dans_tableau: true`.
 test('(a bis) un paragraphe de cellule (dans_tableau) affiche la mention à côté de son numéro', () => {
   const rapport = JSON.parse(JSON.stringify(RAPPORT_MINIMAL));
   rapport.decisions.formatage.trace = [
@@ -212,15 +199,11 @@ test('(a bis) un paragraphe de cellule (dans_tableau) affiche la mention à côt
   assert.match(htmlDe, /<td>6 \(in einer Tabelle\)<\/td>/,
     'zeitschrift : la mention allemande doit suivre le source du tableau');
 
-  // Un paragraphe de PREMIER NIVEAU (dans_tableau absent/faux) ne porte jamais cette mention --
-  // sinon elle apparaîtrait partout, plus aucun signal.
   assert.doesNotMatch(rendre(RAPPORT_MINIMAL, 'revue'), /dans un tableau/,
     'un paragraphe de premier niveau ne doit jamais porter la mention « dans un tableau »');
 });
 
-// Les constats de lecture (`[import-avertissement]`, recueillis par la CLI) ne sont plus dits
-// dans le journal du lanceur : le rapport est le seul endroit où on les lit. Une seule langue
-// par page, celle du produit, et pas de doublon.
+// Les constats de lecture (`[import-avertissement]`) se lisent seulement dans le rapport.
 test('(a ter) les avertissements d’import sont rendus dans la langue du produit, sans doublon', () => {
   const rapport = JSON.parse(JSON.stringify(RAPPORT_MINIMAL));
   const unConstat = {
@@ -235,7 +218,7 @@ test('(a ter) les avertissements d’import sont rendus dans la langue du produi
     'revue : la phrase doit apparaître une seule fois');
   assert.doesNotMatch(htmlFr, /Kopf-\/Fußzeile/, 'revue : la phrase allemande ne doit pas apparaître');
   assert.doesNotMatch(htmlFr, /import-avertissement/, 'le préfixe technique ne doit pas fuir');
-  // La langue de la phrase suit `rapport.produit`, comme dans la vraie CLI.
+  // La langue de la phrase suit `rapport.produit`.
   const htmlDe = rendre(Object.assign({}, rapport, { produit: 'zeitschrift' }), 'zeitschrift');
   assertBienForme(htmlDe, 'import/zeitschrift');
   assert.match(htmlDe, /Kopf-\/Fußzeile\(n\): Inhalt nicht gelesen/, 'zeitschrift : phrase allemande absente');
@@ -260,11 +243,8 @@ test('(c) un rapport réel (corpus lot-A, chemin anonymisé) rend sans planter, 
     const html = rendre(RAPPORT_REEL, produit);
     assertBienForme(html, 'reel/' + produit);
     assertSansUrlExterne(html, 'reel/' + produit);
-    // Le fichier réel n'a ni auteur ni résumé reconnus (voir la fixture) : la page doit le
-    // dire, jamais rester silencieuse sur un champ manquant.
+    // Ce rapport n'a ni auteur ni résumé : la page signale les champs manquants.
     assert.match(html, /class="absent"/, 'reel/' + produit + ' : aucun champ absent signalé');
-    // Aucune trace du vrai chemin (nom d'utilisateur, dossier du corpus) : seule
-    // l'anonymisation de la fixture doit apparaître.
     assert.doesNotMatch(html, /robin|corpus-relecture/i, 'reel/' + produit + ' : chemin réel non anonymisé');
   }
 });
@@ -288,8 +268,7 @@ test('la sévérité de chaque alerte est rendue, dans sa langue', () => {
 
 test('deux règles de la même famille se groupent sous UN SEUL en-tête de famille', () => {
   const html = rendre(RAPPORT_MINIMAL, 'revue');
-  // Structure.NiveauxTitre et Structure.Bibliographie, même famille « Structure » : un seul
-  // <h3>Structure — …</h3>, et deux blocs <div class="regle …"> en dessous.
+  // Structure.NiveauxTitre et Structure.Bibliographie : un <h3>Structure, deux blocs de règle.
   const entetesFamille = (html.match(/<h3>Structure/g) || []).length;
   assert.equal(entetesFamille, 1, 'la famille Structure a plus d’un en-tête : ' + entetesFamille);
   const blocsRegle = (html.match(/class="regle regle-/g) || []).length;
@@ -376,7 +355,7 @@ test('images : verdict de lib/qualite-image.js rendu, pas un jugement réinvent�
   assert.match(html, /image2\.png[\s\S]*?puce-ok">\s*bonne/, 'image au-dessus du conseillé non signalée « bonne »');
 });
 
-// ---- Le câblage réel : node outils/rendre-gabarit.js, un aller-retour JSON sur stdin -----
+// Câblage réel : node outils/rendre-gabarit.js, JSON sur stdin.
 test('outils/rendre-gabarit.js (le vrai sous-processus) rend le même contenu que lib/gabarits.js en direct',
   () => {
     const entree = JSON.stringify({ chemin: CHEMIN_TWIG, variables: { produit: 'revue', rapport: RAPPORT_MINIMAL } });
@@ -391,9 +370,7 @@ test('outils/rendre-gabarit.js (le vrai sous-processus) rend le même contenu qu
   });
 
 test('outils/rendre-gabarit.js : les autres appelants (sans `variables.rapport`) ne sont pas affectés', () => {
-  // Un gabarit ordinaire (courriel, export) ne passe jamais `variables.rapport` : la
-  // construction de vue ne doit alors jamais s’exécuter -- ce test le prouve avec un
-  // gabarit jetable qui n’a rien à voir avec le rapport du nettoyeur.
+  // Sans `variables.rapport` (courriel, export), la vue du rapport n'est pas construite.
   const gabaritJetable = '{% block contenu %}{{ x }}{% endblock %}';
   const cheminTemp = path.join(require('os').tmpdir(), 'szh-gabarit-jetable-' + Date.now() + '.twig');
   fs.writeFileSync(cheminTemp, gabaritJetable, 'utf8');

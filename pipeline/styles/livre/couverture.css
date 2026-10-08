@@ -2,7 +2,7 @@
      .szh-couv-impression  une page à plat 4e + dos + 1re, CMJN, fond perdu, traits ;
      .szh-couv-ecran       deux pages, 1re puis 4e, RGB, sans dos ni fond perdu.
    Empilée après socle.css seulement (polices) : --css=socle.css --css=livre/couverture.css.
-   Ni base.css ni la charte de l'intérieur : leur géométrie de page n'a rien à faire ici.
+   base.css et la charte de l'intérieur n'y entrent pas.
 
    Aucune taille de livre ni aucune couleur n'est écrite en dur : couverture.py pose sur
    <html> les dimensions (--szh-couv-largeur, -dos, -hauteur, -fp = fond perdu, 0 à l'écran)
@@ -10,22 +10,20 @@
    pour l'impression, en hex pour l'écran, toutes tirées de couleurs-reference.json. La
    règle @page et le profil CMJN sont dans le <style> du gabarit.
 
-   ⚠ Pièges payés :
-   * Pas de `marks: crop` : WeasyPrint trace ses traits en RGB (`0 0 0 rg`), interdit en
+   Pièges :
+   * Pas de `marks: crop` : WeasyPrint trace ses traits en RVB (`0 0 0 rg`), interdit en
      PDF/X-4. Les traits sont des éléments .szh-couv-trait posés par couverture.py.
-   * Toute couleur visible doit venir d'une variable : un `color` ou un `background`
-     littéral (le bleu par défaut d'un lien, un blanc #fff) sortirait en `rg` dans le PDF
-     d'impression, que couverture.py refuse alors de livrer.
-   * Le dos se lit de BAS EN HAUT (convention continentale, celle des références InDesign
-     fr et de) : rotate(-90deg). rotate(90deg) le retournerait sans avertissement.
-     WeasyPrint ne connaît pas `writing-mode: vertical-rl`. Responsables puis titre sur UNE
-     ligne avant rotation (couverture.py) : deux lignes empilées deviendraient deux
-     colonnes, et dans cet ordre les responsables tombent sous le titre.
-   * La couverture FALC est en Open Sans de chasse NORMALE, comme sa référence, sous le
-     nom « SZH Couverture » (fichiers ET table name renommés, voir fonts/README.md) :
-     restées « Open Sans » à l'intérieur, fontconfig les servait aussi à toute demande
-     « Open Sans » de la feuille (mesuré). Les autres modèles de couverture et l'intérieur
-     des livres restent en SemiCondensed (var(--font-sans), socle.css). */
+   * Toute couleur visible vient d'une variable : un `color` ou un `background` littéral
+     (le bleu par défaut d'un lien, un #fff) sortirait en `rg` dans le PDF d'impression,
+     que couverture.py refuse alors.
+   * Le dos se lit de bas en haut (convention continentale, celle des références fr et
+     de) : rotate(-90deg). WeasyPrint ne connaît pas `writing-mode: vertical-rl`.
+     Responsables puis titre tiennent sur une ligne avant rotation (couverture.py) : deux
+     lignes empilées deviendraient deux colonnes.
+   * La couverture FALC est en Open Sans de chasse normale, comme sa référence, sous le
+     nom « SZH Couverture » (fichiers et table name renommés, voir fonts/README.md) : sous
+     le nom « Open Sans », fontconfig la servirait aussi aux autres demandes « Open Sans ».
+     Les autres modèles et l'intérieur des livres restent en SemiCondensed. */
 
 /* Les graisses 300, 500 et 800 du semi-condensé, pour les modèles classique, recherche et
    prospectrum : déclarées ici et non dans socle.css, où la revue demande déjà 500 et 800

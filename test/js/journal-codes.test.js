@@ -1,30 +1,20 @@
 // Le format à codes du journal de compilation : ce que l'interface reconnaît d'un message
-// du pipeline, et ce qu'elle ne reconnaît plus.
+// du pipeline.
 //
 //   node --test test/js
 //
-// Le défaut corrigé ici n'était pas un bogue, c'était une bombe à retardement. Deux filtres
-// écrivaient de la prose — szh-maquette.lua dans la seule langue du numéro,
-// szh-citations.lua en français seulement — et lib/journal.js reconnaissait leurs PHRASES,
-// dans les deux langues, pour pouvoir les redire dans celle du cockpit. Reformuler un
-// message du pipeline, ne serait-ce qu'en déplaçant un mot, coupait la remontée à l'écran :
-// l'avertissement continuait de partir, plus rien ne l'affichait, et aucun test ne le
-// voyait venir. szh-citations.lua, en plus, ne nommait pas son article : le cockpit le
-// prenait sur la ligne « pandoc articles/<slug>/… » qui précédait, ce qui marche par
-// hasard, parce que la chaîne est séquentielle.
-//
-// Les deux filtres écrivent désormais le format à codes, celui de « [import-avertissement] » :
+// Les filtres écrivent leurs constats dans ce format :
 //
 //   [<source>-<ton>] <code> | <champ> | … | <phrase fr> | [de] <Satz de>
 //
-// Ce fichier prouve les trois choses qui en découlent :
-//   1. une reformulation de la prose du pipeline ne change RIEN à l'écran ;
-//   2. un avertissement nomme son article, et le journal peut être dans n'importe quel ordre ;
-//   3. un blocage reste un blocage — la compilation s'arrête, avec son code de sortie.
+// lib/journal.js lit le code et les champs, jamais la phrase : l'interface affiche ses
+// propres textes, dans la langue du cockpit. Ce fichier vérifie que :
+//   1. une reformulation de la prose du pipeline ne change rien à l'écran ;
+//   2. un avertissement nomme son article, quel que soit l'ordre du journal ;
+//   3. un blocage arrête la compilation, avec son code de sortie.
 //
-// Le point 3 fait réellement tourner pandoc dans la WSL. S'il est introuvable, le contrôle
-// est déclaré non fait plutôt que vert ; SZH_WSL_OBLIGATOIRE en fait un échec, ce qu'une
-// CI doit faire.
+// Le point 3 fait tourner pandoc dans la WSL. S'il est introuvable, le contrôle est
+// déclaré non fait ; SZH_WSL_OBLIGATOIRE en fait un échec, comme en CI.
 'use strict';
 
 const test = require('node:test');
@@ -52,8 +42,8 @@ function ligne(prefixe, code, champs, fr, de) {
   return ['[' + prefixe + '] ' + code].concat(champs, [fr, '[de] ' + de]).join(' | ');
 }
 
-// Le même journal, avec la prose qu'on veut. C'est tout l'enjeu : les champs et les codes
-// sont fixes, les phrases sont libres.
+// Le même journal, avec la prose qu'on veut : les champs et les codes sont fixes, les
+// phrases libres.
 function journalDEssai(prose) {
   const p = (n) => prose + ' — ' + n + '.';
   return [
@@ -91,8 +81,8 @@ const sansProse = (constats) => constats.map(
 // ---- 1. Le cœur : une reformulation ne casse rien ----
 
 test('codes : reformuler un message du pipeline ne change rien à l’écran', () => {
-  // Deux versions du MÊME journal, dont toutes les phrases ont été réécrites — jusqu'à ne
-  // plus rien vouloir dire. C'est exactement ce qu'un correctif de style fait à un filtre.
+  // Deux versions du même journal, dont toutes les phrases ont été réécrites, jusqu'à ne
+  // plus rien vouloir dire.
   const avant = journal.analyserJournal(journalDEssai('Première rédaction du message'), 'fr');
   const apres = journal.analyserJournal(journalDEssai('Ganz anders umformuliert'), 'fr');
 
@@ -102,19 +92,19 @@ test('codes : reformuler un message du pipeline ne change rien à l’écran', (
     'citations/caractere-sans-repli', 'meta/sans-langue', 'meta/champ-vide',
     'meta/marque-champ', 'meta/marque-motcle', 'meta/langue-inconnue'
   ], 'un cas du pipeline n’arrive plus');
-  // Tout ce qui compte est identique : la source, le code, le ton, l'article, la clé
-  // d'i18n et ses substitutions. Seule la prose du pipeline diffère, et elle ne sert plus.
+  // La source, le code, le ton, l'article, la clé d'i18n et ses substitutions sont
+  // identiques. Seule la prose du pipeline diffère, et elle ne sert pas.
   assert.deepStrictEqual(sansProse(apres), sansProse(avant),
     'la reformulation a changé un constat : la remontée dépend encore des phrases');
-  // Et les phrases affichées, elles, ne bougent pas d'un caractère : elles viennent de la
-  // maison, dans les deux langues.
+  // Les phrases affichées ne bougent pas d'un caractère : elles viennent de i18n.js, dans
+  // les deux langues.
   for (const langue of ['fr', 'de']) {
     const a = journal.analyserJournal(journalDEssai('Première rédaction du message'), langue);
     const b = journal.analyserJournal(journalDEssai('Ganz anders umformuliert'), langue);
     assert.deepStrictEqual(b.map((c) => journal.phraseConstat(c, langue)),
       a.map((c) => journal.phraseConstat(c, langue)),
       'la phrase à l’écran (' + langue + ') suit la prose du pipeline');
-    // La prose du pipeline n'arrive nulle part : ni la version d'avant, ni celle d'après.
+    // La prose du pipeline n'apparaît pas à l'écran, dans aucune des deux versions.
     const tout = b.map((c) => journal.phraseConstat(c, langue)).join(' | ');
     assert.ok(tout.indexOf('umformuliert') === -1, 'la prose du pipeline est affichée telle quelle');
     assert.ok(tout.indexOf('[de]') === -1, 'la moitié allemande a suivi');
@@ -122,10 +112,9 @@ test('codes : reformuler un message du pipeline ne change rien à l’écran', (
 });
 
 test('codes : la prose des deux filtres n’est plus reconnue du tout', () => {
-  // Les phrases d'avant, mot pour mot. Aucune ne doit produire son ancien constat : c'est
-  // le code, désormais, qui porte l'information. Le repli générique les montre brutes —
-  // c'est voulu, un journal d'hier ne doit pas devenir muet — mais sous « autre », sans
-  // clé d'i18n et sans prétendre savoir de quoi il parle.
+  // Des phrases en prose, sans code. Aucune ne produit de constat reconnu : c'est le code
+  // qui porte l'information. Le repli générique les montre brutes, sous « autre », sans
+  // clé d'i18n, pour qu'un ancien journal ne devienne pas muet.
   const ancien = [
     'pandoc articles/01-inclusion/01-inclusion.md -> out/01-inclusion/01-inclusion.html',
     '[citations] ⚠ appel sans référence : (Shaw et al., 2023)',
@@ -139,7 +128,7 @@ test('codes : la prose des deux filtres n’est plus reconnue du tout', () => {
     assert.strictEqual(c.code, 'autre', 'une phrase est encore reconnue : ' + c.code);
     assert.strictEqual(c.cle, '', 'une phrase mène encore à une clé d’i18n');
   }
-  // Et le module ne porte plus un seul motif de phrase de ces deux filtres.
+  // Le module ne contient aucun motif de phrase de ces deux filtres.
   const src = fs.readFileSync(path.join(COCKPIT, 'lib', 'journal.js'), 'utf8');
   for (const bout of ['est resté sur la marque', 'steht noch auf der Marke', 'est vide',
     'ist leer', 'appel sans référence', 'appel ambigu', 'référence jamais appelée',
@@ -151,8 +140,8 @@ test('codes : la prose des deux filtres n’est plus reconnue du tout', () => {
 });
 
 test('codes : une source neuve arrive sans qu’on soit repassé dans le module', () => {
-  // Le format se généralise : « <source>-<ton> ». Un émetteur qui n'existe pas encore
-  // remonte avec le ton de son préfixe et sa propre phrase, dans la bonne langue.
+  // Le format est général (« <source>-<ton> ») : un émetteur inconnu remonte avec le ton
+  // de son préfixe et sa propre phrase, dans la bonne langue.
   const neuf = ligne('galley-avertissement', 'note-perdue', ['article « 03-autre »'],
     'Une note de bas de page n’a pas suivi.', 'Eine Fussnote ist nicht mitgekommen.');
   const fr = journal.analyserJournal(neuf, 'fr');
@@ -164,7 +153,7 @@ test('codes : une source neuve arrive sans qu’on soit repassé dans le module'
   assert.strictEqual(journal.phraseConstat(fr[0], 'fr'), 'Une note de bas de page n’a pas suivi.');
   const de = journal.analyserJournal(neuf, 'de');
   assert.strictEqual(journal.phraseConstat(de[0], 'de'), 'Eine Fussnote ist nicht mitgekommen.');
-  // Le ton vient du préfixe, et de rien d'autre : trois tons, trois préfixes.
+  // Le ton vient du préfixe seul : trois tons, trois préfixes.
   const tons = {};
   for (const t of ['blocage', 'avertissement', 'info']) {
     const c = journal.analyserJournal(
@@ -172,8 +161,8 @@ test('codes : une source neuve arrive sans qu’on soit repassé dans le module'
     tons[t] = c[0].ton;
   }
   assert.deepStrictEqual(tons, { blocage: 'danger', avertissement: 'attention', info: 'info' });
-  // Un quatrième ton n'existe pas : la ligne n'est pas du format, et ne passe que si elle
-  // se plaint (règle du silence par défaut).
+  // Un quatrième ton n'existe pas : la ligne n'est pas du format, et ne s'affiche que si
+  // elle signale un problème (silence par défaut).
   assert.deepStrictEqual(
     journal.analyserJournal(ligne('galley-remarque', 'x', [], 'Fr.', 'De.'), 'fr'), []);
 });
@@ -181,8 +170,8 @@ test('codes : une source neuve arrive sans qu’on soit repassé dans le module'
 // ---- 2. L'article est nommé, et l'ordre du journal n'y fait rien ----
 
 test('codes : un avertissement nomme son article, journal en désordre compris', () => {
-  // Ce que « make -j » produira : les lignes de deux articles mêlées, et une ligne de
-  // contexte pandoc qui parle d'un TROISIÈME. L'ancien module attribuait tout à celui-là.
+  // Ce que produit « make -j » : les lignes de deux articles mêlées, et une ligne de
+  // contexte pandoc qui parle d'un troisième, à qui rien ne doit être attribué.
   const desordre = [
     'pandoc articles/99-editorial/99-editorial.md -> out/99-editorial/99-editorial.html',
     ligne('citations-avertissement', 'appel-sans-reference',
@@ -198,7 +187,7 @@ test('codes : un avertissement nomme son article, journal en désordre compris',
     ['01-inclusion', '02-ecole', '02-ecole', '99-editorial'],
     'un avertissement est attribué au mauvais article');
 
-  // Et sans aucune ligne de contexte : chaque constat se suffit à lui-même.
+  // Sans ligne de contexte : chaque constat se suffit à lui-même.
   const seules = desordre.split(LF).filter((l) => l.indexOf('pandoc ') !== 0).join(LF);
   assert.deepStrictEqual(
     journal.analyserJournal(seules, 'fr').map((c) => c.slug),
@@ -228,11 +217,10 @@ test('codes : les champs sont nommés, donc leur ordre est libre', () => {
 
 // ---- 2 bis. Le livre : source « livre », trois codes, et « chapitre » = « article » ----
 //
-// Un livre n'a pas d'« article » : ses unités sont des CHAPITRES, et pipeline/livre-
-// assembler.py (liminaire-introuvable) comme pipeline/profils/livre.mk (chapitre-ecarte,
-// chapitre-introuvable) nomment donc leur champ « chapitre », jamais « article ». Sans
-// cet alias, le constat resterait sans slug, et la carte qui le montre resterait sans
-// article à ouvrir.
+// Les unités d'un livre sont des chapitres : pipeline/livre-assembler.py
+// (liminaire-introuvable) et pipeline/profils/livre.mk (chapitre-ecarte,
+// chapitre-introuvable) nomment leur champ « chapitre ». lib/journal.js le lit comme
+// « article », pour que la carte ait un slug à ouvrir.
 
 test('codes : la source « livre » est reconnue, avec ses trois codes et leurs tons', () => {
   const blocage = journal.analyserJournal(ligne('livre-blocage', 'liminaire-introuvable',
@@ -275,8 +263,8 @@ test('codes : les trois codes du livre ont une phrase maison, en français et en
   }
 });
 
-// Sur les lignes RÉELLES du pipeline (pipeline/livre-assembler.py et
-// pipeline/profils/livre.mk), pour ne pas prouver quelque chose que le pipeline n'écrit pas.
+// Sur les lignes réelles du pipeline (pipeline/livre-assembler.py et
+// pipeline/profils/livre.mk).
 test('codes : les trois lignes réelles du pipeline pour le livre sont reconnues', () => {
   const reelles = [
     '[livre-blocage] liminaire-introuvable | pièce « demi-titre » | '
@@ -308,9 +296,8 @@ test('codes : les trois lignes réelles du pipeline pour le livre sont reconnues
 // ---- 2 ter. La numérotation : szh-numerotation.lua, le code « figure-sans-alt » ----
 //
 // La ligne réelle du filtre, recopiée mot pour mot (test/filtres-pandoc.test.js la fait
-// sortir de pandoc, sous SZH_APERCU) : l'espace fine insécable française devant le
-// deux-points (même caractère que LIBELLE_SOURCE de szh-numerotation.lua) côté français,
-// aucune espace côté allemand — la ponctuation haute s'y colle.
+// sortir de pandoc, sous SZH_APERCU) : espace fine insécable devant le deux-points en
+// français (comme LIBELLE_SOURCE de szh-numerotation.lua), aucune espace en allemand.
 const LIGNE_FIGURE_SANS_ALT =
   '[numerotation-avertissement] figure-sans-alt | article « essai » | image « x.png » | '
   + 'L’image x.png n’a ni texte alternatif ni légende : un lecteur '
@@ -325,8 +312,8 @@ test('codes : la ligne réelle de szh-numerotation.lua (figure-sans-alt) est rec
   assert.strictEqual(c.slug, 'essai');
   assert.strictEqual(c.cle, 'ctl.figure.sansalt');
   assert.deepStrictEqual(c.args, ['x.png']);
-  // La phrase à l'écran vient de la maison (ctl.figure.sansalt), jamais de la prose du
-  // pipeline recopiée ci-dessus : un texte plus clair peut la remplacer sans rien casser.
+  // La phrase à l'écran vient de i18n.js (ctl.figure.sansalt), pas de la prose du
+  // pipeline recopiée ci-dessus.
   assert.match(journal.phraseConstat(c, 'fr'), /^L’image x\.png n’a ni texte alternatif/);
   const d = journal.analyserJournal(LIGNE_FIGURE_SANS_ALT, 'de')[0];
   assert.match(journal.phraseConstat(d, 'de'), /^Das Bild x\.png hat weder Alternativtext/);
@@ -344,8 +331,8 @@ test('codes : figure-sans-alt en mode livre nomme le chapitre, pas l’article',
   assert.deepStrictEqual(c.args, ['x.png']);
 });
 
-// La ligne de szh-image-introuvable.lua, telle qu'il l'écrit : pandoc et WeasyPrint ne
-// disent plus rien d'une image que le filtre a remplacée par un cadre.
+// La ligne de szh-image-introuvable.lua, telle qu'il l'écrit. Le filtre remplace l'image
+// absente par un cadre, si bien que pandoc et WeasyPrint n'en disent rien.
 const LIGNE_IMAGE_MANQUANTE =
   '[rendu-avertissement] image-manquante | article « essai » | image « media/x.png » | '
   + 'L’image « x.png » est appelée par le texte mais introuvable sur le disque. '
@@ -369,8 +356,8 @@ test('codes : l’image introuvable du filtre est lue sous rendu/image-manquante
     assert.strictEqual(constats.gravite(c, {}), 'avert');
     assert.strictEqual(journal.resumeJournal([c]).bloquants, 0);
   }
-  // Et les deux replis d'avant (pandoc, WeasyPrint) donnent le même constat : un seul à
-  // l'écran quand une autre voie les produit encore.
+  // Les messages de pandoc et de WeasyPrint sur une image absente donnent le même constat :
+  // un seul à l'écran.
   const mele = journal.analyserJournal('pandoc articles/essai/essai.md -> out/essai/essai.html'
     + LF + LIGNE_IMAGE_MANQUANTE + LF + '[WARNING] Could not fetch resource media/x.png', 'fr');
   assert.strictEqual(mele.filter((c) => c.code === 'image-manquante').length, 1, JSON.stringify(mele));
@@ -408,8 +395,8 @@ function compiler(nom, filtre, fiche, corps) {
 
 test('filtres : un champ porteur vide arrête la compilation, et le dit par son code', (t) => {
   if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
-  // Article déclaré en allemand, titre saisi en français seulement : rien ne s'imprimerait
-  // à cette place, et le PDF s'annoncerait conforme.
+  // Article déclaré en allemand, titre saisi en français seulement : la place du titre
+  // resterait vide.
   const r = compiler('champ-vide', MAQUETTE, 'lang: de\n',
     '---\ntitle:\n  fr: "Un titre français"\n---\n\nUn corps.\n');
   assert.notStrictEqual(r.code, 0, 'la compilation a continué : le blocage ne bloque plus');
@@ -466,8 +453,8 @@ test('filtres : un appel de citation boiteux nomme son article de lui-même', (t
 });
 
 // Le journal d'un export qui a validé ses PDF : le verdict « NON conforme, N règle(s) »
-// puis les règles une par une. Le résumé redisait en chiffre ce que les règles nomment, et
-// comptait une fois de plus dans la barre d'état ; il ne survit que seul.
+// puis les règles une par une. Le résumé n'est gardé que s'il est seul : sinon il
+// redirait les règles et compterait une fois de plus dans la barre d'état.
 test('journal : le résumé PDF/UA ne double pas les règles qui le suivent', () => {
   const bloc = [
     '[pdf-ua] PDF/UA-1 : 01-inclusion.pdf — NON conforme, 1 règle(s) en échec.',

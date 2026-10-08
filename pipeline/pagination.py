@@ -1,46 +1,31 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Pagination continue d'un numéro : chaque article est compilé en un PDF séparé
-(out/<slug>/<slug>.pdf) dont les folios repartent à 1. Ce script calcule le folio de
-départ de chaque article dans le numéro et écrit, par article, une feuille de style que
-WeasyPrint reçoit en feuille UTILISATEUR (-s) pour décaler ses folios.
+"""Pagination continue d'un numéro. Chaque article est compilé en un PDF séparé
+(out/<slug>/<slug>.pdf) dont les folios partent de 1. Ce script calcule le folio de départ
+de chaque article et écrit, par article, une feuille de style que WeasyPrint reçoit en
+feuille utilisateur (-s) pour décaler ses folios.
 
     python3 pagination.py etat       --ordre slug1,slug2,slug3 [--dossier .]
     python3 pagination.py rafraichir --ordre slug1,slug2,slug3 [--dossier .]
+    python3 pagination.py feuilles   [--dossier .]
 
-`--dossier` est le dossier du numéro (celui qui porte ausgabe.yaml et articles/),
-défaut '.'. `--ordre` est l'ordre de lecture du numéro, slugs séparés par des virgules.
-`rafraichir` l'exige ; `etat` s'en passe et relit alors l'ordre de la dernière pagination.
+`--dossier` est le dossier du numéro (celui qui porte ausgabe.yaml et articles/).
+`--ordre` est l'ordre de lecture, slugs séparés par des virgules. `rafraichir` l'exige ;
+`etat` s'en passe et relit l'ordre de la dernière pagination.
 
-**Pourquoi ce script ne reconstitue jamais l'ordre de lecture.** Il est décidé par le
-cockpit, et pas seulement par `ordre-articles` : le cockpit trie le disque par collation
-française (`localeCompare(…, 'fr')`), puis ramène en fin de numéro les articles sans DOI
-— ceux de la clé `articles-sans-doi`, mais AUSSI ceux dont le type ne reçoit pas de DOI
-selon la configuration OJS (extension.js, articlesSansDoi()). Une première version
-reproduisait ici la seule clé : elle se serait trompée sans rien dire sur le premier
-numéro portant un agenda ou un compte rendu. Le folio ne suivrait alors plus le DOI. D'où la
-règle : l'ordre arrive par --ordre, depuis le cockpit, ou on ne pagine pas.
+L'ordre de lecture vient du cockpit, qui seul le connaît : tri français des dossiers, puis
+en fin de numéro les articles sans DOI (clé `articles-sans-doi` et types sans DOI selon la
+configuration OJS, voir articlesSansDoi()). Ce script ne le reconstitue pas.
 
-**Mesures faites avant d'écrire ceci, à ne pas refaire :**
-  * `@page :first { counter-reset: page 11; }` passé à WeasyPrint 69 en feuille
-    UTILISATEUR (`weasyprint -s decalage.css article.html article.pdf`) donne les folios
-    11, 12, 13 : la valeur écrite est donc le départ lui-même, pas départ − 1.
-  * Vérifié sur le patron de la maquette (pied courant en `position: running(piedCourant)`
-    posé par `@bottom-center { content: element(piedCourant) }`, folio en
-    `.folio::after { content: counter(page) }`) : le décalage traverse bien l'élément
-    running.
-  * `@page { counter-reset: page N }` SANS `:first` remet le compteur à N à CHAQUE page
-    (toutes les pages affichent N) : piège mesuré, le `:first` est obligatoire.
-  * `body { counter-reset: page N }` et `html { counter-reset: page N }` sont totalement
-    inertes sous WeasyPrint 69.
-  * Le python3 système de la WSL (3.13.5) n'a pas pypdf ; seul le venv de WeasyPrint l'a
-    (pypdf 6.15.0) — `/usr/local/bin/weasyprint` est un script dont la première ligne est
-    `#!/opt/weasyprint/bin/python3`, et c'est ce python-là qui porte le module.
-  * Chercher `/Type /Page` à l'expression régulière dans un PDF produit par WeasyPrint 69
-    rend 0 : ses objets sont écrits en flux compressés. D'où compter_pages() ci-dessous,
-    qui ne lit jamais un PDF « à la main ».
+Comportement de WeasyPrint sur lequel repose la feuille de folio :
+  * `@page :first { counter-reset: page 11; }` en feuille utilisateur donne les folios 11,
+    12, 13 : la valeur est le départ lui-même. Le décalage atteint aussi le pied courant
+    (élément running).
+  * sans `:first`, le compteur est remis à N sur chaque page ;
+  * `counter-reset: page` sur body ou html est sans effet.
 
-stdlib seulement (json, os, sys, argparse, subprocess, shutil).
+Le python3 système de la WSL n'a pas pypdf, seul le venv de WeasyPrint l'a (voir
+compter_pages()).
 """
 
 import argparse
@@ -59,26 +44,21 @@ NOM_FOLIO_CSS = '.szh-folio.css'
 
 
 class ErreurPagination(Exception):
-    """Erreur destinée à l'utilisateur : message déjà en français, code de sortie déjà
-    décidé par l'appelant. Une seule sortie du programme (main), jamais un sys.exit épars
-    au milieu du calcul — ce qui permettrait à `etat` de rester silencieux (JSON complet)
-    même quand une partie du calcul échoue ailleurs."""
+    """Erreur destinée à l'utilisateur, avec son message et son code de sortie. Seul main()
+    la transforme en sortie du programme."""
 
     def __init__(self, message, code):
         super().__init__(message)
         self.code = code
 
 
-# ---- Comptage des pages : jamais deviné -------------------------------------------
+# ---- Comptage des pages ------------------------------------------------------------
 
 def compter_pages(chemin_pdf):
-    """Nombre de pages réel d'un PDF, jamais deviné. Essaie d'abord `import pypdf` dans
-    l'interprète courant ; si absent (cas mesuré du python3 système de la WSL), retrouve
-    l'interprète du venv WeasyPrint via le shebang de `shutil.which('weasyprint')` et
-    compte par un sous-processus. Si ni l'un ni l'autre ne marche : message clair sur
-    stderr et sortie 3 — jamais un compte deviné en repliant sur une regex sur le PDF
-    (mesuré inefficace : WeasyPrint 69 écrit ses objets en flux compressés, `/Type /Page`
-    n'y apparaît jamais en clair)."""
+    """Nombre de pages d'un PDF, par pypdf. Si l'interprète courant n'a pas pypdf, compte
+    dans un sous-processus avec l'interprète du venv WeasyPrint, lu dans le shebang de
+    `weasyprint`. Sinon, ErreurPagination de code 3. Une expression régulière sur
+    `/Type /Page` ne marche pas : WeasyPrint écrit ses objets en flux compressés."""
     try:
         from pypdf import PdfReader
         return len(PdfReader(chemin_pdf).pages)
@@ -141,9 +121,7 @@ def chemin_json_pagination(dossier):
 # ---- Lecture / écriture de l'état enregistré -----------------------------------------
 
 def lire_pagination_json(dossier):
-    """Contenu brut de .szh-pagination.json, ou None si absent ou illisible. Sert à la
-    fois à `etat`/`rafraichir` (comparaison des pages) et à `feuilles` (reconstruction
-    sans PDF) : un seul lecteur, une seule notion de « absent ou corrompu »."""
+    """Contenu brut de .szh-pagination.json, ou None si absent ou illisible."""
     chemin = chemin_json_pagination(dossier)
     try:
         with open(chemin, encoding='utf-8') as f:
@@ -153,15 +131,11 @@ def lire_pagination_json(dossier):
 
 
 def lire_pagination_enregistree(dossier):
-    """{slug: {'depart': N, 'pages': N}} tel qu'enregistré au dernier `rafraichir`, ou {}
-    si le fichier est absent ou illisible. Un fichier illisible n'est PAS traité comme une
-    erreur bloquante : rien à comparer, donc aucun article périmé signalé — le silence
-    documenté par la règle des périmés (voir calculer_perimes) s'applique aussi à ce cas
-    limite.
+    """{slug: {'depart': N, 'pages': N}} du dernier `rafraichir`, ou {} si le fichier est
+    absent ou illisible (aucun article n'est alors signalé périmé).
 
-    Le départ est retenu autant que les pages : c'est lui qui trahit un article inséré,
-    retiré ou déplacé, où aucun nombre de pages ne change alors que les folios, eux,
-    glissent."""
+    Le départ est retenu en plus des pages : il révèle un article inséré, retiré ou
+    déplacé, cas où aucun nombre de pages ne change."""
     data = lire_pagination_json(dossier)
     if not data:
         return {}
@@ -170,10 +144,9 @@ def lire_pagination_enregistree(dossier):
 
 
 def ecrire_si_different(chemin, contenu):
-    """N'écrit que si le contenu change (lu puis comparé). Pour .szh-folio.css : c'est un
-    prérequis make du PDF, le réécrire à l'identique bougerait son mtime et referait tous
-    les PDF du numéro à chaque rafraîchissement. Pour .szh-pagination.json, la même
-    prudence évite un commit de diff vide. Retourne True si une écriture a eu lieu."""
+    """N'écrit que si le contenu change ; rend True s'il y a eu écriture. .szh-folio.css est
+    un prérequis make du PDF : le réécrire à l'identique ferait recompiler tout le
+    numéro."""
     try:
         with open(chemin, encoding='utf-8') as f:
             ancien = f.read()
@@ -211,16 +184,10 @@ def contenu_json_pagination(articles):
 def calculer_articles(dossier, ordre, enregistrees):
     """Départs cumulés et pages réelles, dans l'ordre de lecture du numéro.
 
-    Un article dont le PDF n'est pas là compte, dans le cumul, pour le nombre de pages que
-    .szh-pagination.json retient de lui — et pour 0 seulement s'il n'y est pas non plus.
-    Mesuré : le faire compter pour 0 dans tous les cas rendait un `make clean` catastrophique,
-    tous les départs retombant à 1 et le numéro entier se déclarant périmé alors que rien
-    n'avait changé. La dernière longueur connue est la seule estimation honnête : elle rend
-    exactement les départs enregistrés tant que personne n'a touché au texte.
-
-    `pages` reste None et `pdf` reste False dans ce cas : on rapporte ce qu'on a MESURÉ, la
-    valeur de repli ne sert qu'au cumul. C'est ce qui permet à `rafraichir` de refuser un
-    numéro à trous plutôt que de figer une estimation."""
+    Un article sans PDF compte, dans le cumul, pour le nombre de pages enregistré dans
+    .szh-pagination.json (0 s'il n'y est pas). Ainsi, après un `make clean`, les départs
+    restent ceux qui sont enregistrés. Pour cet article, `pages` vaut None et `pdf` False :
+    la valeur de repli ne sert qu'au cumul, et `rafraichir` refuse un numéro à trous."""
     articles = []
     inconnus = []
     cumul = 0
@@ -241,27 +208,16 @@ def calculer_articles(dossier, ordre, enregistrees):
 
 
 def calculer_perimes(articles, enregistrees, enregistre):
-    """À partir du premier article qui ne correspond plus à ce que .szh-pagination.json
-    retient, lui et tous les suivants. Lui, parce que ce qui est enregistré pour lui est
-    faux — et c'est cela qui partirait dans le champ <pages> de l'export OJS ; les
-    suivants, parce que leurs folios imprimés sont réellement faux. Les articles AVANT lui
-    ne bougent pas et restent muets : les couvrir d'avertissements apprendrait à la
-    rédaction à les ignorer.
+    """Les articles périmés : le premier qui ne correspond plus à .szh-pagination.json, et
+    tous les suivants. Ce qui est enregistré pour le premier est faux (et partirait dans
+    <pages> de l'export OJS) ; les folios des suivants sont faux. Les articles d'avant ne
+    sont pas signalés.
 
-    Trois façons de ne plus correspondre, et il en faut trois. Le nombre de pages a
-    changé : l'article s'est allongé ou raccourci. Le départ a changé : l'article a
-    glissé parce qu'un précédent a bougé, ou parce qu'un article a été inséré, retiré ou
-    déplacé devant lui. L'article est absent de l'enregistrement : il est neuf, donc sans
-    feuille de folio. Mesuré : sans la comparaison des départs, insérer un article au
-    milieu décalait tous les suivants — départs 3 et 6 devenus 5 et 8 — sans qu'un seul
-    nombre de pages ne change, et rien ne le signalait.
+    Un article ne correspond plus si son nombre de pages a changé, si son départ a changé
+    (un article inséré, retiré ou déplacé devant lui) ou s'il est absent de
+    l'enregistrement. Sans PDF, seul son départ est comparé.
 
-    Un numéro jamais paginé (pas de .szh-pagination.json) n'a rien de périmé : on n'a
-    jamais rien promis. C'est `enregistre` qui porte ce cas, et non une liste de périmés
-    longue comme le numéro.
-
-    Un article sans PDF ne fait pas diverger à lui seul par ses pages — on ne sait rien de
-    sa longueur — mais son départ, lui, reste comparable et le trahit s'il a glissé."""
+    Un numéro jamais paginé n'a rien de périmé : `enregistre` porte ce cas."""
     if not enregistre:
         return []
     perimes = []
@@ -298,10 +254,9 @@ def construire_etat(dossier, ordre):
 
 
 def ordre_enregistre(dossier):
-    """L'ordre de la dernière pagination, tel que .szh-pagination.json le retient. C'est
-    le seul ordre que ce script puisse connaître sans le cockpit : il sert au diagnostic
-    (`etat` lancé à la main), jamais à décider d'une pagination — un article déplacé
-    depuis ne s'y voit pas. Refuse si rien n'a jamais été paginé."""
+    """L'ordre de la dernière pagination, lu dans .szh-pagination.json. Sert au diagnostic
+    (`etat` lancé à la main) : un article déplacé depuis n'y apparaît pas. Lève si rien n'a
+    été paginé."""
     data = lire_pagination_json(dossier)
     if not data or not data.get('articles'):
         raise ErreurPagination(
@@ -337,9 +292,7 @@ def commande_rafraichir(dossier, ordre):
     ecrire_si_different(chemin_json_pagination(dossier), contenu_json_pagination(etat['articles']))
 
     etat['ecrites'] = ecrites
-    # L'état a été construit AVANT l'écriture : à la première pagination d'un numéro il
-    # dirait encore « jamais paginé », et il n'y a plus rien de périmé une fois la
-    # pagination posée. On rend donc l'état d'APRÈS, celui que le cockpit affichera.
+    # L'état a été calculé avant l'écriture ; on rend celui d'après, que le cockpit affiche.
     etat['enregistre'] = True
     etat['perimes'] = []
     print(json.dumps(etat, ensure_ascii=False))
@@ -347,26 +300,16 @@ def commande_rafraichir(dossier, ordre):
 
 
 def commande_feuilles(dossier):
-    """Régénère les out/<slug>/.szh-folio.css depuis .szh-pagination.json SEUL — aucun
-    PDF regardé, aucun recalcul, pas de --ordre. Trou mesuré sur une vraie mini-revue :
-    `make clean` efface out/, donc les feuilles de folio avec lui ; .szh-pagination.json
-    survit, lui, puisqu'il vit dans le dossier du numéro. Sans cette sous-commande, une
-    recompilation après `make clean` remettrait tous les folios à 1 en silence — la
-    détection de péremption compare des nombres de PAGES, or les articles recompilés en
-    ont exactement autant qu'avant, donc rien ne la déclencherait. `feuilles` rétablit
-    l'état enregistré sans avoir besoin des PDF, ce que `rafraichir` ne peut pas faire
-    (il exige que tous les PDF de l'ordre soient déjà là). C'est ce qui permet au
-    Makefile de faire dépendre les feuilles de .szh-pagination.json sans fermer de cycle
-    HTML -> PDF -> feuille -> HTML.
+    """Régénère les out/<slug>/.szh-folio.css depuis .szh-pagination.json seul, sans PDF
+    ni --ordre. `make clean` efface out/ et donc les feuilles, mais pas
+    .szh-pagination.json : sans cette commande, la recompilation remettrait les folios à 1
+    sans que rien ne le signale. Le Makefile fait dépendre les feuilles de
+    .szh-pagination.json, sans cycle HTML -> PDF -> feuille.
 
-    Numéro jamais paginé (fichier absent ou illisible) : cas normal, pas une panne — on
-    ne pagine pas un numéro qui n'a jamais été rafraîchi. Sortie 0, rien écrit.
+    Numéro jamais paginé : sortie 0, rien d'écrit.
 
-    Écrit une feuille pour CHAQUE article listé, départ 1 compris : mesuré qu'effacer une
-    feuille de folio ne fait pas revenir le PDF au folio 1 (make ne voit alors plus de
-    prérequis modifié, le PDF garde le folio de sa dernière compilation) — sauter le
-    premier article laisserait donc son folio dériver au silence exact que cette
-    sous-commande existe pour combler."""
+    Une feuille est écrite pour chaque article, départ 1 compris : sans feuille, make ne
+    voit aucun prérequis changé et le PDF garde son ancien folio."""
     data = lire_pagination_json(dossier)
     if not data:
         resultat = {'schema': SCHEMA, 'ecrites': [], 'articles': 0}
@@ -390,7 +333,7 @@ def commande_feuilles(dossier):
 # ---- CLI --------------------------------------------------------------------------
 
 def main(argv):
-    try:  # console Windows en cp1252 : un accent combinant (nom venu du partage) y plante.
+    try:  # une console en cp1252 plante sur un accent combinant
         sys.stdout.reconfigure(encoding='utf-8')
         sys.stderr.reconfigure(encoding='utf-8')
     except Exception:
@@ -404,8 +347,7 @@ def main(argv):
                          help='slugs séparés par des virgules, dans l\'ordre de lecture '
                               'du numéro ; exigé par rafraichir')
         sp.add_argument('--dossier', default='.', help='dossier du numéro (défaut : .)')
-    # `feuilles` ne prend pas --ordre : elle ne lit que .szh-pagination.json, jamais
-    # l'ordre du numéro, justement pour pouvoir tourner sans PDF ni ausgabe.yaml à jour.
+    # `feuilles` ne lit que .szh-pagination.json, d'où l'absence de --ordre.
     sp_feuilles = sous.add_parser('feuilles')
     sp_feuilles.add_argument('--dossier', default='.', help='dossier du numéro (défaut : .)')
 

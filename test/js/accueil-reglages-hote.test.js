@@ -1,8 +1,10 @@
-// L'onglet Paramètres de l'Accueil côté hôte (lib/accueil-reglages-hote.js) : szh.reglages ouvre
-// l'Accueil sur cet onglet, les clés Shlink et OJS vont dans SecretStorage et n'en sortent que par
-// l'environnement de la chaîne, les réglages simples sont recopiés une seule fois depuis
-// l'état du compte, et langue comme mise à jour silencieuse restent écrites là où les scripts
-// PowerShell les lisent.
+// L'onglet Paramètres de l'Accueil côté hôte (lib/accueil-reglages-hote.js) :
+// - szh.reglages ouvre l'Accueil sur cet onglet ;
+// - les clés Shlink et OJS vont dans SecretStorage et n'en sortent que par l'environnement
+//   de la chaîne ;
+// - les réglages simples sont recopiés une seule fois depuis l'état du compte ;
+// - la langue et la mise à jour silencieuse restent écrites là où les scripts PowerShell
+//   les lisent.
 //
 //   node --test test/js/accueil-reglages-hote.test.js
 'use strict';
@@ -29,7 +31,8 @@ delete process.env.WSLENV;
 fs.mkdirSync(path.join(TRAVAIL, 'ProgramData'), { recursive: true });
 fs.writeFileSync(CONFIG, '{}\n');
 fs.writeFileSync(STATE, '{}\n');
-// L'état du compte d'avant : le produit proposé et la langue, à recopier une fois.
+// L'état du compte tenu par les scripts PowerShell : le produit proposé et la langue s'en
+// recopient une fois.
 const ETAT = path.join(LOCAL, 'SZH', 'etat-utilisateur.json');
 fs.mkdirSync(path.dirname(ETAT), { recursive: true });
 fs.writeFileSync(ETAT, JSON.stringify({ ongletDefaut: 'zeitschrift', langueInterface: 'fr', majSilencieuse: false }));
@@ -118,7 +121,7 @@ test('clé Shlink : dans SecretStorage seulement, jamais dans un message, dans l
   await tick();
   assert.strictEqual(HOTE.coffre['szh.shlinkCle'], CLE);
   assert.strictEqual(dits(MSG.VALEURS).pop().services.shlinkCle, true);
-  // Jamais la clé dans ce que la page reçoit, ni sur le disque du poste.
+  // La clé n'apparaît ni dans ce que la page reçoit, ni sur le disque du poste.
   assert.ok(JSON.stringify(panneau().messages).indexOf(CLE) === -1, 'la clé est partie vers la page');
   for (const f of [CONFIG, STATE, ETAT]) { assert.ok(fs.readFileSync(f, 'utf8').indexOf(CLE) === -1, 'clé en clair dans ' + f); }
   assert.ok(JSON.stringify(HOTE.configuration).indexOf(CLE) === -1, 'clé dans les réglages de l’éditeur');
@@ -154,7 +157,7 @@ test('Effacer, ou un champ vide enregistré, supprime la clé et ses variables',
   await envoyer({ type: MSG.ACCUEIL_SERVICE, service: 'ojsCle', valeur: '' });
   await envoyer({ type: MSG.ACCUEIL_SERVICE, service: 'shlinkUrl', valeur: '' });
   await tick();
-  // Plus rien de réglé : plus aucune variable posée, nulle part.
+  // Plus rien de réglé : aucune variable n'est posée.
   assert.deepStrictEqual(services.variables(), {});
   assert.strictEqual(moteur.ligneTache(['make']).options, undefined);
   assert.deepStrictEqual(HOTE.variablesTerminal, {});

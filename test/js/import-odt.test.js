@@ -1,24 +1,22 @@
-// Un .odt en entree d'import-docx.sh doit produire le MEME article qu'un .docx du meme
-// contenu : c'est le contrat pose par pipeline/conversion_odt.py (converti a la volee, tout
-// au debut de la chaine) et par SZH_SOURCE (le nom d'origine du fichier, .odt compris,
-// survit dans `source:` de la fiche et dans reimporter.py --empreintes --word).
+// Un .odt passé à import-docx.sh produit le même article qu'un .docx de même contenu :
+// pipeline/conversion_odt.py le convertit au tout début de la chaîne, et SZH_SOURCE garde
+// le nom d'origine (.odt compris) dans `source:` de la fiche et pour
+// reimporter.py --empreintes --word.
 //
-// Chaine REELLE (bash import-docx.sh, vrai pandoc, vrai LibreOffice) : rien ici n'est
-// simule, c'est la seule facon de prouver que le contrat $SZH_PHOTOS et la numerotation des
-// figures survivent au passage par LibreOffice : rien ne disait que LibreOffice nomme les images comme Word.
+// Chaîne réelle (bash import-docx.sh, pandoc, LibreOffice) : c'est la seule façon de
+// vérifier que $SZH_PHOTOS et la numérotation des figures survivent à LibreOffice, qui ne
+// nomme pas forcément les images comme Word.
 //
-// Gabarit rempli PAR SCRIPT (jamais figé en binaire dans le dépôt, comme
-// test/js/pronto-lire.test.js) : titre, un auteur avec une photo PNG dans la cellule de
-// gauche, et les quatre clés du premier bloc figure (l'image de ce bloc est déjà celle que
-// porte le gabarit livré). L'ancrage se fait par le LIBELLÉ du champ (« Titre (FR) »,
-// « Prénom : »…), jamais par w14:paraId : Word régénère ces identifiants à chaque
-// enregistrement, un ancrage dessus casserait au premier resave du gabarit en amont.
+// Le gabarit est rempli par script (comme test/js/pronto-lire.test.js) : titre, un auteur
+// avec une photo PNG dans la cellule de gauche, et les quatre clés du premier bloc figure
+// (dont l'image est celle du gabarit livré). L'ancrage se fait par le libellé du champ
+// (« Titre (FR) », « Prénom : »…), pas par w14:paraId, que Word régénère à chaque
+// enregistrement.
 //
 //   node --test test/js/import-odt.test.js
 //
-// Tout tourne dans la WSL, comme la chaîne réelle : saute proprement si Python, pandoc ou
-// LibreOffice y manquent — sansPython et sansPandocWsl viennent de gardes.js ; soffice n'y
-// est pas connu (aucun autre test n'en a besoin), sa détection est donc ici.
+// Tout tourne dans la WSL. Le test saute si Python, pandoc ou LibreOffice y manquent ;
+// sansPython et sansPandocWsl viennent de gardes.js, la détection de soffice est ici.
 'use strict';
 
 const test = require('node:test');
@@ -34,7 +32,7 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const PIPE = path.join(RACINE, 'pipeline');
 const GABARIT_FR = path.join(RACINE, 'revue-template', "Pronto - modele d'article_FR.docx");
 
-// ---- soffice : détection locale, propre à ce test, là où conversion_odt.py le cherche ----
+// ---- soffice : détecté là où conversion_odt.py le cherche ----
 function detecterSoffice() {
   if (sansPython) { return false; }
   const r = gardes.python(['-c', 'import shutil, sys; '
@@ -67,10 +65,9 @@ function bash(args, cwd) {
 }
 
 // ---- Remplisseur : chirurgie XML ciblée sur le gabarit FR livré -----------------------
-// Ancrage par libellé (texte du <w:t>), jamais par w14:paraId (régénéré par Word à chaque
-// enregistrement — voir l'en-tête du fichier). `valeur_cellule_suivante` pose une valeur
-// dans la cellule VALEUR d'une rangée « Champ | Valeur » (tableau des métadonnées) ;
-// `cellule_gauche_de` pose une image dans la cellule PHOTO d'une rangée d'auteur, repérée
+// Ancrage par libellé (texte du <w:t>). `valeur_cellule_suivante` pose une valeur dans la
+// cellule valeur d'une rangée « Champ | Valeur » (tableau des métadonnées) ;
+// `cellule_gauche_de` pose une image dans la cellule photo d'une rangée d'auteur, repérée
 // par le libellé du premier champ de sa cellule voisine (« Prénom : »).
 const REMPLISSEUR_PY = `#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
@@ -188,15 +185,11 @@ test.after(() => {
 });
 
 // ---- Normalisation avant comparaison ----------------------------------------------------
-// Deux jitters mesurés, propres au passage par LibreOffice, ni l'un ni l'autre ne changeant
-// le SENS de l'article :
-//   * les dimensions (largeur/hauteur en pouces, dérivées de l'EMU du gabarit) divergent
-//     de quelques dix-millièmes — LibreOffice recalcule l'extent différemment de Word ;
-//   * un paragraphe de titre VIDE (style « Titre niveau 3 », sans texte, présent tel quel
-//     dans le gabarit livré) peut ressortir en `#`, `###` ou disparaître selon la passe de
-//     conversion LibreOffice — mesuré non déterministe d'une conversion à l'autre du MÊME
-//     .docx. Un titre sans texte ne porte aucune information ; il est retiré des deux côtés
-//     avant de comparer le reste au caractère près.
+// Deux écarts dus à LibreOffice, sans effet sur le contenu :
+//   * les dimensions des images (en pouces) diffèrent de quelques dix-millièmes,
+//     LibreOffice recalculant l'étendue autrement que Word ;
+//   * un titre vide du gabarit (style « Titre niveau 3 ») ressort en `#`, `###` ou
+//     disparaît, sans régularité d'une conversion à l'autre. Il est retiré des deux côtés.
 function normaliserMd(texte, slug) {
   return texte
     .split(new RegExp(slug, 'g')).join('SLUG')
@@ -247,8 +240,7 @@ test('import .odt vs .docx : même article (titre, auteur+photo, bloc figure)',
       // ---- Comparaisons ----
       const lire = (p) => fs.readFileSync(p, 'utf8');
 
-      // source: doit porter le nom D'ORIGINE, .odt compris — pas le nom du .docx converti
-      // en coulisses.
+      // source: porte le nom d'origine, .odt compris, et non celui du .docx intermédiaire.
       const metaDocx = lire(path.join(dirDocx, 'essai-docx.meta.yaml'));
       const metaOdt = lire(path.join(dirOdt, 'essai-odt.meta.yaml'));
       assert.match(metaDocx, /^source: "essai\.docx"$/m);
@@ -256,7 +248,7 @@ test('import .odt vs .docx : même article (titre, auteur+photo, bloc figure)',
       // Le reste de la fiche (titre, auteur, langue…) doit être identique.
       assert.strictEqual(sansLigneSource(metaOdt), sansLigneSource(metaDocx));
 
-      // Le corps : identique une fois les deux jitters connus retirés (voir normaliserMd).
+      // Le corps : identique une fois les deux écarts connus retirés (voir normaliserMd).
       const mdDocx = normaliserMd(lire(path.join(dirDocx, 'essai-docx.md')), 'essai-docx');
       const mdOdt = normaliserMd(lire(path.join(dirOdt, 'essai-odt.md')), 'essai-odt');
       assert.strictEqual(mdOdt, mdDocx);
@@ -278,9 +270,8 @@ test('import .odt vs .docx : même article (titre, auteur+photo, bloc figure)',
         lire(path.join(dirOdt, 'tables', 'table-01.html')),
         lire(path.join(dirDocx, 'tables', 'table-01.html')));
 
-      // Le portrait de l'auteur·e : présent et non vide des deux côtés (les octets
-      // diffèrent — LibreOffice réencode le PNG — mesuré pixel-identique à part, hors
-      // contrôle automatisé ici).
+      // Le portrait de l'auteur·e : présent et non vide des deux côtés. Les octets diffèrent,
+      // LibreOffice réencodant le PNG.
       const portraitDocx = path.join(dirDocx, 'portraits', 'jeanne-dupont.original.png');
       const portraitOdt = path.join(dirOdt, 'portraits', 'jeanne-dupont.original.png');
       assert.ok(fs.statSync(portraitDocx).size > 0, 'portrait absent côté .docx');

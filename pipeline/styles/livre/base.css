@@ -1,44 +1,35 @@
-/* Socle de la maquette LIVRE : ce que « normal » et « falc » ont en commun.
-   Empilé après ../socle.css (polices et jetons) et avant la feuille de charte :
+/* Base de la maquette livre : ce que « normal » et « falc » ont en commun. Empilée après
+   ../socle.css (polices et jetons) et avant la feuille de charte :
      --css=socle.css --css=livre/base.css --css=livre/<charte>.css [--css=livre/imprimeur.css]
 
-   Ce qui a sa place ici : la géométrie de page, les liminaires, le sommaire, les folios,
-   la mécanique des coupures. Ce qui n'y a pas sa place : une taille de corps, une encre,
-   une famille — cela appartient à la charte, parce que « normal » et « falc » ne veulent
-   pas la même page.
+   Ici : géométrie de page, liminaires, sommaire, folios, coupures. Les tailles, encres et
+   familles appartiennent à la charte.
 
-   ⚠ Trois pièges déjà payés ailleurs, et qui coûtent plus cher dans un livre :
-   * La feuille est lue par un seul document de deux cents pages, pas par un article. Une
-     règle qui coûte cher au rendu se paie deux cents fois.
-   * `break-before: recto` n'est honoré que si le document a un sens de pages en
-     vis-à-vis. WeasyPrint le tient (mesuré, v69) — et une page nommée qui garde ses
-     boîtes de folio (l'ouverture de chapitre, depuis ce correctif) doit les garder
-     déclarées séparément sur :left ET :right, jamais fusionnées : la page d'ouverture
-     peut tomber à droite comme à gauche selon la parité du chapitre précédent.
-   * Les images arrivent en data: URI (--embed-resources sur chaque chapitre). Un plafond
-     de hauteur reste indispensable — sans lui, une image en portrait déborde la page et
-     WeasyPrint lâche le `break-inside: avoid` de la figure, détachant la légende. C'est
-     le défaut corrigé dans print.css, et il revient à l'identique ici. */
+   Pièges :
+   * La feuille sert à un document de deux cents pages : une règle coûteuse au rendu se
+     paie deux cents fois.
+   * Une page nommée qui garde ses folios (l'ouverture de chapitre) les déclare séparément
+     sur :left et :right : elle peut tomber à droite comme à gauche.
+   * Les images arrivent en data: URI. Sans plafond de hauteur, une image en portrait
+     déborde la page, WeasyPrint ignore le `break-inside: avoid` de la figure, et la
+     légende part seule (comme dans print.css). */
 
 /* ═══ 1. Géométrie de page ════════════════════════════════════════════════════
-   Les dimensions et les marges viennent de la charte, par ces jetons : la charte les
-   pose, cette feuille les consomme. Un format qui n'existe pas ici n'existe nulle part. */
+   Dimensions et marges viennent de la charte, par ces jetons. */
 @page {
   size: var(--page-l) var(--page-h);
   margin: var(--marge-haut) var(--marge-ext) var(--marge-bas) var(--marge-int);
 }
 
 /* Pages en vis-à-vis : la marge intérieure est à gauche sur une page de droite, à droite
-   sur une page de gauche. Sans cette paire, le blanc de couture est du mauvais côté une
-   page sur deux — invisible à l'écran, évident une fois relié. */
+   sur une page de gauche. */
 @page :left  { margin-left: var(--marge-ext); margin-right: var(--marge-int); }
 @page :right { margin-left: var(--marge-int); margin-right: var(--marge-ext); }
 
-/* Folio « page X sur Y » en pied, du côté extérieur. Un livre se feuillette par la tranche :
-   le numéro doit tomber sous le pouce, jamais vers la couture.
-   X est la page du PDF, Y le nombre total de pages : la page du PDF est la page du papier,
-   aucune pagination romaine, aucun counter-reset. Les mots viennent de la langue du
-   document (<html lang>), par des jetons : une boîte de marge ne lit pas :lang() elle-même.
+/* Folio « page X sur Y » en pied, du côté extérieur (sous le pouce).
+   X est la page du PDF, Y le nombre total de pages : ni pagination romaine ni
+   counter-reset. Les mots suivent la langue du document (<html lang>), par des jetons, car
+   une boîte de marge ne lit pas :lang().
    --folio-total porte counter(pages), pour qu'une charte puisse le taire : WeasyPrint 70
    résout un counter() porté par une variable dans une boîte de marge. */
 :root { --folio-page: "page "; --folio-sur: " sur "; --folio-total: counter(pages); }
@@ -54,17 +45,11 @@ html[lang|=it] { --folio-page: "pagina "; --folio-sur: " di "; }
 /* Les pages qui précèdent le sommaire (demi-titre, page de titre, impressum) ne portent
    aucun folio : le premier folio est celui du sommaire. */
 @page liminaire { @bottom-left { content: none } @bottom-right { content: none } }
-/* Ouverture de chapitre : le folio y figure aussi, comme sur toute page de texte — la
-   page d'ouverture n'a plus de règle ici, elle retombe simplement sur les boîtes de
-   :left/:right posées plus haut (§ folio en pied). Rien à annuler ni à redéclarer : un
-   nom de page sans règle à lui ne casse pas la cascade. */
+/* Ouverture de chapitre : pas de règle propre, elle reçoit le folio de :left/:right. */
 
-/* Une page blanche de passage au recto ne porte rien, folio compris. C'est l'usage, et
-   c'est aussi ce qui la donne à lire pour ce qu'elle est : une page laissée vide exprès, et
-   non une page dont le contenu se serait perdu. Le PDF sortait avec cinq pages ne portant
-   qu'un numéro — l'édition d'origine, elle, les laisse nues.
-   ⚠ Cette règle doit rester après les folios de :left et :right. `:blank` l'emporte sur
-     eux par spécificité, mais l'ordre le dit à qui relit sans avoir la table en tête. */
+/* Une page blanche de passage au recto ne porte rien, pas même de folio : elle se lit
+   comme laissée vide exprès. Placée après les folios de :left et :right pour la lisibilité
+   (`:blank` l'emporte déjà par spécificité). */
 @page :blank { @bottom-left { content: none } @bottom-right { content: none } }
 
 /* ═══ 2. Corps ════════════════════════════════════════════════════════════════ */
@@ -81,9 +66,7 @@ body {
   text-align: var(--alignement);
 }
 
-/* Alinéa de première ligne, sauf en tête de section, après une figure, une liste, un
-   encadré. Un alinéa après un titre est une faute de composition ancienne : il n'ouvre
-   rien, le titre l'a déjà fait. */
+/* Alinéa de première ligne, sauf après un titre, une figure, une liste ou un encadré. */
 p { margin: 0; text-indent: var(--alinea); }
 h1 + p, h2 + p, h3 + p, h4 + p, h5 + p, h6 + p,
 figure + p, ul + p, ol + p, blockquote + p, table + p, .szh-tableau-boite + p,
@@ -103,8 +86,8 @@ figure + p, ul + p, ol + p, blockquote + p, table + p, .szh-tableau-boite + p,
 
 /* ═══ 3. Structure du livre ═══════════════════════════════════════════════════ */
 
-/* Un chapitre = un fragment compilé à part, assemblé ici. Il ouvre sur une belle page
-   (recto), et ne se coupe jamais de son titre. */
+/* Un chapitre (un fragment compilé à part) ouvre sur une belle page (recto) et reste
+   attaché à son titre. */
 .szh-chapitre { break-before: recto; }
 .szh-chapitre > h1 {
   page: ouverture;
@@ -112,23 +95,20 @@ figure + p, ul + p, ol + p, blockquote + p, table + p, .szh-tableau-boite + p,
   string-set: chapitre content(text);
 }
 .szh-liminaire { break-before: page; page: liminaire; }
-/* Un liminaire placé APRÈS le sommaire (préface, avant-propos) est une page ordinaire, avec
-   son folio. Il est le frère suivant du sommaire : la parenté suffit, aucune classe de plus. */
+/* Un liminaire placé après le sommaire (préface, avant-propos) est une page ordinaire,
+   avec son folio. */
 .szh-sommaire ~ .szh-liminaire { page: auto; }
 
-/* Demi-titre, page de titre, impressum : composés par le gabarit, jamais écrits à la
-   main. Leur contenu vient de buch.yaml. */
+/* Demi-titre, page de titre, impressum : composés par le gabarit depuis buch.yaml. */
 .szh-demi-titre, .szh-page-titre { page: liminaire; break-before: recto; }
 .szh-impressum  { page: liminaire; break-before: page; font-size: var(--impressum); }
 
 /* ── Sommaire ──────────────────────────────────────────────────────────────
-   Le numéro de page est posé par target-counter() : le sommaire est écrit avec des liens
-   internes, et c'est WeasyPrint qui résout la page à la pagination. Une table des matières
-   écrite à la main serait fausse au premier ajout de paragraphe.
-   Le numéro se pose sur la première ligne d'une entrée de plusieurs lignes : en position
-   absolue dans l'entrée, et non en flottant, qui le descendrait sur la dernière ligne. Il
-   reste après le titre dans l'arbre de structure. La charte réserve sa colonne
-   (padding-right de l'entrée), sans quoi le titre passerait dessous. */
+   Le numéro de page vient de target-counter() sur les liens internes du sommaire :
+   WeasyPrint le résout à la pagination.
+   Il se place sur la première ligne d'une entrée longue, en position absolue (un flottant
+   le descendrait sur la dernière ligne), et reste après le titre dans l'arbre de
+   structure. La charte réserve sa colonne (padding-right de l'entrée). */
 .szh-sommaire { break-before: recto; }
 .szh-sommaire ol { list-style: none; margin: 0; padding: 0; }
 .szh-sommaire li { break-inside: avoid; position: relative; }
@@ -140,26 +120,20 @@ figure + p, ul + p, ol + p, blockquote + p, table + p, .szh-tableau-boite + p,
 }
 
 /* ═══ 4. Coupures ═════════════════════════════════════════════════════════════
-   Les valeurs sont celles de print.css : elles ont été réglées sur des articles réels et
-   n'ont aucune raison de changer parce que le document est plus long. */
+   Mêmes valeurs que print.css. */
 h1, h2, h3, h4, h5, h6 { break-after: avoid; break-inside: avoid; }
 p, li { orphans: 2; widows: 2; }
 figure, blockquote { break-inside: avoid; }
 
-/* ⚠ `table` n'est pas dans la ligne ci-dessus, et ce n'est pas un oubli : posé sur la
-   table, `break-inside: avoid` ne retient pas la boîte enveloppe anonyme que le moteur
-   crée pour porter la <caption> — mesuré, le défaut persiste avec comme sans. C'est
-   szh-tableau-boite.lua qui pose un vrai Div autour, et la règle qui le retient vit dans
-   partage-filtres.css (le filtre est partagé avec la revue). Le pourquoi complet est en
-   tête de ce filtre. */
+/* `table` n'est pas dans la ligne ci-dessus : sur la table, `break-inside: avoid` ne
+   retient pas la boîte anonyme qui porte la <caption>. szh-tableau-boite.lua pose un Div
+   autour, retenu par une règle de partage-filtres.css (voir l'en-tête du filtre). */
 
 /* Saut de page volontaire, écrit dans le .md :  ::: {.szh-saut} ::: */
 .szh-saut { break-after: page; }
 
 /* ═══ 5. Figures ══════════════════════════════════════════════════════════════
-   Repris de print.css, à une différence près : dans un livre, --plafond-figure vaut la
-   hauteur de la zone de contenu du format du livre, pas d'un A4. Le jeton est redéfini
-   par la charte. */
+   Comme print.css ; --plafond-figure est redéfini par la charte pour le format du livre. */
 figure { margin: var(--esp-figure) 0; break-inside: avoid; }
 figure img { max-width: 100%; max-height: var(--plafond-figure); height: auto; display: block; }
 figcaption { font-size: var(--legende); line-height: 1.35; color: var(--c-ink2); text-indent: 0; }
@@ -174,8 +148,8 @@ figure > figcaption.szh-credit-seul { margin-top: 0.1em; }
 figure > figcaption.szh-credit-seul + .szh-bloc-note { margin-top: 0.1em; }
 
 /* ═══ 6. Notes ════════════════════════════════════════════════════════════════
-   Comme dans la revue : au bas de leur page. szh-notes.lua a déjà transformé les Note en
-   Span porteurs de la classe ; c'est `float: footnote` qui les descend. */
+   Au bas de leur page, comme dans la revue : szh-notes.lua fait des Note des Span de
+   classe .szh-note, que `float: footnote` descend. */
 .szh-note { float: footnote; font-size: var(--note); }
 @page { @footnote { border-top: 0.5pt solid var(--c-rule); padding-top: 2mm; margin-top: 4mm; } }
 
@@ -189,11 +163,11 @@ caption {
   color: var(--c-ink2); margin-bottom: 1.5mm;
 }
 th, td { text-align: left; vertical-align: top; padding: 1mm 2mm; }
-/* Pas de « Punk-te » ni de « Hil-fe » : même réglage et même raison que dans print.css (tableaux importés bruts). */
+/* Ni « Punk-te » ni « Hil-fe » : même réglage que print.css (tableaux importés bruts). */
 th, td { hyphenate-limit-chars: 6 3 3; }
 
-/* Tableaux de l'éditeur maison (.szh-tableau) : repris de print.css § 7, filets en pt.
-   Attributs data-* absents, le tableau est nu : ni grille, ni graisse, ni fond. Les jetons
+/* Tableaux de l'éditeur maison (.szh-tableau) : comme dans print.css, filets en pt. Sans
+   attributs data-*, le tableau est nu : ni grille, ni graisse, ni fond. Les jetons
    d'accent (--szh-accent-*, --szh-gris-clair, --szh-zebre, --c-annual-ui) viennent du socle,
    surchargés par l'accent de l'ouvrage. */
 .szh-tableau { table-layout: auto; }
@@ -237,30 +211,23 @@ th, td { hyphenate-limit-chars: 6 3 3; }
 .szh-tableau[data-bordure-basse="1"] tbody tr:last-child > * { border-bottom: 1.5pt solid var(--c-annual-ui); }
 
 /* ═══ 8. Écran ════════════════════════════════════════════════════════════════
-   `float: footnote` n'existe dans aucun navigateur : sans ce repli, les notes
-   s'empileraient au fil du texte dans l'aperçu du cockpit. Même règle que print.css. */
+   Les navigateurs ignorent `float: footnote` : dans l'aperçu, les notes restent dans le
+   texte, en retrait. Même règle que print.css. */
 @media screen {
   .szh-note { float: none; display: block; margin: 0.5em 0 0.5em 2em; }
 }
 
 /* ═══ 9. Encadré falc-header « écouter cette histoire » ═══════════════════════
-   Posé par filters/szh-livre-entete.lua, juste après le titre du chapitre (et après son
-   bloc auteurs s'il y en a un) : bloc `:::: falc-header … ::::` écrit dans le .md du
-   chapitre, où qu'il soit — voir l'en-tête du filtre pour la syntaxe complète. Renommé
-   depuis .szh-ecouter* (23.09.2026), la clé YAML `ecouter:` ayant disparu. Aplat pleine
-   largeur du bloc de texte, texte + QR à gauche, image carrée facultative à droite
-   (`data-image` dit si elle existe, pour que le texte seul prenne toute la largeur quand
-   elle n'y est pas).
+   Posé par filters/szh-livre-entete.lua juste après le titre du chapitre (et son bloc
+   auteurs) à partir d'un bloc `:::: falc-header … ::::` du .md (syntaxe en tête du
+   filtre). Aplat pleine largeur : texte et QR à gauche, image carrée facultative à droite
+   (`data-image` dit si elle existe).
 
-   Géométrie commune aux deux maquettes, ici et non dans falc.css : c'est la « maquette
-   normal » qui a besoin du repli neutre (le second terme de chaque var()) puisqu'elle ne
-   déclare pas --c-falc-resume-fond ; la charte FALC, qui le déclare déjà pour ses propres
-   encadrés (.falc-resume), habille donc celui-ci sans une ligne de CSS de plus — c'est le
-   même token, à dessein (le falc-header et l'InfoBox du résumé sont la même famille
-   visuelle dans les livres FALC publiés).
+   Commun aux deux maquettes. La maquette normale utilise le repli neutre de chaque var() ;
+   la charte FALC déclare déjà --c-falc-resume-fond pour .falc-resume, et le même fond
+   s'applique ici : les deux encadrés forment une même famille visuelle.
 
-   ⚠ Jamais coupé entre deux pages (`break-inside: avoid`) : couper le QR de son texte, ou
-     l'image du texte qui l'explique, rendrait l'encadré illisible d'une page à l'autre. */
+   Pas de coupure de page dans l'encadré, qui séparerait le QR ou l'image de son texte. */
 .szh-falc-header {
   display: flex; align-items: flex-start; gap: 5mm;
   background: var(--c-falc-resume-fond, #ececec);
@@ -270,10 +237,10 @@ th, td { hyphenate-limit-chars: 6 3 3; }
 .szh-falc-header-texte { flex: 1 1 auto; min-width: 0; }
 /* Sans alinéa : la maquette normal en pose un à tout paragraphe qui ne suit pas un titre. */
 .szh-falc-header-texte p { margin: 0 0 3mm 0; text-indent: 0; }
-/* Pas d'image : le texte prend toute la largeur, pas de colonne vide à droite. */
+/* Sans image, le texte prend toute la largeur. */
 .szh-falc-header[data-image="non"] { gap: 0; }
-/* Le QR sous le texte (classe partagée avec le bloc qr-link/le lien `.qr` du rédacteur,
-   partage-filtres.css : 25 mm par défaut, background-image en data URI — voir szh-qr.lua). */
+/* Le QR sous le texte (même classe que le lien `.qr`, voir partage-filtres.css et
+   szh-qr.lua : 25 mm par défaut, image de fond en data URI). */
 .szh-falc-header-qr { margin-top: 3mm; }
 
 /* Intitulé et étapes numérotées, quand le bloc porte une liste `1. … 2. …`. L'intitulé
@@ -281,13 +248,12 @@ th, td { hyphenate-limit-chars: 6 3 3; }
    numéro blanc dans une pastille ronde, au cran 800 de la couleur du chapitre
    (--c-chapitre-fonce, profils/livre.mk) : c'est le seul cran qui tienne |Lc| ≥ 90 pour un
    chiffre de cette taille.
-   ⚠ Le numéro reste un ::marker, pour obtenir LI > Lbl dans le PDF ; un ::marker ne prend
-     ni fond ni position, d'où la pastille en ::before, derrière lui (z-index -1, dans le
-     contexte d'empilement de l'encadré). WeasyPrint pose le marqueur extérieur contre le
-     bord gauche du <li>, à sa largeur naturelle (voir print.css, § Listes) : le
-     margin-left du <li> centre donc le chiffre dans la pastille. Ses nombres viennent des
-     glyphes d'Open Sans SemiCondensed : un chiffre à chasse fixe fait 1021/2048 em, soit
-     0,3988 em du <li> au corps 0,8 em du marqueur. */
+   Le numéro reste un ::marker, pour obtenir LI > Lbl dans le PDF. Un ::marker ne prend ni
+   fond ni position : la pastille est un ::before derrière lui (z-index -1 dans le contexte
+   d'empilement de l'encadré). WeasyPrint pose le marqueur extérieur contre le bord gauche
+   du <li>, à sa largeur naturelle (voir print.css, Listes) : le margin-left du <li> centre
+   donc le chiffre. Un chiffre tabulaire d'Open Sans SemiCondensed fait 1021/2048 em, soit
+   0,3988 em du <li> au corps 0,8 em du marqueur. */
 .szh-falc-header { position: relative; z-index: 0; }
 .szh-falc-header-titre { font-weight: 600; }
 .szh-falc-header-titre::before {
@@ -308,8 +274,8 @@ th, td { hyphenate-limit-chars: 6 3 3; }
 }
 .szh-falc-header-etapes > li::before {
   content: ""; position: absolute; z-index: -1;
-  /* Centrée sur la ligne, puis remontée de 0,17 em : un chiffre posé sur la ligne de base a
-     son milieu au-dessus du milieu de la ligne (mesuré au rendu, 13 pt). */
+  /* Centrée sur la ligne, puis remontée de 0,17 em : le milieu d'un chiffre est au-dessus
+     du milieu de la ligne (mesuré à 13 pt). */
   left: -0.8994em; top: calc((var(--interligne, 1.5) - 1.4) * 0.5em - 0.17em);
   width: 1.4em; height: 1.4em; border-radius: 50%;
   background: var(--c-chapitre-fonce, var(--c-falc-accent-defaut, #252B46));
@@ -317,35 +283,26 @@ th, td { hyphenate-limit-chars: 6 3 3; }
 .szh-falc-header-image {
   flex: 0 0 auto; width: 45mm; height: 45mm;
   object-fit: cover;
-  /* Pas de box-shadow : WeasyPrint 69 ne connaît pas la propriété (mesuré — ignorée avec
-     un avertissement, jamais appliquée). Le fond de l'encadré (padding compris) suffit à
-     détacher l'image du texte, sans dépendre d'une propriété qui n'existe pas ici. */
+  /* Pas de box-shadow : WeasyPrint l'ignore. Le fond de l'encadré suffit à détacher
+     l'image du texte. */
 }
 
 /* ═══ 10. Picto d'en-tête, coin extérieur de page ══════════════════════════════
-   Clé `picto-entete:` du <slug>.meta.yaml (une seule valeur aujourd'hui : `ecouter`) : un
-   picto de 10 mm au coin EXTÉRIEUR de la page — top-right en recto, top-left en verso —
-   sur CHAQUE page du chapitre qui le porte.
+   Clé `picto-entete:` du <slug>.meta.yaml (seule valeur : `ecouter`) : un picto de 10 mm
+   au coin extérieur (en haut à droite en recto, à gauche en verso) de chaque page du
+   chapitre.
 
-   Même mécanique que .szh-onglet plus haut : un running element (CSS GCPM), un <div> vide
-   écrit par CHAQUE chapitre (templates/szh-livre-chapitre.html), qui REMPLACE celui du
-   chapitre précédent — sans quoi le picto d'un chapitre resterait affiché sur toutes les
-   pages des chapitres suivants. Voir le commentaire de .szh-onglet pour le détail du
-   procédé et son piège (`position: absolute` sur un pseudo-élément ne marche pas : la
-   boîte d'une <section> qui court sur plusieurs pages n'existe qu'une fois).
+   Même mécanique que .szh-onglet (falc.css) : un élément courant, un <div> vide écrit par
+   chaque chapitre (templates/szh-livre-chapitre.html), qui remplace celui du chapitre
+   précédent. Un pseudo-élément en position absolue ne convient pas : la boîte d'une
+   <section> sur plusieurs pages n'existe qu'une fois.
 
-   ⚠ Boîte de COIN (@top-*-corner) par défaut ici, jamais de côté (@*-top, réservée à
-     l'onglet) : les boîtes de marge de CSS Paged Media sont géométriquement DISJOINTES
-     les unes des autres et de la zone de contenu — @top-right-corner/@top-left-corner
-     couvrent le rectangle marge-haut × marge-ext au coin de la page, @right-top/@left-top
-     commencent seulement à marge-haut (la hauteur de la zone de contenu). Sans
-     chevauchement possible avec l'onglet tant que ce picto reste dans sa boîte de coin.
-     ⚠ En maquette FALC, la pastille ronde de numéro de chapitre (falc.css, § pastille)
-     occupe elle aussi ce coin, en running element : falc.css REDÉCLARE alors la même
-     règle `@top-right-corner`/`@top-left-corner` avec `content: element(pastille)`, et
-     déplace CE picto dans la boîte adjacente, `@top-right`/`@top-left` — la déclaration
-     par défaut ci-dessous reste donc celle de la maquette « normal », qui n'a pas de
-     pastille et garde le picto dans le vrai coin. */
+   Le picto va dans une boîte de coin (@top-*-corner), celles de côté (@*-top) étant
+   réservées à l'onglet. Les boîtes de marge sont disjointes : le coin couvre marge-haut
+   × marge-ext, @right-top/@left-top commencent sous marge-haut, d'où aucun chevauchement.
+   En maquette FALC, la pastille de numéro de chapitre occupe ce coin : falc.css redéclare
+   les boîtes de coin avec `element(pastille)` et déplace le picto dans @top-right /
+   @top-left. La règle ci-dessous vaut pour la maquette normale. */
 .szh-picto-entete {
   position: running(picto-entete);
   width: 10mm; height: 10mm;
@@ -357,9 +314,9 @@ th, td { hyphenate-limit-chars: 6 3 3; }
 @page :left  { @top-left-corner  { content: element(picto-entete); padding: 3mm 0 0 3mm; } }
 
 /* ═══ 11. Parties et pièces de fin (maquette normal) ════════════════════════════
-   Classes que seul livre-assembler.py pose, et seulement hors FALC (parties:, pieces-fin:).
-   Une partie ouvre un recto ; sous la même page nommée que l'ouverture de chapitre, pour
-   que le titre d'un premier chapitre puisse la suivre sur la même page (page-seule: non).
+   Classes posées par livre-assembler.py hors FALC (parties:, pieces-fin:). Une partie
+   ouvre un recto, sous la même page nommée que l'ouverture de chapitre, pour que le titre
+   du premier chapitre puisse la suivre sur la même page (page-seule: non).
    Signets : la partie au niveau 1, ses chapitres au niveau 2 et leurs intertitres un cran
    plus bas, le titre à plat. */
 .szh-partie { break-before: recto; page: ouverture; }

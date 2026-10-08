@@ -1,61 +1,33 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# pronto_modele.py — le modèle neutre du gabarit « Pronto — modèle d'article » et TOUTES les
-# règles qui le lisent : reconnaissance des styles maison (SZH Cle, SZH Aide), des deux
-# tableaux fixes (métadonnées, autrices et auteurs), des blocs figure/tableau, de l'étendue
-# de bibliographie, et la sérialisation en meta.yaml + instructions $SZH_META/$SZH_PHOTOS.
+# Modèle neutre du gabarit « Pronto — modèle d'article » et règles qui le lisent : styles
+# maison (SZH Cle, SZH Aide), les deux tableaux fixes (métadonnées, autrices et auteurs),
+# blocs figure et tableau, étendue de la bibliographie, puis écriture du meta.yaml et des
+# instructions $SZH_META / $SZH_PHOTOS.
 #
-# AUCUNE trace de Word ni d'OpenDocument ici : pas de namespace `w:`, pas de `office:`. Ce
-# fichier ne sait pas lire un .docx — il ne sait que raisonner sur trois classes :
+# Ce module ne lit pas le format OOXML ; il travaille sur trois classes :
 #
-#   Par(style, texte, niveau, images)   — un paragraphe. `style` est déjà résolu en son nom
-#                                          humain (« SZH Cle », « heading 1», « Quote »…) ;
-#                                          c'est le lecteur (pronto_docx.py) qui le
-#                                          résout, jamais ce noyau. `texte` est déjà
-#                                          normalisé (normaliser_valeur()) — le lecteur
-#                                          ne rend jamais de texte brut. `niveau` vaut
-#                                          1..6 pour un titre, 0 sinon. `images` est une
-#                                          liste de (nom de fichier sous media/ ou Pictures/,
-#                                          surface déclarée — 0 si inconnue).
-#   Cellule(colspan, blocs)             — `blocs` est une liste de Par | Tableau, dans l'ordre
-#                                          du document (imbrication comprise : une cellule de
-#                                          bloc tableau porte un Tableau parmi ses blocs).
-#   Tableau(rangees)                    — `rangees` est une liste de listes de Cellule. Une
-#                                          cellule masquée par une fusion (w:gridSpan)
-#                                          n'apparaît PAS ici : le lecteur l'a déjà sautée.
+#   Par(style, texte, niveau, images)   — un paragraphe. `style` est le nom du style, déjà
+#                                          résolu par le lecteur (« SZH Cle », « heading 1 »,
+#                                          « Quote »…). `texte` est déjà normalisé
+#                                          (normaliser_valeur()). `niveau` vaut 1..6 pour un
+#                                          titre, 0 sinon. `images` : liste de (nom de
+#                                          fichier sous media/, surface déclarée, 0 si
+#                                          inconnue).
+#   Cellule(colspan, blocs)             — `blocs` : liste de Par | Tableau, dans l'ordre (une
+#                                          cellule de bloc tableau contient un Tableau).
+#   Tableau(rangees)                    — `rangees` : liste de listes de Cellule. Une cellule
+#                                          masquée par une fusion n'y figure pas.
 #
-# Un « document » lu est simplement une list[Par | Tableau] — les blocs de premier niveau,
-# dans l'ordre. pronto_docx.lire() en rend un ; principal() ci-dessous le consomme sans
-# rien savoir du format.
+# Un document lu est une list[Par | Tableau], les blocs de premier niveau dans l'ordre :
+# pronto_docx.lire() le produit, principal() le consomme.
 #
-# ── Ce qui a dû changer par rapport à docx-pronto.py pour accueillir l'ODT ─────────────────
+# famille() teste le nom résolu sous deux formes, telle quelle et compactée sans espaces ni
+# tirets, pour reconnaître aussi les formes d'identifiant (« titre1 », « berschrift2 ») des
+# Word dont le nom affiché est trompeur. Un paragraphe sans style a pour nom '' (ou
+# « Standard » après conversion LibreOffice) : famille() rend '' dans les deux cas.
 #
-# 1. Classeur perd son dict `styles` (styleId -> nom). Il n'en a plus besoin : le lecteur a
-#    déjà résolu CHAQUE paragraphe en un seul nom humain avant que ce module ne le voie. Les
-#    méthodes deviennent des fonctions de module (famille(), pandoc_mange()) qui prennent ce
-#    nom résolu directement. Les DEUX familles de motifs que famille() testait avant (contre
-#    le nom w:name ET contre le styleId brut — « titre », « berschrift1 », etc., hérités de
-#    docx-meta.py pour des Word hérités où le nom affiché ment) sont maintenant testées
-#    contre CE SEUL nom résolu, sous deux formes (avec espaces, et compactée sans espaces ni
-#    tirets) : rien n'est perdu, c'est la même couverture, sur une seule entrée au lieu de
-#    deux.
-#
-# 2. Le style de base (paragraphe sans mise en forme particulière) résout différemment selon
-#    le format : '' pour un .docx natif (un w:p sans w:pStyle n'a simplement pas de style),
-#    mais « Standard » pour un .odt converti par LibreOffice (le paragraphe sans style
-#    particulier y référence explicitement le style racine). Ça ne change AUCUN comportement
-#    observable : famille('') et famille('standard') rendent toutes deux '' (aucune classe
-#    reconnue).
-#
-# 3. Word donne « Body Text » comme nom (w:name du style Corpsdetexte) là où LibreOffice
-#    donne « Text body » (style:display-name de Text_20_body, même style, ordre des mots
-#    inversé) pour le même style natif « corps de texte ». Mesuré sur le gabarit réel. Sans
-#    conséquence ici : ce nom n'est reconnu par aucune règle de famille() (ni title, ni
-#    heading, ni caption…) des deux côtés, les paragraphes de corps ne sont jamais classés —
-#    mais une future règle qui voudrait un jour reconnaître le corps de texte PAR NOM devra
-#    tester les deux formes, pas une seule.
-#
-# stdlib uniquement : pas de PyYAML dans la WSL de la flotte.
+# Bibliothèque standard seule : la WSL n'a pas PyYAML.
 
 import difflib
 import os
@@ -68,10 +40,10 @@ import szh_commun
 
 
 # ---------------------------------------------------------------------------------
-# Le modèle neutre — trois classes, rien d'autre.
+# Le modèle neutre.
 
 class Par:
-    """Un paragraphe (ou un titre). `style` est le nom humain déjà résolu par le lecteur,
+    """Un paragraphe (ou un titre). `style` est le nom déjà résolu par le lecteur,
     `texte` le texte déjà normalisé (normaliser_valeur()), `niveau` 1..6 pour un titre (0 sinon),
     `images` la liste (nom_fichier, surface) des images qu'il porte, dans l'ordre."""
 
@@ -104,15 +76,13 @@ class Cellule:
 
 
 class Tableau:
-    """Un tableau. `rangees` est une liste de listes de Cellule — une cellule masquée par une
-    fusion (w:gridSpan, table:covered-table-cell) n'y figure jamais : le lecteur l'a sautée.
+    """Un tableau. `rangees` est une liste de listes de Cellule ; une cellule masquée par une
+    fusion n'y figure pas.
 
-    `page` est le numéro de page où ce tableau se trouve dans le document source, ou None
-    quand il est inconnu — JAMAIS deviné. Seul pronto_docx.lire() le calcule (à partir des
-    marqueurs w:lastRenderedPageBreak que Word pose à sa dernière repagination — absents d'un
-    .docx jamais ouvert par Word, mesuré, comme d'un .docx converti depuis un .odt). Ne vaut
-    que pour les tableaux de PREMIER NIVEAU : un tableau
-    imbriqué (contenu d'un bloc tableau) ne le porte jamais, rien n'en a besoin aujourd'hui."""
+    `page` : numéro de page du tableau dans le document source, ou None s'il est inconnu.
+    pronto_docx.lire() le calcule d'après les marqueurs w:lastRenderedPageBreak que Word pose
+    en repaginant ; un .docx jamais ouvert par Word (ou converti depuis un .odt) n'en a pas.
+    Seuls les tableaux de premier niveau le portent."""
 
     __slots__ = ('rangees', 'page')
 
@@ -131,39 +101,27 @@ TYPES_VALIDES = ('article', 'editorial', 'interview', 'varia', 'tribune-libre',
 LANGUES_META = ('fr', 'de', 'it')          # ordre d'écriture du YAML (cockpit)
 
 
-# La langue d'un article ne se lit PLUS dans le document (décision de Robin, 22.09.2026 : le
-# champ « Langue de l'article » a quitté le tableau des métadonnées du gabarit) : elle vient du
-# PRODUIT du numéro, comme partout ailleurs dans la chaîne — Revue suisse de pédagogie
-# spécialisée -> fr, Schweizerische Zeitschrift für Heilpädagogik -> de. Même règle et mêmes
-# jetons que derive_revue() de szh-maquette.lua et langue_de() de szh-rubrique.lua : le jeton
-# canonique (« revue », « zeitschrift ») comme le nom complet de l'ancien ausgabe.yaml. Un
-# article italien ne peut pas se déclarer dans le gabarit ; il se corrige à la main dans
-# « Métadonnées des articles » après l'import, ce que la rédaction a explicitement accepté.
+# Langue d'un article selon le produit du numéro : Revue → fr, Zeitschrift → de, comme
+# derive_revue() de szh-maquette.lua. Accepte le jeton (« revue », « zeitschrift ») comme le
+# nom complet. Un article italien se corrige après l'import, dans « Métadonnées des
+# articles ».
 def langue_du_produit(produit):
-    """'fr' | 'de' | '' — '' quand le produit est inconnu (clé `revue:` absente d'ausgabe.yaml,
-    lecteur appelé hors d'un numéro) : c'est alors à l'appelant de décider du repli, et de le
-    dire."""
+    """'fr' | 'de' | '' ; '' si le produit est inconnu (hors d'un numéro). L'appelant décide
+    alors du repli et le signale."""
     v = (produit or '').strip().lower()
     if 'zeitschrift' in v:
         return 'de'
     if 'revue' in v:
         return 'fr'
     return ''
-# HUIT champs, `ror` compris : aligné sur CHAMPS_AUTEUR de lib/yaml.js (cockpit), PAS sur
-# celui de docx-meta.py, qui ne porte pas `ror` — voir l'en-tête d'origine de docx-pronto.py
-# (git log) : ce n'était pas un contrat à imiter, c'était l'absence de ce champ sur les Word
-# hérités que docx-meta.py doit encore lire.
+# Champs d'un auteur, alignés sur CHAMPS_AUTEUR de lib/yaml.js (cockpit), `ror` compris.
 CHAMPS_AUTEUR = ('prenom', 'nom', 'fonction', 'affiliation', 'ror', 'orcid', 'email', 'photo')
 
-# Les styles qui SIGNENT le gabarit, en minuscules (les deux lecteurs rendent des noms déjà
-# minusculés). C'est sur eux que pipeline/import-docx.sh décide, document par document, si le
-# lecteur Pronto ou l'ancien docx-meta.py lit ce qu'on vient de déposer — voir
-# pronto_docx.est_pronto() pour le détail du critère et pourquoi les DEUX sont exigés.
+# Les styles qui signent le gabarit, en minuscules (voir pronto_docx.est_pronto()).
 STYLES_GABARIT = ('szh cle', 'szh aide')
-# La clé cachée des gabarits livrés : une propriété personnalisée du document (Fichier >
-# Propriétés), posée par outils-dev/marquer-gabarit.py. Word et LibreOffice la gardent à
-# l'enregistrement. Elle prime sur les styles, qui restent le repli des documents partis
-# d'un gabarit antérieur à la clé. Le suffixe est la version du gabarit, pas une condition.
+# La propriété personnalisée qui marque les gabarits livrés, posée par
+# outils-dev/marquer-gabarit.py ; Word et LibreOffice la gardent à l'enregistrement. Elle
+# prime sur les styles. Le suffixe est la version du gabarit ; seul le préfixe est testé.
 CLE_GABARIT_NOM = 'SZH-Gabarit'
 CLE_GABARIT_VALEUR = 'pronto-article-4'
 _CLE_GABARIT_PREFIXE = 'pronto-article'
@@ -175,29 +133,27 @@ def est_cle_gabarit(valeur):
 
 
 def est_gabarit(noms_styles, cle=None):
-    """La seule reconnaissance du gabarit, pour l'import comme pour le nettoyeur : la clé
-    cachée d'abord, sinon les deux styles de STYLES_GABARIT déclarés, comparés par
-    normaliser_nom_style() (« SZH-Cle » vaut « SZH Cle »). Le lecteur résout ses styles maison
-    par la même normalisation (_style_par), donc un document reconnu est lu comme tel."""
+    """Reconnaissance du gabarit, pour l'import comme pour le nettoyeur : la propriété
+    cachée, sinon la déclaration des deux styles de STYLES_GABARIT, comparés par
+    normaliser_nom_style() (« SZH-Cle » vaut « SZH Cle »), comme dans _style_par()."""
     if est_cle_gabarit(cle):
         return True
     presents = {normaliser_nom_style(n) for n in noms_styles}
     return all(normaliser_nom_style(s) in presents for s in STYLES_GABARIT)
 
 
-# Formats qu'accepte le dépôt de photo du cockpit (EXTENSIONS_PHOTO d'extension.js) et donc
-# le pipeline de portraits : une image d'un autre format n'est pas appariée.
+# Formats acceptés pour une photo d'auteur, comme EXTENSIONS_PHOTO du cockpit ; une image
+# d'un autre format n'est pas appariée.
 EXTENSIONS_PORTRAIT = ('png', 'jpg', 'jpeg', 'webp')
 
 
 # ---------------------------------------------------------------------------------
-# Texte : une seule fonction partagée, pure — les lecteurs l'appliquent à ce qu'ils
-# extraient de leur propre XML avant de construire un Par.
+# Texte.
 
 def normaliser(t):
-    """Forme de COMPARAISON : tous les blancs Unicode (insécables comprises, par str.split())
-    repliés en une espace, tirets spéciaux -> '-', rogné. Pour reconnaître une clé ou un
-    style, jamais pour une valeur : voir normaliser_valeur()."""
+    """Forme de comparaison : tous les blancs Unicode (insécables comprises) réduits à une
+    espace, tirets spéciaux -> '-', rognée. Sert à reconnaître une clé ou un style ; pour une
+    valeur, voir normaliser_valeur()."""
     for a, b in (('–', '-'), ('—', '-'), ('‑', '-')):
         t = t.replace(a, b)
     return ' '.join(t.split())
@@ -207,13 +163,10 @@ _RE_BLANCS_ASCII = re.compile(r'[ \t\r\n\f\v]+')
 
 
 def normaliser_valeur(t):
-    """Forme de VALEUR, celle que lisent les lecteurs (Par.texte) : seuls les blancs ASCII
-    (tabulation et saut de ligne compris) sont repliés en une espace. Les insécables
-    U+00A0/U+202F, l'espace fine U+2009, les tirets et U+2011 restent tels que la rédaction
-    les a tapés : szh-typographie.lua en a besoin à la compilation, et « 1990–2000 » passé
-    au trait d'union ne se reconstruit plus. Rogné de tout blanc Unicode aux deux bouts, pour
-    qu'un paragraphe fait d'une seule insécable reste vide. Toute comparaison repasse par
-    normaliser() (normaliser_cle, _sans_fioritures) ; cle_comparaison ne garde que [A-Za-z0-9]."""
+    """Forme de valeur (Par.texte) : seuls les blancs ASCII sont réduits à une espace. Les
+    insécables, l'espace fine, les tirets et U+2011 restent tels quels : szh-typographie.lua
+    en a besoin, et « 1990–2000 » passé au trait d'union ne se reconstruit pas. Rognée de
+    tout blanc Unicode, pour qu'un paragraphe fait d'une seule insécable reste vide."""
     return _RE_BLANCS_ASCII.sub(' ', t or '').strip()
 
 
@@ -226,16 +179,15 @@ def aplatir(t):
 
 def cle_comparaison(t):
     """Clé qui apparie un paragraphe du document source au bloc que pandoc en fera : les
-    quarante premiers caractères [A-Za-z0-9], et rien d'autre. Comparer les textes entiers
-    échouait sur ce que les deux lecteurs ne rendent pas pareil (tiret insécable, caractère
-    en police Symbole, tiret conditionnel, hyperlien sans cible) ; szh-biblio-detacher.lua
-    calcule la même clé, classe par classe explicite, sans dépendre d'une locale."""
+    quarante premiers caractères [A-Za-z0-9]. Le texte entier ne convient pas : pandoc et ce
+    lecteur diffèrent sur le tiret insécable, la police Symbole, le tiret conditionnel ou un
+    hyperlien sans cible. szh-biblio-detacher.lua calcule la même clé."""
     return re.sub(r'[^A-Za-z0-9]', '', t)[:40]
 
 
 def slugifier_portrait(prenom, nom):
-    """Nom de base d'un fichier de portrait : szh_commun.slugifier(), alignée sur slugifier()
-    de vscodium-extension/szh-cockpit/lib/slug.js, qui recalcule ces noms."""
+    """Nom de base d'un fichier de portrait, identique à slugifier() de
+    vscodium-extension/szh-cockpit/lib/slug.js, qui recalcule ces noms."""
     return szh_commun.slugifier(prenom + '-' + nom)
 
 
@@ -245,23 +197,18 @@ def citer(v):
 
 # ---------------------------------------------------------------------------------
 # Classement d'un nom de style résolu en famille : title, subtitle, author, abstract, biblio,
-# caption, heading, ou rien. Voir le point 1 de l'en-tête pour ce qui a changé par rapport à
-# l'original (un seul nom résolu en entrée, plus un dict styleId -> nom).
+# caption, heading, ou rien (voir l'en-tête).
 
 NOMS_PANDOC_META = {'title', 'subtitle', 'author', 'abstract', 'date'}
 
-# 1 à 6, et non 1 à 3 : le gabarit porte un rang 4 depuis sa v3 (22.09.2026), et famille()
-# classait DÉJÀ « Titre 4 » en 'heading' (son motif accepte n'importe quel chiffre) — les deux
-# se contredisaient. La borne à 6 est celle de szh-niveaux.lua, qui compacte le corps entre
-# <h2> et <h6> : au-delà, pandoc dégraderait le titre en paragraphe, il n'y a donc rien à
-# reconnaître.
+# Niveaux 1 à 6, la borne de szh-niveaux.lua, qui range le corps entre <h2> et <h6>.
 RE_NIVEAU_TITRE = re.compile(r'^(?:heading|titre|titolo|berschrift)\s*([1-6])\b', re.I)
 
 
 def famille(nom_style):
-    """Classe le nom de style DÉJÀ RÉSOLU d'un paragraphe. `n` = le nom tel quel, minuscules ;
-    `ns` = la même chose compactée (espaces et tirets retirés), pour les formes de type
-    identifiant (« titre1 », « berschrift2 ») qu'un styleId brut aurait portées."""
+    """Classe le nom de style résolu d'un paragraphe. `n` : le nom en minuscules ; `ns` : le
+    même compacté (sans espaces ni tirets), pour les formes d'identifiant (« titre1 »,
+    « berschrift2 »)."""
     if not nom_style:
         return ''
     n = normaliser(nom_style).lower()
@@ -274,8 +221,7 @@ def famille(nom_style):
         return 'author'
     if n == 'abstract' or ns == 'abstract':
         return 'abstract'
-    # « EndNoteBibliography » est le style que le plugin EndNote pose sur la liste qu'il
-    # génère — voir l'en-tête d'origine pour le chiffre mesuré sur le corpus.
+    # « EndNoteBibliography » : le style que pose le module EndNote sur la liste qu'il génère.
     if n == 'bibliography' or ns.startswith('literaturverzeichnis') \
             or ns in ('bibliographie', 'bibliografia', 'bibliography', 'endnotebibliography'):
         return 'biblio'
@@ -288,39 +234,32 @@ def famille(nom_style):
 
 
 def pandoc_mange(nom_style):
-    """pandoc mappe-t-il ce style en métadonnées (bloc absent du corps) ? Non appelé
-    aujourd'hui (repris tel quel de docx-pronto.py, qui ne l'appelait pas non plus), gardé
-    pour ne rien retirer d'un contrat existant."""
+    """Vrai si pandoc range ce style en métadonnées (bloc absent du corps). Appelé nulle
+    part dans ce module."""
     return (nom_style or '').strip().lower() in NOMS_PANDOC_META
 
 
 def niveau_depuis_style(nom_style):
-    """Niveau de titre 1..6 déduit du nom de style résolu, 0 sinon. Utilisé par LES DEUX
-    lecteurs (docx ET odt) — plutôt que de faire confiance à @text:outline-level côté ODT
-    (qui existe et serait tout aussi valide), pour que les deux formats s'accordent par
-    construction sur la même règle : si un style de titre s'appelle pareil des deux côtés
-    (ce que mesure justement le contrôle de parité de structure), son niveau sera identique."""
+    """Niveau de titre 1..6 déduit du nom de style résolu, 0 sinon."""
     m = RE_NIVEAU_TITRE.match(normaliser(nom_style or ''))
     return int(m.group(1)) if m else 0
 
 
 # ---------------------------------------------------------------------------------
-# Styles maison du gabarit Pronto (« SZH Cle », « SZH Aide »…) : reconnus par leur nom
-# résolu, jamais par un identifiant de style.
+# Styles maison du gabarit (« SZH Cle », « SZH Aide »…), reconnus par leur nom résolu.
 
 def normaliser_nom_style(nom):
-    """Nom de style prêt à comparer : minuscules, espaces et tirets retirés. « SZH Cle »,
-    « szhcle » et « SZH-Cle » tombent tous sur la même clé ; la ponctuation (parenthèses de
-    « SZH Question (interview) ») n'est PAS retirée."""
+    """Nom de style prêt à comparer : minuscules, sans espaces ni tirets. « SZH Cle »,
+    « szhcle » et « SZH-Cle » donnent la même clé ; la ponctuation (les parenthèses de
+    « SZH Question (interview) ») reste."""
     return re.sub(r'[\s\-]+', '', (nom or '').lower())
 
 
 NOM_STYLE_CLE = normaliser_nom_style('SZH Cle')
 NOM_STYLE_AIDE = normaliser_nom_style('SZH Aide')
-# Révision du 21.09.2026 (décision de Robin) : les métadonnées d'un bloc figure/tableau ne
-# vivent plus dans un tableau enveloppe mais dans des paragraphes ordinaires de CE style, juste
-# avant l'image ou le tableau — voir n_blocs_meta()/extraire_bloc() pour l'ancienne forme,
-# conservée en repli, et _extraire_blocs_nouvelle_forme() pour la nouvelle.
+# Les métadonnées d'un bloc figure ou tableau sont des paragraphes de ce style, juste avant
+# l'image ou le tableau (_extraire_blocs_nouvelle_forme()). L'ancienne forme, un tableau
+# enveloppe, est encore lue en repli (n_blocs_meta(), extraire_bloc()).
 NOM_STYLE_CLE_BLOC = normaliser_nom_style('SZH Cle Abb/Tab')
 
 
@@ -329,16 +268,14 @@ def _style_par(par):
 
 
 def _est_cle_bloc(bloc):
-    """Vrai pour un paragraphe SZH Cle Abb/Tab — jamais pour un SZH Cle ordinaire (qui ne
-    forme un bloc que par l'ancienne forme, à l'intérieur d'un tableau enveloppe, jamais posé
-    seul au premier niveau du document)."""
+    """Vrai pour un paragraphe SZH Cle Abb/Tab, pas pour un SZH Cle ordinaire (qui ne forme
+    un bloc que dans un tableau enveloppe)."""
     return isinstance(bloc, Par) and _style_par(bloc) == NOM_STYLE_CLE_BLOC
 
 
 # ---------------------------------------------------------------------------------
-# Avertissement au rédacteur : même mécanisme que docx-meta.py (szh_commun.avertir), même
-# préfixe — pour que journal.js, côté cockpit, n'ait qu'un seul format à reconnaître, quel
-# que soit le lecteur qui a parlé.
+# Avertissements : même format et même préfixe que docx-meta.py, pour que journal.js (cockpit)
+# n'ait qu'un format à reconnaître.
 
 PREFIXE_AVERT = '[import-avertissement]'
 
@@ -348,15 +285,14 @@ def avertir(code, champs, fr, de):
 
 
 # ---------------------------------------------------------------------------------
-# Bibliographie : reconnaissance et étendue à détacher — même clé de comparaison, mêmes
-# bornes que docx-meta.py : szh-biblio-detacher.lua les relit et ne doit pas voir de
-# différence entre ce que produit l'un ou l'autre lecteur.
+# Bibliographie : reconnaissance et étendue à détacher, avec la même clé de comparaison et
+# les mêmes bornes que docx-meta.py, puisque szh-biblio-detacher.lua relit les deux.
 
 def lire_titres_bib():
-    """Le lexique des titres de bibliographie, relu dans szh-citations.lua — qui le porte
-    pour toute la chaîne, cockpit compris (voir lib/citations.js). Deux copies, ce seraient
-    deux réponses. Filtre illisible : lexique vide, donc aucun titre reconnu, donc l'étendue
-    commence au premier paragraphe stylé — on détache moins, jamais à côté."""
+    """Le lexique des titres de bibliographie, lu dans szh-citations.lua, qui le tient pour
+    toute la chaîne (voir aussi lib/citations.js). Filtre illisible : lexique vide, aucun
+    titre reconnu, et l'étendue commence au premier paragraphe stylé (on détache moins,
+    jamais à côté)."""
     chemin = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                           'filters', 'szh-citations.lua')
     try:
@@ -371,20 +307,16 @@ def lire_titres_bib():
     return {m for m in re.findall(r"'([a-z]+)'", src[i:j])}
 
 
-# Compléments tolérés devant un titre de bibliographie, une fois aplati : une numérotation
-# de titre (« 5. Références ») est retirée par regex (les chiffres de tête ne font partie
-# d'aucune entrée du lexique) ; un complément du type « Liste des références » est retiré
-# par préfixe, mot à mot. Décision de la rédaction (voir en-tête du chantier) : le gabarit
-# Pronto ne définit AUCUN style de bibliographie et n'en aura jamais — la reconnaissance ne
-# peut donc reposer QUE sur le titre, et doit tolérer la façon dont les auteurs l'écrivent
-# réellement.
+# Compléments tolérés devant un titre de bibliographie aplati : une numérotation
+# (« 5. Références »), retirée par expression régulière, et « Liste des », retiré par
+# préfixe. Le gabarit n'a pas de style de bibliographie : la reconnaissance repose sur le
+# seul titre, tel que les auteurs l'écrivent.
 RE_NUM_TITRE_BIBLIO = re.compile(r'^\d+')
 PREFIXES_TITRE_BIBLIO = ('listedes', 'listede', 'liste')
 
 # Un complément entre parenthèses ou crochets en FIN de titre (« Literatur (gemäss
-# Redaktionsrichtlinien) », « Références [sélection] »). Utilisé par le seul nettoyeur de
-# manuscrit, qui lit des titres d'autrices ; la chaîne de compilation garde sa comparaison
-# exacte (szh-citations.lua) et ne l'appelle pas.
+# Redaktionsrichtlinien) », « Références [sélection] »). Sert au nettoyeur de manuscrit ; la
+# compilation garde la comparaison exacte de szh-citations.lua.
 RE_COMPLEMENT_TITRE_BIBLIO = re.compile(r'\s*[(\[][^()\[\]]*[)\]]\s*$')
 
 
@@ -415,23 +347,14 @@ def etendue_biblio(blocs, type_article, slug):
     retirer, et de quoi rendre compte. `blocs` : list[Par | Tableau], les blocs de premier
     niveau du document, dans l'ordre.
 
-    Le gabarit Pronto ne définit aucun style de bibliographie (mesuré sur le gabarit réel :
-    aucun `w:style`/`style:style` de ce nom parmi les vingt qu'il porte) — la détection par
-    STYLE de docx-meta.py (famille(e.style) == 'biblio') n'a donc RIEN à reconnaître ici.
-    Mesuré sur le banc de 20 articles : c'est ce qui faisait détacher 0 paragraphe sur les
-    19 articles non-documentation, alors que les originaux en détachaient 5 à 36.
+    Le gabarit n'a pas de style de bibliographie : la bibliographie se reconnaît à son
+    titre. C'est le dernier titre, de n'importe quel niveau, dont le texte aplati figure
+    dans le lexique de lire_titres_bib() ; le dernier, car un « Literatur » plus haut peut
+    être une revue de littérature. Tout ce qui suit est la bibliographie, un paragraphe par
+    entrée, jusqu'à la fin du document ou jusqu'à un tableau, qui l'arrête avec un
+    avertissement.
 
-    La bibliographie se reconnaît ici à son TITRE : le DERNIER paragraphe de niveau de
-    titre (1 à 3) dont le texte tombe, une fois aplati, dans le lexique de
-    lire_titres_bib() — le dernier, parce que la bibliographie est normalement la toute
-    dernière section de l'article, et qu'un « Literatur » plus haut pourrait être une revue
-    de littérature, pas la liste des références. Une fois ce titre trouvé, TOUT ce qui suit
-    devient la bibliographie, un paragraphe = une entrée, jusqu'à la fin du document — sauf
-    si un tableau est rencontré en chemin : ce n'est plus de la bibliographie, l'étendue
-    s'arrête avant lui, et c'est dit par un avertissement (ce cas est louche, il ne devrait
-    pas arriver).
-
-    Une documentation est laissée entière : sa liste EST son contenu."""
+    Une documentation est laissée entière : sa liste est son contenu."""
     stats = {'voie': 'aucune', 'paragraphes': 0, 'titre': False}
     if type_article == 'documentation':
         stats['voie'] = 'documentation'
@@ -440,9 +363,7 @@ def etendue_biblio(blocs, type_article, slug):
     lexique = lire_titres_bib()
     titre = None
     for i, e in enumerate(blocs):
-        # Tous les rangs de titre, pas seulement les trois premiers : une bibliographie
-        # intitulée en rang 4 reste une bibliographie. C'est le LEXIQUE des titres qui
-        # tranche, jamais le rang.
+        # Tous les niveaux de titre : c'est le lexique qui décide, pas le niveau.
         if not isinstance(e, Par) or not e.texte or not e.niveau:
             continue
         if titre_est_biblio(e.texte, lexique):
@@ -479,10 +400,9 @@ def etendue_biblio(blocs, type_article, slug):
 
 
 # ---------------------------------------------------------------------------------
-# Étiquettes du gabarit — reconnues avec un SCORE de proximité (voir « clés tolérantes »
-# ci-dessous), jamais en comparant seulement leur forme aplatie : aplatir() (plus haut) retire
-# TOUS les accents, donc « Resumé » et « Résumé » lui donnent déjà la MÊME clé, sans le moindre
-# écart mesurable — exactement le silence qu'un score doit remplacer par un avertissement.
+# Étiquettes du gabarit, reconnues par un score de proximité (voir « Clés tolérantes »
+# ci-dessous) et non par leur forme aplatie : aplatir() retire les accents, et « Resumé »
+# passerait sans avertissement.
 
 RE_SUFFIXE_LANGUE = re.compile(r'\s*\((fr|de|it)\)\s*$', re.I)
 
@@ -493,65 +413,37 @@ VALEURS_TYPE = {
     aplatir('entretien'): 'interview',
     aplatir('varia'): 'varia',
     aplatir('tribune libre'): 'tribune-libre',
-    # Les valeurs que propose le gabarit allemand (« Themenschwerpunkt – Editorial Interview –
-    # Varia – Tribune Libre ») : les autres sont déjà des jetons canoniques.
+    # Gabarit allemand (« Themenschwerpunkt – Editorial – Interview – Varia – Tribune
+    # Libre ») : les autres valeurs sont déjà des jetons canoniques.
     aplatir('themenschwerpunkt'): 'article',
 }
 VALEURS_TYPE_CANONIQUES = {aplatir(t): t for t in TYPES_VALIDES}
-# (Il n'y a plus de VALEURS_LANGUE : la valeur du champ « Langue de l'article » n'est plus
-# interprétée du tout depuis le 22.09.2026 — voir langue_du_produit().)
 
 
 # ---------------------------------------------------------------------------------
-# Clés tolérantes : une étiquette mal tapée (accent oublié, espace changée, variante de mot,
-# casse, deux-points en trop, pluriel) est reconnue avec un score de proximité contre les
-# clés attendues de CANON_METADONNEES / CANON_AUTEUR / CANON_FIGURE — jamais en silence quand
-# il a fallu tolérer quelque chose (voir identifier_cle()). La VALEUR d'une clé n'est JAMAIS
-# comparée ici — seule l'étiquette l'est.
+# Clés tolérantes : une étiquette mal tapée (accent oublié, espace, variante, casse,
+# deux-points, pluriel) est reconnue par un score de proximité contre les clés de
+# CANON_METADONNEES, CANON_AUTEUR et CANON_FIGURE, avec un avertissement dès qu'il a fallu
+# tolérer (voir identifier_cle()). Seule l'étiquette est comparée, jamais la valeur.
 
+# Seuil mesuré sur 75 étiquettes (vraies, fautes de frappe plausibles, étiquettes qui
+# doivent rester inconnues) : aucune ne tombe sur une mauvaise clé, et les étrangères
+# plafonnent à 0,667. Le test « une étiquette étrangère au gabarit reste sous le seuil, avec
+# de la marge » (test/js/pronto-lire.test.js) tient cette marge.
+# Une forme sans accent (« Resume » : 0,667) reste sous le seuil : on la rattrape par un
+# alias dans les tables CANON_*, pas en baissant le seuil, qui perdrait sa marge. De même,
+# une étiquette étrangère trop proche d'une clé (« Adresse » contre `email`) se déclare comme
+# clé sans destination (CLES_AUTEUR_SANS_DESTINATION).
 SEUIL_CLE = 0.75
-# Trois valeurs successives, et chacune a été MESURÉE avant d'être posée.
-#
-# 0,85 (d'abord envisagée) : « Resumé » (un accent oublié, 0,833) et « Prenom » (0,833)
-# restaient dehors — l'inverse de ce que la tolérance devait apporter.
-# 0,80 : les admettait, avec les deux négatifs mesurés loin en dessous — « Résultats » (0,571
-# contre Résumé) et « Nom de la revue » (0,400 contre Nom).
-# 0,75 (décision de Robin, 22.09.2026) : mesurée sur 75 étiquettes (les vraies, des fautes de
-# frappe plausibles, et des étiquettes qui doivent rester inconnues). **74 verdicts sur 75 sont
-# identiques à 0,80** ; le seul qui change est un gain : « Prenoom » (0,769) devient `prenom`.
-# AUCUNE étiquette ne part sur une mauvaise clé, AUCUNE de celles qui doivent rester inconnues
-# ne passe la barre — la plus haute d'entre elles plafonne à 0,615 (« Photo » contre Fonction),
-# ce qui laisse 0,135 de marge.
-#
-# ⚠ CE QUE LE SEUIL NE RATTRAPE PAS, et qu'il ne faut pas essayer de rattraper en le baissant
-#   encore : une étiquette tapée SANS AUCUN accent quand la forme canonique en porte deux.
-#   Mesuré AVANT les alias : « Resume » contre Résumé = 0,667, « Legandes » contre Légende =
-#   0,714 — tous deux refusés, donc tous deux refusant l'import. Descendre à 0,65 pour les
-#   admettre n'aurait laissé que 0,035 de marge au-dessus du premier faux positif : le
-#   mécanisme serait devenu un tirage au sort. La réponse a donc été un jeu d'ALIAS explicites
-#   dans les tables CANON_* (voir leur commentaire), et ces deux cas se lisent désormais 1,000
-#   et 0,857. Refaire ce choix à chaque cas nouveau : un alias, jamais un seuil plus bas.
-#
-# ⚠ MARGE RESTANTE. Elle était mince : « Adresse » (une adresse postale) arrivait à 0,737
-#   contre `email`, tirée par l'alias allemand « e-mail-adresse » — 0,013 sous le seuil, une
-#   adresse postale à un cheveu du champ e-mail. La réponse n'a été ni le seuil ni un alias mais
-#   une DÉCLARATION : « Adresse », comme « Biographie », « Téléphone » et « Photo », est
-#   maintenant une clé reconnue SANS DESTINATION (CLES_AUTEUR_SANS_DESTINATION), donc à 1,000
-#   sur elle-même et hors de toute concurrence. La plus proche étiquette étrangère restante
-#   plafonne à 0,667, soit 0,083 de marge. Un contrôle la tient (test/js/pronto-lire.test.js,
-#   « une étiquette étrangère au gabarit reste sous le seuil, avec de la marge ») et dit, quand
-#   il tombe, laquelle des deux issues employer.
 ECART_CLE = 0.08
-LONGUEUR_ETIQUETTE_SCORE = 40  # au-delà, ce n'est plus une étiquette : jamais scoré (garde-fou).
+LONGUEUR_ETIQUETTE_SCORE = 40  # au-delà, c'est une valeur, pas une étiquette : pas de score
 
 
 def normaliser_cle(texte):
-    """Étiquette prête à comparer à une clé attendue : espaces (déjà uniformisées par
-    normaliser()) et ponctuation de repli retirées, minuscules, pluriel final toléré — les
-    ACCENTS SONT CONSERVÉS (contrairement à aplatir()) : c'est justement l'écart d'accent que
-    le score doit mesurer, pas l'effacer avant de mesurer. Recomposée en NFC d'abord : un
-    « Légende » en NFD (e + U+0301, un Mac, un copier-coller) n'est pas une autre étiquette,
-    et se lisait « approximée à 0,93 » avec un avertissement incompréhensible."""
+    """Étiquette prête à comparer : en NFC, minuscules, sans espaces ni ponctuation de
+    séparation, pluriel final toléré. Les accents restent : c'est leur écart que le score
+    mesure. La recomposition NFC évite qu'un « Légende » en NFD (Mac, copier-coller) soit
+    pris pour une approximation."""
     t = unicodedata.normalize('NFC', normaliser(texte or '')).lower()
     t = re.sub(r"[\s:./_'’-]+", '', t)
     if len(t) > 1 and t.endswith('s'):
@@ -569,28 +461,22 @@ def _score_forme(candidat_norm, forme_brute):
 
 
 def _sans_fioritures(t):
-    """Pour le test D'EXACTITUDE UNIQUEMENT (jamais pour le score) : espaces uniformisées par
-    normaliser(), apostrophe courbe assimilée à l'apostrophe droite (les deux sortent du même
-    clavier selon le correcteur automatique de l'autrice ou de l'auteur, jamais une faute à
-    signaler — le gabarit réel écrit « d'article » à l'apostrophe courbe), casse ignorée."""
+    """Forme pour le test d'exactitude seulement (pas pour le score) : espaces
+    uniformisées, apostrophe courbe assimilée à la droite (la correction automatique les
+    alterne ; le gabarit écrit « d’article »), casse ignorée."""
     return unicodedata.normalize('NFC', normaliser(t or '')).replace('’', "'").casefold()
 
 
 def identifier_cle(etiquette, table):
-    """Résout `etiquette` (déjà débarrassée d'un éventuel suffixe de langue) contre les clés
-    canoniques de `table` — un dict jeton -> (forme canonique affichée, alias...), la forme
-    du gabarit français étant toujours en position 0, celle du gabarit allemand en
-    position 1. Rend :
-      - None si `etiquette` est vide, trop longue pour être une clé (LONGUEUR_ETIQUETTE_SCORE
-        — la VALEUR d'un champ ne doit jamais être scorée), ou si aucune clé n'atteint
-        SEUIL_CLE (clé inconnue, comme avant ce mécanisme) ;
-      - ('__ambigu__', jeton1, jeton2, score1, score2) si les deux meilleures clés sont à moins
-        de ECART_CLE l'une de l'autre : aucune n'est retenue ;
-      - (jeton, score, exact) sinon. `exact` ne vaut vrai que si `etiquette` est égale à
-        l'une des deux formes du gabarit, fr ou de (espaces et casse ignorées) — un alias
-        reconnu à 100 %
-        (« E-mail » pour Email) n'est pas « le gabarit tapé juste », il doit donc avertir
-        aussi."""
+    """Résout `etiquette` (sans suffixe de langue) contre `table`, un dict jeton -> (forme du
+    gabarit français, forme du gabarit allemand, alias…). Rend :
+      - None si `etiquette` est vide, plus longue que LONGUEUR_ETIQUETTE_SCORE, ou si aucune
+        clé n'atteint SEUIL_CLE ;
+      - ('__ambigu__', jeton1, jeton2, score1, score2) si les deux meilleures clés sont à
+        moins de ECART_CLE l'une de l'autre ;
+      - (jeton, score, exact) sinon. `exact` n'est vrai que si `etiquette` est l'une des deux
+        formes du gabarit (espaces et casse ignorées) : un alias, même reconnu à 1,0
+        (« E-mail » pour Email), avertit."""
     etiquette = (etiquette or '').strip()
     if not etiquette or len(etiquette) > LONGUEUR_ETIQUETTE_SCORE:
         return None
@@ -640,16 +526,13 @@ def _avertir_cle_ambigue(brute, table, jeton1, jeton2, slug, lieu):
 
 
 def resoudre_cle(etiquette, table, slug, lieu, bloquants=None):
-    """identifier_cle() + les avertissements qui vont avec : rend le jeton reconnu, ou None
-    (clé inconnue OU ambiguë — dans les deux cas, rien n'est retenu, à l'appelant de se
-    comporter comme si l'étiquette n'était reconnue par rien).
+    """identifier_cle() et ses avertissements : rend le jeton reconnu, ou None pour une clé
+    inconnue ou ambiguë.
 
-    N'est appelé par les trois lieux QUE lorsque la valeur associée n'est PAS vide (voir le
-    garde-fou posé chez chaque appelant : une clé présente mais vide est traitée comme absente,
-    jamais comme une clé « non reconnue » — § cle-attendue-absente). Une clé introuvable ou
-    ambiguë est donc, par construction, une clé PRÉSENTE avec un contenu réel qu'on ne saurait
-    pas où ranger : si `bloquants` est fourni (list), une entrée {'texte', 'lieu'} y est
-    ajoutée — c'est ce qui fait échouer tout l'import, voir principal() et GRAVITE_CODES."""
+    Les appelants ne l'appellent que pour une valeur non vide (une clé vide compte comme
+    absente). Une clé inconnue ou ambiguë a donc un contenu qu'on ne sait où ranger : si
+    `bloquants` (list) est fourni, une entrée {'texte', 'lieu'} y est ajoutée, ce qui fait
+    échouer l'import (voir principal() et GRAVITE_CODES)."""
     resultat = identifier_cle(etiquette, table)
     if resultat is None:
         if bloquants is not None:
@@ -668,21 +551,15 @@ def resoudre_cle(etiquette, table, slug, lieu, bloquants=None):
 
 
 # ---------------------------------------------------------------------------------
-# Gravité des codes émis par CE lecteur — indépendante de tout ce que le cockpit décidera plus
-# tard (TONS_IMPORT de lib/journal.js : hors de portée ici, le cockpit n'est branché nulle
-# part). Sert uniquement à pronto-lire.py pour décider si l'import doit échouer.
+# Gravité des codes émis par ce lecteur ; pronto-lire.py s'en sert pour faire échouer
+# l'import. Le cockpit a sa propre table (TONS_IMPORT de lib/journal.js).
 #
-# GRAVITE_BLOQUANT : une clé PRÉSENTE (valeur non vide) n'a pu être rangée nulle part — son
-# contenu serait perdu si l'import continuait. « etiquette-metadonnees-inconnue »,
-# « auteur-etiquette-inconnue », « bloc-etiquette-inconnue » et « cle-ambigue » en sont : un
-# document qui en déclenche un ne s'importe pas — principal() n'écrit alors ni meta.yaml, ni
-# les instructions $SZH_META/$SZH_PHOTOS ; pronto-lire.py sort en échec (voir stats['bloquant']
-# / stats['cles_non_reconnues'], alimentées par resoudre_cle() ci-dessus, ainsi que par
-# extraire_table_metadonnees() pour le seul cas qu'il ne couvre pas — une clé RECONNUE mais
-# sans destination, motscles ou langue manquante).
-# GRAVITE_INFO : une clé attendue n'a rien à ranger (absente ou vide) — jamais bloquant.
-# GRAVITE_AVERT : tout le reste, y compris « cle-approximee » — un avertissement ordinaire,
-# comme avant ce mécanisme.
+# GRAVITE_BLOQUANT : une clé remplie n'a pu être rangée nulle part, et son contenu serait
+# perdu. principal() n'écrit alors ni meta.yaml ni instructions, et pronto-lire.py sort en
+# échec (stats['bloquant'], stats['cles_non_reconnues'], alimentées par resoudre_cle() et
+# par extraire_table_metadonnees() pour une clé reconnue mais sans destination).
+# GRAVITE_INFO : une clé attendue est absente ou vide.
+# GRAVITE_AVERT : le reste, dont « cle-approximee ».
 GRAVITE_BLOQUANT = 'bloquant'
 GRAVITE_INFO = 'info'
 GRAVITE_AVERT = 'avert'
@@ -700,8 +577,7 @@ GRAVITE_CODES = {
 
 
 def _avertir_cle_attendue_absente(canonique, slug, lieu, canonique_de=None):
-    # `clé-de` : le nom du champ dans le gabarit allemand, pour que le cockpit d'une personne
-    # germanophone dise « Untertitel » et non « Sous-titre ».
+    # `clé-de` : le nom du champ dans le gabarit allemand, pour le message en allemand.
     canonique_de = canonique_de or canonique
     avertir(
         'cle-attendue-absente',
@@ -714,58 +590,39 @@ def _avertir_cle_attendue_absente(canonique, slug, lieu, canonique_de=None):
 
 
 def _avertir_cles_attendues_absentes(table, jetons_attendus, cles_vues, slug, lieu):
-    """Une info `cle-attendue-absente` par clé de `jetons_attendus` qui n'a jamais reçu de
-    valeur (`cles_vues`) — une clé présente mais laissée vide compte comme absente ici : les
-    trois appelants n'ajoutent JAMAIS à `cles_vues` une clé dont la valeur était vide."""
+    """Une info `cle-attendue-absente` par clé de `jetons_attendus` absente de `cles_vues`.
+    Les appelants n'ajoutent pas à `cles_vues` une clé laissée vide."""
     for jeton in jetons_attendus:
         if jeton not in cles_vues:
             _avertir_cle_attendue_absente(table[jeton][0], slug, lieu, table[jeton][1])
 
 
-# PAS motscles (voir CANON_METADONNEES), et PLUS langue depuis le 22.09.2026 : le champ a quitté
-# le gabarit, son absence est donc la normale et n'a plus rien à signaler. Sa clé reste
-# reconnaissable dans CANON_METADONNEES — un document rempli avant ce jour en porte encore une,
-# et une clé PRÉSENTE non reconnue bloquerait tout l'import.
+# Ni motscles ni langue, qui ne sont pas des champs du gabarit (voir CANON_METADONNEES).
 CLES_METADONNEES_ATTENDUES = ('type', 'titre', 'soustitre', 'resume')
 
 
 CANON_METADONNEES = {
-    # Les ALIAS ne sont pas de la décoration : chaque forme listée ici est comparée au score
-    # maximum (voir identifier_cle), donc une étiquette qui tombe sur un alias est reconnue à
-    # coup sûr, là où le seul seuil de proximité l'aurait laissée dehors — et c'est là qu'un
-    # faux négatif coûte le plus cher, puisqu'une clé présente non reconnue REFUSE l'import.
-    # Trois familles, posées le 22.09.2026 :
-    #   * la forme SANS ACCENT de chaque forme canonique accentuée (« resume », « legende »,
-    #     « prenom », « credit ») — perdre deux accents fait tomber le score sous le seuil, et
-    #     baisser le seuil jusqu'à les rattraper supprimerait la marge (voir SEUIL_CLE) ;
-    #   * les synonymes que la rédaction tape par réflexe (« Copyright », « Droits »,
-    #     « Description », « Provenance », « Poste », « Adresse e-mail »…) ;
-    #   * l'italien, aux côtés du français et de l'allemand déjà présents — la revue publie des
-    #     articles italiens, même s'ils se corrigent à la main après l'import.
-    # Un alias reconnu n'est JAMAIS silencieux : `exact` ne compare qu'aux formes des deux
-    # gabarits (position 0 : français, position 1 : allemand), donc tout ce qui n'est pas tapé
-    # comme l'un des deux avertit (cle-approximee).
-    # ⚠ PAS d'alias « rubrique » ici, quoi qu'en dise l'intuition : dans la maison, une rubrique
-    #   n'est pas un type d'article (voir szh-rubrique.lua). L'alias a été posé, mesuré — il
-    #   faisait entrer « Rubrique » sur `type` avec un score de 1,000 — et retiré.
+    # Position 0 : forme du gabarit français ; position 1 : forme du gabarit allemand ; puis
+    # des alias, reconnus au score maximum. Une clé remplie mais non reconnue refuse
+    # l'import : les alias évitent ces faux négatifs. Ils couvrent les formes sans accent
+    # (« resume », « prenom »), les synonymes tapés par réflexe (« Copyright », « Droits »,
+    # « Description », « Poste »…) et l'italien. Un alias avertit toujours (cle-approximee).
+    # Pas d'alias « rubrique » : une rubrique n'est pas un type d'article (voir
+    # szh-rubrique.lua).
     'type': ("Type d'article", 'Artikeltyp', 'type', 'tipo di articolo'),
-    # Champ RETIRÉ du gabarit le 22.09.2026 : sa valeur n'est plus lue (la langue vient du
-    # produit, voir langue_du_produit()), mais sa clé reste reconnue pour que le tableau d'un
-    # document rempli avant ce jour ne bloque pas l'import — il avertit, voir la branche
-    # 'langue' d'extraire_table_metadonnees().
+    # Champ des anciens gabarits. Sa valeur est ignorée (la langue vient du produit, voir
+    # langue_du_produit()) ; sa clé reste reconnue pour ne pas bloquer l'import, avec un
+    # avertissement (voir extraire_table_metadonnees()).
     'langue': ("Langue de l'article", 'Sprache', 'langue', 'language'),
     'titre': ('Titre', 'Titel', 'title', 'titolo', 'titre de l\'article'),
     'soustitre': ('Sous-titre', 'Untertitel', 'sous titre', 'soustitre', 'subtitle',
                   'sottotitolo'),
     'resume': ('Résumé', 'Zusammenfassung', 'resume', 'abstract', 'riassunto',
                'résumé de l\'article'),
-    # Décision prise seul (Robin absent) : le gabarit ne définit AUCUN champ « Mots-clés » —
-    # voir serialiser_meta(), les mots-clés sont choisis dans le cockpit, jamais lus dans le
-    # document, et ÇA NE CHANGE PAS ICI. Gardée quand même reconnaissable (la demande la cite
-    # explicitement, et la rédaction tape parfois ce champ par réflexe, venu d'un autre
-    # gabarit) : reconnue -> avertit « cle-approximee » si elle est mal tapée, puis
-    # 'metadonnees-champ-hors-gabarit' (bloquant), qui dit où vont les mots-clés : compris,
-    # mais gardé nulle part.
+    # Le gabarit n'a pas de champ « Mots-clés » : ils se choisissent dans le cockpit (voir
+    # serialiser_meta()). La clé reste reconnue, parce qu'elle est souvent tapée par
+    # réflexe : elle lève 'metadonnees-champ-hors-gabarit' (bloquant), qui dit où vont les
+    # mots-clés.
     'motscles': ('Mots-clés', 'Schlüsselwörter', 'mots cles', 'mots clefs', 'keywords',
                  'schlagworter', 'schlusselworter', 'schlagwörter'),
 }
@@ -781,33 +638,24 @@ CANON_AUTEUR = {
                     'istituzione'),
     'ror': ('ROR', 'ROR', 'ror id', 'identifiant ror'),
     'orcid': ('ORCID', 'ORCID', 'orcid id', 'identifiant orcid'),
-    # ⚠ « adresse mail » a été posé, mesuré, puis retiré : il faisait entrer « Adresse » (une
-    #   adresse postale) sur `email` avec 0,778. « adresse e-mail », plus long, laisse
-    #   « Adresse » à 0,737 — sous le seuil, donc dehors, ce qui est le bon verdict.
+    # Pas d'alias « adresse mail » : « Adresse » (postale) passerait sur `email`.
     'email': ('Email', 'E-Mail', 'courriel', 'mail', 'adresse e-mail', 'e-mail-adresse'),
-    # ── Champs que le gabarit NE PORTE PAS, déclarés exprès ────────────────────────────
-    # Même procédé que « Mots-clés » dans CANON_METADONNEES : une clé qu'on sait que la
-    # rédaction tape, reconnue pour qu'elle ne soit JAMAIS confondue avec un vrai champ, mais
-    # sans destination — elle refuse donc l'import, avec un message qui dit ce qu'il en est
-    # (voir CLES_AUTEUR_SANS_DESTINATION et _avertir_champ_hors_gabarit()).
-    #
-    # Ce n'est pas de la politesse : « Adresse » arrivait à 0,737 contre `email`, tirée par
-    # l'alias allemand « e-mail-adresse », soit 0,013 sous le seuil. Une adresse postale à
-    # 0,013 de finir dans le champ e-mail, c'est un tirage au sort qui attend son tour.
-    # Déclarée, elle se reconnaît elle-même à 1,000 et la question ne se pose plus.
+    # ── Champs absents du gabarit, déclarés exprès ──────────────────────────────────────
+    # Comme « Mots-clés » : des clés souvent tapées, reconnues pour ne pas être confondues
+    # avec un vrai champ (« Adresse » est proche de `email`), mais sans destination. Elles
+    # refusent l'import avec un message qui dit quoi faire (voir
+    # CLES_AUTEUR_SANS_DESTINATION et _avertir_champ_hors_gabarit()).
     'adresse': ('Adresse', 'Anschrift', 'adresse postale'),
     'biographie': ('Biographie', 'Kurzbiografie', 'notice biographique', 'bio'),
     'telephone': ('Téléphone', 'Telefon', 'telephone', 'tél', 'tel'),
     'photo': ('Photo', 'Porträt', 'portrait', 'foto', 'bild'),
 }
 
-# Les clés de CANON_AUTEUR qui n'ont pas de champ où aller. Tenue à part de la table plutôt
-# que devinée (« tout ce qui n'est pas dans CHAMPS_AUTEUR ») : la liste se lit d'un regard, et
-# ajouter une clé reconnue sans la ranger ici deviendrait une valeur perdue en silence.
+# Les clés de CANON_AUTEUR sans champ de destination, listées explicitement.
 CLES_AUTEUR_SANS_DESTINATION = ('adresse', 'biographie', 'telephone', 'photo')
 
-# Ce qu'il faut faire, par champ, quand il n'a pas de place dans le gabarit. Le cas de la photo
-# est le seul qui ait une VRAIE destination dans le document : la cellule de gauche.
+# Ce qu'il faut faire, par champ absent du gabarit. La photo a sa place dans le document :
+# la cellule de gauche.
 GESTE_HORS_GABARIT = {
     'photo': ("La photo se dépose dans la cellule de gauche de cette rangée, pas dans une "
               "clé.",
@@ -829,19 +677,17 @@ CANON_FIGURE = {
                 'abbildung', 'légende de la figure', 'didascalia'),
     'alt': ('Texte alternatif', 'Alternativtext', 'texte alternatif', 'alt', 'alt text',
             'description', 'texte de remplacement', 'testo alternativo'),
-    # « Copyright » est la clé écrite depuis la révision du 30.09.2026 ; « Crédit » (exact, donc
-    # sans avertissement : voir FORMES_EXACTES_ANCIENNES) et les anciennes variantes restent
-    # reconnus pour les documents déjà remplis.
+    # Le gabarit écrit « Copyright » ; « Crédit », forme des anciens gabarits, est reconnu
+    # sans avertissement (FORMES_EXACTES_ANCIENNES).
     'credit': ('Copyright', 'Copyright', 'Crédit', 'credit', 'crédit photo', 'credit photo',
                'photo credit', 'droits', 'bildnachweis', 'credito'),
     'source': ('Source', 'Quelle', 'provenance', 'fonte'),
-    # La note imprimée sous la figure ou le tableau. Clé FACULTATIVE : son absence n'est
-    # jamais signalée (voir CLES_BLOC_ATTENDUES).
+    # La note imprimée sous la figure ou le tableau. Facultative : son absence n'est pas
+    # signalée (voir CLES_BLOC_ATTENDUES).
     'note': ('Note', 'Notiz', 'notes', 'anmerkung', 'hinweis', 'remarque', 'nota'),
 }
 
-# Formes que le gabarit écrivait avant sa révision : toujours TAPÉES JUSTE par les documents déjà
-# remplis, donc reconnues exactes (aucun avertissement d'approximation). jeton -> formes.
+# Formes des anciens gabarits, reconnues comme exactes (sans avertissement). jeton -> formes.
 FORMES_EXACTES_ANCIENNES = {'credit': ('Crédit',)}
 
 # Les clés de bloc dont l'absence se signale (cle-attendue-absente) : toutes sauf la note.
@@ -852,21 +698,12 @@ CLES_BLOC_ATTENDUES = tuple(k for k in CANON_FIGURE if k != 'note')
 # Tableau 1 — métadonnées de l'article.
 
 def _etiquette_szh_cle(cellule):
-    """Texte des paragraphes de style SZH Cle d'une cellule, joints par un espace (il n'y en a
-    normalement qu'un). Ne regarde que les Par directs de la cellule — un bloc n'a jamais de
-    tableau imbriqué dans une cellule d'étiquette.
+    """Texte des paragraphes SZH Cle d'une cellule (Par directs), joints par une espace ; il
+    n'y en a normalement qu'un.
 
-    Correction du 22.09.2026 : ne retient que le style SZH Cle — la version précédente
-    acceptait n'importe quel paragraphe pourvu qu'il ne soit pas SZH Aide, ce qui faisait
-    lire comme une « étiquette » la première colonne d'un tableau de contenu ORDINAIRE pris
-    pour le tableau des métadonnées par la seule coïncidence de sa position en tête de
-    document (piège déjà documenté dans docs/TODO/parser-v2.md, « Les deux premiers
-    tableaux sont pris PAR POSITION »). Mesuré sur tmp/corpus-relecture/lot-A (11 manuscrits
-    réels, aucun au gabarit) : 3 documents sur 11 voyaient leur véritable tableau de données
-    pris pour celui des métadonnées ; depuis qu'une clé présente mais non reconnue bloque tout
-    l'import (§ clés bloquantes), ce piège serait devenu bien plus grave qu'un simple
-    avertissement — d'où cette correction, au même endroit que le mécanisme qui la rendait
-    dangereuse."""
+    Seul le style SZH Cle compte : les deux premiers tableaux sont pris par leur position,
+    et un tableau de données ordinaire placé en tête ne doit pas voir sa première colonne
+    lue comme des étiquettes, qui bloqueraient l'import."""
     morceaux = []
     for b in cellule.blocs:
         if not isinstance(b, Par):
@@ -892,9 +729,9 @@ def _valeur_cellule(cellule):
 
 def extraire_table_metadonnees(tableau, slug, bloquants=None):
     """(valeurs, consommee). `valeurs` = {'type', 'titre', 'soustitre', 'resume'}
-    — les trois derniers étant des dict langue -> texte. `bloquants`, si fourni (list), reçoit
-    une entrée {'texte', 'lieu'} pour chaque clé PRÉSENTE (valeur non vide) mais non reconnue,
-    ou reconnue sans destination — voir resoudre_cle() et principal()."""
+    (les trois derniers : dict langue -> texte). `bloquants` (list), s'il est fourni, reçoit
+    {'texte', 'lieu'} pour chaque clé remplie non reconnue ou sans destination (voir
+    resoudre_cle() et principal())."""
     valeurs = {'type': '', 'titre': {}, 'soustitre': {}, 'resume': {}}
     consommee = True
     cles_vues = set()
@@ -934,10 +771,9 @@ def extraire_table_metadonnees(tableau, slug, bloquants=None):
                     'Metadaten nicht gesetzt; wählen Sie ihn unter «Metadaten der '
                     'Artikel».' % valeur)
         elif jeton == 'langue':
-            # Le champ a quitté le gabarit le 22.09.2026 et sa valeur n'est PLUS lue : la
-            # langue vient du produit du numéro. Ne rien dire ferait sortir un article
-            # italien en français sans que personne ne l'apprenne — d'où cette information,
-            # qui nomme la seule voie restante.
+            # Champ des anciens gabarits, ignoré : la langue vient du produit du numéro. On
+            # le signale, sans quoi un article italien sortirait en français sans que
+            # personne le sache.
             cles_vues.add('langue')
             avertir(
                 'langue-du-document-ignoree',
@@ -963,8 +799,7 @@ def extraire_table_metadonnees(tableau, slug, bloquants=None):
             cles_vues.add('resume')
             valeurs['resume'][langue_champ] = valeur
         elif jeton == 'motscles':
-            # Reconnue, mais le gabarit n'a pas de case pour elle : « étiquette inconnue »
-            # serait faux, et ne dirait pas où vont les mots-clés.
+            # Reconnue mais sans case dans le gabarit : le message dit où vont les mots-clés.
             consommee = False
             _avertir_motscles_hors_gabarit(etiquette, valeur, slug)
             if bloquants is not None:
@@ -986,10 +821,8 @@ def extraire_table_metadonnees(tableau, slug, bloquants=None):
                 'angelegt, und die Word-Datei bleibt in der Warteschlange. Korrigieren Sie '
                 'die Bezeichnung im Dokument und speichern Sie.' % (etiquette, valeur))
             if jeton is not None and bloquants is not None:
-                # Résolu (motscles, ou langue manquante pour titre/sous-titre/résumé) mais
-                # sans branche de dispatch : resoudre_cle() n'a rien ajouté à bloquants pour
-                # ce cas précis (il n'a rien trouvé d'anormal), c'est ici qu'il faut le faire —
-                # le contenu réel de cette rangée serait perdu si l'import continuait.
+                # Clé reconnue sans branche (titre, sous-titre ou résumé sans suffixe de
+                # langue) : resoudre_cle() ne l'a pas mise dans bloquants, on le fait ici.
                 bloquants.append({'texte': etiquette, 'lieu': 'tableau metadonnees'})
     _avertir_cles_attendues_absentes(CANON_METADONNEES, CLES_METADONNEES_ATTENDUES, cles_vues,
                                       slug, 'tableau metadonnees')
@@ -1000,8 +833,8 @@ def extraire_table_metadonnees(tableau, slug, bloquants=None):
 # Tableau 2 — autrices et auteurs.
 
 def images_de_cellule(cellule):
-    """[(nom, surface)] de toutes les images de la cellule, EN PROFONDEUR (un tableau
-    imbriqué dans la cellule compte aussi), dans l'ordre du document."""
+    """[(nom, surface)] de toutes les images de la cellule, tableaux imbriqués compris, dans
+    l'ordre du document."""
     trouvees = []
     for b in cellule.blocs:
         if isinstance(b, Par):
@@ -1018,8 +851,7 @@ def a_image_cellule(cellule):
 
 
 def photo_de_cellule(cellule):
-    """Nom du fichier de la photo d'une cellule : la plus grande image déclarée, et non la
-    première — voir l'en-tête d'origine (docx-pronto.py, git log) pour la justification."""
+    """Nom du fichier de la photo d'une cellule : la plus grande image déclarée."""
     trouvees = images_de_cellule(cellule)
     if not trouvees:
         return None
@@ -1038,17 +870,15 @@ def _photo_appariee(nom_image, prenom, nom, bases_vues, fichiers_vus, slug):
     return 'portraits/%s.original.%s' % (base, ext), base
 
 
-# L'en-tête de la colonne des fiches, dans les deux gabarits. Le gabarit allemand écrit
-# « Autor:in » : lu comme une clé, son deux-points en faisait « Autor » de valeur « in », et
-# le gabarit vide refusait son propre import.
+# L'en-tête de la colonne des fiches, dans les deux gabarits. « Autor:in » (gabarit
+# allemand) serait sinon lu comme la clé « Autor » de valeur « in ».
 ENTETES_TABLE_AUTEURS = frozenset(_sans_fioritures(t) for t in (
     'Autrice ou auteur', 'Autor:in', 'Autorin oder Autor', 'Autor/in', 'Autorin/Autor'))
 
 
 def extraire_table_auteurs(tableau, slug, bloquants=None):
-    """(auteurs, consommee, photos_connues, photos_appariees). `bloquants`, si fourni (list),
-    reçoit une entrée par clé PRÉSENTE (valeur non vide) mais non reconnue — voir
-    resoudre_cle()."""
+    """(auteurs, consommee, photos_connues, photos_appariees). `bloquants` (list), s'il est
+    fourni, reçoit une entrée par clé remplie non reconnue (voir resoudre_cle())."""
     auteurs = []
     consommee = True
     photos_connues = set()
@@ -1067,11 +897,8 @@ def extraire_table_auteurs(tableau, slug, bloquants=None):
         for p in tc_champs.blocs:
             if not isinstance(p, Par):
                 continue
-            # Correction du 22.09.2026 (même raison qu'_etiquette_szh_cle()) : seul le style
-            # SZH Cle est un candidat « Étiquette : valeur » — sinon le second tableau d'un
-            # document ORDINAIRE (jamais au gabarit), pris pour celui des auteurs par sa seule
-            # position, verrait n'importe laquelle de ses lignes à deux-points comparée à une
-            # clé, avec le risque de bloquer tout l'import pour un faux positif.
+            # Seul le style SZH Cle porte « Étiquette : valeur » (même raison que dans
+            # _etiquette_szh_cle()).
             if _style_par(p) != NOM_STYLE_CLE:
                 continue
             texte = p.texte
@@ -1094,12 +921,9 @@ def extraire_table_auteurs(tableau, slug, bloquants=None):
                 lignes_inconnues.append(texte)
                 continue
             if champ in CLES_AUTEUR_SANS_DESTINATION:
-                # Champ RECONNU, mais que le gabarit ne porte pas : le schéma d'auteur n'a ni
-                # adresse, ni biographie, ni téléphone, et la photo se dépose dans la cellule
-                # de gauche. Bloquant comme une étiquette inconnue — sa valeur serait perdue —
-                # mais avec un message qui dit la vérité, et surtout : reconnu, donc plus
-                # jamais en concurrence de proximité avec un vrai champ (voir SEUIL_CLE, la
-                # marge de 0,013 que « Adresse » frôlait contre Email avant cette déclaration).
+                # Champ reconnu mais absent du gabarit (adresse, biographie, téléphone ; la
+                # photo va dans la cellule de gauche). Bloquant, car sa valeur serait perdue,
+                # avec un message qui dit quoi faire.
                 ligne_ok = False
                 _avertir_champ_hors_gabarit(champ, etiquette, valeur, slug)
                 if bloquants is not None:
@@ -1118,11 +942,8 @@ def extraire_table_auteurs(tableau, slug, bloquants=None):
 
         if not ligne_ok:
             consommee = False
-        # Deux causes distinctes pour `ligne_ok` à faux, et un seul message ne peut pas dire
-        # les deux : une ligne qu'on n'a PAS reconnue (ci-dessous), et un champ parfaitement
-        # reconnu mais que le gabarit ne porte pas (déjà dit par _avertir_champ_hors_gabarit()).
-        # D'où la condition sur `lignes_inconnues` et non sur `ligne_ok` : annoncer une
-        # « étiquette inconnue » pour « Adresse : … » enverrait corriger une orthographe juste.
+        # Seules les lignes non reconnues lèvent « étiquette inconnue » ; un champ hors
+        # gabarit a déjà son propre message.
         if lignes_inconnues:
             avertir(
                 'auteur-etiquette-inconnue',
@@ -1173,22 +994,16 @@ def _premiere_etiquette_szh_cle(cellules):
 
 
 def n_blocs_meta(tableau):
-    """Combien de blocs figure/tableau ce tableau Word empile-t-il, 0 s'il n'en est pas un.
+    """Nombre de blocs figure ou tableau (ancienne forme, tableau enveloppe) que ce tableau
+    empile ; 0 s'il n'en est pas un.
 
-    Le cas normal est 2 rangées (une paire méta/contenu) : c'est le seul que le gabarit
-    produit quand un rédacteur suit la consigne. Mais rien n'empêche de « copier ce tableau
-    entier pour chaque nouvelle figure » SANS laisser de paragraphe entre les copies — et
-    LibreOffice, à la conversion en .odt, FUSIONNE deux `table:table` directement adjacents
-    en un seul tableau de 2×N rangées (mesuré sur le gabarit réel, avec deux blocs figure
-    collés : 2 tableaux .docx -> 1 tableau .odt de 4 rangées, silencieusement — aucun bloc
-    n'était plus reconnu, aucune légende ni texte alternatif n'étaient plus lus). Un tableau
-    de 2×N rangées (N >= 1) dont chaque rangée PAIRE (0, 2, 4…) porte, comme première
-    étiquette SZH Cle, « Légende » est donc traité comme N blocs empilés, quelle que soit
-    leur nature : figure+figure (le cas mesuré), mais tout aussi bien figure+tableau ou
-    tableau+tableau — rien ici ne distingue les natures avant _contenu_bloc().
+    Le cas normal est 2 rangées (métadonnées, contenu). Deux enveloppes copiées sans
+    paragraphe entre elles sont fusionnées par LibreOffice en un seul tableau de 2×N
+    rangées. Un tableau de 2×N rangées dont chaque rangée paire porte « Légende » en
+    première étiquette SZH Cle compte donc pour N blocs, de toute nature.
 
-    Un nombre de rangées impair (3, 5…) n'est PAS un tel empilement : il reste, comme
-    aujourd'hui, un tableau non reconnu, laissé tel quel dans le corps."""
+    Un nombre impair de rangées n'est pas un bloc : le tableau reste tel quel dans le
+    corps."""
     rangees = tableau.rangees
     n = len(rangees)
     if n < 2 or n % 2 != 0:
@@ -1204,36 +1019,28 @@ def n_blocs_meta(tableau):
 
 
 def _ressemble_a_legende(etiquette):
-    """`etiquette` se reconnaît-elle comme « Légende », exactement ou approximativement
-    (accent oublié, casse...) ? Vérification structurelle PURE, sans avertir : la
-    reconnaissance (et son avertissement éventuel) a lieu plus tard, quand _champs_bloc_meta()
-    relira ce MÊME paragraphe pour de vrai — l'avertir ici aussi ferait un doublon."""
+    """Vrai si `etiquette` se reconnaît comme « Légende », même approximativement. N'avertit
+    pas : _champs_bloc_meta() relit ce paragraphe et avertit, s'il le faut."""
     resultat = identifier_cle(etiquette, CANON_FIGURE)
     return bool(resultat) and resultat[0] == 'legende'
 
 
 def est_bloc_meta(tableau):
-    """Au moins un bloc figure/tableau reconnu (voir n_blocs_meta) — 2 rangées dans le cas
-    normal, le seul que docx-tables.py sait aujourd'hui déballer (voir la note au point
-    d'intégration, plus bas) : c'est pourquoi principal() continue de poser une seule ligne
-    T par TABLEAU Word, jamais une par bloc."""
+    """Vrai si le tableau porte au moins un bloc (voir n_blocs_meta()). principal() pose une
+    ligne T par tableau Word, pas par bloc."""
     return n_blocs_meta(tableau) > 0
 
 
 # ---------------------------------------------------------------------------------
-# Garde-fou : un tableau qui PORTE les étiquettes d'un bloc mais n'a pas la forme attendue —
-# donc n_blocs_meta() == 0 — reste aujourd'hui simplement ignoré : imprimé tel quel dans le
-# corps, sa légende et son texte alternatif jamais lus, sans qu'on le dise nulle part. Cas
-# réels qui produisent ce silence : une rangée ajoutée (nombre de rangées impair), la rangée
-# de méta qui n'est plus en position paire, une rangée de méta sans rangée de contenu, des
-# blocs collés puis retouchés au point que le motif à 2×N rangées ne tienne plus.
+# Garde-fou : un tableau qui porte les étiquettes d'un bloc sans en avoir la forme
+# (n_blocs_meta() == 0) serait imprimé tel quel, sa légende et son texte alternatif ignorés.
+# Causes : une rangée ajoutée, une rangée de métadonnées décalée ou sans rangée de contenu,
+# des blocs collés puis retouchés. On le signale.
 
 def _premier_par_etiquette_bloc(tableau):
-    """Le premier paragraphe SZH Cle, n'importe où dans le tableau, dont l'ÉTIQUETTE (le
-    texte avant le premier deux-points) est l'une des cinq du bloc figure/tableau — ou
-    None. Ne regarde que les Par DIRECTS de chaque cellule (comme _premiere_etiquette_szh_cle
-    et _champs_bloc_meta) : un tableau imbriqué dans une cellule n'est jamais lui-même une
-    étiquette de bloc, inutile d'y descendre ici."""
+    """Le premier paragraphe SZH Cle du tableau dont l'étiquette (le texte avant le premier
+    deux-points) est l'une des clés de bloc, ou None. Seuls les Par directs des cellules
+    sont lus."""
     for rangee in tableau.rangees:
         for cellule in rangee:
             for p in cellule.blocs:
@@ -1251,17 +1058,12 @@ def _premier_par_etiquette_bloc(tableau):
 
 
 def ressemble_a_un_bloc(tableau):
-    """Vrai quand ce tableau porte au moins un paragraphe SZH Cle dont l'ÉTIQUETTE vaut
-    Légende, Texte alternatif, Copyright, Source ou Note — même tolérance que partout ici (aplatir()) —
-    SANS être reconnu comme un bloc bien formé par n_blocs_meta().
+    """Vrai si le tableau porte un paragraphe SZH Cle dont l'étiquette est une clé de bloc
+    (Légende, Texte alternatif, Copyright, Source, Note).
 
-    ⚠ Volontairement restreint à l'ÉTIQUETTE d'un paragraphe SZH Cle (le motif « Étiquette :
-    valeur » que _champs_bloc_meta() lit pour un bloc bien formé), jamais à un mot cherché
-    n'importe où dans le tableau : un vrai tableau de CONTENU peut très bien porter une
-    colonne intitulée « Légende » (un en-tête, en style Normal, pas SZH Cle) sans qu'aucun
-    bloc n'ait jamais été voulu. Élargir ce test à « le mot Légende apparaît quelque part »
-    ferait du garde-fou un faux-positif sur n'importe quel tableau de contenu du corps — c'est
-    le seul point où ce contrôle peut devenir pénible s'il est trop large."""
+    Le test porte sur l'étiquette d'un paragraphe SZH Cle, pas sur un mot présent
+    n'importe où : un tableau de contenu peut avoir une colonne « Légende » sans être un
+    bloc."""
     return _premier_par_etiquette_bloc(tableau) is not None
 
 
@@ -1269,18 +1071,16 @@ LONGUEUR_ETIQUETTE_AVERT = 60
 
 
 def _tronquer_etiquette(texte):
-    """« Légende : Répartition des élèves » — ce qu'on colle dans la recherche de Word pour
-    tomber sur le tableau, tronqué à une longueur raisonnable."""
+    """« Légende : Répartition des élèves », à coller dans la recherche de Word pour trouver
+    le tableau, tronqué à LONGUEUR_ETIQUETTE_AVERT caractères."""
     t = (texte or '').strip()
     return t if len(t) <= LONGUEUR_ETIQUETTE_AVERT else t[:LONGUEUR_ETIQUETTE_AVERT].rstrip() + '…'
 
 
 def _repere_bloc_mal_forme(page, rang, etiquette):
-    """(fr, de) — la phrase du garde-fou, avec ou sans page connue (voir Tableau.page : None
-    quand elle n'est pas connaissable, jamais devinée). Sans page, la phrase démarre par le
-    rang ; sans étiquette (ne devrait pas arriver — ressemble_a_un_bloc() vrai en a toujours
-    trouvé une), la parenthèse ne s'ouvre que si une page l'exige. Jamais de « page None » ni
-    de parenthèse vide, dans aucune des quatre combinaisons possibles."""
+    """(fr, de) : la phrase du garde-fou. Sans page connue, elle commence par le rang ; sans
+    étiquette, la parenthèse ne s'ouvre que pour la page. Les quatre combinaisons donnent
+    une phrase sans « page None » ni parenthèse vide."""
     rang_fr = '1er' if rang == 1 else '%dᵉ' % rang
     rang_de = '%d.' % rang
     if page:
@@ -1309,11 +1109,9 @@ def _repere_bloc_mal_forme(page, rang, etiquette):
 
 
 def _avertir_bloc_mal_forme(tableau, rang, slug):
-    """Émet l'avertissement `bloc-mal-forme` pour `tableau` (déjà su : ressemble_a_un_bloc()
-    vrai, n_blocs_meta() nul), `rang` son rang 1-based parmi les tableaux de premier niveau du
-    document — la même numérotation que « blocs-colles » (tableau %d). Le nouveau code
-    d'avertissement du garde-fou du point 1 de l'en-tête (git log de ce chantier) : voir le
-    point d'intégration au dialogue, plus bas, pour ce qu'il faudra faire au branchement."""
+    """Émet `bloc-mal-forme` pour `tableau` (ressemble_a_un_bloc() vrai, n_blocs_meta()
+    nul). `rang` : son rang, à partir de 1, parmi les tableaux de premier niveau, comme pour
+    « blocs-colles »."""
     par = _premier_par_etiquette_bloc(tableau)
     etiquette = _tronquer_etiquette(par.texte) if par else ''
     fr, de = _repere_bloc_mal_forme(tableau.page, rang, etiquette)
@@ -1330,10 +1128,8 @@ def _avertir_bloc_mal_forme(tableau, rang, slug):
 
 
 def _avertir_champ_hors_gabarit(champ, etiquette, valeur, slug):
-    """Un champ RECONNU mais que le gabarit ne porte pas (voir CLES_AUTEUR_SANS_DESTINATION).
-    Bloquant, comme une étiquette inconnue : sa valeur serait perdue. Le message dit ce qui est
-    vrai — « ce champ n'existe pas dans le gabarit » — là où « étiquette inconnue » serait un
-    mensonge, puisqu'on l'a parfaitement reconnue."""
+    """Un champ reconnu mais absent du gabarit (voir CLES_AUTEUR_SANS_DESTINATION).
+    Bloquant, car sa valeur serait perdue ; le message dit que le gabarit n'a pas ce champ."""
     geste_fr, geste_de = GESTE_HORS_GABARIT.get(
         champ, ("Retirez cette ligne du document.",
                 'Entfernen Sie diese Zeile aus dem Dokument.'))
@@ -1370,9 +1166,8 @@ def _avertir_motscles_hors_gabarit(etiquette, valeur, slug):
 
 
 def _avertir_etiquette_bloc_inconnue(etiquette, valeur, slug):
-    """Partagé par l'ancienne forme (_champs_bloc_meta) et la nouvelle
-    (_champs_bloc_meta_paragraphes) : même code, même message, quelle que soit la forme du
-    bloc — c'est le point que le test différentiel vérifie."""
+    """Même code et même message pour les deux formes de bloc (_champs_bloc_meta et
+    _champs_bloc_meta_paragraphes), comme le vérifie le test différentiel."""
     avertir(
         'bloc-etiquette-inconnue',
         ['article « %s »' % slug, 'etiquette « %s »' % etiquette, 'valeur « %s »' % valeur],
@@ -1389,11 +1184,8 @@ def _avertir_etiquette_bloc_inconnue(etiquette, valeur, slug):
 
 
 def _decouper_champ_bloc(texte):
-    """(etiquette, valeur) après le premier ':' d'UN paragraphe « Étiquette : valeur » ; None
-    si `texte` ne porte pas de ':' du tout (paragraphe qui n'a simplement rien à dire — jamais
-    un avertissement, voir les deux appelants). La RECONNAISSANCE de l'étiquette (exacte ou
-    approximée) se fait chez l'appelant, qui seul connaît le `slug` à citer dans un
-    avertissement."""
+    """(etiquette, valeur) d'un paragraphe « Étiquette : valeur », coupé au premier ':' ;
+    None sans ':'. L'appelant reconnaît l'étiquette et avertit."""
     if not texte or ':' not in texte:
         return None
     etiquette, _, valeur = texte.partition(':')
@@ -1401,8 +1193,8 @@ def _decouper_champ_bloc(texte):
 
 
 def _champs_bloc_meta(row0, slug, bloquants=None):
-    """(champs, consommee, cles_vues) — légende / texte alternatif / crédit / source lus sur
-    TOUTES les cellules de la rangée 0, dans l'ordre. Ancienne forme (tableau enveloppe) ; voir
+    """(champs, consommee, cles_vues) : les champs du bloc lus sur toutes les cellules de la
+    rangée 0, dans l'ordre. Ancienne forme (tableau enveloppe) ; voir
     _champs_bloc_meta_paragraphes() pour la nouvelle."""
     champs = {}
     consommee = True
@@ -1411,8 +1203,7 @@ def _champs_bloc_meta(row0, slug, bloquants=None):
         for p in tc.blocs:
             if not isinstance(p, Par):
                 continue
-            # Correction du 22.09.2026 (même raison qu'_etiquette_szh_cle()) : seul SZH Cle
-            # est un candidat « Étiquette : valeur ».
+            # Seul SZH Cle porte « Étiquette : valeur » (voir _etiquette_szh_cle()).
             if _style_par(p) != NOM_STYLE_CLE:
                 continue
             lu = _decouper_champ_bloc(p.texte)
@@ -1434,18 +1225,14 @@ def _champs_bloc_meta(row0, slug, bloquants=None):
 
 
 def _champs_bloc_meta_paragraphes(paragraphes, slug, bloquants=None):
-    """(champs, consommee, cles_vues, textes_pris) — même lecture que _champs_bloc_meta(), sur
-    une liste de paragraphes SZH Cle Abb/Tab consécutifs (nouvelle forme, révision du
-    21.09.2026) au lieu d'une rangée de cellules : plus de tableau autour, mais la même règle
-    « Étiquette : valeur » et le même avertissement en cas d'étiquette inconnue.
+    """(champs, consommee, cles_vues, textes_pris) : même lecture que _champs_bloc_meta(),
+    sur des paragraphes SZH Cle Abb/Tab consécutifs (nouvelle forme).
 
-    `textes_pris` est la liste des paragraphes dont l'étiquette a été RECONNUE — les seuls que
-    la chaîne d'import a le droit de retirer du corps (en queue des lignes FI/FG/FT depuis le
-    29.09.2026, retirés par szh-legendes.lua au moment de la pose — voir principal()). Un
-    paragraphe laissé vide par l'autrice ou l'auteur (« Copyright : » tout seul, comme dans le
-    gabarit livré) en fait partie : il n'apporte rien, mais il s'imprimerait. Un paragraphe
-    dont l'étiquette n'est reconnue par rien n'en fait JAMAIS partie : on ne retire pas du
-    texte qu'on n'a pas compris."""
+    `textes_pris` : les paragraphes dont l'étiquette est reconnue, seuls à pouvoir être
+    retirés du corps (ils suivent les lignes FI/FG/FT, et szh-legendes.lua les retire en
+    posant les champs, voir principal()). Un paragraphe laissé vide (« Copyright : » seul)
+    en fait partie, sinon il s'imprimerait. Un paragraphe à l'étiquette inconnue reste dans
+    le texte."""
     champs = {}
     consommee = True
     cles_vues = set()
@@ -1458,9 +1245,8 @@ def _champs_bloc_meta_paragraphes(paragraphes, slug, bloquants=None):
             continue
         etiquette, valeur = lu
         if not valeur:
-            # Clé présente mais vide : traitée comme absente — jamais bloquante, donc jamais
-            # passée à resoudre_cle(). Son étiquette est quand même identifiée, en silence,
-            # pour savoir si ce paragraphe vide peut quitter le corps.
+            # Clé vide : traitée comme absente, sans resoudre_cle(). Son étiquette est
+            # identifiée sans avertir, pour savoir si le paragraphe peut quitter le corps.
             resolu = identifier_cle(etiquette, CANON_FIGURE)
             if resolu is not None and resolu[0] != '__ambigu__':
                 textes_pris.append(p.texte)
@@ -1477,9 +1263,8 @@ def _champs_bloc_meta_paragraphes(paragraphes, slug, bloquants=None):
 
 
 def _contenu_bloc(row1):
-    """('table', Tableau imbriqué) si une cellule de la rangée 1 porte un tableau imbriqué
-    DIRECT ; ('image', None) si une cellule y porte une image et qu'aucun tableau n'a été
-    trouvé ; (None, None) sinon."""
+    """('table', Tableau imbriqué) si une cellule de la rangée 1 contient directement un
+    tableau ; sinon ('image', None) si une cellule porte une image ; sinon (None, None)."""
     for tc in row1:
         tbl_interne = next((b for b in tc.blocs if isinstance(b, Tableau)), None)
         if tbl_interne is not None:
@@ -1491,13 +1276,10 @@ def _contenu_bloc(row1):
 
 
 def extraire_bloc(tableau, slug, indice=0, bloquants=None):
-    """(nature, champs, consommee, tbl_interne) pour LA PAIRE de rangées n° `indice` (0 pour
-    le premier bloc, 1 pour le second si deux blocs sont collés dans le même tableau, etc.)
-    d'un tableau reconnu par est_bloc_meta()/n_blocs_meta() — l'ANCIENNE forme (tableau
-    enveloppe). Voie de REPLI depuis le 21.09.2026 (décision de Robin) : un document rempli
-    depuis maintenant emploie _extraire_blocs_nouvelle_forme() ; celle-ci reste pour lire les
-    documents déjà remplis à l'ancienne forme, jamais retirée — voir principal(), qui pose
-    l'avertissement 'bloc-ancienne-forme' quand ce chemin est emprunté."""
+    """(nature, champs, consommee, tbl_interne) pour la paire de rangées n° `indice` (0 pour
+    le premier bloc, 1 pour le second bloc collé dans le même tableau…) d'un tableau
+    enveloppe reconnu par n_blocs_meta(). Ancienne forme, lue en repli pour les documents
+    déjà remplis ; principal() émet alors 'bloc-ancienne-forme'."""
     row0, row1 = tableau.rangees[indice * 2], tableau.rangees[indice * 2 + 1]
     champs, consommee, cles_vues = _champs_bloc_meta(row0, slug, bloquants)
     nature, tbl_interne = _contenu_bloc(row1)
@@ -1519,22 +1301,15 @@ def extraire_bloc(tableau, slug, indice=0, bloquants=None):
 
 
 # ---------------------------------------------------------------------------------
-# Blocs figure/tableau — NOUVELLE forme (révision du 21.09.2026, décision de Robin) : 1 à 5
-# paragraphes SZH Cle Abb/Tab consécutifs, suivis à 1 ou 2 paragraphes de distance (un
-# paragraphe vide toléré entre les deux — une fausse manipulation courante) par un paragraphe
-# qui porte une image, ou par un tableau. Plus de tableau enveloppe : la bordure du style
-# dessine seule le cadre, à l'écriture (manuscrit_gabarit.py) comme à la lecture (ici, rien à
-# faire de la bordure elle-même — seul le STYLE compte pour reconnaître le bloc).
+# Blocs figure et tableau, nouvelle forme : 1 à 5 paragraphes SZH Cle Abb/Tab consécutifs,
+# suivis d'un paragraphe qui porte une image, ou d'un tableau, avec au plus un paragraphe
+# vide entre les deux. Seul le style reconnaît le bloc ; sa bordure dessine le cadre dans
+# Word.
 
 def _cherche_contenu_bloc_nouvelle_forme(blocs, depart):
-    """(indice, 'image'|'table') du contenu d'un bloc à `depart` (le premier indice APRÈS le
-    groupe de clés), ou (None, None). La fenêtre ne dépasse JAMAIS 2 paragraphes : le contenu
-    est cherché à `depart`, puis — SEULEMENT si ce premier paragraphe est vide (ni texte ni
-    image, la fausse manipulation tolérée par le contrat) — à `depart + 1`. Un paragraphe de
-    corps bien réel (du texte, mais ni image ni tableau) arrête la recherche NET : il n'est
-    jamais traversé, même s'il reste un paragraphe de marge dans la fenêtre — ce qui rend une
-    fenêtre de 3 paragraphes (deux vides puis le contenu) non reconnue, comme le veut le
-    contrat."""
+    """(indice, 'image'|'table') du contenu d'un bloc, cherché à `depart` (juste après les
+    clés), ou (None, None). Si ce paragraphe est vide, on regarde le suivant, pas plus loin.
+    Un paragraphe de texte arrête la recherche."""
     n = len(blocs)
     for decalage in (0, 1):
         idx = depart + decalage
@@ -1547,32 +1322,27 @@ def _cherche_contenu_bloc_nouvelle_forme(blocs, depart):
             if any(candidat.images):
                 return idx, 'image'
             if not candidat.texte:
-                continue                  # paragraphe vide toléré : on tente le suivant
+                continue                  # paragraphe vide toléré
         return None, None
     return None, None
 
 
 # ---------------------------------------------------------------------------------
-# Groupes d'images (décision de Robin, 29.09.2026). Un en-tête de figure suivi de PLUSIEURS
-# images — deux images dans le même paragraphe, plusieurs paragraphes d'images à la suite, ou
-# un tableau de mise en page qui ne porte que des images — est UNE figure : un numéro, une
-# légende, un crédit, c'est le groupe d'images (`::: {.szh-grille}`) que crée « Ajouter une
-# image à côté » dans le formulaire Médias. Avant, les trois formes perdaient quelque chose :
-# deux images dans un paragraphe -> légende, texte alternatif et crédit retirés du corps sans
-# être posés nulle part (szh-legendes.lua refusait un paragraphe à deux images) ; deux
-# paragraphes -> la seconde image sans légende ni crédit ; un tableau 1×2 -> « Tableau N ».
+# Groupes d'images. Des clés de figure suivies de plusieurs images (deux images dans un
+# paragraphe, plusieurs paragraphes d'images, ou un tableau de mise en page qui ne contient
+# que des images) forment une seule figure : un numéro, une légende, un crédit. C'est le
+# groupe d'images (`::: {.szh-grille}`) que crée « Ajouter une image à côté » dans le
+# panneau Médias.
 
 def _par_images_seules(bloc):
-    """Un paragraphe qui porte au moins une image et AUCUN texte — la seule forme qui entre
-    dans un groupe. Un paragraphe mêlant texte et image n'en est jamais : son texte n'aurait
-    pas de place dans une grille (voir szh-grille.lua, qui le garderait à part, sous les
-    images), et c'est à la personne de décider où il va."""
+    """Vrai pour un paragraphe qui porte au moins une image et aucun texte, seule forme
+    admise dans un groupe : un texte n'aurait pas de place dans la grille."""
     return isinstance(bloc, Par) and bool(bloc.images) and not bloc.texte
 
 
-# Décision de Robin (29.09.2026) : entre deux images d'une même figure, 0, 1 ou 2 paragraphes
-# VIDES au plus. Au-delà, ou dès qu'un texte ou une nouvelle série de clés s'intercale, la
-# figure s'arrête. Même règle au nettoyeur (manuscrit_gabarit.MAX_VIDES_ENTRE_IMAGES).
+# Entre deux images d'une même figure, au plus deux paragraphes vides. Au-delà, ou dès
+# qu'un texte ou une clé s'intercale, la figure s'arrête. Même règle dans le nettoyeur
+# (manuscrit_gabarit.MAX_VIDES_ENTRE_IMAGES).
 MAX_VIDES_ENTRE_IMAGES = 2
 
 
@@ -1581,14 +1351,10 @@ def _par_vide(bloc):
 
 
 def _etendue_images(blocs, idx):
-    """Les indices des paragraphes d'images qui forment le contenu d'un bloc, à partir de
-    `idx` (le premier, rendu par _cherche_contenu_bloc_nouvelle_forme) : lui, puis chaque
-    paragraphe d'images SEULES qui le suit, séparé du précédent par au plus
-    MAX_VIDES_ENTRE_IMAGES paragraphes vides — jamais un texte, jamais une clé (une clé est
-    un texte : une nouvelle série de clés ouvre une nouvelle figure). Les vides sautés
-    n'apportent rien et ne portent rien : ils ne peuvent rien faire perdre. Le premier
-    paragraphe porte-t-il aussi du texte ? Alors il reste seul : on ne colle pas à une image
-    légendée dans sa propre phrase les images qui la suivent."""
+    """Indices des paragraphes d'images qui forment le contenu d'un bloc : `idx` (rendu par
+    _cherche_contenu_bloc_nouvelle_forme()), puis chaque paragraphe d'images seules qui suit,
+    séparé du précédent par au plus MAX_VIDES_ENTRE_IMAGES paragraphes vides. Si le premier
+    paragraphe porte aussi du texte, il reste seul."""
     indices = [idx]
     if not _par_images_seules(blocs[idx]):
         return indices
@@ -1597,7 +1363,7 @@ def _etendue_images(blocs, idx):
     while j < n:
         k = j
         while k < n and k - j < MAX_VIDES_ENTRE_IMAGES and _par_vide(blocs[k]):
-            k += 1                        # 0, 1 ou 2 vides entre deux paragraphes d'images
+            k += 1
         if k < n and _par_images_seules(blocs[k]):
             indices.append(k)
             j = k + 1
@@ -1620,18 +1386,13 @@ def _paragraphes_de_tableau(tableau):
 
 
 def est_tableau_images(tableau):
-    """Vrai pour un tableau de MISE EN PAGE : chaque cellule ne porte que des images ou rien
-    (cellules vides admises), et il y a au moins une image. Un tableau de données qui
-    contient une image dans une cellule garde du texte ailleurs : il reste un tableau.
+    """Vrai pour un tableau de mise en page : chaque cellule ne porte que des images ou rien,
+    et il y a au moins une image.
 
-    ⚠ DÉCISION (29.09.2026) : une cellule qui porte une image ET un texte court (« a) avant »,
-    « b) après ») n'est PAS admise — le tableau reste un tableau. Un groupe d'images n'a
-    qu'une légende, pour la figure entière (contrat de lib/references.js) : il n'y a nulle
-    part où poser une sous-légende par image. L'absorber, ce serait soit la perdre, soit la
-    ranger dans un champ qui n'est pas le sien (le texte alternatif) sans que personne le
-    sache. Le tableau reste donc imprimé tel quel, rien n'est perdu, et
-    `tableau-images-et-texte` dit comment en faire une figure (voir
-    _avertir_tableau_images_et_texte)."""
+    Une cellule avec une image et un texte (« a) avant ») exclut le tableau : un groupe
+    d'images n'a qu'une légende (voir lib/references.js), et une sous-légende serait perdue.
+    Le tableau reste un tableau, et `tableau-images-et-texte` dit comment en faire une
+    figure."""
     pars = _paragraphes_de_tableau(tableau)
     if not pars:
         return False
@@ -1640,8 +1401,8 @@ def est_tableau_images(tableau):
 
 def _tableau_images_et_texte(tableau):
     """Vrai quand chaque cellule non vide porte au moins une image, mais qu'une cellule au
-    moins porte aussi du texte : l'allure d'une planche d'images sous-titrées, que
-    est_tableau_images() refuse (voir sa docstring). Sert seulement à le dire."""
+    moins porte aussi du texte : une planche d'images sous-titrées, que est_tableau_images()
+    refuse. Sert seulement à avertir."""
     vues = 0
     texte = False
     for rangee in tableau.rangees:
@@ -1692,18 +1453,16 @@ def _avertir_cles_sans_contenu(champs, slug):
 
 def _extraire_blocs_nouvelle_forme(blocs, table1_elem, table2_elem, slug, bloquants=None,
                                     variantes=None):
-    """Liste de dicts {'pos', 'nature', 'champs', 'consommee', 'tbl_interne'} — un par bloc
-    figure/tableau à la NOUVELLE forme trouvé dans `blocs` (hors table1_elem/table2_elem, qui
-    ne sont de toute façon jamais des Par et ne peuvent donc jamais démarrer un groupe de clés).
-    `pos` est l'indice du PREMIER paragraphe de clé, dans `blocs` : il sert à `principal()` à
-    fusionner cette liste avec celle de l'ancienne forme, dans l'ordre du document — jamais
-    exposé dans stats['blocs'] (voir principal()), qui doit rendre la MÊME forme quelle que
-    soit la forme d'entrée (c'est le test différentiel, pronto-gabarits.test.js)."""
+    """Liste de dicts {'pos', 'nature', 'champs', 'consommee', 'tbl_interne', 'cles',
+    'contenu'}, un par bloc de nouvelle forme trouvé dans `blocs`.
+    `pos`, l'indice du premier paragraphe de clé, sert à principal() pour fusionner cette
+    liste avec celle de l'ancienne forme dans l'ordre du document ; il n'apparaît pas dans
+    stats['blocs'], qui doit être identique pour les deux formes
+    (pronto-gabarits.test.js)."""
     resultat = []
-    # Rang de chaque tableau de PREMIER NIVEAU (1-based), par son indice dans `blocs` : c'est
-    # la numérotation de docx-tables.py et de szh-tabelle-reference.lua, celle des lignes T. Un
-    # bloc tableau la porte dans sa clé 'contenu', pour que ses champs aillent se poser sur le
-    # bon tables/table-NN.html.
+    # Rang (à partir de 1) de chaque tableau de premier niveau, par son indice dans `blocs` :
+    # la numérotation de docx-tables.py et de szh-tabelle-reference.lua. Un bloc tableau la
+    # porte dans 'contenu', pour que ses champs aillent sur le bon tables/table-NN.html.
     rang_table = {}
     for idx, e in enumerate(blocs):
         if isinstance(e, Tableau):
@@ -1730,15 +1489,15 @@ def _extraire_blocs_nouvelle_forme(blocs, table1_elem, table2_elem, slug, bloqua
                                           'bloc')
         fin_contenu = idx_contenu
         if nature == 'image':
-            # (a) plusieurs images dans le paragraphe, (b) plusieurs paragraphes d'images :
-            # tout le contenu part dans UNE ligne FI, que szh-legendes.lua compose en groupe.
+            # Plusieurs images dans un paragraphe ou plusieurs paragraphes d'images : une
+            # seule ligne FI, que szh-legendes.lua compose en groupe.
             indices_images = _etendue_images(blocs, idx_contenu)
             fin_contenu = indices_images[-1]
             contenu = _images_du_groupe([blocs[j] for j in indices_images], variantes)
         else:
             contenu = rang_table.get(idx_contenu)
             if est_tableau_images(blocs[idx_contenu]):
-                nature = 'grille'         # (c) tableau de mise en page d'images : ligne FG
+                nature = 'grille'         # tableau de mise en page d'images : ligne FG
             elif _tableau_images_et_texte(blocs[idx_contenu]):
                 _avertir_tableau_images_et_texte(contenu, slug)
         resultat.append({'pos': depart, 'nature': nature, 'champs': champs,
@@ -1749,11 +1508,9 @@ def _extraire_blocs_nouvelle_forme(blocs, table1_elem, table2_elem, slug, bloqua
 
 
 def _images_du_groupe(pars, variantes=None):
-    """La cible d'une ligne FI : `_images_du_bloc()` inchangé quand le bloc ne porte qu'UNE
-    image (le cas de toujours : « nom|variante »), sinon une entrée par image, dans l'ordre du
-    document, séparées par « ; » — chacune avec ses variantes séparées par « | ». « ; » ne
-    peut pas apparaître dans un nom sous media/ : Word nomme ses médias imageN.ext, et
-    pronto_docx ne rend que ce nom-là."""
+    """La cible d'une ligne FI : pour une image, `_images_du_bloc()` (« nom|variante ») ;
+    pour plusieurs, une entrée par image dans l'ordre, séparées par « ; », chacune avec ses
+    variantes séparées par « | ». Word nomme ses médias imageN.ext : « ; » n'y figure pas."""
     images = [(nom, surface) for p in pars for nom, surface in p.images if nom]
     if len(images) <= 1:
         return _images_du_bloc(pars[0], variantes) if pars else ''
@@ -1769,15 +1526,11 @@ def _images_du_groupe(pars, variantes=None):
 
 
 def _images_du_bloc(par, variantes=None):
-    """Les noms de fichier (sous media/) que l'image d'un bloc peut porter dans le .md, séparés
-    par « | » et rangés de la plus grande surface déclarée à la plus petite, chacun suivi de ses
-    variantes. Plusieurs noms parce qu'une même image peut en avoir deux : Word range un SVG
-    derrière un aperçu bitmap, le lecteur voit l'aperçu et pandoc écrit le SVG (voir
-    pronto_docx.variantes_images()). L'instruction FI les donne tous, et szh-legendes.lua pose
-    les champs du bloc sur l'image qui répond à l'un d'eux — plutôt que sur un rang, qu'un
-    paragraphe d'image de plus dans le document suffirait à décaler. '' si le paragraphe ne
-    porte aucune image (jamais le cas ici : _cherche_contenu_bloc_nouvelle_forme() ne rend
-    'image' que pour un paragraphe qui en porte)."""
+    """Les noms de fichier (sous media/) que l'image d'un bloc peut porter dans le .md,
+    séparés par « | », de la plus grande surface déclarée à la plus petite, chacun suivi de
+    ses variantes (un SVG derrière son aperçu bitmap, voir pronto_docx.variantes_images()).
+    szh-legendes.lua pose les champs du bloc sur l'image qui porte l'un de ces noms, plutôt
+    que sur un rang, qu'une image de plus décalerait. '' sans image."""
     variantes = variantes or {}
     noms = []
     for nom, _ in sorted(par.images, key=lambda t: t[1], reverse=True):
@@ -1790,8 +1543,7 @@ def _images_du_bloc(par, variantes=None):
 
 
 # ---------------------------------------------------------------------------------
-# Sérialisation YAML : même façon que docx-meta.py (citer(), même ordre de clés), MOINS le
-# bloc des mots-clés — ce contrat n'en écrit jamais.
+# Écriture du YAML, comme docx-meta.py (citer(), même ordre de clés), sans les mots-clés.
 
 def serialiser_meta(meta):
     lignes = []
@@ -1828,41 +1580,31 @@ def serialiser_meta(meta):
 
 
 # ---------------------------------------------------------------------------------
-# Point d'entrée neutre : `blocs` est déjà un list[Par | Tableau] rendu par un lecteur.
-# `chemin_source` sert seulement au champ `source` de la fiche (son basename) — voir
-# l'en-tête d'origine.
+# Point d'entrée : `blocs` est le list[Par | Tableau] rendu par le lecteur.
+# `chemin_source` sert seulement au champ `source` de la fiche (son basename).
 #
-# ⚠ CE QU'UNE LIGNE T ENGAGE (branchement du 22.09.2026). Une ligne T dit à la chaîne
-# d'import de faire DISPARAÎTRE un tableau de premier niveau : docx-tables.py ne le rend pas,
-# szh-meta.lua le retire de l'AST. Or docx-tables.py saute un tableau consommé ENTIÈREMENT et
-# ne descend plus dedans (tableaux_de_premier_niveau() ne compte pas les imbriqués comme des
-# tableaux séparés) : une ligne T posée sur l'enveloppe d'un bloc TABLEAU ferait disparaître
-# le tableau qu'elle contient — ni rendu à part, ni rendu dans son parent, puisque le parent
-# s'en va. Un tableau perdu sans un mot. D'où la règle, tenue par principal() : SEULS les deux
-# tableaux fixes de la tête (métadonnées, autrices et auteurs) sont consommés. Jamais un bloc
-# figure ou tableau, ni à la nouvelle forme (il n'y a pas d'enveloppe), ni à l'ancienne (elle
-# s'imprime telle quelle, avec ses étiquettes — voir 'bloc-ancienne-forme').
+# Une ligne T fait disparaître un tableau de premier niveau : docx-tables.py ne le rend pas,
+# szh-meta.lua le retire de l'AST. docx-tables.py ne descend pas dans un tableau retiré :
+# retirer l'enveloppe d'un bloc tableau ferait perdre le tableau qu'elle contient. Seuls les
+# deux tableaux fixes de la tête (métadonnées, auteurs) reçoivent donc une ligne T ; un bloc
+# à l'ancienne forme s'imprime tel quel (voir 'bloc-ancienne-forme').
 #
-# Aucun mot-clé n'est jamais écrit dans la fiche : ils sont choisis dans le cockpit, jamais
-# lus dans le document.
+# Les mots-clés ne sont pas écrits dans la fiche : ils se choisissent dans le cockpit.
 #
 # Les styles de corps du gabarit (« SZH Important », « SZH Hervorhebung », « SZH Question
-# (interview) ») ne passent pas par ce module : pandoc les perd, docx-styles-corps.py les
+# (interview) ») ne passent pas par ce module : pandoc les perd, et docx-styles-corps.py les
 # marque dans une copie du .docx avant pandoc (étape 3 bis d'import-docx.sh).
 
 def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
-    """`produit` est le jeton `revue:` du numéro (« revue » | « zeitschrift »), d'où vient la
-    LANGUE de l'article depuis le 22.09.2026 — voir langue_du_produit(). Vide (lecteur appelé
-    hors d'un numéro) : repli sur le français, dit par l'avertissement 'langue-deduite'.
+    """`produit` : le jeton `revue:` du numéro (« revue » | « zeitschrift »), qui donne la
+    langue (voir langue_du_produit()). Vide : français, avec l'avertissement
+    'langue-deduite'.
 
-    `variantes` : {nom d'image -> [autres noms]}, la table que le lecteur de format tient à
-    côté du modèle neutre (pronto_docx.variantes_images()). Elle ne sert qu'à nommer l'image
-    d'un bloc figure dans l'instruction FI, sous TOUS les noms qu'elle peut porter dans le .md."""
+    `variantes` : {nom d'image -> [autres noms]} (pronto_docx.variantes_images()), pour
+    nommer l'image d'un bloc dans l'instruction FI sous tous ses noms possibles."""
     stats = {'slug': slug, 'avertissements': []}
-    # Une clé PRÉSENTE (valeur non vide) mais non reconnue est bloquante (décision de Robin,
-    # 22.09.2026) : {'texte', 'lieu'} par occurrence, alimentée par resoudre_cle() et par le
-    # seul cas qu'il ne couvre pas lui-même (métadonnées reconnues sans destination). Non vide
-    # à la fin -> l'import échoue entièrement, voir plus bas.
+    # Clés remplies mais non rangées : {'texte', 'lieu'} par occurrence. Non vide à la fin,
+    # l'import échoue.
     bloquants = []
 
     tables = [(idx, e) for idx, e in enumerate(blocs) if isinstance(e, Tableau)]
@@ -1931,9 +1673,7 @@ def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
             '«SZH Cle Abb/Tab», gefolgt vom Bild oder der Tabelle) und importieren Sie den '
             'Artikel neu.' % (k + 1))
         if n_paires > 1:
-            # Deux (ou plus) blocs collés, fusionnés en un seul tableau Word — voir
-            # n_blocs_meta(). Ne concerne pas que les figures : deux tableaux voisins, ou un
-            # tableau suivi d'une figure, fusionnent tout aussi silencieusement.
+            # Plusieurs blocs collés, fusionnés en un seul tableau (voir n_blocs_meta()).
             avertir(
                 'blocs-colles',
                 ['article « %s »' % slug, 'tableau %d' % (k + 1), 'blocs %d' % n_paires],
@@ -1951,29 +1691,21 @@ def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
                 % (n_paires, n_paires * 2, n_paires))
         for p in range(n_paires):
             nature, champs, consommee, tbl_interne = extraire_bloc(tbl, slug, p, bloquants)
-            # `cles` et `contenu` vides : un bloc à l'ancienne forme ne fait rien retirer du
-            # corps et ne pose ses champs nulle part — son tableau enveloppe s'imprime tel
-            # quel (voir tables_consommees et l'avertissement 'bloc-ancienne-forme').
+            # `cles` et `contenu` vides : un bloc à l'ancienne forme ne retire rien du corps
+            # et ne pose ses champs nulle part ; il s'imprime tel quel.
             blocs_figtab.append({'pos': idx_bloc, 'k': k, 'nature': nature, 'champs': champs,
                                  'consommee': consommee, 'contenu': None, 'cles': [],
                                  'tbl_interne': tbl_interne is not None})
 
-    # Nouvelle forme (révision du 21.09.2026) : jamais de tableau enveloppe, donc jamais rien
-    # à ajouter à `tables_consommees` — il n'y a pas de tableau à faire sauter par la chaîne
-    # d'import pour un bloc figure (le contenu est un simple paragraphe), et le tableau d'un
-    # bloc tableau, n'étant plus imbriqué dans une enveloppe, n'a lui non plus RIEN à faire
-    # sauter : il doit se rendre comme n'importe quel tableau de contenu ordinaire. C'est une
-    # différence assumée avec l'ancienne forme — stats['blocs'], lui, reste identique quelle que soit la forme d'entrée.
+    # Nouvelle forme : pas de tableau enveloppe, donc rien à ajouter à `tables_consommees` ;
+    # le tableau d'un bloc tableau se rend comme tout tableau de contenu.
     blocs_nouvelle_forme = _extraire_blocs_nouvelle_forme(blocs, table1_elem, table2_elem, slug,
                                                             bloquants, variantes)
     blocs_figtab = sorted(blocs_figtab + blocs_nouvelle_forme, key=lambda b: b['pos'])
 
-    # (c) sans en-tête : un tableau de mise en page qui ne porte que des images est un groupe
-    # d'images, même quand personne n'a tapé de légende au-dessus — imprimé en « tableau »,
-    # ses photos sortaient dans une grille de cellules à bordures, sans texte alternatif lu.
-    # Jamais un des deux tableaux fixes, jamais le contenu d'un bloc (déjà traité), jamais
-    # une enveloppe à l'ancienne forme (ses clés sont du texte : est_tableau_images() la
-    # refuse de toute façon).
+    # Un tableau de mise en page qui ne contient que des images devient un groupe d'images,
+    # même sans clés au-dessus. Sont exclus les deux tableaux fixes et le contenu d'un bloc,
+    # déjà traité.
     rangs_blocs = {b['contenu'] for b in blocs_nouvelle_forme
                    if b['nature'] in ('table', 'grille')}
     grilles_libres = []
@@ -1983,22 +1715,8 @@ def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
         if est_tableau_images(tbl):
             grilles_libres.append(k + 1)
 
-    # Un tableau « consommé » (ligne T) est un tableau que la chaîne d'import doit faire
-    # DISPARAÎTRE du corps — docx-tables.py ne le rend pas, szh-meta.lua le retire de l'AST. Il
-    # n'y en a que deux, et ce sont les deux tableaux fixes de la tête : métadonnées et
-    # autrices/auteurs. JAMAIS un bloc figure ou tableau, quelle que soit sa forme :
-    #
-    #   * nouvelle forme — il n'y a pas de tableau enveloppe à faire sauter (le contenu est un
-    #     paragraphe d'image, ou un tableau de premier niveau qui doit se rendre comme
-    #     n'importe quel tableau de contenu) ;
-    #   * ancienne forme — le tableau enveloppe reste, lui aussi. C'est la décision du
-    #     22.09.2026, et elle supprime d'un coup le piège suivant :
-    #     consommer une enveloppe aurait fait
-    #     disparaître le tableau qu'elle contient — ni rendu à part par docx-tables.py (qui
-    #     saute le tableau consommé en entier), ni rendu dans son parent (puisque le parent
-    #     s'en va). Un tableau perdu sans un mot. Ne rien consommer le rend impossible : le
-    #     bloc s'imprime tel quel, avec ses étiquettes, et l'avertissement
-    #     'bloc-ancienne-forme' dit ce qu'il faut faire pour retrouver une vraie figure.
+    # Tableaux consommés (lignes T), retirés du corps : seulement les deux tableaux fixes de
+    # la tête, jamais un bloc (voir le commentaire au-dessus de principal()).
     tables_consommees = []
     for k, (idx_bloc, tbl) in enumerate(tables):
         if tbl is table1_elem and table1_consommee:
@@ -2006,20 +1724,16 @@ def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
         elif tbl is table2_elem and table2_consommee:
             tables_consommees.append(k + 1)
 
-    # Verdict : une clé PRÉSENTE non reconnue bloque tout l'import (décision de Robin,
-    # 22.09.2026) — rien n'est écrit (ni meta.yaml, ni $SZH_META/$SZH_PHOTOS), le document ne
-    # s'importe pas. pronto-lire.py lit stats['bloquant'] pour sortir en échec, et
-    # stats['cles_non_reconnues'] pour lister chaque clé (texte, emplacement) dans son message.
+    # Une clé remplie non rangée bloque l'import : rien n'est écrit. pronto-lire.py lit
+    # stats['bloquant'] et liste stats['cles_non_reconnues'].
     if bloquants:
         stats['bloquant'] = True
         stats['cles_non_reconnues'] = bloquants
         return stats
 
     type_article = valeurs['type'] if valeurs['type'] in TYPES_VALIDES else ''
-    # La langue vient du PRODUIT du numéro, jamais du document (voir langue_du_produit()).
-    # `langue_deduite` ne vaut donc plus « devinée dans le texte » mais « pas de produit du
-    # tout » — lecteur appelé hors d'un numéro, ausgabe.yaml sans clé `revue:` : on se rabat
-    # sur le français, et l'avertissement le dit.
+    # La langue vient du produit du numéro. `langue_deduite` : pas de produit (hors d'un
+    # numéro, ou ausgabe.yaml sans `revue:`), d'où le français et un avertissement.
     langue = langue_du_produit(produit)
     langue_deduite = not langue
 
@@ -2028,9 +1742,8 @@ def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
     meta = {
         'type': type_article,
         'lang': langue or 'fr',
-        # $SZH_SOURCE (posée par import-docx.sh) porte le nom D'ORIGINE quand ce document
-        # est en réalité un .odt converti en .docx à la volée — sinon repli sur le basename
-        # de `chemin_source`, comme avant l'acceptation de l'ODT.
+        # $SZH_SOURCE (posée par import-docx.sh) donne le nom d'origine d'un .odt converti
+        # en .docx ; sinon, le basename de `chemin_source`.
         'source': os.environ.get('SZH_SOURCE') or os.path.basename(chemin_source),
         'doi': '',
         'title': valeurs['titre'],
@@ -2081,30 +1794,20 @@ def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
             f.write('L\t%s\n' % meta['lang'])
             for k in tables_consommees:
                 f.write('T\t%d\n' % k)
-            # Les paragraphes de clé d'un bloc quittent le corps, et leurs valeurs vont se
-            # poser sur l'image (FI, szh-legendes.lua), sur le groupe d'images (FI à plusieurs
-            # images, FG pour un tableau d'images) ou sur le tableau (FT, docx-tables.py). Sans
-            # ces lignes, « Légende : », « Texte alternatif : », « Copyright : », « Source : »
-            # et « Note : » s'impriment tels quels au milieu de l'article et le texte alternatif est perdu —
-            # mesuré sur le gabarit réel avant ce branchement.
+            # Les valeurs des clés d'un bloc se posent sur l'image (FI, szh-legendes.lua), le
+            # groupe d'images (FI à plusieurs images, FG pour un tableau d'images) ou le
+            # tableau (FT, docx-tables.py).
             #
             # Format : FI|FG|FT <TAB> contenu <TAB> légende <TAB> alt <TAB> copyright <TAB>
-            # source <TAB> note [<TAB> texte d'une clé à retirer du corps]… — cinq champs de
-            # valeur toujours présents (chaîne vide si absent), texte brut sur une ligne
-            # (normaliser() a déjà replié tabulations et sauts de ligne en espaces).
+            # source <TAB> note [<TAB> texte d'une clé à retirer du corps]… Les cinq champs
+            # sont toujours présents (vides si absents), sur une ligne.
             #
-            # ⚠ AUCUNE LIGNE P pour un bloc (garantie « rien ne disparaît », décision de Robin
-            # du 29.09.2026). Les textes des clés voyagent en queue de la ligne FI/FG/FT, et
-            # c'est szh-legendes.lua qui les retire du corps, AU MOMENT où il pose leurs
-            # valeurs sur l'image, le groupe ou le tableau — et seulement alors, juste devant
-            # SON contenu. Les lignes P de szh-meta.lua retiraient d'avance, par le texte, la
-            # PREMIÈRE occurrence du document : c'était perdre légende, texte alternatif et
-            # crédit sans un mot le jour où l'image ne se laissait pas trouver (mesuré : deux
-            # images dans un paragraphe), et c'était, entre deux blocs, retirer la clé
-            # « Source : » vide de l'un à la place de celle de l'autre (mesuré : un « Source : »
-            # restait imprimé au-dessus du tableau d'exemple du gabarit). Une valeur que la
-            # chaîne ne sait pas où attacher reste donc VISIBLE dans le texte, et
-            # szh-legendes.lua le dit (bloc-valeur-non-reprise).
+            # Pas de ligne P pour un bloc : les textes des clés suivent en fin de ligne, et
+            # szh-legendes.lua les retire du corps au moment où il pose leurs valeurs, juste
+            # devant le contenu du bloc. Une ligne P retirerait la première occurrence du
+            # texte dans le document, parfois celle d'un autre bloc, ou perdrait les valeurs
+            # si l'image n'était pas trouvée. Une valeur non posée reste ainsi visible, et
+            # szh-legendes.lua le signale (bloc-valeur-non-reprise).
             for b in blocs_figtab:
                 if b['contenu'] is None:
                     continue
@@ -2115,8 +1818,7 @@ def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
                 lettre = {'table': 'FT', 'grille': 'FG'}.get(b['nature'], 'FI')
                 f.write('%s\t%s\t%s%s\n' % (lettre, b['contenu'], queue,
                                             ''.join('\t' + t for t in b['cles'])))
-            # Tableaux d'images sans en-tête (voir grilles_libres plus haut) : un groupe
-            # d'images sans légende, ni clé à retirer.
+            # Tableaux d'images sans clés (grilles_libres) : groupe d'images sans légende.
             for k in grilles_libres:
                 f.write('FG\t%d\t\t\t\t\t\n' % k)
             if ligne_bt:

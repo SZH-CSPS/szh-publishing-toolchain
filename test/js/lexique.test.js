@@ -1,16 +1,13 @@
 // outils-dev/lexique/generer-lexique.py : lit pipeline/vale/lexique/lexique-{fr,de}.csv (la
-// source de vérité éditable au tableur) et écrit le classeur xlsx, le TBX et les règles Vale
-// générées (Coherence.yml, un Sigle-<SIGLE>.yml par sigle à exiger_developpement=oui). Ce
-// fichier ne rejoue JAMAIS le vrai lexique (475/472 lignes, issu du corpus OJS — voir
-// outils-dev/lexique/analyser-corpus.py) : un mini-CSV fabriqué ici, cinq lignes fr, deux
-// lignes de, suffit à prouver le contrat sans dépendre d'un corpus qui n'est pas versionné
-// (tmp/corpus-ojs est hors git).
+// source éditable au tableur) et écrit le classeur xlsx, le TBX et les règles Vale
+// (Coherence.yml, un Sigle-<SIGLE>.yml par sigle à exiger_developpement=oui). Le test
+// travaille sur un mini-CSV fabriqué (cinq lignes fr, deux lignes de), pas sur le vrai
+// lexique.
 //
 //   node --test "test/js/*.test.js"
 //
-// generer-lexique.py accepte --lexique-dir/--sortie/--styles-dir (ajoutés pour ce test :
-// sans eux, il n'y aurait aucun moyen d'exercer le script sans écrire dans les vrais
-// pipeline/vale/styles/{CSPS,SZH}/Lexique/ du dépôt).
+// --lexique-dir, --sortie et --styles-dir de generer-lexique.py permettent de l'exercer
+// sans écrire dans pipeline/vale/styles/{CSPS,SZH}/Lexique/.
 'use strict';
 
 const test = require('node:test');
@@ -26,11 +23,9 @@ const GENERER = path.join(RACINE, 'outils-dev', 'lexique', 'generer-lexique.py')
 const ENTETE = 'terme;categorie;forme_privilegiee;variantes;frequence;documents;' +
   'sigle_developpement;statut;source_normative;exemple_1;exemple_2;note;exiger_developpement';
 
-// Mêmes colonnes, mêmes séparateurs que pipeline/vale/lexique/lexique-fr.csv réel. CUA porte
-// `exiger_developpement=oui` (doit produire Sigle-CUA.yml), OMS `non` (ne doit produire
-// AUCUN fichier Sigle-OMS.yml — c'est exactement le garde-fou demandé par le superviseur :
-// un sigle établi que le corpus ne redéveloppe pas assez souvent lui-même ne doit jamais
-// entrer dans la règle, quel que soit son développement connu par ailleurs).
+// Mêmes colonnes, mêmes séparateurs que pipeline/vale/lexique/lexique-fr.csv. CUA porte
+// `exiger_developpement=oui` (produit Sigle-CUA.yml), OMS `non` (aucun Sigle-OMS.yml) : un
+// sigle à `non` n'entre pas dans la règle, même avec un développement connu.
 const LEXIQUE_FR = [
   ENTETE,
   'co-enseignement;ecole;co-enseignement;coenseignement;10;5;;privilegie;' +
@@ -76,8 +71,8 @@ function preparerEtLancer() {
   return { lexiqueDir, sortieDir, stylesDir };
 }
 
-// ---- xlsx : quatre parties obligatoires + autoFilter, vérifiées avec zipfile/xml (Python
-// stdlib — pas de dépendance Node à un lecteur zip). ----
+// ---- xlsx : quatre parties obligatoires et autoFilter, vérifiées avec zipfile/xml de
+// Python (pas de lecteur zip côté Node). ----
 
 const VERIFIER_XLSX = [
   'import sys, zipfile',
@@ -148,8 +143,8 @@ test('tbx : bien formé, un termEntry par concept, le concept partagé porte fr+
     assert.match(r.stdout, /admittedTerm-admn-sts/);
   });
 
-// ---- Coherence.yml : seules les paires "privilegie" (co-enseignement, Schüler:innen) —
-// jamais "élèves"/"élève" (a_trancher : un pluriel n'est pas une faute du singulier). ----
+// ---- Coherence.yml : seules les paires "privilegie" (co-enseignement, Schüler:innen),
+// pas "élèves"/"élève" (a_trancher : un pluriel n'est pas une faute du singulier). ----
 
 test('Coherence.yml (fr) : uniquement la paire privilegie, jamais la paire a_trancher',
   { skip: sansPython }, () => {
@@ -174,11 +169,9 @@ test('Coherence.yml (de) : la paire privilegie Schüler:innen est présente',
     assert.match(coherence, /Schülerinnen/, 'la variante (forme complète) doit apparaître en clé');
   });
 
-// ---- Sigle-<SIGLE>.yml : un fichier par sigle à `exiger_developpement=oui` (CUA), jamais
-// un fichier générique à `%s` (mesuré en vrai : Vale 3.22.0 ne substitue pas `%s` dans
-// `second`, voir generer-lexique.py). OMS (`exiger_developpement=non`, sabotage demandé par
-// le superviseur : un sigle à `non` — même avec un développement connu par ailleurs — ne
-// doit produire AUCUN fichier). ----
+// ---- Sigle-<SIGLE>.yml : un fichier par sigle à `exiger_developpement=oui` (CUA), pas un
+// fichier générique à `%s` (Vale 3.22.0 ne substitue pas `%s` dans `second`, voir
+// generer-lexique.py). OMS (`exiger_developpement=non`) ne produit aucun fichier. ----
 
 test('Sigle-CUA.yml existe (exiger_developpement=oui), aucun Sigle-OMS.yml (=non)',
   { skip: sansPython }, () => {
@@ -215,9 +208,9 @@ test('idempotence : deux exécutions sur le même CSV produisent des fichiers id
       const b = fs.readFileSync(path.join(styles2, rel[0], 'Lexique', rel[1]));
       assert.ok(a.equals(b), rel.join('/') + ' diffère entre les deux exécutions');
     }
-    // le nettoyage (retrait des anciens Sigle-*.yml avant réécriture) est lui aussi
-    // idempotent : la liste des fichiers du dossier doit être identique, pas seulement le
-    // contenu de Sigle-CUA.yml.
+    // le nettoyage (retrait des anciens Sigle-*.yml avant réécriture) est idempotent lui
+    // aussi : la liste des fichiers du dossier est identique, pas seulement le contenu de
+    // Sigle-CUA.yml.
     const listeFichiers = (d) => fs.readdirSync(path.join(d, 'CSPS', 'Lexique')).sort();
     assert.deepStrictEqual(listeFichiers(styles1), listeFichiers(styles2));
   });

@@ -1,32 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Conversion CMJN du flux de contenu PDF — étape 1 de 2 vers l'imprimerie.
+Conversion en CMJN d'un PDF de WeasyPrint pour l'imprimerie, en deux étapes.
 
-Prend un PDF de WeasyPrint (RVB uniquement : opérateurs rg/RG, pas de k/K)
-et remplace ses opérateurs de couleur dans le flux de contenu selon trois règles :
+Usage : cmjn.py <entree.pdf> <sortie.pdf> [profil.icc]
 
-a) Noir du texte : un `rg` (RVB) immédiatement suivi de `BT` (début texte) dont
-   la couleur est un neutre sombre → `0 0 0 1 k` (noir K seul, DeviceCMYK).
-   ⚠ N'applique jamais cette règle à un `rg` suivi d'un tracé (re, m, c…) —
-   un aplat noir n'est pas du texte.
+Étape 1 : dans les flux de contenu (WeasyPrint n'écrit que du RVB, rg/RG), trois règles :
 
-b) Sept couleurs de maison remplacées par leurs CMJN officiels (pas ICC), lus dans
-   pipeline/styles/couleurs-reference.json — la seule table, partagée avec couverture.py.
-   Ses hex doivent coïncider avec socle.css et couleurs.css, ses CMJN avec ceux du
-   graphiste (vérifié par test/js/cmjn-couleurs.test.js).
+a) Texte noir : un `rg` neutre sombre suivi immédiatement de `BT` (début de texte) devient
+   `0 0 0 1 k` (noir seul). Un `rg` suivi d'un tracé (re, m, c…) n'est pas concerné : un
+   aplat noir n'est pas du texte.
 
-c) Blanc `1 1 1 rg` → `0 0 0 0 k` (papier, pas d'encre).
+b) Les couleurs de la maison prennent leur CMJN officiel, lu dans
+   pipeline/styles/couleurs-reference.json (table partagée avec couverture.py, vérifiée
+   par test/js/cmjn-couleurs.test.js).
 
-Le reste reste en RVB : Ghostscript s'en charge par conversion ICC.
+c) Blanc `1 1 1 rg` -> `0 0 0 0 k` (pas d'encre).
 
-Entrées : PDF de WeasyPrint, optionnellement profil ICC pour Ghostscript.
-Sortie : PDF avec les flux de contenu modifiés.
-
-Étape 2 : Ghostscript reçoit ce PDF :
-  gs -dNOPAUSE -dBATCH -dQUIET -sDEVICE=pdfwrite \
-     -dProcessColorModel=/DeviceCMYK -sColorConversionStrategy=CMYK \
-     -sOutputICCProfile=<profil>.icc -o sortie.pdf entree.pdf
+Étape 2 : Ghostscript convertit le reste par le profil ICC (voir passe_ghostscript).
 """
 
 import os
@@ -59,11 +50,8 @@ def hex_to_rgb(hexc):
 
 def is_dark_neutral(r, g, b, tolerance=0.05):
     """
-    Vrai si (r, g, b) est un neutre sombre (les trois composantes proches et faibles).
-    Utilisé pour identifier le texte noir avant BT.
-
-    Sombre : max < 0.35  (encre de la maison #16161F = 0.086, 0.086, 0.122)
-    Neutre : écart max < tolerance
+    Vrai si (r, g, b) est un neutre sombre : max < 0.35 (l'encre de la maison #16161F
+    vaut 0.086, 0.086, 0.122) et écart entre composantes < tolerance.
     """
     max_val = max(r, g, b)
     min_val = min(r, g, b)
@@ -72,9 +60,9 @@ def is_dark_neutral(r, g, b, tolerance=0.05):
 
 
 def format_cmyk(c, m, y, k):
-    """Formate un quadruplet CMYK pour PDF (avec espace décimal raisonnable)."""
+    """Formate un quadruplet CMJN pour le PDF."""
     def fmt(v):
-        # Arrondir et éviter -0.0
+        # Arrondi, sans -0.0
         v = round(v, 6)
         if v == 0.0:
             return "0"
@@ -97,7 +85,7 @@ class CMYKConverter:
             dr = abs(r - house_rgb[0])
             dg = abs(g - house_rgb[1])
             db = abs(b - house_rgb[2])
-            # Tolérance : PDF peut arrondir à 1/255 ou 1/256
+            # Le PDF peut arrondir à 1/255 ou 1/256
             if dr < 0.005 and dg < 0.005 and db < 0.005:
                 return cmyk
         return None
@@ -109,15 +97,13 @@ class CMYKConverter:
         Retourne les données modifiées et une liste de (avant, après).
         """
         try:
-            # Décompresser si nécessaire
             text = stream_bytes.decode('latin-1', errors='ignore')
         except Exception:
             return stream_bytes, []
 
         changes = []
 
-        # Regex pour trouver les opérateurs rg/RG avec paires BT/ET
-        # Stratégie : scanner les lignes et chercher les patterns
+        # Parcours ligne à ligne ; la règle a) regarde aussi la ligne suivante.
         lines = text.split('\n')
         output = []
 
@@ -125,8 +111,7 @@ class CMYKConverter:
         while i < len(lines):
             line = lines[i]
 
-            # Règle a) : noir du texte avant BT
-            # Chercher un `rg` sur cette ligne suivi immédiatement de BT
+            # Règle a) : `rg` neutre sombre suivi de BT
             if i + 1 < len(lines):
                 next_line = lines[i + 1].strip()
                 match = re.match(r'^([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+rg\s*$', line.strip())
@@ -135,7 +120,6 @@ class CMYKConverter:
                     try:
                         r, g, b = float(match.group(1)), float(match.group(2)), float(match.group(3))
 
-                        # C'est un neutre sombre avant BT → noir K seul
                         if is_dark_neutral(r, g, b):
                             before = line.strip()
                             after = "0 0 0 1 k"
@@ -146,8 +130,7 @@ class CMYKConverter:
                     except ValueError:
                         pass
 
-            # Règle b) et c) : chercher et remplacer les opérateurs rg et RG
-            # Pattern : `R G B rg` ou `R G B RG` (fini par le caractère ou un espace)
+            # Règles b) et c) : chaque `R G B rg` ou `R G B RG` de la ligne
             new_line = line
             pos = 0
             while True:
@@ -161,7 +144,7 @@ class CMYKConverter:
                     abs_start = pos + match.start()
                     abs_end = pos + match.end()
 
-                    # Règle c) : blanc → pas d'encre
+                    # Règle c) : blanc -> pas d'encre
                     if abs(r - 1.0) < 0.01 and abs(g - 1.0) < 0.01 and abs(b - 1.0) < 0.01:
                         before = f"{r} {g} {b} {op}"
                         after = "0 0 0 0 k"
@@ -170,7 +153,7 @@ class CMYKConverter:
                         pos = abs_start + len(after)
                         continue
 
-                    # Règle b) : couleur de maison → CMJN officiel
+                    # Règle b) : couleur de la maison -> CMJN officiel
                     house_cmyk = self.is_house_color(r, g, b)
                     if house_cmyk:
                         c, m, y, k = house_cmyk
@@ -181,7 +164,6 @@ class CMYKConverter:
                         pos = abs_start + len(after)
                         continue
 
-                    # Pas de remplacement, avancer
                     pos = abs_end
 
                 except ValueError:
@@ -196,9 +178,7 @@ class CMYKConverter:
 
 def convert_pdf(input_path, output_path):
     """
-    Lit un PDF, remplace les opérateurs de couleur, et l'écrit en sortie.
-
-    Retourne True/False et une liste des (avant, après).
+    Étape 1 sur tout le PDF. Rend (succès, liste des (avant, après)).
     """
     try:
         reader = pypdf.PdfReader(input_path)
@@ -210,16 +190,15 @@ def convert_pdf(input_path, output_path):
     total_changes = []
 
     try:
-        # Modifier directement le lecteur
+        # Les flux sont modifiés en place dans le lecteur.
         for page_num in range(len(reader.pages)):
             page = reader.pages[page_num]
 
-            # Accéder au flux de contenu
             if "/Contents" in page:
                 contents_ref = page["/Contents"]
 
                 try:
-                    # Le contenu peut être un seul objet ou un tableau
+                    # Un seul flux ou un tableau de flux
                     if isinstance(contents_ref, list):
                         content_refs = contents_ref
                     else:
@@ -227,43 +206,27 @@ def convert_pdf(input_path, output_path):
 
                     for stream_ref in content_refs:
                         try:
-                            # Récupérer l'objet flux
                             stream_obj = stream_ref.get_object()
                             if not stream_obj:
                                 continue
 
-                            # Récupérer les données décompressées
+                            # Données décompressées
                             stream_bytes = stream_obj.get_data()
 
-                            # Convertir les couleurs
                             modified_bytes, changes = converter.convert_stream(stream_bytes)
                             total_changes.extend(changes)
 
-                            # Modifier le flux dans le lecteur en place. get_data() a rendu
-                            # des octets DÉCOMPRESSÉS ; write_to_stream() de pypdf écrit
-                            # _data tel quel, sans jamais regarder /Filter — un flux annoncé
-                            # FlateDecode mais laissé en clair produirait un PDF illisible.
-                            # L'ancien code contournait ça en supprimant /Filter (le flux
-                            # sortait alors en clair, plus gros qu'il ne devrait). set_data()
-                            # — l'API publique de pypdf, à la place de l'accès privé _data —
-                            # fait exactement ce qu'il faut sur un EncodedStreamObject dont
-                            # /Filter vaut FlateDecode : elle recompresse elle-même en zlib
-                            # (filters.FlateDecode.encode) et garde le flux lisible, /Filter
-                            # inchangé. Un filtre différent (rare pour un flux de page
-                            # WeasyPrint) fait lever pypdf.errors.PdfReadError, déjà pris par
-                            # le `except Exception` qui entoure ce bloc : ce flux-là reste
-                            # alors intact plutôt que d'être écrit dans un format qu'on ne
-                            # sait pas produire correctement.
+                            # set_data() recompresse un flux FlateDecode et garde /Filter.
+                            # Un autre filtre lève PdfReadError : le flux reste alors intact.
                             stream_obj.set_data(modified_bytes)
 
                         except Exception as e:
-                            # Ignorer les flux illisibles
+                            # Flux illisible : laissé tel quel
                             pass
 
                 except Exception as e:
                     pass
 
-        # Écrire le lecteur modifié en sortie
         writer = pypdf.PdfWriter()
         for page in reader.pages:
             writer.add_page(page)
@@ -279,35 +242,21 @@ def convert_pdf(input_path, output_path):
 
 
 # --------------------------------------------------------------------------------------
-# Étape 2 : Ghostscript convertit ce qui reste — les images, et les teintes dérivées dont
-# le graphiste n'a pas donné de CMJN.
-#
-# ⚠ Le fait qui rend la recette possible, et qui a été mesuré : avec
-#   `-sColorConversionStrategy=CMYK`, Ghostscript laisse intact ce qui est déjà en
-#   DeviceCMYK. Le `0 0 0 1 k` posé à l'étape 1 traverse donc la passe sans être retouché.
-#   Sans cette propriété, tout ce fichier serait inutile : gs reconvertirait le noir K seul
-#   en noir quadri, et le texte de labeur franerait à l'impression.
-#
-# ⚠ Si gs manque, on échoue. Un PDF resté en RVB qu'on livrerait comme CMJN est pire
-#   qu'une absence de fichier : personne ne le vérifie avant la facture de l'imprimeur.
-#   C'est la règle de la porte PDF/UA du Makefile, appliquée ici.
+# Étape 2 : Ghostscript convertit le reste (images, teintes sans CMJN officiel).
+# Avec `-sColorConversionStrategy=CMYK`, Ghostscript laisse intact ce qui est déjà en
+# DeviceCMYK : le `0 0 0 1 k` de l'étape 1 reste un noir seul, sans passer en noir quadri.
+# Sans Ghostscript, on échoue : un PDF resté en RVB ne doit pas passer pour du CMJN.
 
 GS = os.environ.get('SZH_GS', 'gs')
 
 
 def passe_ghostscript(entree, sortie, profil_icc):
-    """Rend (True, '') ou (False, raison). Le profil ICC est obligatoire : convertir sans
-    profil revient à laisser Ghostscript choisir un CMJN générique, ce qui n'est pas
-    l'espace de l'imprimeur et ne se voit qu'une fois imprimé."""
+    """Rend (True, '') ou (False, raison). Le profil ICC est obligatoire : sans lui,
+    Ghostscript prendrait un CMJN générique, qui n'est pas celui de l'imprimeur."""
     if not profil_icc or not os.path.exists(profil_icc):
         return False, ('profil ICC introuvable : %s' % profil_icc)
-    # --permit-file-read : mesuré sur gs 10.05.1 (Debian trixie), Ghostscript tourne en
-    # bac à sable SAFER par défaut et refuse de lire un fichier hors de ses répertoires
-    # connus. Sans cette ligne, /opt/icc/*.icc est refusé et gs échoue avec un message
-    # qui ne parle pas de permission : « Error: /undefined in --runpdf-- », suivi de
-    # « Last OS error: Permission denied » tout en bas — rien n'indique le profil ICC.
-    # Le PDF d'entrée n'a rien à voir : le même échec se produit sur un PDF WeasyPrint
-    # tout neuf, balisé ou non, avant même que cmjn.py y touche.
+    # --permit-file-read : en mode SAFER (défaut), gs refuse de lire /opt/icc/*.icc et
+    # échoue sur « Error: /undefined in --runpdf-- », sans nommer le profil.
     cmd = [GS, '-dNOPAUSE', '-dBATCH', '-dQUIET', '-sDEVICE=pdfwrite',
            '-dProcessColorModel=/DeviceCMYK', '-sColorConversionStrategy=CMYK',
            '--permit-file-read=' + profil_icc,
@@ -328,7 +277,7 @@ def passe_ghostscript(entree, sortie, profil_icc):
 
 
 def main():
-    try:  # console Windows en cp1252 : un accent combinant (nom venu du partage) y plante.
+    try:  # console Windows en cp1252 : un accent combinant y ferait planter print().
         sys.stdout.reconfigure(encoding='utf-8')
         sys.stderr.reconfigure(encoding='utf-8')
     except Exception:
@@ -340,7 +289,7 @@ def main():
     entree, sortie = sys.argv[1], sys.argv[2]
     profil = sys.argv[3] if len(sys.argv) > 3 else ''
 
-    # Étape 1 : les couleurs qu'on connaît, dans un temporaire quand une étape 2 suit.
+    # Étape 1, dans un fichier intermédiaire si l'étape 2 suit.
     intermediaire = sortie + '.rvb' if profil else sortie
     ok, changements = convert_pdf(entree, intermediaire)
     if not ok:

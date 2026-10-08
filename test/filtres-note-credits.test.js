@@ -1,13 +1,13 @@
-// Crédits entre parenthèses et note sous une figure ou un tableau : ce que
-// szh-numerotation.lua et szh-legende-avant.lua écrivent vraiment, en faisant tourner pandoc.
+// Crédits entre parenthèses et note sous une figure ou un tableau : ce qu'écrivent
+// szh-numerotation.lua et szh-legende-avant.lua, avec pandoc.
 //
 //   node --test test/filtres-note-credits.test.js
 //
-// ⚠ Hors du glob `test/js/*.test.js`, comme filtres-pandoc.test.js : il demande pandoc, et le
-//   job `contrats` de la CI ne l'installe pas. Lancé par le job `pdf-ua`.
-// Les assertions portent sur ce que les filtres écrivent en HTML brut (légende, <p> de note,
-// aria-describedby) et sur des positions relatives — jamais sur la forme qu'un pandoc
-// particulier donne au reste du document.
+// Hors du glob `test/js/*.test.js`, comme filtres-pandoc.test.js : il demande pandoc, que
+// le job `contrats` de la CI n'installe pas. Le job `pdf-ua` le lance.
+// Les assertions portent sur le HTML brut écrit par les filtres (légende, <p> de note,
+// aria-describedby) et sur des positions relatives, pas sur le reste du document, qui
+// dépend de la version de pandoc.
 'use strict';
 
 const test = require('node:test');
@@ -18,8 +18,8 @@ const { spawnSync } = require('child_process');
 const FILTRES = path.resolve(__dirname, '..', 'pipeline', 'filters');
 const FINE = ' ';
 
-// Le HTML que produit la chaîne pour `md` : figure (commonmark inutile ici, le lecteur
-// markdown fait des Figure des images légendées), numérotation, puis légende avant l'image.
+// HTML produit par la chaîne pour `md` : figure, numérotation, puis légende avant l'image.
+// Le lecteur markdown construit lui-même les Figure à partir des images légendées.
 function html(md, meta) {
   const entree = (meta ? '---\n' + meta + '\n---\n\n' : '') + md;
   const args = ['--from=markdown', '--to=html', '--wrap=none',
@@ -82,7 +82,7 @@ test('figure : en allemand l’étiquette est « Notiz » et le deux-points coll
 test('figure sans légende, avec copyright et note : crédit après l’image, note en dernier', () => {
   const h = html('![](a.png){.szh-hors-figure alt="d" copyright="(c) SZH" note="Vignette."}\n');
   assert.match(h, /<figure class="szh-credit-seul">/, h);
-  // Sous l'image, sans titre à suivre : pas de parenthèses (décision de Robin, 30.09.2026).
+  // Crédit seul sous l'image, sans titre : pas de parenthèses.
   assert.match(h, /<span class="szh-credit">© SZH<\/span>/, h);
   assert.ok(pos(h, /<img/) < pos(h, /<figcaption/) && pos(h, /<figcaption/) < pos(h, /szh-bloc-note"/),
     'ordre attendu image, crédit, note : ' + h);

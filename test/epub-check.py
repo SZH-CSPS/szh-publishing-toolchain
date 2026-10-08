@@ -1,31 +1,28 @@
 #!/usr/bin/env python3
-# epub-check.py — contrôle structurel d'un EPUB, sans dépendance externe.
+# Contrôle la structure d'un EPUB, sans dépendance externe.
 #
 #   python3 test/epub-check.py <fichier.epub> [<fichier.epub> ...]
 #
-# pandoc ne valide pas ce qu'il écrit, et epubcheck (Java) n'est pas dans la distro
-# SZH-Publishing : ce script tient donc lieu de porte, en Python 3 stdlib seul
-# (zipfile + xml.etree). Il ne remplace pas epubcheck — il attrape ce qu'un assemblage
-# maison peut casser en silence : un fichier orphelin du manifeste, un lien interne qui
-# ne mène nulle part, une image qui n'existe pas, un chapitre absent du sommaire.
+# pandoc ne valide pas ce qu'il écrit, et epubcheck (Java) n'est pas dans la WSL
+# SZH-Publishing. Ce script, en bibliothèque standard (zipfile, xml.etree), ne remplace pas
+# epubcheck : il trouve ce qu'un assemblage maison casse sans erreur visible (fichier hors
+# manifeste, lien interne sans cible, image absente, chapitre absent du sommaire).
 #
-# Huit contrôles, dans l'ordre où ils peuvent faire tomber les suivants :
+# Huit contrôles, dans l'ordre où un échec peut fausser les suivants :
 #   1. mimetype — première entrée de l'archive, non compressée, contenu exact.
 #   2. META-INF/container.xml -> chemin de l'OPF, résolu dans l'archive.
 #   3. manifeste -> archive : chaque item existe réellement.
 #   4. archive -> manifeste : chaque fichier de contenu (XHTML/CSS/image/police) est
-#      listé dans le manifeste — un fichier orphelin ne sert à rien et gonfle l'EPUB.
+#      listé dans le manifeste.
 #   5. chaque XHTML du manifeste est du XML bien formé.
 #   6. dc:title et dc:language sont posés et non vides.
 #   7. chaque lien interne (href="#…" ou href="fichier#…") pointe sur un id qui existe
 #      réellement, dans le bon fichier ; chaque image référencée (<img src>, url() de
 #      style= ou de CSS, hors data:) existe dans l'archive.
 #   8. nav.xhtml : chaque document du spine est atteint par au moins un lien de la
-#      navigation (table des matières ou repères) — un chapitre absent du sommaire ne
-#      casse rien à l'ouverture, seul un lecteur qui tourne les pages une à une le
-#      découvre. C'est ainsi qu'un défaut réel s'est trouvé sur ce banc : le <div>
-#      d'onglet de tranche, laissé avant le <h1> de chaque chapitre, faisait sortir à
-#      pandoc un fichier XHTML quasi vide qu'aucun lien de nav.xhtml ne visait.
+#      navigation (table des matières ou repères). Exemple de défaut : un élément placé
+#      avant le <h1> d'un chapitre fait sortir à pandoc un XHTML presque vide, que
+#      nav.xhtml ne vise pas.
 #
 # Sortie : un bilan par EPUB, code de sortie 1 au premier défaut (tous les EPUB
 # passés en argument sont quand même contrôlés jusqu'au bout).
@@ -47,15 +44,14 @@ EXTENSIONS_IMAGE = ('.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp')
 
 
 def _sans_ns(tag):
-    """'{http://…}nom' -> 'nom' : les fichiers mêlent OPF, XHTML, epub: — un seul nom
-    local par balise évite de tenir trois jeux de namespaces à jour."""
+    """'{http://…}nom' -> 'nom' : les fichiers mêlent plusieurs espaces de noms (OPF,
+    XHTML, epub:), on ne compare que le nom local."""
     return tag.rsplit('}', 1)[-1]
 
 
 def _resoudre(base_dir, href):
-    """Un href d'EPUB est toujours un chemin relatif POSIX (même sous Windows, l'archive
-    est un zip) ; posixpath.normpath résout les « ../ » sans toucher au système de
-    fichiers réel."""
+    """Chemin d'un href dans l'archive. Un href d'EPUB est un chemin relatif POSIX, même
+    sous Windows ; posixpath.normpath résout les « ../ »."""
     href = href.split('#', 1)[0]
     if not href:
         return None
@@ -218,9 +214,8 @@ def _hrefs_et_srcs(racine_xhtml):
 
 
 def verifier_xhtml_et_liens(zf, items, noms, rapport):
-    """Point 5 (bien formé), 6 fait à part, 7 (liens internes + images). Retourne
-    {chemin: ensemble des ids} pour les fichiers XHTML valides, réutilisé par le
-    contrôle de navigation (point 8)."""
+    """Points 5 (XML bien formé) et 7 (liens internes et images). Rend {chemin: ids} pour
+    les XHTML lisibles."""
     xhtml_items = {info['href']: info for info in items.values()
                    if (info['media-type'] or '').endswith('xhtml+xml')}
     ids_par_fichier = {}
@@ -265,8 +260,7 @@ def verifier_xhtml_et_liens(zf, items, noms, rapport):
             if ancre:
                 ids_cible = ids_par_fichier.get(cible if fichier_cible else chemin)
                 if ids_cible is None and cible in xhtml_items:
-                    # cible pas encore lue plus haut (ne devrait pas arriver, tous les
-                    # xhtml_items sont parcourus) — repli défensif, pas un vrai cas.
+                    # Cible absente ou mal formée, déjà signalée : toute ancre y manque.
                     ids_cible = set()
                 if ids_cible is not None and ancre not in ids_cible:
                     rapport.defaut('%s : href="%s" — ancre "#%s" introuvable dans %s'
@@ -279,8 +273,7 @@ def verifier_xhtml_et_liens(zf, items, noms, rapport):
 
 def verifier_navigation(zf, opf_racine, items, rapport):
     """Point 8 : chaque document du spine est atteint par au moins un lien de nav.xhtml
-    (table des matières ou repères) — sans quoi un chapitre entier peut manquer le
-    sommaire sans qu'aucune erreur ne le montre (voir l'en-tête du fichier)."""
+    (table des matières ou repères)."""
     nav_item = None
     for info in items.values():
         if 'nav' in info['properties']:

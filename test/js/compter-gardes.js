@@ -1,58 +1,30 @@
 #!/usr/bin/env node
 'use strict';
-// compter-gardes.js — analyse STATIQUE (grep, pas d'exécution) de test/js/*.test.js,
-// test/filtres-pandoc.test.js et test/filtres-import.test.js : combien de tests sont
-// gardés par sansPowerShell, sansPython, sansPandocWsl, sansPandoc (test/js/gardes.js)
-// et par sauterSiPliageCasse (filtres-pandoc.test.js — filtres-import.test.js suit le
-// même patron mais n'a AUCUNE garde : si pandoc manque, ses tests échouent au lieu de
-// sauter, donc rien à y compter ; il est lu quand même pour les motifs résiduels).
+// Analyse statique (sans exécution) de test/js/*.test.js, test/filtres-pandoc.test.js et
+// test/filtres-import.test.js : compte les tests gardés par sansPowerShell, sansPython,
+// sansPandocWsl, sansPandoc (test/js/gardes.js) et par sauterSiPliageCasse
+// (filtres-pandoc.test.js). filtres-import.test.js n'a pas de garde : si pandoc manque, ses
+// tests échouent ; il est lu pour les motifs résiduels.
 //
-// PUREMENT INDICATIF — plus un plancher, plus une référence à l'égalité. La CI
-// (.github/workflows/ci.yml) l'appelle et affiche son JSON dans le journal pour donner
-// une idée de ce qui est gardé DÉCLARATIVEMENT (`{ skip: … }` en option de test()), mais
-// la porte qui fait vraiment échouer un job relit le TAP réel ligne à ligne et vérifie
-// que chaque `# SKIP` cite un motif reconnu pour CE runner (voir ci.yml, step « motifs
-// des tests sautés ») — pas ce script. Cette porte-là voit tout ce qui saute pour de
-// vrai, y compris ce que ce compteur ne voit pas (section suivante). Elle remplace une
-// ancienne comparaison à l'égalité stricte entre `# skipped` et un entier « attendu »
-// que rendait ce script (option --attendu <runner>, retirée) : cette égalité supposait
-// à tort que seules des gardes déclaratives existaient, alors que huit fichiers sautent
-// en réalité par `t.skip()` AU CORPS du test (invisibles pour ce script — voir plus bas)
-// et que le comptage mélangeait par endroits des fichiers hors du glob réellement lancé
-// par un job donné (filtres-pandoc.test.js n'entre pas dans test/js/*.test.js).
+// Le résultat est indicatif. La CI (.github/workflows/ci.yml) affiche ce JSON dans son
+// journal ; ce qui fait échouer un job est l'étape « motifs des tests sautés », qui relit le
+// TAP réel et vérifie que chaque `# SKIP` cite un motif reconnu pour ce runner.
 //
 //   node test/js/compter-gardes.js   -> JSON sur stdout, motifs résiduels sur stderr
 //
-// (compterTout() et listerMotifsResiduels() restent exportés pour qui voudrait rejouer
-// l'analyse statique ailleurs ; rien ne compare plus leur résultat à un total mesuré.)
+// compterTout() et listerMotifsResiduels() sont exportés.
 //
-// ============================================================================
-// CE QUE CE COMPTEUR NE VOIT PAS (à lire avant de lui faire confiance)
-// ============================================================================
-// Il ne lit que des `{ skip: EXPRESSION }` posés en option de test() (plus l'appel
-// explicite à sauterSiPliageCasse, nommé en dur). Deux familles d'abstention lui
-// échappent ENTIÈREMENT, et aucune magie ne les récupère :
+// Ce que ce compteur ne voit pas : il ne lit que les `{ skip: EXPRESSION }` posés en option
+// de test(), plus les appels à sauterSiPliageCasse. Lui échappent :
 //
-//   1. Une ABSTENTION PAR `return` AU CORPS du test : `if (!PYTHON) { return; }`,
-//      `if (absent) { return sauterSansLua(t, absent); }`. Le test s'exécute, ressort
-//      PASS dans le TAP — jamais SKIP. Au 17.09.2026, c'est le cas d'environ 25 tests de
-//      la famille WSL/pandoc locale (ancrages, biblio, date-numero, fleche-retour,
-//      journal-codes, lire-config, metafichier, reimport, reimport-biblio,
-//      import-numerotation-titres — pas encore migrés vers `{ skip: sansPandocWsl }`,
-//      17.09.2026) et des 8 `if (!PYTHON) { return; }` de szh-commun.test.js. Cette
-//      famille est listée par listerMotifsResiduels() ci-dessous mais N'EST PAS comptée
-//      dans le total : la compter reviendrait à deviner, au moment de l'analyse
-//      statique, si l'outil qu'elle teste sera présent ou non sur le runner qui
-//      exécutera le test — exactement ce que gardes.js sait faire et que ce script ne
-//      réimplémente pas.
-//   2. Un `t.skip()` appelé au corps d'un test pour une raison qui n'est NI PowerShell,
-//      ni Python, ni WSL/pandoc, ni le pliage des accents — par exemple
-//      biblio.test.js:499 (corpus `tmp/corpus-ojs`, 750 Mo, hors dépôt, absent),
-//      raccourcis.test.js:567 (ACL contournée par un compte élevé — le cas du runner CI
-//      Windows, qui tourne administrateur) ou courriel-support.test.js (VSCodium absent
-//      du runner). Ces sites sont listés par listerMotifsResiduels() (motif RE_T_SKIP)
-//      mais jamais devinés ni comptés : voir ci.yml pour la liste des motifs que la
-//      porte reconnaît vraiment, runner par runner.
+//   1. l'abstention par `return` dans le corps du test (`if (!PYTHON) { return; }`,
+//      `if (absent) { return sauterSansLua(t, absent); }`) : le test sort PASS, pas SKIP.
+//      listerMotifsResiduels() liste ces sites sans les compter : savoir si l'outil sera
+//      présent sur le runner est le rôle de gardes.js ;
+//   2. un `t.skip()` dans le corps du test pour une autre raison (corpus absent dans
+//      biblio.test.js, ACL contournée par un compte administrateur dans
+//      raccourcis.test.js, VSCodium absent dans courriel-support.test.js). Ces sites sont
+//      listés (motif RE_T_SKIP), pas comptés ; voir ci.yml pour les motifs admis par runner.
 
 const fs = require('fs');
 const path = require('path');
@@ -66,25 +38,23 @@ const FICHIERS_TESTJS = fs.readdirSync(DOSSIER_TESTS)
   .map((n) => path.join('test', 'js', n));
 
 const FICHIER_PLIAGE = path.join('test', 'filtres-pandoc.test.js');
-// filtres-import.test.js : même patron, même emplacement hors test/js/, même
-// convention « aucun saut silencieux, si pandoc manque le test ÉCHOUE » — donc aucune
-// garde `{ skip: … }` à y compter, mais il tourne dans le même pas que filtres-pandoc
-// (job pdf-ua, ci.yml) et doit être lu par les motifs résiduels comme le reste.
+// filtres-import.test.js : hors de test/js/ comme filtres-pandoc, sans garde (si pandoc
+// manque, le test échoue), lancé dans la même étape (job pdf-ua, ci.yml). Il est lu pour
+// les motifs résiduels.
 const FICHIER_FILTRES_IMPORT = path.join('test', 'filtres-import.test.js');
 const FICHIERS_HORS_JS = [FICHIER_PLIAGE, FICHIER_FILTRES_IMPORT];
 
 // ---------------------------------------------------------------- lecture, par garde
 
 // Un test peut combiner deux gardes (courriel-support.test.js : sansPowerShell ||
-// sansVSCodium) : on classe sur la première garde CONNUE trouvée dans l'expression, pas
-// sur sansVSCodium (propre à ce fichier, pas une garde de gardes.js).
+// sansVSCodium) : on classe sur la première garde de gardes.js trouvée dans l'expression.
 function classifierExpressionSkip(expr) {
   if (/\bsansPandocWsl\b/.test(expr)) { return 'wsl'; }
   if (/\bsansPandoc\b/.test(expr)) { return 'pandoc'; }
   if (/\bsansPowerShell\b/.test(expr)) { return 'powershell'; }
   if (/\bsansPython\b/.test(expr)) { return 'python'; }
-  // Forme ternaire historique (emplacements.test.js, volume-numero.test.js) : avant le
-  // passage à gardes.js, la même idée s'écrivait `POWERSHELL ? false : 'raison'`.
+  // Forme ternaire `POWERSHELL ? false : 'raison'` (emplacements.test.js,
+  // volume-numero.test.js).
   if (/\bPOWERSHELL\s*\?\s*false\b/.test(expr)) { return 'powershell'; }
   return null;
 }
@@ -108,13 +78,11 @@ function compterFichier(cheminRelatif) {
   }
   let pliage = 0;
   if (cheminRelatif === FICHIER_PLIAGE) {
-    // Un appel par test gardé, pas la définition de la fonction elle-même (qui contient
-    // aussi le littéral "sauterSiPliageCasse" dans son propre nom/commentaire) : on
-    // compte les APPELS `sauterSiPliageCasse(t)`, pas les occurrences du nom.
+    // On compte les appels `sauterSiPliageCasse(t)`, un par test gardé, pas les
+    // occurrences du nom.
     RE_SAUTER_PLIAGE.lastIndex = 0;
     while ((m = RE_SAUTER_PLIAGE.exec(contenu))) {
-      // Exclut la définition `function sauterSiPliageCasse(t) {` elle-même : un appel
-      // commence par un espace ou un `(` avant, jamais par le mot-clé `function`.
+      // Exclut la définition `function sauterSiPliageCasse(t) {`.
       const avant = contenu.slice(Math.max(0, m.index - 9), m.index);
       if (!/function\s+$/.test(avant)) { pliage += 1; }
     }
@@ -140,9 +108,8 @@ function compterTout() {
   total.wsl += rPliage.comptes.wsl;
   total.pandoc += rPliage.comptes.pandoc;
   autres.push(...rPliage.comptes.autres);
-  // filtres-import.test.js : lu pour les mêmes raisons (autres/résiduels), mais n'a
-  // aujourd'hui aucun `{ skip: … }` ni sauterSiPliageCasse — sa contribution est donc
-  // 0 sur toutes les catégories, sans branche spéciale à écrire.
+  // filtres-import.test.js n'a ni `{ skip: … }` ni sauterSiPliageCasse : il compte 0
+  // partout, sans branche spéciale.
   const rImport = compterFichier(FICHIER_FILTRES_IMPORT);
   total.powershell += rImport.comptes.powershell;
   total.python += rImport.comptes.python;
@@ -154,10 +121,9 @@ function compterTout() {
 
 // ---------------------------------------------------------- motifs résiduels (journal)
 
-// Grep, pas d'exécution : liste ce que le compte ci-dessus NE voit pas, pour que la CI
-// l'affiche plutôt que de laisser croire à une couverture totale. Deux motifs, cités
-// littéralement, un temps, par la CI : une garde au corps du test (`if (!X) { return; }` près
-// d'une détection d'outil), et un `t.skip(` appelé hors de sauterSiPliageCasse.
+// Liste, par recherche de texte, ce que le compte ci-dessus ne voit pas, pour que la CI
+// l'affiche : une garde dans le corps du test (`if (!X) { return; }`), et un `t.skip(`
+// appelé hors de sauterSiPliageCasse.
 const RE_RETURN_GARDE = /if\s*\(\s*!\w+\s*\)\s*\{\s*return;?\s*\}/g;
 const RE_RETURN_SAUTER = /return\s+sauter\w*\(/g;
 const RE_T_SKIP = /\bt\.skip\(/g;
@@ -173,8 +139,8 @@ function listerMotifsResiduels() {
       if (RE_RETURN_GARDE.test(l) || RE_RETURN_SAUTER.test(l) || RE_T_SKIP.test(l)) {
         lignes.push(f + ':' + (i + 1) + ': ' + l.trim());
       }
-      // .test régulières globales gardent un lastIndex : sans reset, une ligne SANS
-      // match après une ligne AVEC match serait sautée à tort.
+      // Une expression régulière globale garde son lastIndex entre deux .test() : on le
+      // remet à zéro pour chaque ligne.
       RE_RETURN_GARDE.lastIndex = 0;
       RE_RETURN_SAUTER.lastIndex = 0;
       RE_T_SKIP.lastIndex = 0;

@@ -1,17 +1,10 @@
-// Revue adversariale (sept. 2026) : compilerPuisAfficher() décline en silence sous
-// `importEnCours` (garde ligne ~2564, partagée avec `buildEnCours`) — mais rien ne
-// rattrapait ensuite ce refus quand l'import ne ramenait aucun article. compilerApresImport()
-// n'est appelée que dans la branche `nouveaux.length > 0` de lancerConversion() : un
-// enregistrement de fiche PENDANT un import qui échoue ou qui ne convertit aucun Word
-// laissait donc l'aperçu et le PDF de l'article édité périmés, sans aucun message, jusqu'à
-// ce que quelqu'un rouvre cet article à la main.
+// Pendant un import (`importEnCours`), compilerPuisAfficher() ne compile pas : le slug va
+// dans compilationsDifferees, et rejouerCompilationsDifferees() le compile dès la fin de
+// l'import, quel qu'en soit le résultat. compilerApresImport() ne joue que si l'import a
+// ramené un article ; le rejeu couvre l'import qui ne ramène rien.
 //
-// Le correctif (compilerPuisAfficher, lancerConversion, executerReimport dans extension.js) :
-// un refus dû à importEnCours mémorise son slug dans compilationsDifferees, rejoué par
-// rejouerCompilationsDifferees() dès que le drapeau retombe — quel que soit le résultat de
-// l'import. Ce fichier rejoue le geste complet via l'hôte factice : import qui ne ramène
-// rien, enregistrement d'une fiche PENDANT cette fenêtre, puis contrôle qu'une compilation
-// finit bien par partir.
+// Le geste complet, via l'hôte factice : un import qui ne ramène rien, l'enregistrement
+// d'une fiche pendant ce temps, puis une compilation qui finit par partir.
 //
 //   node --test test/js/import-recompilation-differee.test.js
 'use strict';
@@ -38,10 +31,8 @@ test('mise en route : le démarrage se tait', async () => {
 
 test('un enregistrement de fiche pendant un import qui ne ramène rien finit par recompiler',
   async () => {
-    // Le Word en attente du fixture (9_Essai.docx) reste en place : « make import » tourne,
-    // rend 0, mais ne fait apparaître AUCUN nouvel article — le cas courant que le défaut
-    // visait (échec de conversion ou rien à convertir), et le seul où lancerConversion()
-    // n'appelle jamais compilerApresImport().
+    // Le Word en attente du fixture (9_Essai.docx) reste en place : « make import » rend 0
+    // sans nouvel article, et lancerConversion() n'appelle pas compilerApresImport().
     HOTE.stub.tasks.fetchTasks = () => Promise.resolve([{ name: NOM_IMPORT }, { name: NOM_BUILD }]);
     const origExecute = HOTE.stub.tasks.executeTask;
     let appelsBuild = 0;
@@ -55,8 +46,8 @@ test('un enregistrement de fiche pendant un import qui ne ramène rien finit par
       // tâche d'import — sans quoi importEnCours ne serait pas encore posé.
       await tick(); await tick();
 
-      // Pendant cette fenêtre : l'utilisateur enregistre la fiche d'un article existant,
-      // SANS RAPPORT avec l'import — le geste rapporté.
+      // Pendant l'import, la fiche d'un article existant, sans rapport avec l'import, est
+      // enregistrée.
       await HOTE.executer('szh.metadonneesArticle', { slug: '01-essai' });
       const panneau = HOTE.panneauDeType('szhApercuMetadonnees');
       assert.ok(panneau && panneau._recepteur,
@@ -67,26 +58,22 @@ test('un enregistrement de fiche pendant un import qui ne ramène rien finit par
       });
       await tick();
 
-      // La fiche s'écrit bien sur le disque — ce n'est pas ce que le défaut cassait.
+      // La fiche est écrite sur le disque.
       const meta = fs.readFileSync(
         path.join(REVUE, 'articles', '01-essai', '01-essai.meta.yaml'), 'utf8');
       assert.ok(meta.indexOf('Titre pendant import') !== -1,
         'la fiche n’a pas été enregistrée sur le disque pendant l’import');
 
-      // Mais pas de compilation lancée tout de suite : compilerPuisAfficher a décliné sous
-      // importEnCours (jamais deux compilations à la fois pendant un import).
+      // Aucune compilation tout de suite : compilerPuisAfficher attend la fin de l'import.
       assert.strictEqual(appelsBuild, 0,
         'une compilation est partie pendant l’import : ce n’est pas le scénario visé');
 
-      // L'import se termine : code 0, mais 0 article nouveau (nouveaux.length === 0) —
-      // la branche qui, avant le correctif, n'appelait jamais compilerApresImport().
+      // L'import se termine : code 0, aucun article nouveau.
       await HOTE.finirTache(NOM_IMPORT, 0);
       await promesseImport;
       await tick(); await tick();
 
-      // LE CONTRÔLE DÉCISIF : la compilation refusée doit être rejouée. Sans le correctif,
-      // appelsBuild reste à 0 pour toujours et l'aperçu/PDF de 01-essai restent périmés en
-      // silence, jusqu'à ce que quelqu'un rouvre l'article à la main.
+      // La compilation différée est rejouée.
       assert.strictEqual(appelsBuild, 1,
         'la compilation déclinée pendant l’import n’a jamais été rejouée : la fiche '
         + 'enregistrée reste périmée en silence — le défaut de la revue adversariale');
@@ -102,8 +89,8 @@ test('un enregistrement de fiche pendant un import qui ne ramène rien finit par
 
 // ---- Témoin : sans fenêtre d'import, rien n'est différé, la compilation part tout de suite -
 //
-// Preuve que le contrôle précédent est bien discriminant : hors de toute fenêtre d'import,
-// le même geste (enregistrer une fiche) recompile IMMÉDIATEMENT, sans attendre un rejeu.
+// Hors import, le même geste recompile immédiatement : le contrôle précédent mesure bien
+// le différé.
 test('témoin : hors import, l’enregistrement recompile tout de suite, sans rejeu différé',
   async () => {
     HOTE.stub.tasks.fetchTasks = () => Promise.resolve([{ name: NOM_BUILD }]);

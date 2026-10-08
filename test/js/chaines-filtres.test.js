@@ -1,8 +1,8 @@
-// Les chaînes de filtres Lua sont déclarées une fois, dans pipeline/filtres.mk : le socle
-// commun, puis la chaîne d'un article, de son aperçu, d'un chapitre et de ses variantes.
-// Ce fichier garde ce que la déclaration promet : le socle garde le même ordre relatif
-// partout, chaque filtre n'y passe qu'une fois sauf livre-sous-titre (deux fois, exprès), et
-// le lecteur statique de test/js/chaines-filtres-lire.js dit la même chose que make.
+// Les chaînes de filtres Lua sont déclarées une fois, dans pipeline/filtres.mk : la base
+// commune, puis la chaîne d'un article, de son aperçu, d'un chapitre et de ses variantes.
+// Ce fichier vérifie que la base garde le même ordre relatif partout, que chaque filtre n'y
+// passe qu'une fois (sauf livre-sous-titre, deux fois exprès), et que le lecteur statique de
+// test/js/chaines-filtres-lire.js lit comme make.
 'use strict';
 
 const test = require('node:test');
@@ -17,7 +17,7 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 const ch = lireChaines();
 
-// Ce que chaque chaîne retire du socle, et rien d'autre.
+// Ce que chaque chaîne retire de la base commune, et rien d'autre.
 const RETRAITS = {
   CHAINE_ARTICLE: [],
   CHAINE_APERCU: ['exergue'],
@@ -72,8 +72,8 @@ test('contexte en tête de chaque chaîne ; article : maquette ensuite, notes à
   assert.strictEqual(ch.CHAINE_CHAPITRE[ch.CHAINE_CHAPITRE.length - 1], 'qr');
 });
 
-// Le lecteur statique ne sert que s'il lit comme make : make, lancé sur filtres.mk seul,
-// imprime chaque variable FILTRES_*, et la liste doit être celle que rend le lecteur.
+// make, lancé sur filtres.mk seul, imprime chaque variable FILTRES_* : la liste doit être
+// celle que rend le lecteur statique.
 test('le lecteur statique de filtres.mk rend exactement ce que make développe', (t) => {
   if (sansPandocWsl) { sauter.wsl(t); return; }
   const { DISTRO, cheminWsl } = require(path.join(COCKPIT, 'lib', 'wsl.js'));

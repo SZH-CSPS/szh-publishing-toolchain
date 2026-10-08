@@ -1,12 +1,10 @@
 // Résoudre une copie en conflit dans l'éditeur : le câblage, vu de l'hôte.
 //
-// Le calcul des blocs appartient à l'éditeur et leur application est éprouvée à part
-// (conflits-blocs.test.js). Ici on vérifie ce qui les relie : le fichier servi comme
-// « original » du fichier du numéro — c'est lui qui fait naître les marques de divergence
-// dans la gouttière —, l'entrée du contrôle de source qui n'existe que le temps du conflit,
-// et les deux sens de résolution avec leurs refus.
+// L'éditeur calcule les blocs ; leur application est vérifiée dans conflits-blocs.test.js.
+// Ici, ce qui les relie : le fichier servi comme « original » du fichier du numéro (il
+// produit les marques de divergence dans la gouttière), l'entrée du contrôle de source qui
+// n'existe que le temps du conflit, et les deux sens de résolution avec leurs refus.
 //
-// Exécution : depuis la racine du dépôt,
 //   node --test test/js/conflits-hote.test.js
 'use strict';
 
@@ -62,14 +60,14 @@ test('le fichier du numéro reçoit la copie en conflit pour original', async ()
     assert.strictEqual(P.cheminDepuisUriConflit(original), COPIE,
       'l’original ne désigne pas la copie en conflit');
 
-    // Un fichier sans copie à côté ne doit RIEN décorer : sinon tout le numéro se
-    // couvrirait de marques de divergence.
+    // Un fichier sans copie à côté n'a aucune marque, sinon tout le numéro se couvrirait de
+    // marques de divergence.
     const sansCopie = P.fournisseurDiffConflit.provideOriginalResource(
       Uri.file(path.join(REVUE, 'articles', '01-essai', '01-essai.md')));
     assert.strictEqual(sansCopie, undefined, 'un fichier sans copie a reçu un original');
 
-    // Hors du numéro, on ne lit même pas le dossier : l'éditeur interroge ce fournisseur
-    // pour CHAQUE document ouvert, y compris ceux qui n'ont rien à voir avec la revue.
+    // Hors du numéro, le dossier n'est pas lu : l'éditeur interroge ce fournisseur pour
+    // chaque document ouvert, y compris ceux qui n'ont rien à voir avec la revue.
     const dehors = P.fournisseurDiffConflit.provideOriginalResource(
       Uri.file(path.join(path.dirname(REVUE), 'ausgabe.yaml')));
     assert.strictEqual(dehors, undefined, 'un fichier hors du numéro a été examiné');
@@ -104,7 +102,7 @@ test('l’entrée du contrôle de source n’existe que le temps du conflit', as
       'la copie n’est pas listée dans le groupe');
   } finally { retirerCopie(); }
 
-  // Plus de copie : l'entrée est démontée, pour ne pas laisser une rubrique vide à vie.
+  // Plus de copie : l'entrée est retirée, pour ne pas laisser une rubrique vide.
   P.rafraichirConflitsScm();
   assert.strictEqual(HOTE.sourceControls().filter((c) => c.id === 'szh.conflits').length, 0,
     'l’entrée survit alors qu’il n’y a plus de copie en conflit');
@@ -134,9 +132,9 @@ test('« Garder la mienne » écrit mon bloc dans la copie, pas l’inverse', as
 
 // ---- La copie résolue disparaît d'elle-même ---------------------------------------
 //
-// Une copie qui ne retient plus rien que le fichier du numéro n'ait pas est supprimée
-// sans question : rien ne se perd, et une copie oubliée là se réannonçait à chaque
-// ouverture du numéro.
+// Une copie qui ne contient plus rien que le fichier du numéro n'ait pas est supprimée sans
+// question : rien ne se perd, et une copie oubliée serait annoncée à chaque ouverture du
+// numéro.
 test('la dernière divergence tranchée par « Garder la mienne » : la copie disparaît', async () => {
   await pret;
   const bloc = poserCopie();
@@ -237,7 +235,7 @@ test('« Prendre cette version » refuse tant qu’un autre poste tient le fichi
     assert.strictEqual(nouveaux.length, 1, 'aucun refus affiché');
     assert.ok(nouveaux[0].indexOf('Anne Voisine') !== -1,
       'le refus ne nomme pas qui tient le fichier : ' + nouveaux[0]);
-    // La copie non plus n'a pas bougé : le refus arrête tout le geste.
+    // La copie est intacte elle aussi : le refus arrête toute l'action.
     assert.notStrictEqual(fs.readFileSync(COPIE, 'utf8'), fs.readFileSync(AUSGABE, 'utf8'),
       'la copie a été modifiée malgré le refus');
   } finally {
@@ -246,14 +244,11 @@ test('« Prendre cette version » refuse tant qu’un autre poste tient le fichi
   }
 });
 
-// ---- Le verrou du numéro, jamais exercé ici (revue adverse) --------------------------
+// ---- Le verrou du numéro ----------------------------------------------------------------
 //
-// refuserSiVerrouille() est LA première garde de la branche « prendre » (avant même le
-// bail de co-édition, cf. le commentaire d'extension.js:573 : « le verrou du numéro
-// d'abord »). Le test précédent ne prouve que le refus de co-édition ; aucun test de ce
-// fichier ne posait un numéro verrouillé (ou archivé, qui verrouille aussi — voir
-// hote-livre.test.js) avant d'appeler « Prendre cette version » : la garde pouvait être
-// neutralisée sans qu'aucun test ne rougisse, alors que c'est le chemin qui ÉCRIT.
+// refuserSiVerrouille() est la première garde de « Prendre cette version », avant le bail
+// de co-édition. Ce chemin écrit dans le fichier : on le vérifie sur un numéro verrouillé
+// (un numéro archivé l'est aussi, voir hote-livre.test.js).
 test('« Prendre cette version » refuse sur un numéro verrouillé, sans rien écrire', async () => {
   await pret;
   const bloc = poserCopie();
@@ -267,7 +262,7 @@ test('« Prendre cette version » refuse sur un numéro verrouillé, sans rien �
     await P.resoudreBlocConflit(Uri.file(AUSGABE), [bloc], 0, true);
     const nouveaux = HOTE.avertissements.slice(avantAvert);
     assert.strictEqual(nouveaux.length, 1, 'aucun refus affiché sur un numéro verrouillé');
-    // Rien n'a bougé : un refus qui n'arrête pas tout serait pire qu'une absence de refus.
+    // Rien n'a changé : le refus arrête tout.
     assert.strictEqual(fs.readFileSync(AUSGABE, 'utf8'), numeroAvant,
       'le fichier du numéro a été modifié malgré le verrou');
     assert.strictEqual(fs.readFileSync(COPIE, 'utf8'), copieAvant,

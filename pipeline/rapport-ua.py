@@ -4,35 +4,31 @@
     verapdf --flavour ua1 --format xml a.pdf b.pdf > r.xml
     python3 rapport-ua.py r.xml          # ou : ... | python3 rapport-ua.py
 
-Sortie : le verdict en français, puis le même en allemand (orthographe suisse). Chaque
-ligne porte le préfixe « [pdf-ua] », « [pdf-ua] [de] » pour l'allemand : format stable,
-repérable au grep, et calqué sur « [pipeline] » / « [pipeline] [de] » du Makefile.
+Sortie : le verdict en français, puis en allemand (orthographe suisse). Chaque ligne porte
+le préfixe « [pdf-ua] », ou « [pdf-ua] [de] » pour l'allemand, comme « [pipeline] » dans
+le Makefile.
 
-Codes de sortie — et ils ne disent pas la même chose :
+Codes de sortie :
     0  tous les PDF sont conformes PDF/UA-1
     1  au moins un PDF n'est pas conforme  (verdict)
-    2  le rapport est illisible ou vide     (panne d'outillage, PAS un verdict)
-Le code de veraPDF lui-même se lit en amont, dans le Makefile : 4 (fichier introuvable),
-7 (fichier illisible) et 127 (veraPDF absent) sont des pannes, non des verdicts. Sans
-cette distinction, un validateur manquant se lirait comme un PDF conforme.
+    2  le rapport est illisible ou vide     (panne d'outillage, pas un verdict)
+Le code de veraPDF se lit en amont, dans le Makefile : 4 (fichier introuvable), 7 (fichier
+illisible) et 127 (veraPDF absent) sont des pannes. Sinon, un validateur absent se lirait
+comme un PDF conforme.
 
-Deux publics, deux lignes — et c'est pourquoi la référence de norme n'est plus dans la
-phrase. Chaque règle en échec sort ainsi :
+Chaque règle en échec sort ainsi :
 
     [pdf-ua]   • Titre du document manquant (1 fois, page(s) 3)
     [pdf-ua]         En cause : …
     [pdf-ua]         À faire  : …
     [pdf-ua]   ISO 14289-1 7.1-9
 
-La puce est pour la rédactrice : ce qui est en cause, le geste, et de quoi retrouver
-l'endroit — combien de fois, sur quelles pages. Le « ISO 14289-1 7.1-9 » n'aide personne à
-corriger un article ; il n'aide qu'à ouvrir un signalement de bogue, et il est le seul
-moyen de retrouver la règle chez veraPDF. Il a donc sa ligne, en dessous : elle reste dans
-le journal de compilation, et le cockpit la laisse tomber avec le reste du bruit
-d'outillage (son retrait de deux espaces suffit à le lui dire — voir lib/journal.js).
-Une ligne portée par un rapport, pas un mot glissé dans une phrase.
+La puce sert à la rédaction : la cause, ce qu'il faut faire, le nombre d'occurrences et
+les pages. La ligne « ISO 14289-1 » sert à retrouver la règle chez veraPDF et à signaler un
+bogue ; elle reste dans le journal, et le cockpit l'écarte grâce à son retrait de deux
+espaces (voir lib/journal.js).
 
-Aucune dépendance : xml.etree suffit, l'image WSL n'a pas PyYAML et n'aura pas lxml.
+Bibliothèque standard seule (xml.etree) : l'image WSL n'a ni PyYAML ni lxml.
 """
 import re
 import sys
@@ -41,18 +37,16 @@ import xml.etree.ElementTree as ET
 PREFIXE = '[pdf-ua]'
 
 # ── Les règles que la chaîne SZH peut casser ────────────────────────────────────
-# Pour chacune : un titre, ce qui est en cause, et le geste de correction. Une règle
-# absente de ce tableau sort avec son libellé anglais brut — une phrase anglaise vaut
-# mieux qu'un silence — et sa ligne « ISO 14289-1 » suffit alors à retrouver la règle chez
-# veraPDF (github.com/veraPDF/veraPDF-validation-profiles/wiki/PDFUA-Part-1-rules).
-# Les neuf règles réellement rencontrées sur le corpus sont toutes ici.
+# Pour chacune : un titre, la cause et ce qu'il faut faire. Une règle absente sort avec son
+# libellé anglais brut, et sa ligne « ISO 14289-1 » permet de la retrouver chez veraPDF
+# (github.com/veraPDF/veraPDF-validation-profiles/wiki/PDFUA-Part-1-rules).
 REGLES = {
-  # Même gabarit que la liste « À corriger » du cockpit (lib/constats.js, SECOND_ETAGE) :
-  #   titre  un groupe nominal court et concret — ce qui ne va pas, pas la règle ;
-  #   cause  tout ce qui explique : pourquoi c'est un défaut, d'où il vient, les cas
-  #          connus. Le cockpit le range dans l'infobulle, avec le repère ISO ;
-  #   geste  UNE phrase, qui commence par le verbe. Un défaut de la chaîne n'a qu'un geste,
-  #          toujours le même : le signaler — le détail technique est dans la cause.
+  # Même forme que la liste « À corriger » du cockpit (lib/constats.js, SECOND_ETAGE) :
+  #   titre  un groupe nominal court : ce qui ne va pas ;
+  #   cause  pourquoi c'est un défaut, d'où il vient, les cas connus (le cockpit l'affiche
+  #          en infobulle, avec le repère ISO) ;
+  #   geste  une phrase qui commence par le verbe. Pour un défaut de la chaîne : le
+  #          signaler.
   ('5', '1'): (
     ("Le PDF ne s'annonce pas PDF/UA",
      "Les métadonnées XMP du fichier ne portent pas l'identification PDF/UA : le PDF a "
@@ -299,9 +293,9 @@ REGLES = {
 }
 
 # ── Les défauts de la chaîne, dits à la rédaction ───────────────────────────────
-# Une phrase par langue, qui remplace la cause dans la puce : la rédaction n'a rien à faire
-# de opacity ni de print.css. La cause de REGLES devient le détail technique, écrit sous le
-# repère ISO : il reste dans le journal de l'export, et le cockpit ne le lit pas.
+# Une phrase par langue, qui remplace la cause dans la puce pour la rédaction. La cause de
+# REGLES devient le détail technique, écrit sous le repère ISO : il reste dans le journal
+# de l'export, et le cockpit ne le lit pas.
 CHAINE = {
   ('5', '1'): (
     "Le fichier ne dit pas qu'il suit la norme d'accessibilité ; votre article n'y est pour rien.",
@@ -499,12 +493,10 @@ def main():
                     replier(cause, marque, mots['cause'])
                 if geste:
                     replier(geste, marque, mots['geste'])
-                # Le repère, en dernier et sur sa propre ligne : voir « Deux publics »
-                # en tête de fichier. Sa faible indentation le fait tomber du côté du
-                # bruit d'outillage dans le cockpit, et il reste dans le journal.
+                # Le repère ISO, sur sa propre ligne (voir l'en-tête).
                 dire(marque, mots['repere'] % (clause, test))
-                # Après le repère : ni verdictsPdfUa ni analyserJournal (lib/journal.js)
-                # ne rattachent plus rien à la règle, la ligne reste au seul journal.
+                # Après le repère, lib/journal.js ne rattache plus rien à la règle : le
+                # détail technique reste dans le journal seulement.
                 if technique:
                     replier(technique, marque, mots['technique'])
         if rates:

@@ -1,6 +1,6 @@
 // Maquette normal rendue par WeasyPrint (WSL) : de petits livres factices composés avec la
 // vraie pile du livre (socle, livre/base, livre/normal, partage-filtres), mesurés sur le PDF.
-// Les cotes sont celles des livres de référence (docs/ARCHITECTURE-LIVRES.md § 5.1).
+// Les cotes sont celles des livres de référence (docs/ARCHITECTURE-LIVRES.md).
 //
 //   node --test test/js/livre-normal-rendu.test.js
 'use strict';
@@ -271,7 +271,7 @@ test('rendu normal : la césure garde au moins 2 lettres avant le tiret et 3 apr
 });
 
 // Approche du texte courant : celle qui apparie le plus de lignes avec les deux livres de
-// référence, mesurée de 0 à 0,01 em (docs/ARCHITECTURE-LIVRES.md § 5.1).
+// référence, mesurée de 0 à 0,01 em (docs/ARCHITECTURE-LIVRES.md).
 test('rendu normal : le texte courant compose sans approche', (t) => {
   if (sansPandocWsl) { sauter.wsl(t); return; }
   const st = mesures().legende.styles['szh-texte-test'];

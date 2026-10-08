@@ -1,6 +1,6 @@
 /* Charte « normal » des livres, empilée après socle.css et livre/base.css : le commun des
    livres mesurés, et les variantes du bloc `mise-en-page:` de buch.yaml sous html[data-…]
-   (docs/ARCHITECTURE-LIVRES.md § 5.1). */
+   (voir docs/ARCHITECTURE-LIVRES.md). */
 
 /* Grille : 13,5 pt, première ligne de base à 20 mm, dernière à 201 mm, 39 lignes. Sans
    grille de ligne de base dans WeasyPrint, les espaces sont des multiples de l'interligne. */
@@ -51,7 +51,7 @@
   --impressum: 7pt;
   --folio-font: 700 8pt var(--font-sans);
   /* Le folio a sa ligne de base à 215 mm, 10 mm au-dessus du bord : sa boîte de marge
-     est calée en haut (plus bas, § Folio), et ce jeton de base.css n'y sert plus. */
+     est calée en haut (voir « Folio » plus bas), ce jeton de base.css est donc à 0. */
   --folio-fond: 0mm;
 
   --esp-figure: var(--ligne) 0;
@@ -62,8 +62,8 @@
   --plafond-figure: 80vh;
 }
 
-/* Césure : au moins 2 lettres avant le tiret et 3 après. pyphen coupe « ge-sch-ah » ;
-   sans ce plancher, « gesch-ah » sortait en fin de ligne. */
+/* Césure : au moins 2 lettres avant le tiret et 3 après. pyphen coupe « ge-sch-ah » :
+   sans ce plancher, « gesch-ah » pourrait finir une ligne. */
 body { letter-spacing: var(--approche); hyphenate-limit-chars: 5 2 3; }
 
 /* Un indice ou un exposant ne hausse pas sa ligne : l'interligne reste celui de la grille. */
@@ -82,9 +82,9 @@ sub, sup { line-height: 0; }
   text-align: left; hyphens: none;
   margin: -0.3mm 0 calc(4 * var(--ligne) + 2.4mm) 0; text-indent: 0;
 }
-/* La collection normale n'a ni onglet de tranche ni pastille : ces repères sont ceux du FALC
-   (falc.css les met en marge). Laissés dans le flux, la pastille « 1 » occupait seule la
-   page qui précède le titre de chapitre. */
+/* La maquette normale n'a ni onglet de tranche ni pastille, repères du FALC que falc.css
+   met en marge. Laissée dans le flux, la pastille occuperait seule une page avant le
+   titre de chapitre. */
 .szh-onglet, .szh-pastille { display: none; }
 
 /* Intertitres : tous au corps du texte, sur la grille, sans césure. */
@@ -102,9 +102,9 @@ h3 + h4 { margin-top: 0; }
    ligne de base reste sur la grille. */
 h2, h3, h4, figure { margin-break: discard; }
 
-/* Le numéro de section est posé dans le texte du titre par szh-sections.lua, jamais en
-   CSS : un numéro généré n'existerait pas dans l'EPUB ni dans un galley Word. L'espace qui
-   le sépare du texte est une tabulation de 7 mm. */
+/* Le numéro de section est écrit dans le titre par szh-sections.lua, et non généré en
+   CSS, pour exister aussi dans l'EPUB et le galley Word. Il est suivi d'une tabulation de
+   7 mm. */
 .szh-num-section { display: inline-block; min-width: 7mm; }
 
 /* ═══ Liminaires ══════════════════════════════════════════════════════════════

@@ -1,9 +1,6 @@
-// Tests des fonctions de résolution de blocs en conflit.
+// Les fonctions de résolution de blocs en conflit : remplacement, insertion, suppression,
+// combinaisons de blocs, symétrie, fins de ligne.
 //
-// Chaque scénario teste un aspect différent : remplacement, insertion, suppression,
-// combinaisons de blocs, symétrie, fins de ligne, etc.
-//
-// Exécution : depuis la racine du dépôt,
 //   node --test test/js/conflits-blocs.test.js
 'use strict';
 
@@ -101,11 +98,11 @@ test('les deux sens sont symétriques', () => {
   const modifie = 'a\nB\nc\n';
   const bloc = { originalStartLineNumber: 2, originalEndLineNumber: 2, modifiedStartLineNumber: 2, modifiedEndLineNumber: 2 };
 
-  // Sens 1 : appliquer le bloc au texte original pour obtenir le modifié
+  // Sens 1 : le bloc appliqué à l'original donne le modifié.
   const resultat1 = appliquerBlocs(original, modifie, [bloc]);
   assert.strictEqual(resultat1, 'a\nB\nc\n', 'sens 1 : résultat incorrect');
 
-  // Sens 2 : appliquer le bloc inversé au texte modifié pour retrouver l'original
+  // Sens 2 : le bloc inversé appliqué au modifié redonne l'original.
   const blocInverse = inverserBloc(bloc);
   const resultat2 = appliquerBlocs(modifie, original, [blocInverse]);
   assert.strictEqual(resultat2, 'a\nb\nc\n', 'sens 2 (symétrie) : résultat incorrect');
@@ -166,7 +163,6 @@ test('copieConflitPour trouve la copie voisine, et rien d\'autre', () => {
   const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'conflits-blocs-'));
 
   try {
-    // Crée les fichiers
     const cheminOriginal = path.join(dossier, 'ausgabe.yaml');
     const cheminCopie = path.join(dossier, 'ausgabe-Copie en conflit.yaml');
     const cheminAutre = path.join(dossier, 'autre.yaml');
@@ -175,11 +171,9 @@ test('copieConflitPour trouve la copie voisine, et rien d\'autre', () => {
     fs.writeFileSync(cheminCopie, '');
     fs.writeFileSync(cheminAutre, '');
 
-    // copieConflitPour du fichier original doit retourner le chemin absolu de la copie
     const resultatCopie = copieConflitPour(cheminOriginal);
     assert.strictEqual(resultatCopie, cheminCopie, 'copieConflitPour n\'a pas trouvé la copie voisine');
 
-    // copieConflitPour sur le fichier autre doit retourner null (pas de copie)
     const resultatAutre = copieConflitPour(cheminAutre);
     assert.strictEqual(resultatAutre, null, 'copieConflitPour a trouvé une copie pour autre.yaml');
   } finally {

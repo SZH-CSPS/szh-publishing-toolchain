@@ -1,11 +1,8 @@
-// Contrôles des contrats de l'extension szh-cockpit, sans dépendance ni build.
+// Contrats de l'extension szh-cockpit, testés hors de l'éditeur (modules sans
+// require('vscode')). Deux familles : l'aller-retour (analyser puis sérialiser rend la
+// source intacte) et la cohérence (une valeur recopiée d'un fichier à l'autre concorde).
 //
 //   node --test test/js
-//
-// Ne couvre que les modules chargeables hors de l'éditeur, ceux qui n'appellent pas
-// require('vscode'). Deux familles de contrôle : l'aller-retour, où analyser puis
-// sérialiser doit rendre la source intacte ; et la cohérence, où une valeur recopiée d'un
-// fichier à l'autre doit concorder avec sa source.
 'use strict';
 
 const test = require('node:test');
@@ -29,12 +26,9 @@ const { sourceExtensionEtLib } = require('./hote-factice');
 
 const CHEMIN_EXTENSION = path.join(COCKPIT, 'extension.js');
 
-// Préalable au découpage d'extension.js : une chaîne qu'un contrat cherche aujourd'hui dans
-// extension.js peut demain vivre dans un module de lib/ — lire() rend donc la concaténation
-// des deux dès que le chemin demandé est extension.js, pour tous les contrats qui CHERCHENT
-// une chaîne. Exception : le contrat qui vérifie l'ABSENCE d'un littéral dans le code
-// d'extension.js (dépôt Word, plus bas) lit le fichier seul, sans quoi un littéral qui vit
-// légitimement dans lib/profil.js ferait échouer un contrôle qui ne parle que d'extension.js.
+// lire('…extension.js') rend extension.js suivi des modules de lib/ : une chaîne cherchée
+// peut vivre dans l'un ou l'autre. Le contrat qui vérifie l'absence d'un littéral dans
+// extension.js (dépôt Word, plus bas) lit le fichier seul.
 const lire = (...p) => {
   const chemin = path.join(RACINE, ...p);
   if (chemin === CHEMIN_EXTENSION) { return sourceExtensionEtLib(COCKPIT); }
@@ -73,24 +67,15 @@ test('ausgabe.yaml : une valeur relue est la valeur écrite', () => {
   }
 });
 
-// Défaut réel (01.09.2026) : la ligne qui suit immédiatement le BOM ne matchait pas la
-// regex de clé — son premier caractère n'étant plus alphanumérique — et la première clé du
-// fichier se lisait comme absente, en silence. serialiserAusgabe() retire le BOM depuis
-// toujours (test ci-dessus, « le BOM … sont préservés ») ; analyserAusgabe() ne le faisait
-// pas : un ausgabe.yaml ou buch.yaml enregistré par un éditeur Windows ou par `Out-File` de
-// PowerShell 5.1 perdait ainsi sa première clé.
+// Un éditeur Windows ou `Out-File` de PowerShell 5.1 écrit un BOM devant la première clé.
 test('ausgabe.yaml : le BOM ne fait pas perdre la première clé à la lecture', () => {
   const relu = yaml.analyserAusgabe('﻿' + 'titre: Livre\nannee: 2020\n');
   assert.strictEqual(relu.titre, 'Livre', 'la première clé après le BOM est tombée en silence');
   assert.strictEqual(relu.annee, '2020');
 });
 
-// Défaut réel (01.09.2026) : un `impression:` portant une valeur non vide (YAML douteux,
-// mais pas invalide) n'ouvrait pas de bloc côté sérialiseur — les sous-lignes indentées
-// restaient orphelines, et une sous-clé à écrire tombait dans la branche « bloc absent »,
-// qui en créait un SECOND en fin de fichier. Le fichier sortait avec deux clés top-level
-// `impression:`, l'ancienne gardant ses données orphelines : le contrat du sérialiseur est
-// que ce qu'il ne connaît pas traverse intact, jamais dupliqué en silence.
+// `impression:` suivi d'une valeur puis de sous-clés indentées : YAML douteux mais valide.
+// Le sérialiseur met la sous-clé à jour en place et ne crée pas de second bloc.
 test('buch.yaml : un « impression: » à valeur non vide n’est jamais dupliqué', () => {
   const src = 'titre: Livre\nimpression: quelque chose\n  grammage: 90\n  main: 1.2\nlocked: false\n';
   const sortie = yaml.serialiserAusgabe(src, { 'impression.grammage': '150' });
@@ -104,16 +89,13 @@ test('buch.yaml : un « impression: » à valeur non vide n’est jamais dupliqu
 
 // ---- Tableaux ----
 
-// decoderEntites() ne connaissait que les cinq entités nommées : un attribut collé qui
-// porte une référence numérique — « Café » copié depuis un tableau Excel/Word dont
-// l'encodage a tourné, par exemple — traversait tel quel, chiffres et dièse compris.
+// Un tableau collé depuis Excel ou Word peut porter des références numériques (&#233;).
 test('decoderEntites : les références numériques, décimales et hexadécimales, sont décodées', () => {
   assert.strictEqual(table.decoderEntites('&#233;'), 'é');
   assert.strictEqual(table.decoderEntites('&#xE9;'), 'é');
   assert.strictEqual(table.decoderEntites('&#XE9;'), 'é', 'le X majuscule doit aussi être reconnu');
   assert.strictEqual(table.decoderEntites('Caf&#233; &amp; th&#xe9;'), 'Café & thé');
-  // Un « &amp;#233; » littéral (l'esperluette elle-même échappée) ne doit pas se décoder
-  // deux fois en « é » : &amp; reste décodé en dernier, comme pour quot/apos/lt/gt.
+  // &amp; se décode en dernier : « &amp;#233; » ne devient pas « é ».
   assert.strictEqual(table.decoderEntites('&amp;#233;'), '&#233;');
 });
 
@@ -131,11 +113,9 @@ test('tableau : le texte à caractères réservés fait l’aller-retour', () =>
   assert.deepStrictEqual(relu, modele);
 });
 
-// Un en-tête sur DEUX rangées (une fusion au-dessus d'une rangée de titres, comme le
-// tableau des auteurs des imports Word) doit sortir en balisage complexe — id sur chaque
-// en-tête, scope col/colgroup, headers sur chaque cellule de données (WCAG H43, RGAA 5.7) —
-// et l'aller-retour doit conserver le compte. C'est le balisage que docx-tables.py écrit
-// à l'import : l'éditeur ne doit pas dire autre chose.
+// Un en-tête sur deux rangées sort en balisage complexe (WCAG H43, RGAA 5.7) : id sur chaque
+// en-tête, scope col/colgroup, headers sur chaque cellule. C'est aussi le balisage que
+// docx-tables.py écrit à l'import.
 test('tableau : deux rangées d’en-tête -> id, scope, headers, et aller-retour stable', () => {
   const base = table.analyserTable('<table><tr><td colspan="3">Identité</td></tr>'
     + '<tr><td>Nom</td><td>Prénom</td><td>ORCID</td></tr>'
@@ -154,11 +134,9 @@ test('tableau : deux rangées d’en-tête -> id, scope, headers, et aller-retou
   assert.deepStrictEqual(table.analyserTable(table.serialiserTable(relu)), relu);
 });
 
-// Titres de section (en-têtes intermédiaires), règle actée avec Robin (26.08.2026) :
-// une rangée fusionnée pleine largeur marquée « titre de section » donne son en-tête aux
-// rangées qui la suivent, jusqu'au prochain titre ; elle REMPLACE alors le titre de
-// groupe du thead, les en-têtes simples (une cellule par colonne) restant — exprimé en
-// headers= (WCAG H43, RGAA 5.7), seul lien que les lecteurs d'écran suivent exactement.
+// Une rangée fusionnée marquée « titre de section » sert d'en-tête aux rangées qui la
+// suivent, jusqu'au titre suivant. Elle remplace le titre de groupe du thead ; les en-têtes
+// de colonne restent. Le lien passe par headers=, que les lecteurs d'écran suivent exactement.
 test('tableau : un titre de section relaie le titre de groupe pour les rangées qui suivent', () => {
   let m = table.analyserTable('<table><tr><td colspan="3">Article 2025</td></tr>'
     + '<tr><td>Titre</td><td>Caractères</td><td>DOI</td></tr>'
@@ -182,10 +160,9 @@ test('tableau : un titre de section relaie le titre de groupe pour les rangées 
     'sans le rôle, la rangée fusionnée doit redevenir une cellule de données');
 });
 
-// Titre de section PARTIEL (précision de Robin, 26.08.2026, sur capture) : une fusion de
-// 2 colonnes sur 3 marquée titre ne couvre QUE ses colonnes — la cellule restante de sa
-// rangée reste une donnée, et la colonne non couverte garde le titre de groupe du thead.
-// La fusion existante n'est PAS étendue à toute la rangée par l'opération.
+// Une fusion de 2 colonnes sur 3 marquée titre ne couvre que ses colonnes : la cellule
+// restante reste une donnée, la colonne non couverte garde le titre de groupe du thead, et
+// la fusion n'est pas étendue.
 test('tableau : un titre de section partiel ne couvre que les colonnes de sa fusion', () => {
   let m = table.analyserTable('<table><tr><td colspan="3">Article 2025</td></tr>'
     + '<tr><td>Titre</td><td>Caractères</td><td>DOI</td></tr>'
@@ -207,9 +184,8 @@ test('tableau : un titre de section partiel ne couvre que les colonnes de sa fus
   assert.deepStrictEqual(relu, m, 'aller-retour instable avec un titre partiel');
 });
 
-// Le sens transposé de la même règle : un en-tête de ligne FUSIONNÉ (rowspan, colonne de
-// gauche) donne son groupe aux rangées qu'il couvre, l'en-tête simple de la 2e colonne
-// donne sa ligne — la géométrie du rowspan fait le « jusqu'où », pas de marqueur à poser.
+// Même règle en colonnes : un en-tête de ligne fusionné (rowspan) donne son groupe aux
+// rangées qu'il couvre ; le rowspan suffit, sans marqueur.
 test('tableau : en-tête de ligne fusionné = groupe, en-tête simple = sa ligne', () => {
   let m = table.analyserTable('<table><tr><td rowspan="2">Groupe A</td><td>L1</td><td>1</td></tr>'
     + '<tr><td>L2</td><td>2</td></tr></table>');
@@ -225,9 +201,8 @@ test('tableau : en-tête de ligne fusionné = groupe, en-tête simple = sa ligne
 
 // ---- Slug : le miroir du Makefile ----
 
-// B1 (26.08.2026, demande de Robin) : le numéro de tête d'un Word ne nomme plus le
-// dossier — il ne survivait pas à un déplacement dans l'ordre. Le slug ne le porte plus
-// du tout ; numeroOrdreArticle() ci-dessous est ce qui le récupère pour ausgabe.yaml.
+// Le numéro de tête d'un Word n'entre pas dans le slug ; numeroOrdreArticle() le récupère
+// pour ausgabe.yaml.
 test('slug d’article : mêmes règles que le Makefile', () => {
   assert.strictEqual(slug.slugifierArticle('4_Titre'), 'titre');
   assert.strictEqual(slug.slugifierArticle('10_Actualité et ressources'),
@@ -243,13 +218,9 @@ test('numéro d’ordre d’un Word : capté avant de disparaître du slug', () 
     'un titre sans numéro de tête ne doit pas en inventer un');
 });
 
-// Régression du 31.08.2026 au 01.09.2026 : `^[0-9]+-` appliqué APRÈS slugifier() ne peut
-// plus distinguer un vrai numéro de tête (séparateur explicite `_` ou `-`, comme
-// « 4_Titre » ou le « 01-… » que chapitres-word/LISEZ-MOI.txt et articles-word/LISEZ-MOI.txt
-// donnent comme convention) d'un nombre qui fait partie du titre lui-même et que slugifier()
-// a fait suivre d'un tiret à la place de son espace d'origine. « 2024 en chiffres » perdait
-// son 2024, ET numeroOrdreArticle() le prenait pour un numéro d'ordre, rangeant l'article en
-// 2024ᵉ position.
+// Un numéro de tête est suivi d'un séparateur explicite `_` ou `-` (« 4_Titre », « 01-… »).
+// Un nombre suivi d'une espace fait partie du titre (« 2024 en chiffres »). La distinction
+// se fait sur le nom brut, avant slugifier(), qui change l'espace en tiret.
 test('slug d’article : un nombre qui fait partie du titre n’est pas amputé', () => {
   assert.strictEqual(slug.slugifierArticle('2024 en chiffres.docx'), '2024-en-chiffres');
   assert.strictEqual(slug.numeroOrdreArticle('2024 en chiffres.docx'), null,
@@ -263,32 +234,18 @@ test('slug d’article : un nombre qui fait partie du titre n’est pas amputé'
   assert.strictEqual(slug.numeroOrdreArticle('12-Titre.docx'), 12);
 });
 
-// ⚠ Cette distinction (séparateur explicite `_`/`-` vs espace du titre) n'existe qu'ici :
-// pipeline/Makefile applique encore, sans condition, `sed -E 's/^[0-9]+-//'` (~L547) au slug
-// déjà collapsé — où l'espace de « 2024 en chiffres » est devenu le même tiret que le
-// séparateur de « 4_Titre ». Un import en CLI pur (make import, hors cockpit) ampute donc
-// encore un titre commençant par un nombre légitime ; voir le repère laissé dans le Makefile
-// (~L486, commentaire de synchronisation) pour la correction à y reporter : tester le nom
-// BRUT, avant la translittération/minuscule/collapse-en-tirets (Makefile ~L543-546), avec
-// un motif du type `case "$$slug" in [0-9]*[_-]*) a_un_numero=1;; esac`, et n'appliquer le
-// sed de retrait qu'à cette condition — exactement ce qu'aUnNumeroDeTete() fait côté JS.
-
-// Le point de conception de B1 : retirer le préfixe sans rien faire d'autre perdrait en
-// silence l'ordre que le rédacteur a mis dans la numérotation de ses Word. Dix fichiers,
-// numérotés 1 à 10 (donc un au-delà de 9, le cas qui motivait jadis le complément à deux
-// chiffres) et dont les titres, triés alphabétiquement, donneraient un tout autre ordre.
+// Dix Word numérotés de 1 à 10, dont l'ordre alphabétique des titres diffère de l'ordre
+// des numéros : le numéro doit passer dans ordre-articles.
 test('ordre du rédacteur : le numéro du Word migre vers ordre-articles sans se perdre', () => {
   const mots = [
     '1_Zebre.docx', '2_Alpha.docx', '3_Yak.docx', '4_Bison.docx', '5_Wapiti.docx',
     '6_Chevre.docx', '7_Vache.docx', '8_Dromadaire.docx', '9_Uranus.docx', '10_Elan.docx'
   ];
   const slugs = mots.map(slug.slugifierArticle);
-  // Le slug ne porte plus aucune trace du numéro : c'est tout le sens de B1.
   assert.ok(slugs.every((s) => !/^[0-9]/.test(s)),
     'un slug commence encore par un chiffre : ' + JSON.stringify(slugs));
 
-  // Ce que le cockpit doit écrire dans `ordre-articles` à l'import : le numéro reste
-  // capté par numeroOrdreArticle(), et permet de reconstituer l'ordre voulu.
+  // L'ordre que le cockpit écrit dans `ordre-articles` à l'import.
   const ordreInitial = mots
     .map((nom) => ({ slug: slug.slugifierArticle(nom), numero: slug.numeroOrdreArticle(nom) }))
     .sort((a, b) => a.numero - b.numero)
@@ -297,10 +254,8 @@ test('ordre du rédacteur : le numéro du Word migre vers ordre-articles sans se
     ['zebre', 'alpha', 'yak', 'bison', 'wapiti', 'chevre', 'vache', 'dromadaire', 'uranus', 'elan'],
     'l’ordre du rédacteur ne survit pas au retrait du préfixe numérique');
 
-  // Le repli qui reste dans extension.js une fois le préfixe retiré — un tri alphabétique
-  // des noms de dossier — donnerait un tout autre ordre : la preuve que cet ordre n'est
-  // plus, par accident, le bon, et que le numéro doit vraiment être écrit dans
-  // ordre-articles avant que ce repli ne s'applique.
+  // Le repli d'extension.js (tri alphabétique des dossiers) doit donner un autre ordre,
+  // sans quoi le test ne prouverait rien.
   const parRepliAlphabetique = slugs.slice().sort((a, b) => a.localeCompare(b, 'fr'));
   assert.notDeepStrictEqual(parRepliAlphabetique, ordreInitial,
     'ce contrôle ne prouve rien si le repli alphabétique retombe sur le bon ordre par hasard');
@@ -358,11 +313,9 @@ test('attributs d’image : la classe .szh-hors-figure est celle du filtre du pi
 
 // ---- Grilles d’images ----
 //
-// Une grille est une figure faite de plusieurs images. Trois choses peuvent casser sans
-// bruit, et ce sont celles-ci qu'on éprouve : le bloc écrit dans le .md, qui doit rester
-// relisible par le filtre ; la légende, qui n'appartient qu'à la première image ; et la
-// table des dispositions, recopiée dans le filtre Lua parce que Lua et JS ne partagent
-// rien — une divergence donnerait un menu qui propose ce que le rendu ne sait pas faire.
+// Une grille est une figure faite de plusieurs images. On éprouve le bloc écrit dans le .md,
+// qui doit rester lisible par le filtre ; la légende, qui n'appartient qu'à la première
+// image ; et la table des dispositions, recopiée dans le filtre Lua.
 
 const MD_DEUX = [
   'Un paragraphe.',
@@ -380,13 +333,13 @@ const MD_DEUX = [
 test('grille : deux images côte à côte, et l’une déménage', () => {
   const pose = refs.poserDansGrille(MD_DEUX, 'a.png', 'b.png');
   assert.strictEqual(pose.ok, true, 'grille refusée : ' + pose.motif);
-  // b.png était insérée ailleurs : elle est DÉPLACÉE, pas dupliquée.
+  // b.png était insérée ailleurs : elle est déplacée, pas dupliquée.
   assert.strictEqual(refs.lireAttributsImage(pose.texte, 'b.png').n, 1);
   const grilles = refs.lireGrilles(pose.texte);
   assert.strictEqual(grilles.length, 1);
   assert.deepStrictEqual(grilles[0].membres.map((m) => m.relatif), ['a.png', 'b.png']);
-  // Elle emporte son texte alternatif et ses crédits, jamais sa légende : la figure n'en
-  // porte qu'une, celle de son ancre.
+  // Elle emporte son texte alternatif et ses crédits, mais pas sa légende : la figure n'a
+  // que celle de la première image.
   assert.strictEqual(pose.legendePerdue, true);
   assert.strictEqual(refs.lireAttributsImage(pose.texte, 'b.png').alt, 'desc B');
   assert.strictEqual(refs.lireAttributsImage(pose.texte, 'b.png').legende, '');
@@ -395,8 +348,8 @@ test('grille : deux images côte à côte, et l’une déménage', () => {
 
 test('grille : la légende d’une image suivante ne s’écrit jamais', () => {
   const pose = refs.poserDansGrille(MD_DEUX, 'a.png', 'b.png');
-  // Le formulaire peut envoyer n'importe quoi — une saisie faite avant que la carte ne
-  // soit verrouillée, par exemple : c'est l'écriture qui tranche.
+  // Le formulaire peut envoyer une légende (saisie faite avant le verrouillage de la carte) :
+  // c'est l'écriture qui l'écarte.
   const ecrit = refs.ecrireAttributsImage(pose.texte, 'b.png',
     { legende: 'NE DOIT PAS SORTIR', alt: 'desc B', altDefini: true });
   assert.strictEqual(ecrit.texte.indexOf('NE DOIT PAS SORTIR'), -1,
@@ -435,20 +388,19 @@ test('grille : retirer de la figure ôte l’image d’à côté et ne touche à
   const avant = refs.lireGrilles(md)[0];
   assert.strictEqual(avant.membres.length, 3);
 
-  // « Retirer de la figure » : l'image quitte la grille ET le texte. Le fichier, lui,
-  // reste dans l'article — sa carte doit pouvoir le réinsérer ailleurs.
+  // « Retirer de la figure » : l'image quitte la grille et le texte, mais le fichier reste
+  // dans l'article pour être réinséré ailleurs.
   const ote = refs.retirerDeGrille(md, 'b.png', { garderDansTexte: false });
   assert.strictEqual(ote.ok, true);
   assert.strictEqual(refs.lireAttributsImage(ote.texte, 'b.png').n, 0,
     '« retirer de la figure » a laissé une insertion derrière lui');
-  // Ce à quoi il ne doit PAS toucher : l'image d'à côté, la figure, sa légende.
+  // L'image d'à côté, la figure et sa légende restent intactes.
   const apres = refs.lireGrilles(ote.texte)[0];
   assert.deepStrictEqual(apres.membres.map((m) => m.relatif), ['a.png', 'c.png']);
   assert.strictEqual(refs.lireAttributsImage(ote.texte, 'a.png').legende, 'Une légende');
   assert.strictEqual(refs.lireAttributsImage(ote.texte, 'c.png').n, 1);
 
-  // Une de plus, et la grille se dissout : ce qui reste redevient une figure ordinaire,
-  // toujours dans l'article.
+  // Une de plus, et la grille se dissout : ce qui reste redevient une figure ordinaire.
   const derniere = refs.retirerDeGrille(ote.texte, 'c.png', { garderDansTexte: false });
   assert.strictEqual(refs.lireGrilles(derniere.texte).length, 0);
   assert.strictEqual(refs.lireAttributsImage(derniere.texte, 'a.png').n, 1);
@@ -468,7 +420,7 @@ test('grille : les deux sorties diffèrent par une seule chose, le texte', () =>
     refs.lireGrilles(otee.texte)[0].membres.map((m) => m.relatif));
   assert.strictEqual(refs.lireAttributsImage(gardee.texte, 'b.png').n, 1);
   assert.strictEqual(refs.lireAttributsImage(otee.texte, 'b.png').n, 0);
-  // Le défaut, sans option, est le geste doux : on ne retire rien du texte sans le dire.
+  // Sans option, l'image reste dans le texte.
   assert.strictEqual(refs.retirerDeGrille(trois, 'b.png').texte, gardee.texte);
 });
 
@@ -498,14 +450,13 @@ test('grille : normaliser remet d’aplomb ce qu’une suppression a laissé', (
 });
 
 test('grille : le mode automatique suit le format des images', () => {
-  // Deux panoramas l'un sur l'autre — côte à côte ils feraient un bandeau ; deux portraits
-  // côte à côte. C'est la seule règle du mode, et c'est celle qu'on éprouve.
+  // Deux panoramas l'un sur l'autre, deux portraits côte à côte.
   assert.strictEqual(refs.dispositionAutomatique(2, [3, 3]), '1-1');
   assert.strictEqual(refs.dispositionAutomatique(2, [0.75, 0.75]), '2');
   assert.strictEqual(refs.dispositionAutomatique(4, [1.5, 1.5, 1.5, 1.5]), '2-2');
   assert.strictEqual(refs.dispositionAutomatique(5, [1.5, 1.5, 1.5, 1.5, 1.5]), '3-2');
   assert.strictEqual(refs.dispositionAutomatique(6, [1.5, 1.5, 1.5, 1.5, 1.5, 1.5]), '3-3');
-  // Une seule mesure manquante et le calcul ne veut plus rien dire : on rend le repli.
+  // Une mesure manquante : on rend la disposition par défaut.
   assert.strictEqual(refs.dispositionAutomatique(4, [1.5, null, 1.5, 1.5]),
     refs.dispositionParDefaut(4));
   // Hors de la table : rien à proposer, le formulaire n'offre pas de menu.
@@ -526,9 +477,8 @@ test('grille : chaque disposition offerte totalise bien son nombre d’images', 
 });
 
 test('grille : la table des dispositions est la même dans le cockpit et dans le filtre', () => {
-  // Lua et JS ne partagent rien : la table est recopiée dans szh-grille.lua. Une
-  // divergence donnerait un menu proposant ce que le rendu ne sait pas composer — et
-  // personne ne le verrait avant l'impression.
+  // La table est recopiée dans szh-grille.lua. Une divergence ferait proposer au menu une
+  // disposition que le rendu ne sait pas composer.
   const lua = lire('pipeline', 'filters', 'szh-grille.lua');
   for (let n = 2; n <= refs.GRILLE_MAX; n++) {
     const attendu = '[' + n + '] = { '
@@ -558,21 +508,18 @@ test('grille : le filtre est branché dans les deux chaînes, avant szh-figure',
 });
 
 test('grille : partage-filtres.css met en page les rangées que le filtre écrit', () => {
-  // Ces règles vivaient dans print.css ; elles sont depuis dans partage-filtres.css, la
-  // feuille empilée juste avant, commune à la revue et au livre — une grille vaut pour
-  // les deux. On lit les deux feuilles comme une seule, dans l'ordre de la pile.
+  // Les règles vivent dans partage-filtres.css, commune à la revue et au livre et empilée
+  // avant print.css. On lit les deux feuilles dans l'ordre de la pile.
   const css = lire('pipeline', 'styles', 'partage-filtres.css') + lire('pipeline', 'styles', 'print.css');
   for (const regle of ['.szh-grille-rangee', '.szh-grille-case']) {
     assert.ok(css.includes(regle), 'règle absente de partage-filtres.css/print.css : ' + regle);
   }
-  // La base nulle est ce qui fait la mise en page justifiée : sans elle, le flex-grow
-  // écrit par le filtre ne donne plus des hauteurs égales, mais des largeurs au hasard.
+  // Sans base nulle, le flex-grow écrit par le filtre ne donne plus des hauteurs égales.
   assert.match(css, /\.szh-grille-case\s*\{[^}]*flex-basis:\s*0/,
     'la case de grille n’a plus sa base nulle : la mise en page justifiée tombe');
-  // Écran étroit : la rangée se défait. La requête est imbriquée dans un « @media screen »
-  // nu — WeasyPrint 69 ne connaît pas les caractéristiques de média et hurlerait à chaque
-  // article si elle était écrite à plat. Le contrôle porte sur cette forme-là, la remettre
-  // à plat étant la correction « évidente » que quelqu'un fera un jour.
+  // Sur écran étroit, la rangée se défait. La requête reste imbriquée dans un
+  // « @media screen » nu : WeasyPrint ne connaît pas les caractéristiques de média et
+  // avertirait à chaque article si elle était écrite à plat.
   assert.match(css, /@media screen\s*\{\s*\n\s*@media \(max-width: [^)]+\)\s*\{\s*\n\s*\.szh-grille-rangee\s*\{\s*display:\s*block/,
     'la grille ne se replie pas sur écran étroit, ou sa requête n’est plus imbriquée');
 });
@@ -624,16 +571,13 @@ test('qualité : l’option « réduit » tait le conseillé, sans toucher le mi
   assert.strictEqual(v('figure', 2400, 600).niveau, 'ok');
   assert.strictEqual(v('figure', 10, 10, 'logo.svg').niveau, 'vectoriel');
   assert.strictEqual(qualite.qualiteImage('figure', null, 'x.png', { reduit: true }).niveau, 'inconnu');
-  // Sans option, ou option éteinte : comportement historique — les appels existants ne
-  // changent pas de verdict.
+  // Sans option, ou option éteinte : verdict complet.
   assert.strictEqual(qualite.qualiteImage('figure', { largeur: 1500, hauteur: 600 }, 'x.png').niveau, 'juste');
   assert.strictEqual(
     qualite.qualiteImage('portrait', { largeur: 2000, hauteur: 600 }, 'x.png', { reduit: false }).niveau,
     'juste');
 });
 
-// Le réglage qui porte cette option : déclaré au manifeste (défaut prudent : warnings
-// complets), décrit en français et en allemand, lu et écrit par le panneau des réglages.
 test('le réglage « réduire les warnings d’impression » est déclaré, traduit et branché', () => {
   const pkg = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.json'));
   const prop = pkg.contributes.configuration.properties['szh.reduireWarningsImpression'];
@@ -643,8 +587,7 @@ test('le réglage « réduire les warnings d’impression » est déclaré, trad
   const nlsDe = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.nls.de.json'));
   assert.ok('config.reduireWarningsImpression' in nls, 'description française absente');
   assert.ok('config.reduireWarningsImpression' in nlsDe, 'description allemande absente');
-  // Le panneau des réglages lit et écrit ce réglage, et les trois verdicts de l'hôte
-  // portent l'option — sans quoi le réglage existerait sans effet, panne muette.
+  // Le panneau écrit le réglage et les trois appels de l'hôte le transmettent.
   const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
   assert.ok(src.includes("update('reduireWarningsImpression'"),
     'aucune branche d’écriture du réglage dans extension.js');
@@ -657,9 +600,8 @@ test('le réglage « réduire les warnings d’impression » est déclaré, trad
   assert.ok(hote.includes("msg.cle === 'warnings'"), 'l’hôte ne traite plus le groupe warnings');
 });
 
-// Même contrat que ci-dessus, pour l'option qui coupe le lien entre appel et référence — avec
-// en plus le relais vers le filtre Lua, qui ne partage aucune mémoire avec VSCodium : seul
-// config.json, monté depuis WSL, porte la décision jusqu'à la compilation.
+// Le filtre Lua ne voit pas les réglages de VSCodium : le réglage lui parvient par
+// config.json.
 test('le réglage « désactiver les liens des références » est déclaré, traduit et branché jusqu’au filtre', () => {
   const pkg = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.json'));
   const prop = pkg.contributes.configuration.properties['szh.desactiverLiensReferences'];
@@ -681,16 +623,15 @@ test('le réglage « désactiver les liens des références » est déclaré, tr
     'le réglage n’est pas répercuté dans config.json — le filtre Lua ne le verra jamais');
   const panneau = lire('vscodium-extension', 'szh-cockpit', 'media', 'accueil.js');
   assert.match(panneau, /choix\([^,]+, 'liensReferences'/, 'groupe absent de l’onglet Paramètres de l’Accueil');
-  // Le filtre lit la même clé, dans le même fichier, et ne coupe que le Link — pas l'ancre.
+  // Le filtre ne coupe que le Link, pas l'ancre.
   const lua = lire('pipeline', 'filters', 'szh-citations.lua');
   assert.match(lua, /cfg\.desactiverLiensReferences/, 'le filtre ne lit pas la clé de config.json');
-  // `faire` (qui fabrique le Link) n'est plus posé ici même : depuis la flèche retour, savoir
-  // si CETTE occurrence est la première de sa référence exige de voir tout le paragraphe —
-  // seul id_ref voyage dans la plage, et c'est ce que la garde doit encore conditionner.
+  // Le Link se fabrique plus tard, sur tout le paragraphe : la garde porte sur la plage qui
+  // transporte id_ref.
   assert.match(lua, /if not LIENS_DESACTIVES then\s*\n\s*plages\[#plages \+ 1\] = \{ s = ds, e = de, id_ref = cands\[1\]\.id/,
     'le filtre ne conditionne pas la pose de l’appel sur le réglage');
-  // Une seule garde dans tout le fichier : la définition du drapeau, puis ce test — jamais
-  // près de la pose du Div ancré (pandoc.Attr(f.id, …)), qui doit rester inconditionnelle.
+  // Deux occurrences : la définition du drapeau et cette garde. La pose du Div ancré
+  // (pandoc.Attr(f.id, …)) reste inconditionnelle.
   assert.strictEqual((lua.match(/LIENS_DESACTIVES/g) || []).length, 2,
     'LIENS_DESACTIVES ne doit conditionner que la pose du Link, pas l’ancre de la référence');
 });
@@ -722,9 +663,8 @@ test('ordre des images : celui du texte, cibles encodées et sous-dossiers compr
 
 test('print.css : toute image est contrainte à la colonne, figure ou non', () => {
   const css = lire('pipeline', 'styles', 'print.css');
-  // Une image « hors numérotation » sans crédits n'est pas dans une <figure> : sans une
-  // règle sur `img`, un fichier de 2000 px — la largeur que lib/qualite-image.js
-  // conseille — déborderait de la page A4.
+  // Une image hors numérotation sans crédits n'est pas dans une <figure> : sans règle sur
+  // `img`, une image de 2000 px (la largeur conseillée) déborderait de la page.
   assert.match(css, /^img \{[^}]*max-width:\s*100%/m,
     'aucune règle max-width sur `img` : une image hors figure déborde');
 });
@@ -799,8 +739,8 @@ test('CMJN : le nombre de composantes se lit même derrière un gros profil ICC'
   // Un JPEG minimal : SOI, un APP2 de la taille voulue, un SOF0 à N composantes, EOI.
   const jpeg = (composantes, remplissage) => {
     const morceaux = [Buffer.from([0xff, 0xd8])];
-    // La longueur d'un segment tient sur 16 bits : un profil ICC volumineux est découpé en
-    // plusieurs APP2, exactement comme le fait une chaîne d'imprimerie.
+    // La longueur d'un segment tient sur 16 bits : un gros profil ICC est découpé en
+    // plusieurs APP2.
     let reste = remplissage;
     while (reste > 0) {
       const morceau = Math.min(reste, 65000);
@@ -857,17 +797,14 @@ test('CMJN : le convertisseur du pipeline et son appelant se repondent', () => {
 test('médias : la webview et l’hôte plafonnent les dépôts pareil', () => {
   const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
   const medias = lire('vscodium-extension', 'szh-cockpit', 'lib', 'medias.js');
-  // Aucune webview ne recalcule plus le plafond elle-même : SZH.LIMITES (media/_commun.js)
-  // n'est plus qu'un repli, alimenté par le `limites` que l'hôte envoie dans son message
-  // de chargement (limitesMedias(), extension.js). Un octet littéral (1024 * 1024) qui
-  // reviendrait dans l'une de ces quatre webviews serait la preuve d'une seconde source.
+  // Les plafonds viennent de l'hôte (`limites`, construit par limitesMedias()). Un
+  // « 1024 * 1024 » écrit dans une webview serait une seconde source.
   for (const nom of ['medias-article.js', '_auteurs.js', 'import-verif.js', 'documentation.js']) {
     const texte = lire('vscodium-extension', 'szh-cockpit', 'media', nom);
     assert.ok(!/\d\s*\*\s*1024\s*\*\s*1024/.test(texte),
       nom + ' porte encore un plafond en octets écrit en dur : il doit venir de l’hôte');
   }
-  // L'hôte construit `limites` depuis une seule fonction, elle-même depuis lib/medias.js
-  // (l'image) et ses propres constantes (la photo) : jamais recopiées à la main.
+  // limitesMedias() lit lib/medias.js pour l'image et les constantes de l'hôte pour la photo.
   assert.match(medias, /const TAILLE_MAX_IMAGE_IMPORT = /,
     'lib/medias.js ne porte plus le plafond des images, plus rien à envoyer aux webviews');
   assert.match(src, /function limitesMedias\(\)/,
@@ -911,11 +848,9 @@ test('import : les noms de versions de portrait sont ceux que le cockpit relit',
 // ---- Cohérence entre fichiers ----
 
 test('bandeau DOI : le cockpit dépose dois-calcules.yaml et la maquette le relit', () => {
-  // Le DOI ne se saisit plus et l'import ne l'écrit plus : sans ce relais, le template
-  // ($if(doi)$) n'imprimerait plus jamais de bandeau sur un nouvel article, pendant que
-  // l'export OJS en déclarerait un. Le calcul vit dans le cockpit (lib/articles.js, un
-  // seul rang) ; le pipeline ne fait que lire le fichier dérivé. Trois maillons, un nom :
-  // s'ils divergent, le bandeau meurt en silence — d'où ce contrat.
+  // Le DOI est calculé par le cockpit (lib/articles.js), qui l'écrit dans
+  // dois-calcules.yaml ; le pipeline le relit pour le template ($if(doi)$). Si un des trois
+  // maillons change de nom, le bandeau disparaît sans erreur.
   const ext = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
   assert.match(ext, /NOM_DOIS_CALCULES = 'dois-calcules\.yaml'/,
     'le cockpit n’écrit plus le fichier dérivé des DOI');
@@ -939,12 +874,9 @@ test('la distro WSL est la même dans le code et dans tasks.json', () => {
   }
 });
 
-// Compiler en parallèle et journaliser sont deux besoins qui se contredisent : `-j` fait
-// écrire deux recettes en même temps, et lib/journal.js relit .szh-journal.log ligne à ligne
-// pour attribuer chaque avertissement à un article. Sans `-O` (--output-sync), les lignes de
-// l'article B s'intercalent au milieu de celles de l'article A, et le cockpit accuse le
-// mauvais article — un défaut qui ne se voit qu'à la lecture du panneau, jamais au build.
-// Ce test ne réclame pas `-j` : il interdit `-j` SANS `-O`, partout où le cockpit lance make.
+// lib/journal.js attribue chaque ligne de .szh-journal.log à un article. Avec `-j` sans
+// `-O` (--output-sync), les lignes de deux articles s'entrelacent et l'avertissement est
+// attribué au mauvais article. Le test refuse `-j` sans `-O` partout où make est lancé.
 test('aucune compilation parallèle ne part sans --output-sync', () => {
   // Les jetons d'une commande, qu'elle vienne d'un `bash -c` (tasks.json) ou d'un tableau
   // d'arguments (ProcessExecution). Les guillemets simples du source JS sont retirés.
@@ -977,12 +909,9 @@ test('aucune compilation parallèle ne part sans --output-sync', () => {
   assert.ok(vus > 0, 'plus aucune tâche ne compile en parallèle : le gain de -j est perdu');
 });
 
-// pipeline/profil-book-sans-fichier (Makefile:242) écrit la prose que lib/journal.js doit
-// reconnaître pour produire pipeline/profil-differe (lirePipeline) : la regex avait dérivé
-// de la prose — « profil « book » » attendu, « Ce dossier déclare « profil: book » … »
-// écrit — et le constat ne pouvait plus jamais apparaître (revue F03, 22.09.2026). Ce test
-// lit le Makefile réel et la fait passer dans journal.js : une reformulation de l'un des
-// deux sans l'autre le fait échouer, ce qu'aucun test ne voyait avant.
+// La cible profil-book-sans-fichier du Makefile écrit une phrase que lib/journal.js
+// reconnaît pour produire le constat pipeline/profil-differe. Le test fait passer la phrase
+// réelle du Makefile dans journal.js.
 test('profil-differe : la prose que le Makefile écrit est celle que journal.js reconnaît', () => {
   const makefile = lire('pipeline', 'Makefile');
   const m = /@echo "\[pipeline\] (Ce dossier déclare[^"]*)"/.exec(makefile);
@@ -992,10 +921,8 @@ test('profil-differe : la prose que le Makefile écrit est celle que journal.js 
     'lib/journal.js ne reconnaît plus la prose de profil-book-sans-fichier : « ' + m[1] + ' »');
 });
 
-// typo et metafichier suivent le même mécanisme générique que scission (familleCode() de
-// lib/journal.js reconnaît tout préfixe « <source>-<ton> » sans code à ajouter) : seule
-// l'étiquette de section peut manquer, et la carte se serait affichée sous
-// « ctl.source.pipeline » (revue F03, 22.09.2026).
+// familleCode() (lib/journal.js) reconnaît tout préfixe « <source>-<ton> » ; seule
+// l'étiquette de section peut manquer, et la carte s'afficherait sous « ctl.source.pipeline ».
 test('SOURCES_CONSTAT (lib/controles-hote.js) connaît typo et metafichier, avec leur clé traduite', () => {
   const src = lire('vscodium-extension', 'szh-cockpit', 'lib', 'controles-hote.js');
   const i = src.indexOf('const SOURCES_CONSTAT');
@@ -1020,16 +947,9 @@ test('les libellés de tâches attendus par le code existent dans tasks.json', (
   }
 });
 
-// Le littéral doit être l'argument d'un VRAI appel d'enregistrement — registerCommand(,
-// cmd( ou cmdEcriture( (les deux raccourcis d'extension.js, ligne ~6582), ou leur pendant
-// à une lettre dans lib/formatting.js et lib/panneaux.js (`const c = (id, fn) => …
-// registerCommand(id, fn)`) — et pas n'importe où dans lib/+extension.js concaténés : un
-// simple `assert.ok(src.includes(...))` reste vert même quand la commande n'est plus
-// enregistrée nulle part, tant que son littéral survit ailleurs (une table de libellés, un
-// commentaire…). Preuve : renommer l'appel réel `registerCommand('szh.vueWord', …)` en
-// 'szh.vueWordCASSE' laissait ce test vert avant ce correctif, le littéral 'szh.vueWord'
-// survivant à la fois dans VUE_SECTION (extension.js) et dans lib/constats.js — seul
-// controles.test.js voyait la casse, via HOTE.executer('szh.vueWord').
+// Le nom de commande doit être l'argument d'un appel d'enregistrement : registerCommand(,
+// cmd(, cmdEcriture( ou c( (raccourci de lib/formatting.js et lib/panneaux.js). Chercher le
+// littéral n'importe où ne suffit pas : il survit dans des tables de libellés.
 test('chaque commande déclarée dans package.json est enregistrée dans le code', () => {
   const pkg = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.json'));
   const src = fs.readdirSync(path.join(COCKPIT, 'lib'))
@@ -1176,10 +1096,8 @@ test('les traductions fr et de couvrent les mêmes clés, avec les mêmes repèr
   assert.strictEqual(Object.keys(textes.de).length, Object.keys(textes.fr).length);
 });
 
-// textesTable() (lib/table-hote.js) traduit une liste de clés, et non des littéraux
-// `nom: T(...)` que le contrôle des webviews sait lire. Une clé absente d'i18n n'échoue
-// pas : T() la rend telle quelle, et l'éditeur de tableau affiche « table.x » — c'est
-// arrivé avec table.alt.aide, demandée pendant des mois sans jamais être traduite.
+// textesTable() (lib/table-hote.js) traduit une liste de clés. Une clé absente d'i18n
+// n'échoue pas : T() la rend telle quelle et l'éditeur affiche « table.x ».
 test('chaque clé demandée par textesTable existe dans les traductions', () => {
   const src = lire('vscodium-extension', 'szh-cockpit', 'lib', 'table-hote.js');
   const i = src.indexOf('function textesTable');
@@ -1226,11 +1144,8 @@ test('chaque libellé utilisé par une webview est fourni par l’hôte', () => 
   };
   // La fiche d'auteur·e est partagée par les trois vues : ses libellés viennent de
   // textesAuteur(), qu'Object.assign ajoute à chaque table.
-  // Trois entrees de textesNumero() et textesArticles() ne sont pas des textes mais des
-  // tables : `libelles` porte les intitules des champs indexes par cle i18n, `couleurs` la
-  // palette du numero, `revues` le nom des deux revues. L'extraction ci-dessus ne voit que
-  // les `nom: T(...)`, d'ou cette liste ; leur contenu est controle par
-  // test/js/articles.test.js, qui compare la table de champs du fragment aux cles envoyees.
+  // TABLES : entrées qui ne sont pas des textes T(...) mais des tables (intitulés de champs,
+  // palette, noms des revues…). Leur contenu est contrôlé par test/js/articles.test.js.
   const TABLES = ['libelles', 'couleurs', 'revues', 'couvertureExtensions', 'couvertureMax'];
   const auteur = cles('textesAuteur');
   const communes = new Set([...cles('textesCarteArticle'), ...auteur]);
@@ -1247,39 +1162,28 @@ test('chaque libellé utilisé par une webview est fourni par l’hôte', () => 
       libelles: new Set([...cles('textesMedias'), ...auteur]),
       fragments: ['_commun.js', '_auteurs.js']
     },
-    // Les libellés des champs par type (typesConfig, typesRubrique) ne passent pas par
-    // TXT.xxx — ils arrivent dans une table à part, comme `libelles` de textesNumero() plus
-    // bas — d'où leur absence de cette liste, qui ne surveille que les TXT.xxx littéraux du
-    // script. La page porte les DEUX familles depuis le 02.09.2026 (fiches et rubriques),
-    // donc une seule fonction hôte pour les deux séries de libellés. Les champs d'une fiche
-    // vivent dans media/_fiche-doc.js, qui lit ses libellés par txt().xxx.
+    // Les libellés des champs par type (typesConfig, typesRubrique) arrivent dans une table
+    // à part. Les champs d'une fiche vivent dans media/_fiche-doc.js, qui lit ses libellés
+    // par txt().xxx.
     'documentation': {
       libelles: cles('textesDocumentation'),
       fragments: ['_commun.js', '_fiche-doc.js']
     },
-    // Le formulaire du numero et la vue « Articles » partagent media/_numero.js : ses
-    // libelles viennent de textesNumero(), qu'Object.assign ajoute a la table de la vue.
+    // Le formulaire du numéro et la vue « Articles » partagent media/_numero.js : ses
+    // libellés viennent de textesNumero(), qu'Object.assign ajoute à la table de la vue.
     'metadata-issue': {
       libelles: new Set([...cles('textesNumero'), ...TABLES]),
       fragments: ['_commun.js', '_numero.js']
     },
     'articles': {
-      // `estLivre` n'est pas un texte mais un drapeau : l'hôte le pose pour que la même page
-      // monte le formulaire du livre à la place de celui du numéro (variante livre).
+      // `estLivre` est un drapeau : la page monte alors le formulaire du livre.
       libelles: new Set([...cles('textesNumero'), ...cles('textesArticles'), ...TABLES, 'estLivre']),
       fragments: ['_commun.js', '_numero.js']
     },
-    // Le formulaire du livre réutilise le même fragment que celui du numéro (media/_numero.js,
-    // moteur commun SZH.formulaireLivre/formulaireNumero) : les mêmes propriétés « table »
-    // sont donc référencées sans condition dans son code, même si opts.couverture:false n'en
-    // affiche aucune. textesLivre() les fournit via Object.assign(textesNumero(), …) plutôt
-    // que par des appels T() littéraux, d'où le recours à cles('textesNumero') ici : c'est
-    // exactement ce que la valeur de retour de textesLivre() contient.
-    // ⚠ PAS de 'licences' ici, même si textesLivre() la fournit : le champ licence de
-    // CHAMPS_LIVRE la lit en TXT[champ.optionsDe] (notation crochet, clé calculée), que la
-    // regex ci-dessous (\bTXT\.(...)\b) ne voit jamais. Ajouter 'licences' à la liste ne
-    // protégerait donc rien — un faux gardien est pire qu'aucun ; le test qui suit couvre
-    // réellement ce mécanisme.
+    // Le formulaire du livre partage media/_numero.js ; textesLivre() part de
+    // Object.assign(textesNumero(), …), d'où cles('textesNumero').
+    // 'licences' n'est pas listée : elle est lue par TXT[champ.optionsDe], que la regex
+    // ci-dessous ne voit pas. Le test suivant couvre ce cas.
     'metadata-book': {
       libelles: new Set([...cles('textesNumero'), ...TABLES]),
       fragments: ['_commun.js', '_numero.js']
@@ -1295,15 +1199,8 @@ test('chaque libellé utilisé par une webview est fourni par l’hôte', () => 
   }
 });
 
-// Le pendant du contrôle ci-dessus pour la notation crochet : un champ à options
-// dynamiques (`optionsDe`, media/_numero.js) lit TXT[champ.optionsDe] au lieu de TXT.xxx, et
-// la regex du contrôle précédent ne l'y verra jamais. Plutôt que de deviner une clé calculée
-// à l'exécution — ce qu'une regex ne peut pas faire de façon fiable pour TXT[cle] ou
-// TXT[prefixe + '...'], qui apparaissent ailleurs dans les webviews avec une clé qui varie
-// par appel — ce contrôle prend le seul chemin qui reste vrai : chaque `optionsDe` déclaré
-// dans la table doit être une clé que la fonction hôte fournit réellement, sur le même
-// modèle que le contrôle « chaque intitulé de la table est fourni par l’hôte »
-// (test/js/articles.test.js) pour `libelle`.
+// Un champ à options dynamiques lit TXT[champ.optionsDe], invisible pour le test
+// précédent : chaque `optionsDe` de CHAMPS_LIVRE doit être une clé fournie par textesLivre().
 test('formulaire du livre : chaque option dynamique (optionsDe) est fournie par l’hôte', () => {
   const fragment = fs.readFileSync(path.join(COCKPIT, 'media', '_numero.js'), 'utf8');
   const debut = fragment.indexOf('var CHAMPS_LIVRE = [');
@@ -1322,10 +1219,8 @@ test('formulaire du livre : chaque option dynamique (optionsDe) est fournie par 
   }
 });
 
-// Le tutoriel est déclaratif : ses titres et ses textes vivent dans les deux package.nls,
-// ses dessins sur le disque, et ses liens pointent des commandes. Une clé oubliée
-// s'affiche « %tuto.x% » dans la page d'accueil, un dessin absent laisse un cadre vide, et
-// un lien mort ne fait rien — trois pannes muettes.
+// Le tutoriel est déclaratif : textes dans les deux package.nls, dessins sur le disque,
+// liens vers des commandes. Aucune de ces erreurs ne se signale à l'exécution.
 test('le tutoriel a ses libellés, ses dessins et des liens qui mènent quelque part', () => {
   const manifeste = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.json'));
   const nls = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.nls.json'));
@@ -1357,16 +1252,12 @@ test('le tutoriel a ses libellés, ses dessins et des liens qui mènent quelque 
     assert.ok(fs.existsSync(svg), 'dessin absent : ' + etape.media.svg);
     assert.match(fs.readFileSync(svg, 'utf8'), /currentColor/,
       'dessin qui ne suit pas la couleur du thème : ' + etape.media.svg);
-    // Une étape qui ne se coche jamais reste éternellement « à faire ».
     assert.ok((etape.completionEvents || []).length > 0, 'étape sans condition de complétion : ' + etape.id);
   }
   assert.ok(commandes.has('szh.tutoriel'), 'aucune commande n’ouvre le tutoriel');
 });
 
-// Un formulaire qui écrit doit enregistrer tout seul : personne ne pense à cliquer un
-// bouton avant de fermer un panneau, et le travail perdu ne se voit qu'après. Deux
-// exceptions, explicites : les réglages écrivent à chaque changement de choix, et la vue
-// d'ensemble n'a rien à saisir.
+// Les réglages écrivent à chaque changement de choix et ne figurent pas dans la liste.
 test('chaque formulaire qui écrit enregistre automatiquement', () => {
   const attendus = ['metadata-articles', 'metadata-issue', 'import-verif', 'medias-article',
     'traduction', 'table-editor', 'articles', 'metadata-book', 'documentation'];
@@ -1384,19 +1275,13 @@ test('chaque formulaire qui écrit enregistre automatiquement', () => {
   }
 });
 
-// Le socle visuel est posé page par page par l'hôte. Une page qui l'oublie perd tous ses
-// jetons d'un coup : ses règles se réduisent à des valeurs vides, sans aucune erreur. Et un
-// fragment mal nommé dans cssPartage ou jsPartage ne se voit qu'à l'ouverture du panneau,
-// où le readFileSync de construireHtml lève.
+// Une page sans _design.css perd ses variables CSS sans erreur. Un fragment mal nommé dans
+// cssPartage ou jsPartage ne se voit qu'à l'ouverture du panneau.
 test('chaque webview reçoit le socle visuel, et ses fragments existent', () => {
   const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
   const appels = [...src.matchAll(/construireHtml\('([a-z-]+)', nonce, \{([\s\S]{0,700}?)\}\);/g)];
-  // Le compte est en dur, et c'est voulu : il tient lieu d'inventaire. Une page ajoutée
-  // sans passer par construireHtml n'apparaîtrait pas ici et n'aurait pas le socle ; une
-  // page ajoutée correctement fait échouer ce chiffre, et c'est le moment de relire les
-  // assertions ci-dessous plutôt que de bumper le nombre sans regarder. Parmi elles :
-  // « suggestion » (mode vérificateur de traduction), « nouveautes » (« Quoi de neuf ») et
-  // « accueil », qui porte aussi les réglages depuis la suppression du panneau « settings ».
+  // Compte en dur, qui tient lieu d'inventaire : une page ajoutée le fait échouer, et c'est
+  // le moment de relire les assertions ci-dessous.
   assert.strictEqual(appels.length, 13, 'appels à construireHtml : ' + appels.length);
   for (const [, page, corps] of appels) {
     assert.ok(/cssPartage:\s*\[[^\]]*'_design\.css'/.test(corps), 'page sans le socle : ' + page);
@@ -1410,8 +1295,7 @@ test('chaque webview reçoit le socle visuel, et ses fragments existent', () => 
   }
 });
 
-// Les deux formulaires de métadonnées ont longtemps été deux copies. Ce qu'ils partagent
-// vit désormais dans media/_fiches.{js,css} : ce contrôle empêche la copie de revenir.
+// Ce que les deux formulaires de métadonnées partagent vit dans media/_fiches.{js,css}.
 test('les deux formulaires de métadonnées ne se recopient pas', () => {
   const lignes = (f) => fs.readFileSync(path.join(COCKPIT, 'media', f), 'utf8')
     .split('\n').map((l) => l.trim()).filter((l) => l !== '' && !l.startsWith('//'));
@@ -1422,8 +1306,8 @@ test('les deux formulaires de métadonnées ne se recopient pas', () => {
   assert.ok(pire < 10, 'bloc de ' + pire + ' lignes identiques : à remonter dans _fiches.js');
 });
 
-// Chaque webview décrit son protocole en tête de fichier. Une table qui ment est pire
-// qu'une table absente : on vérifie qu'elle cite tous les messages échangés.
+// Chaque webview décrit son protocole en commentaire de tête : la table doit citer tous les
+// messages échangés.
 test('les tables de protocole des webviews sont à jour', () => {
   const pages = {
     'metadata-articles': ['_fiches.js'],
@@ -1453,12 +1337,10 @@ test('les tables de protocole des webviews sont à jour', () => {
   }
 });
 
-// Ouvrir un article depuis la vue d'ensemble Articles n'ouvre que le .md — décision du
-// 25.08.2026 : de là, on vient lire ou corriger le texte, pas mettre en page. Trois
-// maillons, vérifiés sur la source faute de pouvoir charger extension.js hors de
-// l'éditeur : la vue passe l'option, l'enregistrement de la commande la transmet, et
-// ouvrirArticle s'arrête au .md quand elle est posée. Les autres appelants (arbre,
-// Contrôles, démarrage) ne la passent pas : comportement historique conservé.
+// Depuis la vue Articles, ouvrir un article n'ouvre que le .md, sans aperçu. Vérifié sur la
+// source, extension.js ne se chargeant pas hors de l'éditeur : la vue passe l'option, la
+// commande la transmet, ouvrirArticle s'arrête au .md. Les autres appelants ouvrent .md,
+// compilation et aperçu.
 test('vue Articles : « ouvrir » passe sansApercu, et seul ce chemin la porte', () => {
   const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
   const bloc = (nom) => {
@@ -1470,11 +1352,9 @@ test('vue Articles : « ouvrir » passe sansApercu, et seul ce chemin la porte',
   assert.match(bloc('ouvrirVueArticles'),
     /executeCommand\('szh\.ouvrirArticle',[^;]*\{ sansApercu: true \}/,
     'la vue Articles n’envoie pas sansApercu : l’aperçu s’ouvrirait encore');
-  // 2. L'enregistrement de la commande transmet le second argument, sinon l'option se
-  //    perdrait entre executeCommand et la fonction. Et il accepte les DEUX formes
-  //    d'appel : le slug tout court (arbre, vue Articles) et { slug, focus } (les gestes
-  //    de constat, contrat écrit en tête de lib/constats.js). La seconde repartait sans
-  //    un mot — c'est ce qui rendait la flèche « Vers l'article » des Contrôles inerte.
+  // 2. L'enregistrement de la commande transmet le second argument, et accepte les deux
+  //    formes d'appel : le slug seul (arbre, vue Articles) et { slug, focus } (actions des
+  //    constats, voir lib/constats.js).
   const iCmd = src.indexOf("cmd('szh.ouvrirArticle'");
   assert.notStrictEqual(iCmd, -1, 'szh.ouvrirArticle n’est plus enregistrée');
   const enregistrement = src.slice(iCmd, iCmd + 400);
@@ -1491,8 +1371,7 @@ test('vue Articles : « ouvrir » passe sansApercu, et seul ce chemin la porte',
     'la garde sansApercu doit laisser le .md s’ouvrir en colonne 1');
   assert.ok(garde < fn.indexOf('obsolete') && garde < fn.indexOf('lancerBuild'),
     'la garde sansApercu doit précéder l’obsolescence et la compilation');
-  // 4. Un seul chemin porte l'option : l'arbre, la vue Contrôles et le démarrage gardent
-  //    le comportement historique (md + compilation + aperçu).
+  // 4. Un seul chemin porte l'option.
   assert.strictEqual((src.match(/sansApercu: true/g) || []).length, 1,
     'sansApercu posé ailleurs que dans la vue Articles');
   assert.doesNotMatch(bloc('ouvrirVueEnsemble'), /sansApercu/,
@@ -1508,9 +1387,8 @@ test('vue Articles : son ouverture ferme l’aperçu de la colonne 2', () => {
     assert.notStrictEqual(i, -1, 'fonction introuvable : ' + nom);
     return src.slice(i, src.indexOf('\n}', i));
   };
-  // Décision de Robin (26.08.2026) : embrasser le numéro ferme l'article quitté. La
-  // fermeture doit précéder le reveal ET la création du panneau — les deux chemins —
-  // sinon la vue déjà ouverte garderait l'aperçu à côté.
+  // Ouvrir la vue du numéro ferme l'aperçu de l'article quitté, que le panneau soit créé
+  // ou seulement révélé.
   const fn = bloc('ouvrirVueArticles');
   const fermeture = fn.indexOf('fermerTousLesApercus()');
   assert.notStrictEqual(fermeture, -1,
@@ -1525,8 +1403,7 @@ test('vue Articles : son ouverture ferme l’aperçu de la colonne 2', () => {
     'ouvrirVueArticles crée ou révèle encore son panneau à la main');
   assert.match(fn, /if \(!nouveau\) \{ envoyer\(panneau, true\); \}/,
     'la vue déjà ouverte n’est plus rechargée à sa réouverture');
-  // Les rafraîchissements en tâche de fond (fin de compilation) passent par envoyerVue,
-  // qui ne doit jamais fermer quoi que ce soit sous les yeux du rédacteur.
+  // Les rafraîchissements en tâche de fond passent par envoyerVue, qui ne ferme rien.
   assert.doesNotMatch(bloc('envoyerVue'), /fermerTousLesApercus/,
     'un rafraîchissement en tâche de fond ne doit pas fermer l’aperçu');
 });
@@ -1546,9 +1423,8 @@ test('citations : la liste de références est découpée comme le fait le filtr
     'Sen, A. (2001). Autre texte, même année. PUF.'
   ].join('\n');
   const entrees = cit.referencesDuTexte(md);
-  // Identifiants relevés sur la sortie de pipeline/filters/szh-citations.lua : les deux
-  // implémentations doivent tomber sur les mêmes, sinon un lien posé à la main pointerait
-  // dans le vide.
+  // Identifiants relevés sur la sortie de szh-citations.lua : un lien posé à la main doit
+  // pointer sur l'ancre que le filtre pose.
   assert.deepStrictEqual(entrees.map((e) => e.id), [
     'ref-ebersold-2013', 'ref-ricoeur-1990', 'ref-van-2023',
     'ref-insieme-2024', 'ref-sen-2001', 'ref-sen-2001-b'
@@ -1557,15 +1433,11 @@ test('citations : la liste de références est découpée comme le fait le filtr
   assert.match(entrees[1].texte, /Seuil\. https:/);
 });
 
-// Les deux lexiques de titres de bibliographie étaient comparés ici, expression régulière
-// contre expression régulière sur les deux textes source. Deux listes identiques ne disent
-// rien de deux résultats identiques : le repli des accents divergeait juste à côté, sans
-// qu'aucun contrôle bronche. La comparaison se fait désormais en exécutant les deux
+// Les lexiques de titres de bibliographie (JS et Lua) se comparent en exécutant les deux
 // implémentations, dans test/js/ancrages.test.js.
 
 test('citations : une suite d’entrée se reconnaît aux cas qui ont déjà cassé', () => {
-  // Les cas qui faisaient recoller 100 références du corpus à la précédente. Le filtre Lua
-  // répond-il pareil ? test/js/ancrages.test.js le lui demande, il ne le lit pas.
+  // Le filtre Lua est éprouvé sur les mêmes cas par test/js/ancrages.test.js.
   assert.strictEqual(cit.estContinuation('https://doi.org/10.1234/x'), true);
   assert.strictEqual(cit.estContinuation('mit Behinderungen nach Geschlecht, ohne année'), true);
   assert.strictEqual(cit.estContinuation('van der Aa, H. (2023). Un titre.'), false);
@@ -1595,8 +1467,8 @@ test('la chaîne ne passe plus par AnyStyle ni par citeproc', () => {
     assert.ok(!/citeproc|anystyle|\.bib\b|apa\.csl/i.test(src),
       nom + ' cite encore la bibliographie BibTeX');
   }
-  // Le filtre de liage, lui, doit être appelé par les deux rendus : il est dans le socle,
-  // et le rendu comme l'aperçu prennent leur chaîne de filtres.mk.
+  // Le filtre de liage est dans la chaîne commune (CHAINE_SOCLE), donc dans le rendu et
+  // dans l'aperçu.
   const chaines = require('./chaines-filtres-lire').lireChaines();
   assert.ok(chaines.CHAINE_SOCLE.includes('citations'), 'szh-citations a quitté le socle');
   assert.ok(chaines.CHAINE_ARTICLE.includes('citations') && chaines.CHAINE_APERCU.includes('citations'));
@@ -1608,18 +1480,13 @@ test('la chaîne ne passe plus par AnyStyle ni par citeproc', () => {
 
 test('print.css : un appel de citation ne se lit pas comme un lien sortant', () => {
   const css = lire('pipeline', 'styles', 'print.css');
-  // La flèche « lien sortant » posée en ::after a été retirée le 09.09.2026 (demande du
-  // responsable de la revue) : plus aucun lien du corps, appel de citation compris, n'en
-  // porte une. Assertion NÉGATIVE, à dessein — c'est elle qui verrouille la décision
-  // contre un retour en arrière involontaire, et non plus la présence d'une règle qui
-  // l'annulait pour l'appel de citation : cette règle a disparu avec la flèche elle-même,
-  // il n'y avait donc plus rien à annuler.
+  // Aucun lien du corps ne porte de flèche « lien sortant » en ::after.
   assert.doesNotMatch(css, /a\[href\]::after\s*\{[^}]*content:\s*url\(/,
     'une flèche ::after est revenue sur les liens du corps : décision du 09.09.2026 défaite');
-  // Ce qui reste vrai, et doit rester vrai : l'appel de citation « (Bovey, 2022) » se lit
-  // comme du texte, pas comme un lien — même couleur héritée, sans soulignement.
+  // L'appel de citation « (Bovey, 2022) » se lit comme du texte : couleur héritée, sans
+  // soulignement.
   assert.match(css, /a\[href\^="#"\],\s*a\.szh-appel\s*\{\s*\n\s*color:\s*inherit;\s*text-decoration:\s*none;\s*\n\}/);
-  // .szh-appel-orphelin vit désormais dans partage-filtres.css, commune au livre.
+  // .szh-appel-orphelin vit dans partage-filtres.css, commune au livre.
   const partage = lire('pipeline', 'styles', 'partage-filtres.css');
   assert.match(partage, /\.szh-appel-orphelin \{[^}]*dotted/);
   // La marque des appels non liés ne doit vivre que dans l'aperçu.
@@ -1628,22 +1495,16 @@ test('print.css : un appel de citation ne se lit pas comme un lien sortant', () 
   assert.match(lire('pipeline', 'Makefile'), /SZH_APERCU=1 \$\(PANDOC\)/);
 });
 
-// Le dépôt Word suit le PROFIL, jamais un nom écrit en dur. Défaut trouvé en production le
-// 01.09.2026 : sur un livre, le cockpit déposait et listait dans articles-word/ pendant que
-// la chaîne ne regardait que chapitres-word/ (pipeline/Makefile WORD_DIR, surchargé par
-// pipeline/profils/livre.mk). Le Word s'affichait « en attente » pour toujours, le bouton
-// « Convertir » ne produisait rien, et RIEN ne le disait. lib/profil.js nommait pourtant
-// correctement les deux dépôts depuis le début — il n'était simplement pas branché ici.
+// Le dossier de dépôt des Word vient du profil (lib/profil.js) : articles-word/ pour la
+// revue, chapitres-word/ pour le livre (WORD_DIR de livre.mk). Un nom écrit en dur ferait
+// déposer les Word d'un livre là où la chaîne ne les cherche pas.
 test('le dépôt Word vient du profil, et aucun nom n’est écrit en dur dans extension.js', () => {
   assert.strictEqual(profils.profilPour('revue').depot, 'articles-word');
   assert.strictEqual(profils.profilPour('livre').depot, 'chapitres-word');
 
-  // Lecture directe, sans lib/ : ce contrat vérifie l'ABSENCE du littéral dans le code
-  // d'extension.js — lib/profil.js le porte légitimement (c'est lui la source), et la
-  // concaténation de lire() ferait donc échouer ce contrôle pour une raison qui n'a rien à
-  // voir avec ce qu'il éprouve.
+  // Lecture d'extension.js seul : lib/profil.js porte ces littéraux, c'est la source.
   const src = fs.readFileSync(CHEMIN_EXTENSION, 'utf8');
-  // Le code seul : un nom de dossier cité dans un commentaire est légitime et documente.
+  // Le code seul, sans les commentaires.
   const code = src.split('\n')
     .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
     .join('\n');
@@ -1656,22 +1517,18 @@ test('le dépôt Word vient du profil, et aucun nom n’est écrit en dur dans e
       + 'endroit et la conversion ne part jamais.');
   }
 
-  // Et le routage doit être réellement utilisé, pas seulement le littéral retiré.
   assert.ok(/profilCourant\(\)\.depot/.test(code),
     'aucun appel à profilCourant().depot : le routage du dépôt Word a disparu.');
 });
 
-// ---- Ce qui a tué le livre 2026-B399-VN_FALC, le 01.09.2026 ----------------------------
+// ---- Échecs de WeasyPrint et métafichiers Windows ----
 //
-// Une seule image au format métafichier Windows (.emf) suffisait à faire tomber une
-// compilation de dix minutes, et le seul message visible était « mv: cannot stat ». Trois
-// défauts se tenaient l'un derrière l'autre ; les trois sont ici sous contrôle.
+// Une image .emf peut faire tomber WeasyPrint au bout d'une longue compilation. La recette
+// doit dire la cause, et l'image doit être remplacée plutôt que bloquer le rendu.
 
 test('PDF : l’échec de la dernière tentative WeasyPrint ne passe plus pour un succès', () => {
-  // La cascade de repli tentait pdf/ua-1, puis --pdf-tags, puis un PDF nu — et ce dernier
-  // appel, lui, n'était pas testé. Quand il tombait, la recette continuait jusqu'au `mv`
-  // du fichier temporaire, qui échouait sur un fichier jamais écrit. Le rédacteur lisait
-  // « mv: cannot stat », qui ne nomme ni la cause ni le fichier fautif.
+  // La cascade tente pdf/ua-1, puis --pdf-tags, puis un PDF nu. Chaque appel doit avoir son
+  // code de sortie lu, sinon l'échec ne se voit qu'au « mv: cannot stat » qui suit.
   for (const [nom, chemins] of [['Makefile', ['pipeline', 'Makefile']],
                                 ['livre.mk', ['pipeline', 'profils', 'livre.mk']]]) {
     const nus = lire(...chemins).split('\n')
@@ -1687,24 +1544,23 @@ test('PDF : quand WeasyPrint tombe, la recette dit sa cause au lieu de la taire'
   assert.match(livre, /Journal complet : \$\$jrnl/,
     'l’emplacement du journal WeasyPrint n’est plus indiqué : sans lui, la cause est '
     + 'introuvable une fois la compilation terminée');
-  // Le digest de succès s'arrête à vingt lignes. Une troncature qui ne se dit pas se lit
-  // comme un journal complet — ici, vingt avertissements anodins masquaient l'exception.
+  // Le résumé s'arrête à vingt lignes et dit combien il en reste : vingt avertissements
+  // anodins peuvent masquer l'exception.
   assert.match(livre, /ligne\(s\) de plus dans/,
     'le journal est tronqué à vingt lignes sans le dire');
 });
 
 test('métafichiers Windows : le filtre de substitution est dans les trois chaînes', () => {
-  // Décidé avec Robin le 02.09.2026 : substituer, pas refuser. Une compilation qui
-  // s'arrête ne dit pas OÙ est le trou ; un placeholder à la place de l'image le montre,
-  // à sa place, et le document se compose jusqu'au bout.
+  // L'image est remplacée par un placeholder, qui montre où est le trou, et le document se
+  // compose jusqu'au bout.
   const chaines = require('./chaines-filtres-lire').lireChaines();
   const nb = (c) => c.filter((f) => f === 'metafichier').length;
   assert.strictEqual(nb(chaines.CHAINE_ARTICLE) + nb(chaines.CHAINE_APERCU), 2,
     'le filtre doit être dans les DEUX chaînes de la revue — le rendu ET l’aperçu : '
     + 'un aperçu qui tomberait sur une image native Word laisserait le rédacteur sans vue');
   assert.strictEqual(nb(chaines.CHAINE_CHAPITRE), 1, 'le filtre a quitté la chaîne des chapitres');
-  // La position n'est pas indifférente : voir l'en-tête du filtre. Après tabelle-inclure,
-  // sans quoi les images des tableaux extraits ne sont pas encore là.
+  // Après tabelle-inclure, qui réinjecte les tableaux et leurs images (voir l'en-tête du
+  // filtre).
   for (const nom of ['CHAINE_ARTICLE', 'CHAINE_APERCU', 'CHAINE_CHAPITRE']) {
     const src = chaines[nom];
     assert.ok(src.indexOf('tabelle-inclure') < src.indexOf('metafichier'),
@@ -1738,9 +1594,8 @@ test('livre : szh-exergue est dans la chaîne du chapitre, à la place de la rev
 });
 
 test('métafichiers Windows : les deux extensions se testent SANS alternation Lua', () => {
-  // Le piège maison : les motifs Lua n'ont pas de « | ». '%.(emf|wmf)$' matcherait le
-  // texte littéral « (emf|wmf) » et ne trouverait jamais rien — le filtre se tairait
-  // toujours, comme szh-legende-avant.lua l'a fait pendant des mois (défaut A9).
+  // Les motifs Lua n'ont pas d'alternation : '%.(emf|wmf)$' chercherait le texte littéral
+  // « (emf|wmf) » et ne trouverait jamais rien.
   const lua = lire('pipeline', 'filters', 'szh-metafichier.lua');
   const table = /local EXTENSIONS = \{([^}]*)\}/.exec(lua);
   assert.ok(table, 'la table des extensions a disparu');
@@ -1748,23 +1603,20 @@ test('métafichiers Windows : les deux extensions se testent SANS alternation Lu
     table[1].split(',').map((s) => s.trim().replace(/'/g, '')).filter(Boolean).sort(),
     ['%.emf$', '%.wmf$'],
     'deux motifs simples et séparés, jamais une alternation');
-  // Et la casse ne doit pas décider : Word écrit parfois .EMF.
+  // Word écrit parfois .EMF.
   assert.match(lua, /cible:lower\(\)/,
     'la comparaison n’est plus insensible à la casse : un « .EMF » passerait au travers');
 });
 
 test('PDF/UA : la porte valide le PDF du LIVRE, pas une liste vide', () => {
-  // Jusqu'au 02.09.2026 `verifier-ua` lisait $(PDFS), c'est-à-dire les PDF des articles :
-  // dans un dossier de livre, où il n'y a pas d'articles/, elle sortait « Aucun PDF à
-  // valider » et l'ouvrage n'était JAMAIS validé. Le commentaire de livre.mk affirmait
-  // pourtant le contraire.
+  // `verifier-ua` lit PDFS_UA, que livre.mk fixe au PDF du livre. Avec $(PDFS) (les PDF
+  // des articles), un dossier de livre n'aurait rien à valider.
   const mk = lire('pipeline', 'Makefile');
   assert.match(mk, /^verifier-ua: \$\$\(PDFS_UA\)$/m,
     'la porte PDF/UA ne passe plus par PDFS_UA en seconde expansion — sans les deux « $ », '
     + 'la liste est figée à la valeur de la revue avant l’inclusion de livre.mk');
-  // Depuis que la logique de la porte a déménagé dans verifier-ua.sh, le Makefile ne dit
-  // plus « --flavour ua1 » lui-même : il passe PDFS_UA au script, qui la passe à veraPDF.
-  // Même intention qu'avant : le validateur reçoit la même liste que les prérequis.
+  // Le Makefile passe PDFS_UA à verifier-ua.sh, qui la passe à veraPDF : le validateur
+  // reçoit la même liste que les prérequis.
   assert.match(mk, /bash "\$\(PIPELINE_DIR\)\/verifier-ua\.sh" "\$\(OUT\)\/\.szh-pdfua\.xml" \$\(PDFS_UA\)/,
     'le validateur reçoit une autre liste que celle des prérequis');
   assert.match(lire('pipeline', 'profils', 'livre.mk'), /^PDFS_UA {4}:= \$\(LIVRE_PDF\)$/m,
@@ -1776,10 +1628,8 @@ test('livre : un dossier de chapitre préfixé « _ » n’est pas imprimé, et 
   assert.match(livre, /TOUS_CHAPITRES := \$\(filter-out _%,/,
     'les pièces de travail redeviennent des chapitres : la page de titre du manuscrit '
     + 'd’origine se réimprimerait en dernier chapitre du livre');
-  // La liste des dossiers écartés reste calculée au niveau des variables make ; le
-  // constat, lui, est émis en ligne codée par verifie-livre (plus un $(warning), rejoué
-  // à chaque sous-make) — un dossier écarté doit rester ANNONCÉ, un chapitre qui
-  // disparaît en silence étant pire qu’un chapitre en trop.
+  // La liste des dossiers écartés est une variable make ; le constat est émis en ligne
+  // codée par verifie-livre, et non par $(warning), qui se répéterait à chaque sous-make.
   assert.match(livre, /CHAPITRES_ECARTES := \$\(filter _%,\$\(DOSSIERS_CHAPITRES\)\)/,
     'la liste des dossiers écartés (préfixe « _ ») n’est plus calculée : plus rien à annoncer');
   assert.match(livre, /\[livre-avertissement\] chapitre-ecarte \|/,
@@ -1792,13 +1642,9 @@ test('livre : un dossier de chapitre préfixé « _ » n’est pas imprimé, et 
 
 // ---- Protocole de messages des webviews : une seule table, deux dépôts ----
 //
-// lib/messages.js (l'hôte) et media/_messages.js (la webview) doivent porter EXACTEMENT
-// la même table SZH.MSG — mêmes clés, mêmes valeurs. media/_messages.js est posé dans le
-// jsPartage des onze pages bâties par construireHtml, et à la main dans le script de
-// l'aperçu HTML (scriptApercu, lib/apercu.js), qui n'emprunte pas construireHtml. Ce
-// contrat ne dit rien de ce câblage : il ne compare que les deux tables. Une page qui
-// nomme SZH.MSG sans recevoir le socle lève au chargement, et c'est aux contrôles qui
-// exécutent les pages (webviews.test.js, apercu-page.test.js) de le voir.
+// lib/messages.js (l'hôte) et media/_messages.js (la webview) portent la même table
+// SZH.MSG. Ce contrat compare les deux tables ; le chargement de _messages.js dans chaque
+// page est vérifié par webviews.test.js et apercu-page.test.js.
 test('protocole de messages : SZH.MSG concorde entre lib/messages.js et media/_messages.js', () => {
   const { MSG } = require(path.join(COCKPIT, 'lib', 'messages.js'));
   const src = lire('vscodium-extension', 'szh-cockpit', 'media', '_messages.js');
@@ -1815,10 +1661,9 @@ test('protocole de messages : SZH.MSG concorde entre lib/messages.js et media/_m
   }
 });
 
-// Côté hôte, un message vers une webview se nomme par MSG.<NOM>, jamais par un littéral :
-// la table est le seul endroit où le protocole s'écrit. Ce contrôle refuse tout `type: '…'`
-// dans extension.js et lib/*-hote.js, hors la liste blanche ci-dessous — les `type:` qui ne
-// sont pas des messages (définition de tâche VS Code, champ vide d'une fiche).
+// Côté hôte, un message vers une webview se nomme par MSG.<NOM>. Tout `type: '…'` dans
+// extension.js et lib/*-hote.js est refusé, sauf les `type:` qui ne sont pas des messages
+// (liste NON_MESSAGES).
 test('protocole de messages : aucun littéral type: \'…\' côté hôte (MSG.<NOM> à la place)', () => {
   const NON_MESSAGES = {
     // Définition de tâche VS Code { type: 'szh', cible, slug }, pas un message de webview.
@@ -1841,8 +1686,8 @@ test('protocole de messages : aucun littéral type: \'…\' côté hôte (MSG.<N
   assert.deepStrictEqual(fautes, [], 'littéraux type: à remplacer par MSG.<NOM> :\n' + fautes.join('\n'));
 });
 
-// Une clause `when` est du code, pas du texte : typo-check n'y pose pas d'espace insécable
-// devant « ! ». VSCodium la tolère aujourd'hui, rien ne garantit qu'il la tolérera demain.
+// Une clause `when` est du code : typo-check ne doit pas y poser d'espace insécable devant
+// « ! ».
 test('les clauses when de package.json ne portent que des espaces ordinaires', () => {
   const fautes = [];
   lire('vscodium-extension', 'szh-cockpit', 'package.json').split('\n').forEach((l, i) => {

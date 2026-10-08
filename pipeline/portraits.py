@@ -5,8 +5,8 @@
 #
 # Pour chaque paire <slug> <image-source>, écrit dans <dossier_sortie> deux PNG de
 # 400 x 400 en niveaux de gris (mode PIL 'LA') : <slug>.avec-fond.png et
-# <slug>.sans-fond.png, dont le fond est supprimé. La photo déposée est écrite par le
-# cockpit, pas ici : ce script ne fait que lire l'image source qu'on lui passe.
+# <slug>.sans-fond.png, dont le fond est supprimé. L'image source est déposée par le
+# cockpit.
 #
 # Sortie : une ligne JSON par image sur stdout, dans l'ordre des arguments —
 #   {"slug": ..., "ok": bool, "visage": bool, "recadre": bool,
@@ -19,13 +19,11 @@
 # YuNet, cadre de sortie carré (hauteur du visage ~ FACE_PERCENT % du côté, visage centré
 # horizontalement et un peu au-dessus du centre vertical), rembg (u2net_human_seg, session
 # unique), puis LANCZOS 400 x 400, convert('LA') et écriture atomique.
-# Si le cadre déborde de la photo source — un portrait cadré serré n'a pas de place sous le
-# menton — il est ramené dans l'image, et réduit s'il le faut : jamais de bord répliqué, qui
-# se voyait comme une coulure de pixels étirés sous le visage. "recadre": true le signale.
-# Sans visage détecté : crop carré centré et "visage": false, mais jamais d'échec.
+# Si le cadre déborde de la photo (portrait serré, sans place sous le menton), il est ramené
+# dans l'image et réduit s'il le faut ("recadre": true). Sans visage détecté : carré centré
+# et "visage": false, sans échec.
 #
-# Modèles embarqués dans le rootfs par image/Containerfile, aucun téléchargement au
-# runtime :
+# Modèles embarqués dans le rootfs par image/Containerfile :
 #   /opt/portraits/models/face_detection_yunet_2023mar.onnx   (surcharge : SZH_YUNET)
 #   /opt/portraits/models/u2net_human_seg.onnx                (surcharge : U2NET_HOME)
 #
@@ -116,7 +114,7 @@ def detecter_visage(img, detecteur):
     """Détection en deux passes. La seconde sert les photos cadrées très serré (visage
     plein cadre), que YuNet rate en l'état : on réplique une marge tout autour, on
     redétecte, puis on re-projette dans l'image d'origine. La boîte peut alors déborder de
-    l'image, le cadrage la rattrape par padding."""
+    l'image ; cadrer_visage() la ramène dedans."""
     boite = _detecter(img, detecteur)
     if boite is not None:
         return boite
@@ -139,10 +137,8 @@ def cadrer_visage(img, boite):
          x0    = centre_visage_x - côté / 2            (centré horizontalement)
          y0    = centre_visage_y - côté * CENTRE_VERTICAL
 
-       Le cadre déborde souvent de la photo — un portrait cadré serré n'a pas de place
-       sous le menton. On ne réplique PLUS le bord dans ce cas : la dernière ligne de
-       pixels étirée sur un dixième de la hauteur se voyait comme une coulure sous chaque
-       visage. On ramène le cadre dans l'image :
+       Le cadre déborde souvent de la photo (portrait serré). Répliquer le bord ferait une
+       coulure de pixels étirés sous le visage ; on ramène donc le cadre dans l'image :
          1. on le translate du strict nécessaire, ce qui décentre un peu le visage ;
          2. s'il est encore trop grand, on réduit son côté jusqu'à ce qu'il tienne, en
             gardant le centre du visage aussi près que possible de sa place. Le visage
@@ -226,7 +222,7 @@ def traiter(slug, source, dossier, detecteur, session):
 
 
 def principal(argv):
-    try:  # console Windows en cp1252 : un accent combinant (nom venu du partage) y plante.
+    try:  # une console en cp1252 plante sur un accent combinant
         sys.stdout.reconfigure(encoding='utf-8')
         sys.stderr.reconfigure(encoding='utf-8')
     except Exception:

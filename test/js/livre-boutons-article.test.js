@@ -1,10 +1,8 @@
 // Les boutons d'item « Envoyer aux autrices/auteurs » (szh.envoyerAuteur) et « Voir le PDF »
-// (szh.voirPdfArticle) : sans objet sur un chapitre de livre — pas d'auteur·e à qui envoyer
-// une version finale hors d'un circuit OJS, pas de PDF PAR CHAPITRE (lib/profil.js : le PDF
-// d'un livre est celui de l'ouvrage entier, voir chemins().pdf). Leur bouton dans l'arbre
-// (view/item/context) réutilise `viewItem == article`, le même contextValue qu'un chapitre
-// (extension.js, contextValue = 'article' posé pour les deux profils) : sans le garde-fou,
-// les deux boutons apparaîtraient donc aussi sur un chapitre.
+// (szh.voirPdfArticle) n'apparaissent pas sur un chapitre de livre : pas d'envoi hors d'un
+// circuit OJS, et pas de PDF par chapitre (le PDF d'un livre est celui de l'ouvrage, voir
+// chemins().pdf dans lib/profil.js). Un chapitre a le même contextValue qu'un article
+// ('article', extension.js) : le `when` des boutons teste donc une capacité du profil.
 //
 //   node --test test/js/livre-boutons-article.test.js
 'use strict';

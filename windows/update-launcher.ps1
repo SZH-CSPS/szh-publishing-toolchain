@@ -1,43 +1,35 @@
 ﻿<#
 .SYNOPSIS
-  Vérification silencieuse des mises à jour, lancée par la tâche planifiée
-  « SZH - Mise a jour » à l'ouverture de session et le mardi à 14 h, via hidden.vbs, donc
-  sans fenêtre.
+  Vérification silencieuse des mises à jour, lancée sans fenêtre (hidden.vbs) par la tâche
+  planifiée « SZH - Mise a jour », à l'ouverture de session et le mardi à 14 h.
 
-  Ordre : les raccourcis du menu Démarrer sont remis d'aplomb, puis la tâche planifiée
-  elle-même, puis — une fois par semaine seulement — le contrôle de version. Tout à jour,
-  une ligne de journal ; du neuf et le moment est bon, le toolkit est mis à niveau d'abord,
-  pour exécuter l'update.ps1 le plus récent, puis celui-ci s'ouvre dans une fenêtre
-  visible ; du neuf mais le moment est mauvais, renoncement journalisé et nouvel essai au
-  prochain déclenchement. Un blocage qui dure finit par ouvrir la fenêtre visible, pour que
-  l'échec se voie ailleurs que dans un journal.
+  Ordre :
+    1. remettre en état les raccourcis du menu Démarrer ;
+    2. remettre en état la tâche planifiée ;
+    3. une fois par semaine, comparer la version installée à la dernière publiée.
+  Si tout est à jour : une ligne de journal. S'il y a du neuf et que le moment s'y prête :
+  mise à niveau du toolkit, pour disposer du dernier update.ps1, puis lancement de
+  celui-ci. Si le moment ne s'y prête pas : renoncement journalisé, nouvel essai au
+  prochain déclenchement. Un blocage qui dure finit par ouvrir la fenêtre visible de mise
+  à jour.
 
-  Rien ne s'affiche jamais depuis ce script : c'est le propre de la passe silencieuse.
+  Ce script n'affiche rien lui-même : ses traces vont au journal.
 
   Compatibilité : Windows PowerShell 5.1.
 #>
 . "$PSScriptRoot\szh-common.ps1"
 . "$PSScriptRoot\szh-taches.ps1"
 
-# Remove-SzhToolkitOrphelins vit dans szh-common.ps1 (une seule définition, appelée aussi
-# par update.ps1 et bootstrap.ps1) : ce script rafraîchit $SzhToolkit plus bas (avant d'y
-# lancer update.ps1), avec le même `Expand-Archive -Force` qui écrase ce que l'archive
-# contient mais ne supprime jamais ce qu'elle ne contient plus.
-#
-# Sans le même nettoyage ici, le manque reviendrait par ce chemin même une fois update.ps1 et
-# bootstrap.ps1 corrigés, et de façon plus sournoise qu'ailleurs : ce rafraîchissement écrit
-# déjà VERSION à la version cible, et update.ps1, lancé juste après par
-# Start-SzhFenetreMaj, lit alors le toolkit comme déjà à jour — sa propre étape 1/5 ne
-# s'exécute même pas, donc son propre nettoyage non plus.
+# Ce script met lui-même le toolkit à niveau, plus bas, avant de lancer update.ps1 :
+# update.ps1 trouve alors un toolkit déjà à la bonne version et saute sa propre mise à
+# niveau. Install-SzhToolkitDepuisArchive (szh-common.ps1), commune aux trois scripts,
+# remplace le toolkit d'un coup et en retire les fichiers orphelins
+# (Remove-SzhToolkitOrphelins) : ceux que la nouvelle archive ne contient plus.
 
-# Le menu Démarrer est remis d'aplomb à chaque ouverture de session, avant même de regarder
-# s'il y a du neuf, et avant la cadence hebdomadaire ci-dessous. Deux raisons : un poste
-# déjà à la dernière version n'exécute plus update.ps1 et n'obtiendrait jamais une entrée
-# ajoutée après coup ; et les raccourcis vivent dans le profil de l'utilisateur, donc chacun
-# doit recevoir les siens là où il ouvre sa session, pas là où l'administrateur a installé
-# le poste. Idempotent — les mêmes deux .lnk sont réécrits à l'identique — et jamais
-# bloquant : ce script ne fait que vérifier. Le journal ne dit que l'anormal, pour ne pas
-# grossir d'une ligne par jour.
+# Les raccourcis du menu Démarrer sont remis en état à chaque passage, avant la cadence
+# hebdomadaire : un poste à jour ne lance plus update.ps1, et les raccourcis sont propres à
+# chaque compte. L'opération ne change rien si tout est en place ; le journal ne note que
+# l'anormal.
 try {
   $bilanMenu = Set-SzhRaccourcisMenu
   foreach ($retire in $bilanMenu.retires) {
@@ -50,15 +42,10 @@ try {
   Write-SzhLog ('check : raccourcis du menu Démarrer non posés : ' + $_.Exception.Message)
 }
 
-# Même leçon pour la tâche planifiée : bootstrap.ps1 ne tourne qu'à l'installation, donc un
-# poste installé avant que le rythme change garderait son déclencheur quotidien de 11 h pour
-# toujours. On la remet en conformité si elle diffère, on ne la recrée pas si elle est déjà
-# juste, et on n'échoue jamais pour autant.
-#
-# Le refus est le cas courant, pas l'exception : la tâche vit dans la racine du planificateur
-# et appartient à l'administrateur qui a installé le poste, alors qu'une mise à jour ne
-# demande jamais l'élévation. Le journal nomme donc le geste qui manque — mais la cadence
-# hebdomadaire ne l'attend pas, elle est tenue plus bas par ce script.
+# La tâche planifiée est remise en conformité si elle diffère : bootstrap.ps1 ne tourne
+# qu'à l'installation. Le refus est le cas courant (la tâche appartient à l'administrateur,
+# la mise à jour tourne sans élévation) : le journal dit quoi faire, et la cadence
+# hebdomadaire est tenue plus bas par ce script.
 try {
   $bilanTache = Set-SzhTacheMaj
   if ($bilanTache.etat -ne 'conforme') {
@@ -72,24 +59,23 @@ try {
 }
 
 # ---- Cadence : une fois par semaine, à partir du mardi 14 h ----
-# Le déclencheur d'ouverture de session revient chaque matin et, sur un poste installé avant
-# ce changement, le déclencheur quotidien revient chaque jour. Sans ce garde, « une fois par
-# semaine » serait un vœu. Fenêtre déjà consommée : on ne dit rien — c'est le cas normal, et
-# une ligne par ouverture de session noierait le journal.
+# Les déclencheurs reviennent plus souvent (chaque ouverture de session) : c'est ce test qui
+# tient le rythme. Fenêtre déjà consommée : sortie sans rien journaliser, c'est le cas
+# normal.
 $maintenant = Get-Date
 $suivi = Get-SzhSuiviMaj
 $derniereVerif = Get-SzhSuiviChamp $suivi 'derniereVerif'
 if (-not (Test-SzhFenetreMaj -Maintenant $maintenant -DerniereVerif $derniereVerif)) { exit 0 }
 
-# Depuis quand ça coince, et combien de fois. Une seule horloge pour les deux causes,
-# renoncement ou échec : ce qui compte est le temps passé sans aboutir.
+# Depuis quand la mise à jour n'aboutit pas, et combien de fois, toutes causes confondues
+# (renoncement ou échec).
 $bloqueDepuis = Get-SzhSuiviChamp $suivi 'bloqueDepuis'
 $alerteLe = Get-SzhSuiviChamp $suivi 'alerteLe'
 $bloqueFois = 0
 try { $bloqueFois = [int](Get-SzhSuiviChamp $suivi 'bloqueFois') } catch { $bloqueFois = 0 }
 $presse = Test-SzhPolitesseExpiree -Maintenant $maintenant -Depuis $bloqueDepuis
 
-# La fenêtre de la semaine est consommée, les compteurs de blocage remis à zéro.
+# Marque la vérification de la semaine comme faite et remet à zéro les compteurs de blocage.
 function Save-SzhVerifFaite {
   Save-SzhSuiviMaj ([ordered]@{
     derniereVerif = (Get-Date -Format 's')
@@ -100,8 +86,8 @@ function Save-SzhVerifFaite {
   }) | Out-Null
 }
 
-# La fenêtre reste ouverte : le prochain déclenchement réessaiera, et l'ouverture de session
-# du lendemain est justement un bon moment.
+# Note un blocage sans consommer la fenêtre de la semaine : le prochain déclenchement
+# réessaiera.
 function Save-SzhBlocage([string]$Raison) {
   $depuis = $bloqueDepuis
   if (-not $depuis) { $depuis = (Get-Date -Format 's') }
@@ -114,61 +100,45 @@ function Save-SzhBlocage([string]$Raison) {
   }) | Out-Null
 }
 
-# Passer la main à la fenêtre de mise à jour : c'est elle qui télécharge, qui installe et
-# qui, en cas d'échec, montre le geste à faire -- à l'écran quand la fenêtre est visible, ou
-# au seul journal quand le réglage « mise à jour silencieuse » (Get-SzhMajSilencieuse,
-# szh-common.ps1) la fait tourner cachée. Rend son code de sortie dans les deux cas : c'est
-# lui qui dit si la vérification peut vraiment se marquer faite. Le nom disait « visible »
-# quand cette fonction ne savait faire que cela ; il a suivi quand elle a appris à se cacher.
+# Lance update.ps1, qui télécharge, installe et, en cas d'échec, dit quoi faire : à l'écran,
+# ou dans le seul journal quand le réglage « mise à jour silencieuse »
+# (Get-SzhMajSilencieuse) le fait tourner caché. Rend son code de sortie, qui décide si la
+# vérification est marquée faite.
 function Start-SzhFenetreMaj {
-  # -Visible passe outre le réglage « mise à jour silencieuse ». Un seul appelant s'en sert :
-  # l'alerte d'un poste bloqué depuis des semaines, plus bas. Le réglage dit « ne me montre
-  # pas la fenêtre à chaque mise à jour », pas « ne me préviens jamais de rien » — et l'échec
-  # répété est justement le cas où une mise à jour silencieuse doit cesser de l'être. Sans ce
-  # commutateur, le poste le plus en retard serait aussi le plus muet.
+  # -Visible passe outre le réglage « mise à jour silencieuse ». Seule l'alerte d'un poste
+  # bloqué depuis des semaines s'en sert : le réglage cache la fenêtre de routine, pas cette
+  # alerte.
   param([switch]$Visible)
 
-  # Relâché ici, avant de lancer update.ps1 : sinon la fenêtre tout juste ouverte tenterait
-  # d'acquérir le même verrou pendant que ce script le tient encore, et sortirait aussitôt en
-  # croyant une mise à jour concurrente alors qu'il n'y en a aucune. Fenêtre de course
-  # résiduelle acceptée : entre ce relâchement et la prise du verrou par update.ps1, un autre
-  # déclenchement (double-clic manuel, ou une seconde session) pourrait s'y glisser.
+  # Le verrou est relâché avant de lancer update.ps1, qui prend le même : sinon il croirait
+  # une autre mise à jour en cours et sortirait. Entre les deux, un autre déclenchement
+  # pourrait s'intercaler ; ce risque est accepté.
   if ($script:SzhMutexTenu) {
     try { $SzhMutex.ReleaseMutex() } catch { }
     $script:SzhMutexTenu = $false
   }
-  # Windows PowerShell 5.1 explicitement : $PSHOME désignerait pwsh si ce script tournait
-  # sous PowerShell 7, qui n'a pas de powershell.exe à côté (même repli que
-  # Get-SzhRaccourcisMenu, szh-common.ps1).
+  # Windows PowerShell 5.1 explicitement : sous PowerShell 7, $PSHOME n'a pas de
+  # powershell.exe.
   $ps = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
   if (-not (Test-Path $ps)) { $ps = Join-Path $PSHOME 'powershell.exe' }
   $update = Join-Path $SzhToolkit 'windows\update.ps1'
 
   if ((Get-SzhMajSilencieuse) -and (-not $Visible)) {
-    # -WindowStyle Hidden sur Start-Process ne suffit pas toujours à cacher un exécutable de
-    # console : le process est créé, PUIS redimensionné selon le style demandé -- une fenêtre
-    # peut donc s'ouvrir et se refermer le temps d'un clignement (défaut documenté de
-    # Start-Process avec les applications console, plus visible depuis que Windows Terminal en
-    # est l'hôte par défaut). WScript.Shell.Run, lui, crée le process directement avec le style
-    # de fenêtre demandé : rien ne s'affiche jamais. C'est le mécanisme qu'emploie déjà
-    # hidden.vbs pour les raccourcis et la tâche planifiée (`sh.Run cmd, 0, False`) -- seul le
-    # troisième argument change : False là-bas (fenêtre lancée puis oubliée, hidden.vbs sert
-    # aussi à des raccourcis qui ne doivent jamais bloquer), True ici, pour rendre la main
-    # seulement une fois update.ps1 fini ET récupérer son code de sortie, comme le fait
-    # Start-Process -Wait -PassThru plus bas.
+    # Start-Process -WindowStyle Hidden peut laisser clignoter une fenêtre de console
+    # (surtout avec Windows Terminal comme hôte). WScript.Shell.Run crée le processus déjà
+    # caché, comme hidden.vbs. Le troisième argument à $true attend la fin d'update.ps1 et
+    # rend son code de sortie.
     $ligne = ('"{0}" -NoProfile -ExecutionPolicy Bypass -File "{1}" -Silencieux' -f $ps, $update)
     try {
       $sh = New-Object -ComObject WScript.Shell
       return [int]$sh.Run($ligne, 0, $true)
     } catch {
       Write-SzhLog ('update-launcher : WScript.Shell indisponible, repli sur une fenêtre visible (' + $_.Exception.Message + ')')
-      # Repli : la boucle continue plus bas, en fenêtre normale -- mieux vaut une mise à jour
-      # visible qu'aucune mise à jour du tout.
+      # Repli sur la fenêtre visible ci-dessous.
     }
   }
 
-  # -Wait -PassThru : sans eux, « vérification faite » (Save-SzhVerifFaite, plus bas)
-  # s'écrivait avant même de savoir si cette fenêtre avait réussi.
+  # -Wait -PassThru : attendre la fin pour connaître le code de sortie.
   $p = Start-Process -FilePath $ps -Wait -PassThru -ArgumentList @(
     '-NoProfile', '-ExecutionPolicy', 'Bypass',
     '-File', $update
@@ -177,18 +147,13 @@ function Start-SzhFenetreMaj {
 }
 
 # ---- Une seule mise à jour à la fois (mutex nommé, portée poste) ----
-# Même protection qu'update.ps1, et pour la même raison, exposée là-bas : « éviter un toolkit
-# à moitié écrit ». Ce script refait lui-même Remove-SzhToolkitOrphelins puis
-# Expand-Archive -Force sur $SzhToolkit plus bas — deux déclenchements concurrents de la passe
-# silencieuse (ouverture de session et tâche planifiée, ou deux comptes sur un poste partagé)
-# écriraient et effaceraient sinon en même temps sur le même arbre. Nommé, donc partagé avec
-# update.ps1 : c'est le même verrou qui protège les deux, et Start-SzhFenetreMaj ci-dessus
-# le relâche avant de lui passer la main pour qu'il puisse le reprendre à son tour.
+# Ce script remplace lui-même le toolkit plus bas : deux passes simultanées (deux comptes,
+# ou session et tâche planifiée) écriraient sur le même arbre. Le verrou est celui
+# d'update.ps1 (même nom), que Start-SzhFenetreMaj relâche avant de lui passer la main.
 $script:SzhMutex = New-SzhMutexPoste
 $script:SzhMutexTenu = $false
-# Même piège qu'update.ps1 : un processus mort en tenant ce mutex le laisse abandonné, et un
-# catch générique confondrait AbandonedMutexException avec « déjà pris », sortant sans
-# ReleaseMutex -- le mutex resterait abandonné pour de bon.
+# AbandonedMutexException (processus mort en tenant le mutex) vaut prise du mutex : la
+# traiter comme « déjà pris » le laisserait abandonné pour de bon.
 try { $script:SzhMutexTenu = $SzhMutex.WaitOne(0) }
 catch [System.Threading.AbandonedMutexException] { $script:SzhMutexTenu = $true; Write-SzhLog 'check : mutex abandonné par une passe précédente, repris' }
 catch { $script:SzhMutexTenu = $false }
@@ -199,9 +164,8 @@ if (-not $script:SzhMutexTenu) {
 
 try {
   $manifest = Get-SzhManifest
-  # Champs du manifest utilisés comme noms de fichiers ou de dossiers, rejoints tels quels à
-  # $SzhStaging : un manifest corrompu ou détourné ne doit jamais pouvoir écrire ni lire hors
-  # de ce dossier.
+  # Ces champs du manifeste deviennent des noms de fichiers sous $SzhStaging : on vérifie
+  # leur forme pour qu'un manifeste corrompu ne fasse rien lire ni écrire ailleurs.
   if (-not (Test-SzhVersionTag $manifest.version)) {
     throw ('Version de manifest invalide : ' + [string]$manifest.version)
   }
@@ -210,23 +174,15 @@ try {
   }
   $etat = Get-SzhState
   $etatUtil = Get-SzhEtatUtilisateur
-  # VERSION du toolkit d'abord, state.json en repli, comme partout ailleurs : lire $etat.version
-  # seul divergeait dès qu'une passe échouait après avoir extrait le toolkit mais avant d'avoir
-  # écrit ses clés d'état -- le fichier VERSION disait déjà la vérité, state.json encore l'ancienne.
+  # Le fichier VERSION du toolkit fait foi, state.json sert de repli : une passe interrompue
+  # après l'extraction laisse state.json en retard.
   $actuel = Get-SzhVersionInstallee
 
-  # Deux questions, et non une. « Le poste est-il à la bonne version ? » ne dit rien de ce
-  # compte : le toolkit est commun au poste, mais la distribution WSL, les extensions et les
-  # réglages sont par utilisateur. Le premier compte connecté mettait le poste à jour, et
-  # tous les autres lisaient « à jour » puis ressortaient sans environnement, sans
-  # extensions et sans raccourcis, sur un poste que le journal disait pourtant à jour.
+  # Deux questions : le poste est-il à jour, et ce compte l'est-il ? Le toolkit est commun
+  # au poste, mais la distribution WSL, les extensions et les réglages sont par compte.
   $rootfsActuel = Get-SzhEtatUtilisateurChamp $etatUtil 'rootfs'
-  # Même reprise que dans update.ps1 pour les postes d'avant l'état par utilisateur : la
-  # version n'y était retenue que dans l'état commun, et sans cette lecture le premier
-  # passage après cette mise à jour ouvrirait une fenêtre visible sur un poste qui n'a rien
-  # à installer. Comme là-bas, la confiance ne vaut que si la distribution est bien
-  # enregistrée pour ce compte — et la question n'est posée à wsl.exe qu'en dernier, une
-  # seule fois dans la vie du poste.
+  # Repli sur l'état commun du poste, comme dans update.ps1, à condition que la
+  # distribution soit enregistrée pour ce compte. wsl.exe n'est interrogé qu'en dernier.
   if ((-not $rootfsActuel) -and $etat -and $etat.rootfs -and
       ((Get-SzhDistrosEnregistrees) -contains $SzhDistro)) {
     $rootfsActuel = [string]$etat.rootfs
@@ -245,17 +201,14 @@ try {
     Write-SzhLog ('check : mise à jour {0} -> {1}' -f $actuel, $manifest.version)
   }
 
-  # Le moment ne compte que si l'environnement de fabrication change : un toolkit, des
-  # extensions et des réglages s'installent sous l'éditeur ouvert, alors que remplacer la
-  # distro exige de la désenregistrer, ce qui échoue tant qu'une compilation s'en sert.
+  # Le moment ne compte que si l'environnement de fabrication change : le remplacer oblige à
+  # désenregistrer la distribution, ce qui échoue pendant une compilation.
   $remplace = ($rootfsActuel -ne $manifest.rootfs.version)
 
   $moment = Test-SzhMomentMaj -RemplaceEnvironnement:$remplace -Presse:$presse
   if (-not $moment.propice) {
-    # Une compilation en vol est la seule gêne que le délai de politesse ne fait pas céder :
-    # la couper détruit du travail, et elle finit de toute façon en quelques minutes. On le
-    # dit, pour qu'un journal où cette ligne se répète cent fois se lise comme une anomalie
-    # et non comme la routine.
+    # Une compilation en cours fait renoncer même après le délai de politesse. Le journal le
+    # précise, pour qu'une répétition de cette ligne se remarque.
     $suite = 'nouvel essai au prochain déclenchement'
     if ($moment.grave) { $suite = 'on ne coupe pas une compilation, nouvel essai au prochain déclenchement' }
     Write-SzhLog ('check : renoncement, {0} (fois {1}) -> {2}' -f $moment.raison, ($bloqueFois + 1), $suite)
@@ -264,10 +217,8 @@ try {
   }
   if ($moment.raison) { Write-SzhLog ('check : ' + $moment.raison) }
 
-  # Mettre le toolkit à niveau pour disposer du dernier update.ps1. Sauté quand le poste
-  # porte déjà la bonne version : c'est le cas du compte qui n'a pas encore reçu sa part
-  # d'un poste par ailleurs à jour, et retélécharger l'archive pour la redéplier à
-  # l'identique ne lui apporterait rien.
+  # Mise à niveau du toolkit, pour disposer du dernier update.ps1. Sautée si le poste est
+  # déjà à la bonne version et que seul ce compte est en retard.
   if ($actuel -ne $manifest.version) {
     New-Item -ItemType Directory -Force -Path $SzhStaging, $SzhToolkit | Out-Null
     $zip = Join-Path $SzhStaging $manifest.toolkit.file
@@ -277,9 +228,8 @@ try {
         throw ('empreinte invalide pour {0}' -f $manifest.toolkit.file)
       }
     }
-    # Remplacement atomique — comme dans update.ps1 et bootstrap.ps1 : voir
-    # Install-SzhToolkitDepuisArchive (szh-common.ps1). Une bascule qui échoue (fichier
-    # encore ouvert) remonte à la boucle catch de ce script, comme toute autre erreur d'ici.
+    # Remplacement atomique, orphelins retirés (Install-SzhToolkitDepuisArchive). Un échec
+    # (fichier encore ouvert) remonte au catch ci-dessous.
     $bilanOrphelins = Install-SzhToolkitDepuisArchive -Zip $zip -Toolkit $SzhToolkit -DossierTravail $SzhStaging
     foreach ($o in $bilanOrphelins.retires) {
       Write-SzhLog ('check : orphelin retiré du toolkit -> ' + $o)
@@ -296,27 +246,18 @@ try {
   if ($codeFenetre -eq 0) {
     Save-SzhVerifFaite
   } else {
-    # Le filet des 28 jours doit aussi compter un échec d'installation, pas seulement un
-    # renoncement de moment : sans cela, une fenêtre qui échoue à chaque passage n'aurait
-    # jamais laissé Test-SzhPolitesseExpiree finir par passer outre.
+    # Un échec d'installation compte comme un blocage, pour le délai de politesse.
     Write-SzhLog ('check : la fenêtre de mise à jour a échoué (code ' + $codeFenetre + ')')
     Save-SzhBlocage ('la fenêtre de mise à jour a échoué (code ' + $codeFenetre + ')')
   }
   exit 0
 } catch {
-  # Une ligne, un événement : les messages du planificateur et du réseau portent des sauts
-  # de ligne qui couperaient la ligne de journal en deux.
+  # Message mis sur une ligne : les messages du réseau portent des sauts de ligne.
   $message = (([string]$_.Exception.Message) -replace '\s+', ' ').Trim()
   Write-SzhLog ('check ERREUR : {0}' -f $message)
   Save-SzhBlocage $message
-  # Un poste qui ne se met plus à jour depuis quatre semaines doit l'apprendre autrement
-  # qu'en lisant un journal. La passe reste muette ; c'est la fenêtre visible qui parle, et
-  # elle dira soit « terminé », soit l'erreur réelle avec le geste à faire. Une fois par
-  # semaine au plus, sinon la passe muette deviendrait la plus bavarde de la chaîne.
-  #
-  # -Visible, et non le réglage : c'est le seul endroit de ce script qui passe outre « mise à
-  # jour silencieuse ». Ce réglage écarte la fenêtre de routine, pas l'alerte — un poste
-  # bloqué depuis un mois qui se tairait aussi n'aurait plus rien pour se faire réparer.
+  # Après le délai de politesse, la fenêtre de mise à jour s'ouvre, visible même en mode
+  # silencieux, une fois par semaine au plus : elle dira « terminé » ou l'erreur réelle.
   if ($presse -and (Test-SzhAlerteDue -Maintenant $maintenant -AlerteLe $alerteLe)) {
     Write-SzhLog ('check : bloqué depuis le {0} -> ouverture de la fenêtre visible pour que l''échec se voie' -f $bloqueDepuis)
     try {
@@ -332,9 +273,8 @@ try {
   }
   exit 1
 } finally {
-  # Filet de sûreté pour toute autre sortie de la passe (« déjà à jour », renoncement de
-  # moment) : Start-SzhFenetreMaj l'a déjà relâché sur le chemin qui y mène, ce qui rend
-  # cet appel sans effet là — ReleaseMutex n'est pas appelé deux fois grâce au drapeau.
+  # Relâche le verrou sur toutes les autres sorties. Le drapeau évite un second ReleaseMutex
+  # quand Start-SzhFenetreMaj l'a déjà fait.
   if ($script:SzhMutexTenu) {
     try { $SzhMutex.ReleaseMutex() } catch { }
     $script:SzhMutexTenu = $false

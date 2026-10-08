@@ -1,6 +1,5 @@
-// Les compteurs d'usage n'ont qu'un écrivain, lib/compteurs.js (éprouvé par
-// compteurs.test.js) : le jumeau PowerShell a disparu, et rien sous windows/ ne le charge ni
-// ne l'appelle plus.
+// Les compteurs d'usage n'ont qu'un écrivain, lib/compteurs.js (vérifié par
+// compteurs.test.js) : aucun script de windows/ ne tient de version PowerShell.
 //
 //   node --test test/js/compteurs-ps.test.js
 'use strict';

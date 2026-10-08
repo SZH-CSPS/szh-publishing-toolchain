@@ -1,12 +1,12 @@
 // Le choix du lecteur dans import-docx.sh distingue trois réponses de
 // `pronto-lire.py --reconnaitre` : 0 = au gabarit, 10 = pas au gabarit, tout autre code =
-// panne. Une panne ne se confond plus avec un « non » : le document repart chez docx-meta.py,
-// mais le journal d'import le dit, avec la dernière ligne de ce que le reconnaisseur a écrit.
+// panne. Sur une panne, le document passe par docx-meta.py, et le journal d'import le dit,
+// avec la dernière ligne écrite par le reconnaisseur.
 //
 //   node --test test/js/import-reconnaissance.test.js
 //
-// Chaîne réelle dans la WSL (patron de import-figures.test.js). La panne est provoquée dans
-// une COPIE du dossier pipeline/ dont pronto_docx.py plante au chargement.
+// Chaîne réelle dans la WSL (comme import-figures.test.js). La panne est provoquée dans
+// une copie du dossier pipeline/ dont pronto_docx.py plante au chargement.
 'use strict';
 
 const test = require('node:test');

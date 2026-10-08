@@ -1,32 +1,19 @@
 ﻿# Identité de barre des tâches (AppUserModelID) et son pont C#, raccourcis du menu Démarrer,
-# ouverture d'un dossier dans VSCodium.
-# Compatibilité : Windows PowerShell 5.1 (proscrire ?. ?? ?: && ||).
+# ouverture de VSCodium et de l'Accueil, tâches de démarrage du lanceur.
+# Compatibilité : Windows PowerShell 5.1.
 
 # ---- Ouverture d'un dossier dans VSCodium ----
-# Ici, l'environnement doit être assaini (ELECTRON_RUN_AS_NODE ci-dessus ; la garde est
-# répétée, un script pouvant régler ses variables après le dot-source) et un échec doit se
-# voir dans le journal. open-md.ps1 a son propre lanceur, Start-SzhCodiumFichier, et ne passe
-# pas par ici : il doit ouvrir deux chemins d'un coup (le dossier de revue et le fichier, pour
-# que l'aperçu comme la régénération s'activent) et porte un mode simulation pour les tests
-# (SZH_OPENMD_SIMULE=1), deux besoins que cette fonction-ci n'a pas. Garder les deux noms
-# distincts et corrects : une redéfinition locale de Start-SzhCodium occulterait celle-ci en
-# silence.
+# Retire ELECTRON_RUN_AS_NODE (un script peut le poser après le dot-source) et journalise
+# un échec. open-md.ps1 a son propre lanceur, Start-SzhCodiumFichier, qui ouvre deux chemins
+# et a un mode simulation ; les deux noms doivent rester distincts.
+# Les secrets Shlink et OJS sont posés par Set-SzhEnvironnementSecrets, dans szh-common.ps1
+# pour qu'open-md.ps1, qui ne charge que ce fichier, y ait accès.
 #
-# ---- Secrets Shlink/OJS ----
-# Set-SzhEnvironnementSecrets et Set-SzhWslEnvSecrets ont déménagé dans szh-common.ps1 (à
-# côté des Get-SzhShlinkUrl/Cle, Get-SzhOjsCle qu'elles lisent) : open-md.ps1 ne
-# dot-source QUE szh-common.ps1, jamais szh-shell.ps1, et Start-SzhCodiumFichier (son propre
-# lanceur VSCodium, voir plus haut) en a besoin autant que Start-SzhCodium ci-dessous -- un
-# article ouvert par double-clic doit compiler avec les mêmes variables qu'une revue ouverte
-# depuis le lanceur.
-
-# $env:SZH_CODIUM_PROFIL, posé par outils-dev/pronto-dev.ps1, fait ouvrir un profil de
-# développement au lieu du profil de production -- vide ou absent, la ligne de commande ne
-# bouge pas d'un caractère. $env:SZH_LANCEUR_SIMULE=1 journalise la ligne calculée sans rien
-# lancer, comme ailleurs dans ce dépôt (szh-ancrage.ps1, szh-rapport.ps1).
+# $env:SZH_CODIUM_PROFIL (outils-dev/pronto-dev.ps1) ouvre un profil de développement ;
+# vide ou absent, la ligne de commande est inchangée. $env:SZH_LANCEUR_SIMULE=1 journalise
+# la ligne sans rien lancer.
 function Start-SzhCodium([string]$Dossier) {
-  # Avant même de vérifier que VSCodium existe : orthogonal à sa présence, et la trace qui en
-  # sort ne doit pas dépendre d'un éditeur installé ou non sur ce poste.
+  # Secrets posés avant de vérifier VSCodium, indépendamment de sa présence.
   Set-SzhEnvironnementSecrets
   $codium = Get-VSCodiumExe
   if (-not $codium) {
@@ -49,12 +36,11 @@ function Start-SzhCodium([string]$Dossier) {
 
 # ---- L'Accueil du cockpit ----
 # « Pronto » ouvre VSCodium en fenêtre neuve, sans dossier : le cockpit y ouvre l'Accueil.
-# En dessous de cette version du cockpit, la fenêtre resterait vide ; la mise à jour passe
-# d'abord.
+# Version minimale du cockpit pour cela ; en dessous, on demande la mise à jour.
 $script:SzhCockpitAccueilMin = '0.74.0'
 
-# Les arguments que $env:SZH_CODIUM_PROFIL ajoute à toute ligne de VSCodium : vide ou
-# absente, rien.
+# Les arguments que $env:SZH_CODIUM_PROFIL ajoute à toute ligne de VSCodium (aucun si elle
+# est vide).
 function Get-SzhArgumentsProfil {
   $arguments = @()
   if ($env:SZH_CODIUM_PROFIL) {
@@ -64,8 +50,8 @@ function Get-SzhArgumentsProfil {
   return $arguments
 }
 
-# Un plan de simulation, en octets UTF-8 sur la sortie : Write-Output passerait par
-# l'encodage de la console et abîmerait un accent en PowerShell 5.1.
+# Écrit un plan de simulation en octets UTF-8 sur la sortie : Write-Output passerait par
+# l'encodage de la console et abîmerait les accents sous PowerShell 5.1.
 function Write-SzhPlanJson($Objet) {
   $octets = [System.Text.Encoding]::UTF8.GetBytes(($Objet | ConvertTo-Json -Depth 6))
   $flux = [Console]::OpenStandardOutput()
@@ -73,8 +59,7 @@ function Write-SzhPlanJson($Objet) {
   $flux.Flush()
 }
 
-# VSCodium manque : un rapport, puis une boîte, la seule chose que voie une personne lancée
-# sans console.
+# VSCodium manque : un rapport, puis une boîte de dialogue (le lanceur n'a pas de console).
 function Show-SzhCodiumAbsent {
   try { Write-SzhRapport -Code 'LANCEUR-CODIUM-ABSENT' -Source 'lanceur' -Etape 'démarrage du lanceur' } catch { }
   Add-Type -AssemblyName System.Windows.Forms
@@ -134,8 +119,8 @@ function Invoke-SzhTachesDemarrage {
   } else {
     Write-SzhLog ('demarrage : ancrage SharePoint introuvable (origine {0})' -f $ancrage.origine)
   }
-  # Seulement après une vraie demande restée sans réponse : l'origine « defaut » (demande
-  # évitée) est fréquente et ne vaut pas un rapport à chaque lancement.
+  # Rapport seulement après une demande restée sans réponse : l'origine « defaut » (demande
+  # récente, non répétée) est fréquente.
   if ($ancrage.origine -eq 'absent') {
     try { Write-SzhRapport -Code 'ANCRAGE-INTROUVABLE' -Source 'lanceur' -Etape (T 'ancrage.demande.titre') } catch { }
   }
@@ -195,51 +180,44 @@ function Start-SzhAccueil {
 }
 
 # ---- Identité de barre des tâches (AppUserModelID) ----
-# La barre des tâches ne prend pas l'icône de la fenêtre : elle groupe les boutons par
-# AppUserModelID et va chercher l'image de ce côté-là. Un processus qui n'en déclare aucun
-# s'en voit attribuer un, déduit de son exécutable hôte — powershell.exe pour nos scripts,
-# ouverts par hidden.vbs —, et le bouton porte alors l'icône de PowerShell.
+# La barre des tâches groupe les boutons par AppUserModelID et prend l'image associée à
+# cet identifiant, pas l'icône de la fenêtre. Sans identité déclarée, nos scripts reçoivent
+# celle de powershell.exe, et son icône.
 #
-# Il faut les deux moitiés :
-#   * le processus déclare son identité avant sa première fenêtre — Windows lit
-#     l'AppUserModelID quand la fenêtre s'inscrit à la barre, et ne le relit pas ensuite ;
-#   * le .lnk du menu Démarrer porte la même chaîne. C'est elle qui fait que le bouton et
-#     le raccourci ne font qu'un : le bouton reprend l'icône du raccourci — donc la même
-#     image qu'au menu Démarrer — et « Épingler à la barre des tâches » épingle le lanceur
-#     au lieu d'épingler powershell.exe.
+# Il faut deux choses :
+#   * le processus déclare son identité avant sa première fenêtre : Windows la lit quand la
+#     fenêtre s'inscrit à la barre, puis ne la relit plus ;
+#   * le .lnk du menu Démarrer porte la même chaîne : le bouton prend alors l'icône du
+#     raccourci, et « Épingler à la barre des tâches » épingle le raccourci, pas
+#     powershell.exe.
 #
-# Deux identités, une par entrée de menu : « Pronto » prend celle de VSCodium, qu'il ouvre, et
-# la mise à jour garde la sienne. Le menu Démarrer et sa recherche ne montrent qu'une entrée
-# par identité : les raccourcis de l'installeur VSCodium en reçoivent donc une troisième, sans
-# quoi « VSCodium » l'emporte et « Pronto » disparaît du menu.
+# Trois identités : « Pronto » prend celle de VSCodium, qu'il ouvre ; la mise à jour a la
+# sienne ; les raccourcis de l'installeur VSCodium en reçoivent une troisième, car le menu
+# Démarrer ne montre qu'une entrée par identité et « VSCodium » masquerait « Pronto ».
 #
-# ⚠ Un raccourci déjà épinglé est une copie, faite avant que ces identités existent : elle
-# ne les porte pas. Il faut dépingler puis réépingler une fois, geste laissé au rédacteur —
-# le dossier des épinglages est tenu par le shell, et y écrire reste sans effet jusqu'au
-# redémarrage d'explorer.exe. Le renommage des entrées de menu (« Revues SZH » et les deux
-# autres sont devenues « Pronto ») oblige de toute façon à ce geste : un
-# épinglage désigne un .lnk qui n'existe plus.
+# Un raccourci épinglé est une copie et ne reçoit pas ces identités : il faut le dépingler
+# puis le réépingler. Le dossier des épinglages appartient au shell : y écrire reste sans
+# effet jusqu'au redémarrage d'explorer.exe.
 $script:SzhAppIds = @{
-  # Celle de VSCodium (win32AppUserModelId de son product.json), que « Pronto » prend pour
-  # n'avoir qu'un bouton avec la fenêtre de l'éditeur qu'il ouvre.
+  # Celle de VSCodium (win32AppUserModelId de son product.json) : « Pronto » partage ainsi
+  # le bouton de l'éditeur qu'il ouvre.
   'codium' = 'VSCodium.VSCodium'
   'maj'   = 'SZH.Publishing.MiseAJour'
   # Celle des raccourcis posés par l'installeur VSCodium, qu'aucun processus ne déclare.
   'installeur' = 'SZH.Publishing.VSCodium'
 }
 
-# Rend '' pour une clé inconnue plutôt que de lever : sans identité on retombe sur le
-# comportement d'avant, une icône de PowerShell, et non sur un lanceur qui ne s'ouvre pas.
+# Rend '' pour une clé inconnue, sans lever : le bouton prend alors l'icône de PowerShell,
+# mais le lanceur s'ouvre.
 function Get-SzhAppId([string]$Cle) {
   if ($SzhAppIds.ContainsKey($Cle)) { return $SzhAppIds[$Cle] }
   return ''
 }
 
-# Le pont vers le shell, en C# : ni WScript.Shell ni aucune applet PowerShell ne sait
-# écrire une propriété de raccourci — il y faut IPropertyStore, que seul COM expose.
-# Compilé à la première demande et non au dot-source : szh-common.ps1 est chargé par tous
-# les scripts, y compris ceux qui n'ouvrent aucune fenêtre, et une compilation C# leur
-# coûterait une demi-seconde pour rien.
+# Le pont vers le shell, en C# : écrire une propriété de raccourci demande IPropertyStore,
+# que seul COM expose (ni WScript.Shell ni PowerShell ne le font). Compilé à la première
+# demande : szh-common.ps1 est chargé par tous les scripts, et la compilation coûte une
+# demi-seconde.
 $script:SzhPontBarre = $null
 $script:SzhSourcePontBarre = @'
 using System;
@@ -367,8 +345,7 @@ namespace Szh {
 }
 '@
 
-# Ne lève jamais et ne se plaint qu'une fois : une identité de barre des tâches est un
-# confort d'affichage, pas une condition d'ouverture d'un lanceur.
+# Compile le pont au premier appel. Ne lève pas, et ne journalise un échec qu'une fois.
 function Initialize-SzhPontBarre {
   if ($null -ne $script:SzhPontBarre) { return $script:SzhPontBarre }
   $script:SzhPontBarre = $false
@@ -383,8 +360,8 @@ function Initialize-SzhPontBarre {
   return $script:SzhPontBarre
 }
 
-# À appeler avant la première fenêtre du processus. Voir le commentaire d'en-tête : passé
-# ce moment, Windows a déjà rangé le bouton sous l'identité déduite de powershell.exe.
+# À appeler avant la première fenêtre du processus : ensuite, Windows a déjà rangé le
+# bouton sous l'identité de powershell.exe.
 function Set-SzhAppUserModelId([string]$Id) {
   if (-not $Id) { return $false }
   if (-not (Initialize-SzhPontBarre)) { return $false }
@@ -420,91 +397,62 @@ function Get-SzhLnkAppId([string]$Lnk) {
 }
 
 # ---- Raccourcis du menu Démarrer ----
-# Deux entrées, au niveau utilisateur : le lanceur et la mise à jour. Posées par update.ps1
-# (mise à jour), par update-launcher.ps1 (à chaque ouverture de session) et par
-# bootstrap.ps1 (poste neuf), pour qu'un poste déjà à jour comme un poste sortant de sa
-# boîte finisse par les avoir sans que personne n'intervienne, et chacune dans le profil du
-# rédacteur qui ouvre la session.
-#
-# Elles étaient cinq jusqu'au 13.09.2026 : un lanceur par produit et une mise à jour par
-# langue. Les trois premières ont fusionné en une fenêtre à onglets, les deux dernières en
-# une entrée dont le nom ne se traduit pas.
+# Deux entrées, dans le profil du compte : Pronto et sa mise à jour. Posées par update.ps1,
+# par update-launcher.ps1 (à chaque ouverture de session) et par bootstrap.ps1 (poste
+# neuf), pour que chaque compte les reçoive sans intervention.
 #
 # ---- Le nom de l'application ----
-# Provisoire : le nom définitif n'est pas arrêté. Tout ce que PowerShell affiche le lit d'ici
-# — les deux entrées du menu Démarrer, le titre de la fenêtre du lanceur, celui de la fenêtre
-# de mise à jour, les messages de new-revue.ps1 et de new-livre.ps1.
+# Tout ce que PowerShell affiche lit le nom ici : entrées du menu Démarrer, titres des
+# fenêtres, messages de new-revue.ps1 et new-livre.ps1.
 #
-# ⚠ Mais PAS tout : ces deux lignes ne suffisent pas à rebaptiser l'outil. Le nom est écrit en
-# toutes lettres dans des textes que PowerShell ne lit pas, et qui expliquent au rédacteur par
-# où passer. Au prochain baptême, les corriger aussi — la recherche qui les trouve tous est
-# celle du nom lui-même, sur tout le dépôt :
+# Le nom est aussi écrit en toutes lettres dans des textes que PowerShell ne lit pas. Pour
+# renommer l'outil, chercher le nom dans tout le dépôt ; notamment :
 #   windows/szh-textes.ps1               'lien.introuvable', dans les trois langues
 #   vscodium-extension/…/lib/i18n.js     'err.version.lancement', 'ctl.pasrevue',
 #                                        'reimport.injoignable', 'etat.barre.test.parametres'
 #   vscodium-extension/…/mail-templates/ traduction.fr.twig et traduction.de.twig
 #   vscodium-extension/…/package.nls*.json  'tuto.ouvrir.texte'
 #   revue-template/BIENVENUE.md, livre-template/BIENVENUE.md
-#   windows/Installer le poste SZH.cmd   (et son « & » y reste échappé en « ^& »)
-# Les faire lire d'ici serait pire que le mal : il faudrait injecter une variable PowerShell
-# dans du JavaScript, du Markdown et un gabarit de courriel, qui tournent tous sans PowerShell.
+#   windows/Installer le poste SZH.cmd   (où « & » s'échappe en « ^& »)
 #
-# « & » est un caractère légal dans un nom de fichier Windows, et donc dans un .lnk. Ceux qui
-# ne le sont pas, et qu'il ne faut pas y glisser au prochain baptême, sont les neuf de
-# Windows : la barre oblique est le piège le plus tentant — « Revue / Zeitschrift » se lirait
-# comme un chemin, et CreateShortcut échouerait sans rien dire.
+# Le nom devient un nom de fichier .lnk : il ne doit contenir aucun des neuf caractères
+# interdits par Windows (« / » compris, sinon CreateShortcut échoue sans message). « & »
+# est permis.
 #
-# Renommer ces entrées n'est pas gratuit : un .lnk renommé est un .lnk supprimé puis recréé,
-# ce qui casse les épinglages de barre des tâches. Set-SzhRaccourcisMenu retire les anciens
-# noms de lui-même (voir plus bas) ; le réépinglage, lui, reste un geste du rédacteur.
+# Renommer une entrée supprime puis recrée le .lnk, ce qui casse les épinglages.
+# Set-SzhRaccourcisMenu retire les anciens noms ; le réépinglage reste à faire à la main.
 $script:SzhNomApplication = 'Pronto'
 $script:SzhNomMiseAJour   = 'Pronto (Updater)'
 
-# Ce que le menu doit porter, une ligne par entrée : le nom du .lnk, sa cible, ses
-# arguments, sa description (l'infobulle), son icône, et le script qu'elle pilote.
+# Les entrées du menu : nom du .lnk, cible, arguments, description (infobulle), icône,
+# identité de barre des tâches et script lancé.
 #
-# Deux entrées, et deux seulement. Avant, il y en avait cinq : un lanceur par produit
-# (« Revues SZH », « Zeitschriften SZH », « Books SZH-CSPS ») et une mise à jour par langue.
-# Les trois produits s'ouvrent maintenant depuis l'Accueil du cockpit, et la mise à jour
-# prend sa langue du réglage du compte au lieu de la recevoir de son raccourci — il n'y a
-# donc plus rien à distinguer par le nom.
+# Les trois produits s'ouvrent depuis l'Accueil du cockpit, et la mise à jour prend la
+# langue réglée pour le compte : une entrée de chaque suffit. Le nom de la mise à jour,
+# « Pronto (Updater) », ne se traduit pas : un nom de .lnk qui changerait avec la langue
+# casserait les épinglages.
 #
-# Pourquoi une seule mise à jour, alors qu'il en fallait deux ? Un nom de .lnk est figé,
-# alors que la langue de l'interface bouge : renommer l'entrée à chaque passe l'aurait fait
-# changer sous les doigts du rédacteur, et cassé son épinglage à chaque fois. D'où deux noms
-# fixes, l'un français l'autre allemand. « Pronto (Updater) » règle la même
-# question autrement : un nom qui ne demande aucune traduction, donc qui ne bouge jamais.
-# Le mot « Updater » se lit dans les deux langues, contrairement à « Mise à jour ».
+# Pronto passe par hidden.vbs, sans console. La mise à jour lance powershell.exe
+# directement : sa fenêtre montre le téléchargement et les erreurs (Show-SzhErreur propose
+# le journal et le courriel au support).
 #
-# Le lanceur passe par hidden.vbs, qui lance sans console : une fenêtre noire devant un
-# lanceur graphique n'apprendrait rien à personne. La mise à jour, elle, vise powershell.exe
-# en direct : elle télécharge, elle prend plusieurs minutes, elle peut échouer, et sa fenêtre
-# est la seule chose qui le montre — c'est aussi là que Show-SzhErreur propose le journal et
-# l'e-mail au support.
-#
-# Chaque entrée porte une icône (windows/icone.py) : épinglée à la barre des tâches, elle
-# perd son libellé et l'icône devient le seul repère. Sans IconLocation le shell affiche
-# celle de wscript.exe, qui ne dit rien à personne ; d'où le repli sur celle de VSCodium.
-# Le lanceur reprend szh-revue.ico, l'icône du produit le plus ancien, faute d'une image
-# propre à l'application — les trois .ico de produit restent livrés et servent encore aux
-# fenêtres secondaires du lanceur. Chaque entrée porte aussi son AppUserModelID : l'icône du
-# raccourci ne vaut que pour le menu, et c'est cette identité-là qui la fait suivre jusqu'au
-# bouton de la barre des tâches. Voir « Identité de barre des tâches » ci-dessus.
+# Chaque entrée a une icône (pronto.ico, pronto-maj.ico ; repli sur celle de VSCodium), et
+# son AppUserModelID pour que le bouton de la barre des tâches la reprenne (voir
+# « Identité de barre des tâches » plus haut).
 function Get-SzhRaccourcisMenu {
   param([string]$Toolkit = $SzhToolkit)
   $vbs     = Join-Path $Toolkit 'windows\hidden.vbs'
   $lanceur = Join-Path $Toolkit 'windows\open-revue.ps1'
   $maj     = Join-Path $Toolkit 'windows\update.ps1'
   $wscript = Join-Path $env:WINDIR 'System32\wscript.exe'
-  # Windows PowerShell 5.1 explicitement : $PSHOME désignerait pwsh si la mise à jour
-  # avait été lancée depuis PowerShell 7, et pwsh n'a pas de powershell.exe à côté.
+  # Windows PowerShell 5.1 explicitement : sous PowerShell 7, $PSHOME n'a pas de
+  # powershell.exe.
   $ps = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
   if (-not (Test-Path $ps)) { $ps = Join-Path $PSHOME 'powershell.exe' }
 
   $liste = New-Object System.Collections.ArrayList
-  # Aucun -Produit : le produit que montre l'Accueil vient du réglage du compte, pas du
-  # raccourci. La description suit $SzhLangue — une seule entrée, donc une seule infobulle,
-  # et elle s'adresse à qui a réglé le poste.
+  # Sans -Produit : l'Accueil suit le produit réglé pour le compte. La description suit
+  # $SzhLangue.
   [void]$liste.Add([ordered]@{
     nom    = $SzhNomApplication
     cible  = $wscript
@@ -514,8 +462,7 @@ function Get-SzhRaccourcisMenu {
     appid  = (Get-SzhAppId 'codium')
     pilote = $lanceur
   })
-  # Aucun -Langue : update.ps1 garde le paramètre pour la ligne de commande, mais son
-  # raccourci ne le passe plus — la fenêtre parle la langue du réglage, comme le lanceur.
+  # Sans -Langue : la fenêtre prend la langue réglée pour le compte.
   [void]$liste.Add([ordered]@{
     nom    = $SzhNomMiseAJour
     cible  = $ps
@@ -528,20 +475,14 @@ function Get-SzhRaccourcisMenu {
   return $liste
 }
 
-# Les noms que le menu Démarrer a portés avant le 13.09.2026, et qu'il ne doit plus porter.
+# Les anciens noms d'entrées du menu Démarrer, pour la désinstallation : le toolkit peut
+# déjà avoir disparu, elle ne peut donc pas lire la cible des .lnk (Set-SzhRaccourcisMenu,
+# elle, reconnaît un ancien raccourci à sa cible).
 #
-# Set-SzhRaccourcisMenu n'en a pas besoin : elle reconnaît un ancien raccourci à sa cible,
-# ce qui vaut pour tous les renommages passés et à venir. La désinstallation, si : elle
-# tourne sur un poste dont le toolkit peut avoir été retiré avant elle, et ne peut donc pas
-# ouvrir les .lnk pour lire où ils pointent — il ne lui reste que les noms.
-#
-# Les deux mises à jour ne sont pas nommées ici en dur mais lues dans la table des textes,
-# où elles n'ont pas bougé : un poste francophone et un poste germanophone n'ont pas le
-# même fichier à retirer, et c'est la raison même pour laquelle ces deux entrées ont
-# disparu. Cette liste ne grandit qu'à un renommage, et ne rétrécit jamais : un poste qui
-# saute plusieurs versions doit retrouver ici tout ce qu'il a pu recevoir. « Pronto (dev) »
-# y figure pour une autre raison : aucune mise à jour ne le pose jamais, c'est
-# outils-dev/pronto-dev.ps1 seul qui le fait, sur le poste de développement.
+# Les anciennes mises à jour se lisent dans la table des textes (raccourci.maj.nom), un nom
+# par langue. La liste ne fait que grandir : un poste qui saute des versions doit y trouver
+# tout ce qu'il a pu recevoir. « Pronto (dev) » est posé par outils-dev/pronto-dev.ps1 sur le
+# poste de développement.
 function Get-SzhRaccourcisObsoletes {
   $noms = New-Object System.Collections.ArrayList
   foreach ($n in @('Revues SZH', 'Zeitschriften SZH', 'Books SZH-CSPS',
@@ -556,10 +497,10 @@ function Get-SzhRaccourcisObsoletes {
 }
 
 # Les raccourcis qui visent VSCodium.exe, au premier niveau du menu et dans le dossier
-# « VSCodium » de l'installeur, reçoivent pronto.ico, comme le fait patch-icone.ps1, et
+# « VSCodium » de l'installeur, reçoivent pronto.ico (comme dans patch-icone.ps1) et
 # l'identité 'installeur' : avec celle de « Pronto », ils l'effaceraient du menu Démarrer.
-# L'installeur la leur rend à chaque mise à jour de VSCodium, d'où une reprise à chaque pose.
-# Rend les noms retouchés.
+# Chaque mise à jour de VSCodium les remet dans leur état d'origine, d'où une reprise à
+# chaque passage. Rend les noms modifiés.
 function Set-SzhRaccourcisCodium([string]$Menu, [string]$Icone, $Shell) {
   $retouches = New-Object System.Collections.ArrayList
   $voulu = ''
@@ -589,11 +530,9 @@ function Set-SzhRaccourcisCodium([string]$Menu, [string]$Icone, $Shell) {
   return $retouches
 }
 
-# Pose les entrées ci-dessus et retire celles d'une version antérieure. Ne lève jamais :
-# un menu Démarrer verrouillé par une stratégie de groupe ne doit pas faire échouer une
-# mise à jour par ailleurs réussie. Rend un bilan — poses, retires, manques — que
-# l'appelant écrit au journal, car un raccourci absent qui ne se dit pas est introuvable.
-# $Menu est paramétrable pour éprouver la fonction hors du vrai menu Démarrer.
+# Pose les entrées ci-dessus et retire les anciennes. Ne lève pas : un menu verrouillé par
+# stratégie de groupe ne fait pas échouer la mise à jour. Rend un bilan (poses, retires,
+# manques, codium) que l'appelant journalise. $Menu permet de tester hors du vrai menu.
 function Set-SzhRaccourcisMenu {
   param(
     [string]$Menu    = '',
@@ -615,8 +554,7 @@ function Set-SzhRaccourcisMenu {
     New-Item -ItemType Directory -Force -Path $Menu | Out-Null
     $shell = New-Object -ComObject WScript.Shell
   } catch {
-    # Dossier non inscriptible, ou COM indisponible : rien ne sera posé, et c'est tout ce
-    # qu'on peut en dire. On le dit une fois, pas quatre.
+    # Dossier non inscriptible ou COM indisponible : une seule ligne de bilan.
     [void]$bilan.manques.Add(('menu Démarrer inaccessible ({0}) : {1}' -f $Menu, $_.Exception.Message))
     return $bilan
   }
@@ -624,8 +562,7 @@ function Set-SzhRaccourcisMenu {
   $codium = Get-VSCodiumExe
   foreach ($r in $voulus) {
     try {
-      # Pas de raccourci mort : un .lnk vers un script absent ne ferait que clignoter. Un
-      # raccourci déjà en place est alors laissé tel quel plutôt que remplacé par du vide.
+      # Script absent : pas de raccourci vers rien. Un raccourci existant est laissé tel quel.
       if (-not (Test-Path $r.pilote)) {
         [void]$bilan.manques.Add(('{0} : non posé, {1} manque au toolkit — celui-ci est incomplet, la tâche planifiée le réinstalle à la prochaine ouverture de session.' -f $r.nom, (Split-Path $r.pilote -Leaf)))
         continue
@@ -638,9 +575,8 @@ function Set-SzhRaccourcisMenu {
       if (Test-Path $r.icone) { $lnk.IconLocation = ('{0},0' -f $r.icone) }
       elseif ($codium) { $lnk.IconLocation = $codium }
       $lnk.Save()
-      # L'identité vient après Save() : WScript.Shell réécrit le fichier entier et
-      # effacerait une propriété posée avant lui. Un échec ici ne retire pas l'entrée du
-      # menu — elle s'ouvre, elle n'a que la mauvaise icône dans la barre des tâches.
+      # L'identité après Save() : WScript.Shell réécrit le fichier entier. En cas d'échec,
+      # l'entrée fonctionne, avec l'icône de PowerShell dans la barre des tâches.
       if ($r.appid -and (-not (Set-SzhLnkAppId (Join-Path $Menu ($r.nom + '.lnk')) $r.appid))) {
         [void]$bilan.manques.Add(('{0} : identité de barre des tâches non posée, le bouton de la barre gardera l''icône de PowerShell.' -f $r.nom))
       }
@@ -655,26 +591,16 @@ function Set-SzhRaccourcisMenu {
     Write-SzhLog ('raccourcis : icône et identité posées sur ' + $n + ', qui vise VSCodium')
   }
 
-  # Une seule ligne suffit à dire qu'un dossier entier se refuse, et elle doit dire la
-  # suite : rien ne s'arrête pour autant, et la mise à jour garde deux autres portes.
+  # Aucune entrée écrite : une ligne qui explique la cause probable et les autres accès à
+  # la mise à jour.
   if (($bilan.poses.Count -eq 0) -and ($bilan.manques.Count -gt 0)) {
     [void]$bilan.manques.Add(('aucune entrée n''a pu être écrite dans « {0} » : ce dossier refuse l''écriture, le plus souvent parce qu''une stratégie de groupe tient le menu Démarrer. Rien d''autre n''est affecté, et la mise à jour reste atteignable par le bouton « Changer de version… » du lanceur et par la tâche planifiée qui la déclenche.' -f $Menu))
   }
 
-  # Un raccourci d'une version antérieure, mal nommé, doublerait l'entrée sans jamais
-  # disparaître : on retire donc tout .lnk qui pilote un de nos scripts sans porter l'un
-  # des noms voulus. Un raccourci bien nommé mais pointant ailleurs a déjà été corrigé
-  # ci-dessus, CreateShortcut réécrivant le fichier existant. Le premier niveau du menu
-  # seulement : le sous-dossier « SZH » appartient à un autre produit, et rien ici ne doit
-  # y toucher.
-  #
-  # C'est ce nettoyage, et lui seul, qui débarrasse un poste des cinq anciennes entrées
-  # (« Revues SZH », « Zeitschriften SZH », « Books SZH-CSPS » et les deux mises à jour) au
-  # profit des deux nouvelles : elles ne portent plus un nom voulu, elles pilotent toujours
-  # l'un de ces scripts, donc elles partent. Aucune liste de noms périmés à tenir à jour —
-  # c'est la cible du raccourci qui le désigne, pas son libellé, et c'est justement ce qui
-  # rend un renommage sans danger. La désinstallation, elle, a besoin des noms : voir
-  # Get-SzhRaccourcisObsoletes.
+  # Retire tout .lnk qui lance un de nos scripts sans porter un des noms voulus : c'est un
+  # ancien raccourci. On le reconnaît à sa cible, pas à son nom, ce qui couvre tous les
+  # renommages. Premier niveau du menu seulement : le sous-dossier « SZH » appartient à un
+  # autre produit.
   $nos = @('open-revue.ps1', 'open-livre.ps1', 'open-produit.ps1', 'update.ps1')
   try {
     foreach ($f in @(Get-ChildItem -LiteralPath $Menu -Filter '*.lnk' -File -ErrorAction Stop)) {
@@ -697,38 +623,24 @@ function Set-SzhRaccourcisMenu {
 }
 
 # ---- Raccourci « Ouvrir la revue » (ou « Ouvrir le livre ») ----
-# Ce raccourci vit DANS le dossier du numéro : OneDrive le recopie donc sur l'autre poste,
-# où rien de ce qu'il portait n'était vrai. Il visait l'exécutable de l'éditeur — installé
-# sous le profil de l'utilisateur, donc à un chemin qui contient le nom du compte — et lui
-# passait en argument le chemin absolu du numéro, qui contient le nom du compte lui aussi.
-# Deux chemins faux sur deux, et un double-clic qui ne fait rien.
-#
-# D'où sa forme d'aujourd'hui, où plus aucun chemin ne dépend du poste ni du compte :
+# Ce raccourci vit dans le dossier du numéro et voyage avec lui sur OneDrive. Aucun de ses
+# chemins ne dépend donc du poste ni du compte :
 #
 #   cible      %WINDIR%\System32\wscript.exe
 #   arguments  //B "<toolkit>\windows\hidden.vbs" "<toolkit>\windows\open-revue.ps1" "szh://ouvrir/<produit>/<numero>"
 #   icône      "<toolkit>\windows\<icône du produit>",0
 #
-# <toolkit> est $SzhToolkit, sous C:\ProgramData : une racine MACHINE, identique sur tous
-# les postes. La composition est celle du gestionnaire de protocole (Set-SzhProtocoleSzh,
-# update.ps1), volontairement — hidden.vbs pour qu'aucune console n'apparaisse devant un
-# lanceur graphique, open-revue.ps1 parce que c'est le point d'entrée du lanceur. Et le
-# numéro n'est plus désigné par son chemin mais par un lien szh://, que le lanceur revalide
-# puis résout dans les racines connues du poste (Find-SzhProduitOuvrir) : le dossier peut
-# donc avoir été archivé, déplacé, ou vivre ailleurs sur l'autre poste, le raccourci le
-# retrouve. C'est aussi pourquoi aucun WorkingDirectory n'est posé : il réintroduirait le
-# chemin du poste d'origine, exactement ce dont on sort.
+# <toolkit> est $SzhToolkit, sous C:\ProgramData, identique sur tous les postes. La
+# composition est celle du protocole szh: (Set-SzhProtocoleSzh, update.ps1). Le numéro est
+# désigné par un lien szh:// que le lanceur résout dans les racines du poste
+# (Find-SzhProduitOuvrir) : un dossier archivé ou déplacé est retrouvé. Pas de
+# WorkingDirectory, qui réintroduirait un chemin du poste.
 #
-# Ne lève jamais et rend $false en cas de manque : c'est un confort, pas la condition d'une
-# création ni d'un déplacement.
+# Ne lève pas ; rend $false si le raccourci n'a pas pu être posé.
 #
-# `$NomLien`/`$Description` par défaut : ceux de la revue, pour que new-revue.ps1 n'ait rien
-# à changer ; new-livre.ps1 passe les siens. `$Produit` est le seul paramètre ajouté, et il
-# est facultatif : vide, il se lit sur le disque (Get-SzhJetonDossier), ce qui suffit à
-# archive-revue.ps1 comme au script de migration. Le lien porte l'ID du manifeste (`id:`),
-# jamais le nom du dossier -- posé s'il manque encore (Set-SzhAusgabeIdSiAbsent, jamais
-# recalculé s'il existe déjà), pour qu'un numéro plus ancien reçoive lui aussi un raccourci
-# valable dès qu'on repasse par ici (migration, archivage).
+# $NomLien et $Description valent par défaut ceux de la revue ; new-livre.ps1 passe les
+# siens. $Produit vide : lu sur le disque (Get-SzhJetonDossier). Le lien porte l'`id:` du
+# manifeste, posé s'il manque (Set-SzhAusgabeIdSiAbsent), pas le nom du dossier.
 function Set-SzhRaccourciRevue([string]$Dossier, [string]$NomLien = 'Ouvrir la revue', [string]$Description = 'Ouvrir cette revue dans l''éditeur', [string]$Produit = '') {
   try {
     $chemin = (Resolve-Path -LiteralPath $Dossier -ErrorAction Stop).Path
@@ -740,8 +652,7 @@ function Set-SzhRaccourciRevue([string]$Dossier, [string]$NomLien = 'Ouvrir la r
     $valeurs = Get-SzhAusgabe (Join-Path $chemin $manifeste)
     $id = ''
     if ($valeurs.ContainsKey('id')) { $id = $valeurs['id'] }
-    # Un id absent ou hors grammaire (manifeste illisible, écriture ratée) ne donne aucun
-    # lien : mieux vaut pas de raccourci qu'un raccourci mort-né.
+    # Un id absent ou mal formé ne donne pas de lien, donc pas de raccourci.
     $lien = New-SzhLienOuvrir $jeton $id
     if (-not $lien) { return $false }
 
@@ -754,8 +665,7 @@ function Set-SzhRaccourciRevue([string]$Dossier, [string]$NomLien = 'Ouvrir la r
     $lnk = $shell.CreateShortcut((Join-Path $chemin ($NomLien + '.lnk')))
     $lnk.TargetPath = $wscript
     $lnk.Arguments = ('//B "{0}" "{1}" "{2}"' -f $vbs, $lanceur, $lien)
-    # Sans IconLocation, l'explorateur affiche celle de wscript.exe, qui ne dit rien à
-    # personne ; un .ico absent donnerait un carré blanc, on préfère alors ne rien poser.
+    # Sans .ico, rien n'est posé (un chemin absent donnerait un carré blanc).
     if (Test-Path $icone) { $lnk.IconLocation = ('{0},0' -f $icone) }
     $lnk.Description = $Description
     $lnk.Save()
@@ -766,14 +676,13 @@ function Set-SzhRaccourciRevue([string]$Dossier, [string]$NomLien = 'Ouvrir la r
   }
 }
 
-# ---- Node de VSCodium : le seul lanceur de scripts du cockpit ----
-# Les scripts d'outils\ (livrés dans l'extension du cockpit, jamais dans ce dépôt) tournent
-# sous le Node qu'embarque VSCodium : ELECTRON_RUN_AS_NODE=1, sans quoi VSCodium.exe ouvre une
-# fenêtre d'éditeur au lieu d'exécuter le script.
+# ---- Scripts du cockpit, sous le Node de VSCodium ----
+# Les scripts d'outils\ de l'extension du cockpit tournent sous le Node embarqué par
+# VSCodium : ELECTRON_RUN_AS_NODE=1, sans quoi VSCodium.exe ouvre une fenêtre d'éditeur.
 
-# Échappement Windows d'un argument de ligne de commande (guillemets, barres obliques
-# inverses) -- l'algorithme standard, puisque ProcessStartInfo.Arguments est UNE chaîne et
-# non une liste : les chemins vivent sous OneDrive et portent presque tous une espace.
+# Échappe un argument de ligne de commande selon la règle Windows (guillemets, barres
+# obliques inverses) : ProcessStartInfo.Arguments est une seule chaîne, et les chemins
+# OneDrive contiennent des espaces.
 function ConvertTo-SzhArgumentEchappe([string]$Valeur) {
   if ($null -eq $Valeur) { $Valeur = '' }
   if ($Valeur -eq '') { return '""' }
@@ -818,11 +727,10 @@ function Get-SzhOutilCockpit {
 # JSON déjà prêt) sur stdin, tout stdout rendu dans .Sortie. Rend .Demarre, .CodeSortie,
 # .Sortie et .Erreur (stderr).
 #
-# stdout ET stderr sont lus par des Task .NET (ReadToEndAsync), jamais par un
-# gestionnaire d'évènement PowerShell (add_ErrorDataReceived, BeginErrorReadLine) : celui-ci
-# s'exécute hors pipeline et a tué le processus PowerShell entier sur ce poste, sans
-# exception à attraper. La lecture de stderr démarre AVANT toute autre lecture ou écriture,
-# pour qu'aucun tube ne sature et ne bloque l'enfant.
+# stdout et stderr sont lus par des Task .NET (ReadToEndAsync) : un gestionnaire
+# d'évènement PowerShell (add_ErrorDataReceived, BeginErrorReadLine) s'exécute hors pipeline
+# et peut tuer tout le processus PowerShell sans exception à attraper. La lecture de stderr
+# démarre en premier, pour qu'aucun tube ne sature et ne bloque l'enfant.
 function Invoke-SzhNodeCockpit {
   param(
     [Parameter(Mandatory = $true)][string]$Outil,
@@ -863,7 +771,7 @@ function Invoke-SzhNodeCockpit {
     if ($null -ne $Entree) {
       $texteEntree = $Entree
       if ($Entree -isnot [string]) { $texteEntree = $Entree | ConvertTo-Json -Depth 6 -Compress }
-      # UTF-8 SANS BOM : un BOM en tête romprait le JSON.parse() côté Node.
+      # UTF-8 sans BOM : un BOM ferait échouer JSON.parse() côté Node.
       $octetsEntree = (New-Object System.Text.UTF8Encoding($false)).GetBytes([string]$texteEntree)
       $processus.StandardInput.BaseStream.Write($octetsEntree, 0, $octetsEntree.Length)
       $processus.StandardInput.Close()

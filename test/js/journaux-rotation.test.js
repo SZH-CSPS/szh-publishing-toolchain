@@ -58,7 +58,7 @@ test('rotation : un dossier absent ne lève pas', { skip: sansPowerShell }, () =
   } finally { fs.rmSync(base, { recursive: true, force: true }); }
 });
 
-// L'instance de dev lit les journaux du poste par SZH_JOURNAUX_MAJ : elle ne doit jamais les effacer.
+// L'instance de dev lit les journaux du poste par SZH_JOURNAUX_MAJ : elle ne les efface pas.
 test('rotation : SZH_JOURNAUX_MAJ ne change pas le dossier nettoyé', { skip: sansPowerShell }, () => {
   const a = arbre();
   const autre = arbre();

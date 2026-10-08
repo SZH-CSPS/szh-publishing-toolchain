@@ -1,23 +1,20 @@
-// Le cablage de l'ancrage SharePoint au demarrage de « Pronto » (windows/open-revue.ps1 ->
-// Invoke-SzhTachesDemarrage, windows/szh-shell.ps1) : un seul appel a Initialize-SzhAncrage
-// (windows/szh-ancrage.ps1), avant tout ce qui en depend -- jamais dans open-md.ps1 ni
-// archive-revue.ps1, qui n'utilisent que la resolution passive et ne doivent jamais rien
-// demander.
+// Le câblage de l'ancrage SharePoint au démarrage de « Pronto » (windows/open-revue.ps1 ->
+// Invoke-SzhTachesDemarrage, windows/szh-shell.ps1) : un seul appel à Initialize-SzhAncrage
+// (windows/szh-ancrage.ps1), avant tout ce qui en dépend. open-md.ps1 et archive-revue.ps1
+// n'utilisent que la résolution passive, qui ne demande rien.
 //
 //   node --test test/js/lanceur-ancrage.test.js
 //
-// L'ORDRE du cablage est un piege a deux sens :
-//   * trop TOT (avant le switch -Versions) : il faudrait choisir un dossier SharePoint rien
-//     que pour reparer une installation abimee ;
-//   * trop TARD (apres le check-in, l'epinglage ou l'arbre d'essai, qui lisent la racine) :
-//     ils travailleraient sur une base « introuvable » alors que la personne vient de
-//     choisir le bon dossier.
-// D'ou une preuve par l'observation (JSON de simulation) ET par le texte source.
+// L'appel a sa place exacte :
+//   * après le switch -Versions, pour réparer une installation sans avoir à choisir un
+//     dossier SharePoint ;
+//   * avant le check-in, l'épinglage et l'arbre d'essai, qui lisent la racine.
+// L'ordre est vérifié par l'observation (JSON de simulation) et sur le texte source.
 //
-// Aucun test ne touche le vrai C:\ProgramData\SZH, le vrai %LOCALAPPDATA%\SZH ni le vrai
-// SharePoint du poste : SZH_BASE, USERPROFILE et LOCALAPPDATA sont rediriges vers des dossiers
-// jetables (fs.mkdtempSync) AVANT tout appel, OneDrive/OneDriveCommercial et SZH_ANCRAGE sont
-// retires de l'environnement transmis, et SZH_LANCEUR_SIMULE=1 est pose partout.
+// Les tests ne touchent ni C:\ProgramData\SZH, ni %LOCALAPPDATA%\SZH, ni le SharePoint du
+// poste : SZH_BASE, USERPROFILE et LOCALAPPDATA vont vers des dossiers jetables
+// (fs.mkdtempSync) avant tout appel, OneDrive/OneDriveCommercial et SZH_ANCRAGE sont
+// retirés de l'environnement transmis, et SZH_LANCEUR_SIMULE=1 est posé partout.
 'use strict';
 
 const test = require('node:test');
@@ -35,22 +32,20 @@ const SHELL_PS1 = path.join(RACINE, 'windows', 'szh-shell.ps1');
 
 const { POWERSHELL, sansPowerShell } = require('./gardes');
 
-// Le nom du dossier de l'application vit a UN seul endroit cote PowerShell,
-// $script:SzhSegmentApplication (windows/szh-ancrage.ps1), et ce fichier le LIT plutot que
-// de le recopier -- sans quoi un futur renommage casserait ce test sans avoir rien casse de
-// reel. Meme motif que NOM_APPLICATION dans test/js/lanceur.test.js.
+// Le nom du dossier de l'application est lu dans $script:SzhSegmentApplication
+// (windows/szh-ancrage.ps1), pas recopié, comme NOM_APPLICATION dans
+// test/js/lanceur.test.js.
 const SOURCE_ANCRAGE = fs.readFileSync(path.join(RACINE, 'windows', 'szh-ancrage.ps1'), 'utf8');
 const mSegment = SOURCE_ANCRAGE.match(/\$script:SzhSegmentApplication\s*=\s*'([^']+)'/);
 assert.ok(mSegment, 'szh-ancrage.ps1 ne declare plus $script:SzhSegmentApplication');
 const SEGMENT_APPLICATION = mSegment[1];
-// La base des produits derive de l'ancrage : <ancrage>\2_Produkte\<application>.
+// La base des produits dérive de l'ancrage : <ancrage>\2_Produkte\<application>.
 const SEGMENTS_BASE = ['2_Produkte', SEGMENT_APPLICATION];
 
-// ---- Execution isolee : USERPROFILE, LOCALAPPDATA et OneDrive* toujours neutralises -------
+// ---- Exécution isolée : USERPROFILE, LOCALAPPDATA et OneDrive* neutralisés -------------
 //
-// $env:SZH_ANCRAGE, s'il traine deja dans l'environnement du poste qui fait tourner ces
-// tests, est retire par defaut : chaque scenario le repose explicitement s'il en a besoin
-// (overrides l'emporte toujours, applique apres le nettoyage).
+// $env:SZH_ANCRAGE du poste est retiré : chaque scénario le pose s'il en a besoin
+// (overrides s'applique après le nettoyage).
 function executer(scriptPath, args, overrides) {
   if (!POWERSHELL) { return null; }
   const env = Object.assign({}, process.env);
@@ -89,7 +84,7 @@ function ecrireYaml(dossier, nomFichier, lignes) {
 }
 
 // =====================================================================================
-// ---- Scenario 1 : SZH_ANCRAGE (essai) retenu -- la base des produits en decoule -------
+// ---- Scénario 1 : SZH_ANCRAGE (essai) retenu, la base des produits en découle ---------
 // =====================================================================================
 
 const TRAVAIL_1 = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-lanceur-ancrage-essai-'));
@@ -98,19 +93,17 @@ const PROFIL_1 = path.join(TRAVAIL_1, 'profil-neutre');
 const LOCALAPPDATA_1 = path.join(TRAVAIL_1, 'localappdata');
 fs.mkdirSync(PROGRAMDATA_1, { recursive: true });
 fs.mkdirSync(PROFIL_1, { recursive: true });
-// "emplacementRevues" fige explicitement, et rien d'autre : c'est l'ancrage seul qui doit
-// donner la racine de production (Get-SzhBaseRevuesPour), le defaut code en dur restant le
-// tout dernier recours.
+// "emplacementRevues" seul est posé : la racine de production vient de l'ancrage
+// (Get-SzhBaseRevuesPour), le défaut écrit dans le code n'étant que le dernier recours.
 fs.writeFileSync(path.join(PROGRAMDATA_1, 'config.json'), JSON.stringify({
   emplacementRevues: 'production',
 }), 'utf8');
 const ANCRAGE_1 = creerAncrage(TRAVAIL_1);
-// Un numero et un livre, tous deux sous CET ancrage : de quoi prouver que la resolution ne
-// beneficie pas qu'a la revue, mais bien aux trois produits (Revue, Zeitschrift, Books)
-// que sert un seul cablage.
+// Un numéro et un livre sous cet ancrage : la résolution sert les trois produits (Revue,
+// Zeitschrift, Books).
 const BASE_1 = path.join.apply(path, [ANCRAGE_1].concat(SEGMENTS_BASE));
-// Numeros DIRECTEMENT sous leur dossier produit : depuis le 15.09.2026 le niveau de
-// redaction a disparu, seules les archives gagnent un etage (« _Archive\<Produit> »).
+// Les numéros sont directement sous leur dossier produit ; seules les archives ont un
+// niveau de plus (« _Archive\<Produit> »).
 ecrireYaml(path.join(BASE_1, 'Revue', '2026-04'), 'ausgabe.yaml',
   ['title: "Via ancrage"', 'revue: "revue"']);
 ecrireYaml(path.join(BASE_1, 'Books', '2026-B900-LivreViaAncrage'), 'buch.yaml',
@@ -138,9 +131,8 @@ function emplacementsSocle(env) {
 }
 const socleEssai = emplacementsSocle(envEssai);
 
-// Un SZH_BASE SEPARE pour le livre : PROGRAMDATA_1 sert au controle "une seule ligne de
-// journal par lancement" juste plus bas, et un deuxieme lancement dans le MEME dossier de
-// journal y ajouterait une deuxieme ligne, faussant ce controle-la.
+// Un SZH_BASE à part pour le livre : PROGRAMDATA_1 sert au contrôle « une seule ligne de
+// journal par lancement », qu'un deuxième lancement dans le même dossier fausserait.
 const PROGRAMDATA_1_LIVRE = path.join(TRAVAIL_1, 'programdata-livre');
 fs.mkdirSync(PROGRAMDATA_1_LIVRE, { recursive: true });
 fs.writeFileSync(path.join(PROGRAMDATA_1_LIVRE, 'config.json'), JSON.stringify({
@@ -149,9 +141,8 @@ fs.writeFileSync(path.join(PROGRAMDATA_1_LIVRE, 'config.json'), JSON.stringify({
 const essaiLivre = (function () {
   return executer(OUVRIR_LIVRE, [], Object.assign({}, envEssai, { SZH_BASE: PROGRAMDATA_1_LIVRE }));
 })();
-// Le journal est lu ICI, tout de suite apres l'execution et AVANT le nettoyage de TRAVAIL_1
-// en toute fin de fichier -- les tests, eux, ne s'executent qu'apres coup (node:test execute
-// les corps de test une fois tout le module charge) et ne verraient plus rien sur le disque.
+// Le journal est lu ici, juste après l'exécution : node:test exécute les corps de test une
+// fois le module chargé, donc après le nettoyage de TRAVAIL_1 en fin de fichier.
 const journalEssai = (function () {
   if (!essaiRevue) { return null; }
   const maintenant = new Date();
@@ -201,7 +192,7 @@ test('un seul appel par lancement : une seule ligne de journal "ancrage SharePoi
   });
 
 // =====================================================================================
-// ---- Scenario 2 : aucun ancrage nulle part -- le lanceur poursuit normalement (D5) -----
+// ---- Scénario 2 : aucun ancrage, le lanceur poursuit normalement -----------------------
 // =====================================================================================
 
 const TRAVAIL_2 = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-lanceur-ancrage-absent-'));
@@ -210,8 +201,8 @@ const PROFIL_2 = path.join(TRAVAIL_2, 'profil-neutre');
 const LOCALAPPDATA_2 = path.join(TRAVAIL_2, 'localappdata');
 fs.mkdirSync(PROGRAMDATA_2, { recursive: true });
 fs.mkdirSync(PROFIL_2, { recursive: true });
-// Ni "SZH CSPS", ni "OneDrive - SZH CSPS", ni aucun sous-dossier candidat : la detection
-// automatique (Find-SzhAncrageAuto) n'a rigoureusement rien a trouver sous ce profil neutre.
+// Ni "SZH CSPS", ni "OneDrive - SZH CSPS", ni sous-dossier candidat : la détection
+// automatique (Find-SzhAncrageAuto) n'a rien à trouver sous ce profil neutre.
 fs.writeFileSync(path.join(PROGRAMDATA_2, 'config.json'), JSON.stringify({
   emplacementRevues: 'production',
 }), 'utf8');
@@ -231,12 +222,9 @@ test('sans ancrage trouvable nulle part, le lanceur sort proprement -- meme code
 
 test('GARDE-FOU : en simulation sans ancrage trouvable, l\'origine est "defaut" -- la demande n\'est meme pas tentee',
   { skip: sansPowerShell }, () => {
-    // Initialize-SzhAncrage rend "defaut" des le tout premier test SZH_LANCEUR_SIMULE=1, AVANT
-    // meme de regarder le marqueur anti-harcelement ou d'appeler Request-SzhAncrageUtilisateur
-    // (voir szh-ancrage.ps1). Si l'appel avait malgre tout tente la demande -- laquelle se
-    // neutralise aussi en simulation, mais plus tard dans le contrat -- l'origine rendue serait
-    // "absent", jamais "defaut". Cette distinction prouve donc, sans jamais avoir a observer
-    // une fenetre, qu'aucune tentative d'en ouvrir une n'a eu lieu.
+    // En simulation, Initialize-SzhAncrage rend "defaut" avant de lire le marqueur de
+    // relance ou d'appeler Request-SzhAncrageUtilisateur (szh-ancrage.ps1). Une demande
+    // tentée rendrait "absent" : "defaut" prouve qu'aucune fenêtre n'a été ouverte.
     verifierExecution(absentRevue, 'absent-revue');
     assert.strictEqual(absentRevue.sortie.ancrage.origine, 'defaut');
   });
@@ -253,14 +241,14 @@ test('-Versions reste atteignable meme sans ancrage : le selecteur de version ne
     const r = absentVersions.sortie;
     assert.strictEqual(r.versions, true);
     assert.ok(Object.prototype.hasOwnProperty.call(r, 'versionInstallee'));
-    // Le switch -Versions sort du script avant meme d'atteindre le bloc d'ancrage (il est
-    // le tout premier controle du fichier) : le champ "ancrage" ne doit donc pas exister ici.
+    // Le switch -Versions, premier contrôle du script, en sort avant le bloc d'ancrage : le
+    // champ "ancrage" est absent.
     assert.strictEqual(Object.prototype.hasOwnProperty.call(r, 'ancrage'), false,
       '-Versions ne devrait jamais atteindre le bloc d\'ancrage');
   });
 
 // =====================================================================================
-// ---- Controles statiques : l'ORDRE du cablage, prouve sur le texte source lui-meme -----
+// ---- Contrôles statiques : l'ordre du câblage, vérifié sur le texte source -------------
 // =====================================================================================
 
 const SOURCE_REVUE = fs.readFileSync(OUVRIR_REVUE, 'utf8');
@@ -272,7 +260,7 @@ test('un seul point d\'appel a Initialize-SzhAncrage, dans Invoke-SzhTachesDemar
   assert.ok(iTaches !== -1, 'Invoke-SzhTachesDemarrage a disparu de szh-shell.ps1');
   assert.strictEqual(SOURCE_TACHES.split('$ancrage = Initialize-SzhAncrage').length - 1, 1,
     'Initialize-SzhAncrage doit etre assignee a $ancrage exactement une fois');
-  // Et nulle part ailleurs dans windows/ ni outils-dev/ : seul le demarrage demande.
+  // Aucun autre appel dans windows/ ni outils-dev/ : seul le démarrage demande.
   const appels = [];
   for (const d of ['windows', 'outils-dev']) {
     for (const n of fs.readdirSync(path.join(RACINE, d)).filter((x) => x.endsWith('.ps1'))) {
@@ -305,8 +293,8 @@ test('ORDRE : l\'ancrage precede tout ce qui lit la racine -- check-in, epinglag
 });
 
 test('Write-SzhLog est appele juste apres la resolution de l\'ancrage, un branchement if/else -- un seul des deux s\'execute', () => {
-  // Deux mentions dans le SOURCE (une par branche) ; le controle « un seul appel par
-  // lancement » plus haut prouve qu'une seule s'execute.
+  // Deux mentions dans la source (une par branche) ; le contrôle « un seul appel par
+  // lancement », plus haut, montre qu'une seule s'exécute.
   const iAncrage = SOURCE_TACHES.indexOf('$ancrage = Initialize-SzhAncrage');
   const voisinage = SOURCE_TACHES.slice(iAncrage, iAncrage + 400);
   assert.match(voisinage, /if \(\$ancrage\.chemin\)/, 'le branchement chemin trouve/absent a disparu');
@@ -315,6 +303,6 @@ test('Write-SzhLog est appele juste apres la resolution de l\'ancrage, un branch
     'attendu deux mentions de Write-SzhLog (une par branche du if/else), trouve ' + occurrencesLog.length);
 });
 
-// ---- Nettoyage : rien ne doit rester sous le dossier temporaire du systeme apres coup ----
+// ---- Nettoyage : rien ne reste sous le dossier temporaire du système -----------------
 try { fs.rmSync(TRAVAIL_1, { recursive: true, force: true }); } catch (e) { /* best effort */ }
 try { fs.rmSync(TRAVAIL_2, { recursive: true, force: true }); } catch (e) { /* best effort */ }

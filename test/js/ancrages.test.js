@@ -1,24 +1,18 @@
-// Ancrages de références : le cockpit et le pipeline doivent tomber sur le même
-// identifiant, et c'est vérifié en exécutant les deux.
+// Ancrages de références : le cockpit et le pipeline doivent produire le même identifiant.
+// Les deux implémentations sont exécutées sur les mêmes entrées.
 //
-//   node --test test/js
+//   node --test test/js/ancrages.test.js
 //
-// Le cockpit pose des liens « [(Shaw, 2023)](#ref-shaw-2023) » ; le pipeline pose les
-// ancres correspondantes. Tant que chacun repliait les accents de son côté, ils
-// divergeaient sans bruit : « Zieliński » donnait « ref-zielinski » au cockpit et
-// « ref-zieliski » à la compilation. Le lien mourait dans le PDF, et le seul signe était
-// une ligne sur stderr que personne ne lit. contrats.test.js comparait les deux lexiques
-// par expression régulière sur le texte source — ce qui ne dit rien du résultat, et n'a
-// rien vu pendant deux ans.
+// Le cockpit pose des liens « [(Shaw, 2023)](#ref-shaw-2023) » ; le pipeline pose les ancres
+// correspondantes. Si les deux replient les accents différemment (« ref-zielinski » contre
+// « ref-zieliski »), le lien est mort dans le PDF sans autre signe qu'une ligne sur stderr.
 //
-// Ici, les deux implémentations tournent pour de vrai sur les mêmes entrées : les noms
-// accentués, tout le latin point de code par point de code, les titres de bibliographie,
-// les règles de continuation, et l'identifiant complet d'une liste de références passée
-// dans pandoc.
+// Entrées : noms accentués, tout le latin point de code par point de code, titres de
+// bibliographie, règles de continuation, et l'identifiant complet d'une liste de références
+// passée dans pandoc.
 //
-// Le Lua tourne dans la WSL : pandoc n'existe pas côté Windows. S'il est introuvable, les
-// contrôles à deux côtés sont sautés en le disant — jamais verts par défaut. SZH_WSL_OBLIGATOIRE
-// en fait des échecs, ce qu'une CI doit faire.
+// Le Lua tourne dans la WSL. S'il est introuvable, les contrôles à deux côtés sont sautés en
+// le disant ; SZH_WSL_OBLIGATOIRE en fait des échecs, comme en CI.
 'use strict';
 
 const test = require('node:test');
@@ -38,8 +32,8 @@ const { cheminVersWsl } = require(path.join(COCKPIT, 'lib', 'portraits.js'));
 const FILTRE = path.join(RACINE, 'pipeline', 'filters', 'szh-citations.lua');
 const TRAVAIL = path.join(os.tmpdir(), 'szh-ancrages');
 
-// Les noms qui ont motivé ce contrôle : polonais, turc, croate, roumain, serbe, allemand,
-// français, plus les quatre cas que l'ancien test couvrait déjà et qui doivent tenir.
+// Noms polonais, turcs, croates, roumains, serbes, allemands, français et quelques cas
+// simples.
 const NOMS = [
   'Zieliński', 'Şahin', 'Đurić', 'Łukasz', 'Ştefan', 'Ćirić', 'Ricœur', 'Müller',
   'Weiß', 'van der Aa', 'insieme', 'Sen', 'Ölmez', 'Ðordević',
@@ -66,9 +60,8 @@ const CONTINUATIONS = [
   '2. Auflage, Beltz.'
 ];
 
-// Tout le latin, les marques combinantes, et un échantillon de ce qui n'a pas de base
-// ASCII : un caractère non replié doit l'être — ou être signalé — identiquement des deux
-// côtés.
+// Tout le latin, les marques combinantes, et un échantillon de caractères sans base ASCII :
+// chaque caractère est replié, ou signalé, de la même façon des deux côtés.
 function pointsDeCode() {
   const cps = [];
   const plages = [[0x00A0, 0x024F], [0x0300, 0x036F], [0x1E00, 0x1EFF]];
@@ -85,9 +78,8 @@ function pointsDeCode() {
 
 // ---- exécution du filtre Lua ----
 
-// Petit programme qui charge le filtre et appelle ses fonctions. Le filtre les expose dans
-// SZH_CITATIONS pour cela : c'est le seul moyen d'éprouver son comportement plutôt que son
-// texte.
+// Petit programme qui charge le filtre et appelle ses fonctions, exposées dans SZH_CITATIONS
+// pour que le test éprouve le comportement plutôt que le texte.
 const HARNAIS = [
   'local filtre, noms, points, titres, suites = arg[1], arg[2], arg[3], arg[4], arg[5]',
   'dofile(filtre)',
@@ -183,7 +175,7 @@ test('ancrages : les mêmes noms donnent le même identifiant des deux côtés',
   }
   for (const l of rangees) { t.diagnostic(l); }
   assert.deepStrictEqual(ecarts, [], 'identifiants divergents :\n' + ecarts.join('\n'));
-  // Le Đ ne se perd plus : NFD ne le décompose pas, la table du filtre le replie.
+  // NFD ne décompose pas Đ : la table du filtre le replie.
   assert.strictEqual(lua.get('Đurić').nomPourId, 'duric');
   assert.strictEqual(lua.get('Ðordević').nomPourId, 'dordevic');
 });
@@ -218,8 +210,8 @@ test('ancrages : un caractère sans repli est consigné, pas avalé', (t) => {
   if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
   // Côté pipeline : stderr, où le journal de compilation le montre au rédacteur.
   const err = resultatsLua().stderr;
-  // Sur le CODE du constat, pas sur sa phrase : le filtre écrit « caractere-sans-repli »
-  // et le cockpit s'ancre là aussi. Une reformulation du message ne doit rien casser ici.
+  // On cherche le code du constat (« caractere-sans-repli »), pas sa phrase, que l'on peut
+  // reformuler.
   assert.match(err, /caractere-sans-repli[\s\S]*U\+03A9/,
     'le filtre a retiré Ω sans le dire : ' + err);
   assert.match(err, /U\+4E2D/, 'le filtre a retiré 中 sans le dire : ' + err);
@@ -283,21 +275,17 @@ test('ancrages : les ancres posées par pandoc sont celles que le cockpit propos
   t.diagnostic('ancres du pipeline : ' + posees.join(' '));
   assert.deepStrictEqual(proposees, posees,
     'le cockpit proposerait des ancrages que la compilation ne pose pas');
-  // Et ce sont bien les identifiants attendus, repli compris.
+  // Ce sont les identifiants attendus, repli compris.
   assert.deepStrictEqual(posees.slice(0, 5), ['ref-zielinski-2019', 'ref-sahin-2021',
     'ref-duric-2020', 'ref-dordevic-2018', 'ref-olmez-2022']);
 });
 
-// Une parenthèse de prose allemande devant un millésime ressemble à un appel APA : tout nom
-// commun y est capitalisé. « (mindestens fünf Treffen pro Tandem zwischen Juli 2026 und
-// Oktober 2027) » rognait jusqu'à « Treffen pro Tandem zwischen Juli » et en faisait un
-// « auteur ». Aucune longueur ni lexique de noms communs ne distingue ensuite un nom commun
-// allemand capitalisé (« Werte ») d'un patronyme (« Bovey ») : la seule chose qui tranche, sans
-// virgule devant le millésime, est l'appariement à la bibliographie. D'où les deux preuves dans
-// les deux sens : « (Bovey 2022) » sans virgule s'apparie et reste lié ; « (Tabelle 3 zeigt die
-// Werte für 2019) » ne s'apparie à rien et reste muette — le prix payé est qu'un vrai appel
-// écrit sans virgule et dont la référence manque vraiment ne serait plus signalé, mais cette
-// forme est déjà hors norme APA.
+// Une parenthèse de prose allemande devant un millésime ressemble à un appel APA, car tout nom
+// commun y prend une majuscule (« Werte » comme « Bovey »). Sans virgule devant le millésime,
+// seul l'appariement à la bibliographie tranche : « (Bovey 2022) » s'apparie et reste lié ;
+// « (Tabelle 3 zeigt die Werte für 2019) » ne s'apparie à rien et n'est pas signalé. Contrepartie :
+// un vrai appel sans virgule dont la référence manque n'est pas signalé non plus, mais cette
+// forme est hors norme APA.
 test('ancrages : sans virgule devant le millésime, seule la bibliographie fait l’appel',
   (t) => {
     if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
@@ -353,12 +341,10 @@ test('ancrages : sans virgule devant le millésime, seule la bibliographie fait 
       'les quatre références légitimes doivent toutes être liées : ' + posees.join(' '));
   });
 
-// « al. » finit par un point, et le point est une frontière de phrase pour la queue de
-// l'appel narratif : « Selon Capurso et al. (2025) » perdait donc son appel en silence — ni
-// lien, ni avertissement, ni comptage. Idem pour « u. a. » (allemand) et « et coll. ». Le
-// remède neutralise ces points d'abréviation avant de couper à la frontière, plutôt que
-// d'assouplir la frontière elle-même — voir neutraliser_abreviations_dauteur() dans le
-// filtre.
+// Le point de « al. » ressemble à une fin de phrase, qui borne la recherche du nom devant un
+// appel narratif (« Selon Capurso et al. (2025) »). Même chose pour « u. a. » et « et coll. ».
+// Le filtre neutralise ces points d'abréviation avant de chercher la frontière : voir
+// neutraliser_abreviations_dauteur().
 test('ancrages : les appels narratifs avec « et al. »/« u. a. » sont liés', (t) => {
   if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
   const md = [
@@ -391,10 +377,9 @@ test('ancrages : les appels narratifs avec « et al. »/« u. a. » sont liés',
     'les deux références doivent être liées : ' + posees.join(' '));
 });
 
-// Le remède ci-dessus ne doit pas aller chercher un nom dans la phrase précédente : un point
-// qui ferme une vraie phrase reste une frontière. « Meier » et « Bovey » partagent ici le
-// même millésime — si la queue de l'appel narratif remontait par-dessus le point, Bovey
-// deviendrait ambigu ou Meier recevrait le lien à sa place.
+// Un point qui ferme une vraie phrase reste une frontière. « Meier » et « Bovey » ont ici le
+// même millésime : si la recherche du nom franchissait le point, Bovey deviendrait ambigu ou
+// Meier recevrait le lien à sa place.
 test('ancrages : une frontière de phrase reste une frontière pour l’appel narratif', (t) => {
   if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
   const md = [
@@ -420,10 +405,8 @@ test('ancrages : une frontière de phrase reste une frontière pour l’appel na
 });
 
 // Le champ « reference » d'un constat reference-orpheline sert au cockpit à retrouver le
-// passage dans le .md par recherche littérale. Le filtre y ajoutait un « … » qui n'existe
-// nulle part dans le texte source : la recherche rendait null, et la flèche restait muette
-// pour toute référence de plus de 70 caractères. Les phrases fr/de gardent leur ellipse —
-// cosmétique, personne n'y cherche — seul le champ ne doit plus en porter.
+// passage dans le .md par recherche littérale : il ne porte donc pas d'ellipse « … », même
+// au-delà de 70 caractères. Les phrases fr/de, elles, peuvent en porter.
 test('ancrages : le champ « reference » d’un constat orphelin ne porte pas d’ellipse ajoutée',
   (t) => {
     if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
@@ -448,8 +431,8 @@ test('ancrages : le champ « reference » d’un constat orphelin ne porte pas d
     const err = String(r.stderr);
     const ligne = err.split('\n').find((l) => l.includes('reference-orpheline'));
     assert.ok(ligne, 'aucun constat reference-orpheline dans stderr :\n' + err);
-    // Les champs sont séparés par « | » (sans_barre() garantit qu'aucun champ n'en porte un
-    // lui-même) : le champ « reference » est le troisième.
+    // Les champs sont séparés par « | » (sans_barre() l'ôte des champs) : « reference » est
+    // le troisième.
     const champs = ligne.split(' | ');
     const champReference = champs[2];
     assert.match(champReference, /^reference « (.*) »$/, 'forme inattendue : ' + champReference);
@@ -461,14 +444,10 @@ test('ancrages : le champ « reference » d’un constat orphelin ne porte pas d
       + JSON.stringify(interieur));
   });
 
-// Le libellé d'un appel NARRATIF (« Selon Lefebvre et al. (2019) ») ne tenait que la
-// parenthèse — « (2019) » — parce que relever() le construit toujours à partir de s..e, les
-// bornes de LA PARENTHÈSE, jamais de la prose qui la précède. Ce libellé sert deux fois :
-// dans le constat que lit le rédacteur (« Appel sans référence : (2019) » ne lui apprend
-// rien), et comme cible de la flèche « Vers l'article » du cockpit, qui le cherche mot pour
-// mot dans le .md — « (2019) » y tombe sur la première parenthèse d'année venue.
-// La correction narrative de « et al. » rend ce défaut fréquent : avant elle, les appels
-// narratifs avec « et al. » n'étaient simplement jamais vus.
+// Le libellé d'un appel narratif (« Selon Lefebvre et al. (2019) ») porte le nom et la
+// parenthèse, pas la parenthèse seule. Il sert deux fois : dans le constat que lit le
+// rédacteur, et comme cible de la flèche « Vers l'article » du cockpit, qui le cherche mot pour
+// mot dans le .md ; « (2019) » seul tomberait sur la première parenthèse d'année venue.
 test('ancrages : le libellé d’un appel narratif couvre le nom et la parenthèse', (t) => {
   if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
   const md = [
@@ -493,21 +472,19 @@ test('ancrages : le libellé d’un appel narratif couvre le nom et la parenthè
   const lignes = err.split('\n').filter((l) => l.includes('appel-sans-reference'));
   assert.strictEqual(lignes.length, 3,
     'trois appels sans référence attendus (Lefebvre n’est jamais dans la liste) :\n' + err);
-  // Champs séparés par « | » (comme pour reference-orpheline plus haut) : le champ « appel »
-  // est le troisième. Les guillemets françaises posées par constat() encadrent le texte
-  // d'une espace insécable (U+00A0) — \s de JavaScript la reconnaît, un simple espace non.
+  // Champs séparés par « | » : « appel » est le troisième. Les guillemets posés par constat()
+  // encadrent le texte d'une espace insécable (U+00A0), que \s reconnaît.
   const libelles = lignes.map((l) => {
     const champs = l.split(' | ');
     const m = champs[2] && champs[2].match(/^appel\s*«\s*([\s\S]*?)\s*»$/);
     assert.ok(m, 'forme de constat inattendue : ' + l);
     return m[1];
   });
-  // Ni « Selon »/« Laut », ni la seule parenthèse : le nom et la parenthèse, rien de plus.
+  // Le nom et la parenthèse, sans « Selon »/« Laut ».
   assert.deepStrictEqual(libelles.sort(),
     ['Lefebvre (2019)', 'Lefebvre et al. (2019)', 'Lefebvre u. a. (2019)'].sort(),
     'libellés narratifs inattendus : ' + JSON.stringify(libelles));
-  // Chacun doit rester une sous-chaîne littérale du .md source, sinon la flèche « Vers
-  // l'article » du cockpit ne le retrouvera pas.
+  // Chacun reste une sous-chaîne littérale du .md, que la flèche « Vers l'article » retrouve.
   for (const l of libelles) {
     assert.ok(md.includes(l),
       'libellé absent du markdown source, la flèche du cockpit le manquerait : ' + l);
@@ -517,11 +494,10 @@ test('ancrages : le libellé d’un appel narratif couvre le nom et la parenthè
 test('ancrages : le cockpit lit la table du filtre au lieu d’en tenir une copie', () => {
   assert.strictEqual(cit.cheminDuFiltre(), FILTRE,
     'le cockpit doit lire szh-citations.lua du dépôt quand il est là');
-  // Sans les commentaires : c'est le code qu'on interroge, pas ce qu'il raconte.
+  // Sans les commentaires : on interroge le code.
   const code = fs.readFileSync(path.join(COCKPIT, 'lib', 'citations.js'), 'utf8')
     .split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
-  // Un repli recopié dans le JS, sous quelque forme que ce soit, ramènerait l'écart : le
-  // seul repli autorisé ici est celui que le filtre décrit.
+  // Le seul repli est celui que décrit le filtre : une copie dans le JS finirait par diverger.
   assert.ok(!/normalize\('NF/.test(code),
     'repli maison revenu dans citations.js : la table du filtre doit rester la seule');
   assert.ok(!/\[œŒ\]|\[æÆ\]|\/ß\//.test(code),
@@ -530,17 +506,13 @@ test('ancrages : le cockpit lit la table du filtre au lieu d’en tenir une copi
 
 // ---- forme des chemins Windows ----
 
-// La faute qui a tué le repli « toolkit installé » pendant un temps : `'C:\ProgramData\SZH'`
-// avec des contre-obliques SIMPLES. En JavaScript, `\P` et `\S` ne sont pas des échappements
-// reconnus — la chaîne valait « C:ProgramDataSZH », un chemin relatif au lecteur C: qui ne
-// mène nulle part. Rien ne le signalait : le littéral se lit comme un chemin correct, et
-// tous les contrôles passaient parce que le dépôt répond avant. Sur un poste de rédaction,
-// où l'extension vit sous .vscode-oss et non dans le dépôt, c'est le seul emplacement qui
-// mène quelque part — le repli était mort là où il est seul à servir.
+// Piège : en JavaScript, `'C:\ProgramData\SZH'` avec des contre-obliques simples vaut
+// « C:ProgramDataSZH » (`\P` et `\S` ne sont pas des échappements), un chemin relatif au
+// lecteur C:. En développement, le dépôt répond avant et masque la faute ; sur un poste de
+// rédaction, le toolkit installé est le seul emplacement utile.
 //
-// Deux verrous, parce qu'un seul ne suffit pas : la valeur produite (découpée en segments,
-// donc indépendante de la plate-forme), et la FORME des littéraux dans la source, où la
-// faute est visible avant même d'être exécutée.
+// Deux contrôles : la valeur produite, découpée en segments (indépendante de la plate-forme),
+// et la forme des littéraux dans la source.
 
 // Les segments d'un chemin, quel que soit le séparateur : « C:ProgramDataSZH » n'en donne
 // qu'un, là où « C:\ProgramData\SZH » en donne trois.
@@ -562,19 +534,17 @@ test('chemins : l’emplacement du toolkit installé garde ses séparateurs', ()
   const emplacements = cit.emplacementsDuFiltre();
   assert.strictEqual(emplacements.length, 2,
     'deux emplacements attendus : le dépôt, puis le toolkit installé');
-  // Le dépôt d'abord — c'est lui qui sert en développement, et c'est aussi lui qui masquait
-  // la faute du second.
+  // Le dépôt d'abord : c'est lui qui sert en développement.
   assert.strictEqual(emplacements[0], FILTRE);
   // Puis le toolkit installé, segment par segment : « C:ProgramDataSZH » n'en rendrait
-  // qu'un au lieu de trois, et le contrôle tombe là où la lecture ne voyait rien.
+  // qu'un au lieu de trois.
   assert.deepStrictEqual(segments(emplacements[1]),
     ['C:', 'ProgramData', 'SZH', 'toolkit', 'pipeline', 'filters', 'szh-citations.lua'],
     'le chemin du toolkit installé a perdu ses séparateurs : contre-obliques simples ?');
 });
 
 test('chemins : tout littéral Windows du cockpit double ses contre-obliques', () => {
-  // Le cockpit entier, pas seulement citations.js : la même faute peut renaître ailleurs,
-  // et elle s'y verra aussi peu. lib/archivage.js et lib/wsl.js portent les mêmes chemins.
+  // Tout le cockpit : lib/archivage.js et lib/wsl.js portent aussi des chemins Windows.
   const fichiers = [path.join(COCKPIT, 'extension.js')];
   const lib = path.join(COCKPIT, 'lib');
   const empiler = (base) => {
@@ -590,16 +560,16 @@ test('chemins : tout littéral Windows du cockpit double ses contre-obliques', (
   for (const fichier of fichiers) {
     for (const trouve of litterauxWindows(fichier)) {
       vus++;
-      // Chaque paire « \\ » retirée, il ne doit plus rester une seule contre-oblique :
-      // celle qui reste est simple, donc avalée par l'analyseur JavaScript.
+      // Une fois les paires « \\ » retirées, il ne reste aucune contre-oblique : une
+      // contre-oblique simple serait avalée par l'analyseur JavaScript.
       const sansPaires = trouve.brut.split('\\\\').join('');
       if (sansPaires.indexOf('\\') !== -1) {
         fautes.push(path.relative(COCKPIT, fichier) + ':' + trouve.ligne
           + ' « ' + trouve.brut + ' » — contre-oblique simple');
         continue;
       }
-      // Et la valeur obtenue reste un chemin absolu : un « C:… » qui perd son séparateur
-      // devient relatif au lecteur, ce qu'aucun de ces chemins n'a jamais voulu être.
+      // La valeur reste un chemin absolu : un « C:… » sans séparateur devient relatif au
+      // lecteur.
       const valeur = trouve.brut.split('\\\\').join('\\');
       if (segments(valeur).length < 2 || segments(valeur)[0].length !== 2) {
         fautes.push(path.relative(COCKPIT, fichier) + ':' + trouve.ligne
@@ -607,7 +577,7 @@ test('chemins : tout littéral Windows du cockpit double ses contre-obliques', (
       }
     }
   }
-  // Les deux défauts de lib/poste.js doivent être vus, sans quoi le balayage ne balaie rien.
+  // Témoin : les deux chemins par défaut de lib/poste.js doivent être trouvés.
   const vusPoste = litterauxWindows(path.join(lib, 'poste.js')).map((t) => t.brut);
   assert.ok(vus >= 3 && vusPoste.indexOf('C:\\\\ProgramData\\\\SZH') !== -1
     && vusPoste.indexOf('C:\\\\Windows') !== -1,
@@ -617,14 +587,13 @@ test('chemins : tout littéral Windows du cockpit double ses contre-obliques', (
 
 // ---- toolkit en retard sur le cockpit ----
 
-// Le format des tables a changé une fois (REPLI -> REPLI_BLOCS) : il changera encore. Un
-// poste peut porter l'extension et un toolkit d'avant — c'est arrivé, un VSIX livré avec un
-// toolkit en retard d'un commit. Le cockpit lit alors un filtre qu'il ne comprend pas, et le
-// rédacteur ne doit pas y lire un nom de table Lua.
+// Le format des tables du filtre peut changer (REPLI, puis REPLI_BLOCS). Un poste peut
+// porter une extension et un toolkit de versions différentes : le cockpit lit alors un filtre
+// qu'il ne comprend pas, et le message au rédacteur ne doit pas nommer de table Lua.
 function filtreDUnAutreFormat() {
   fs.mkdirSync(TRAVAIL, { recursive: true });
   const f = path.join(TRAVAIL, 'szh-citations-ancien.lua');
-  // Le filtre tel qu'il était : une table REPLI de 50 octets, aucun REPLI_BLOCS.
+  // Un filtre à l'ancien format : une table REPLI de 50 octets, pas de REPLI_BLOCS.
   fs.writeFileSync(f, [
     'local REPLI = {',
     "  -- la table courte d'avant, clée par octets ; ce qui compte ici est son nom.",
@@ -666,7 +635,7 @@ test('ancrages : toolkit absent et toolkit discordant sont deux pannes distincte
       return true;
     });
   });
-  // Et le repli marche de nouveau dès que le vrai filtre est là : rien n'est resté coincé.
+  // Le repli refonctionne dès que le vrai filtre est là.
   assert.strictEqual(cit.nomPourId('Đurić'), 'duric');
 });
 
@@ -679,7 +648,7 @@ test('ancrages : un toolkit discordant se dit en clair au rédacteur, sans excep
   // L'hôte factice n'attend pas le démarrage asynchrone qui pose la racine ; sans elle la
   // commande répondrait « hors article » et ne toucherait jamais aux tables de repli.
   hote.arbre().definirRacine(revue);
-  // Les informations sont recueillies aussi : partir dans la mauvaise branche doit se voir.
+  // Les messages d'information sont recueillis aussi, pour voir une mauvaise branche.
   const infos = [];
   hote.stub.window.showInformationMessage = (m) => { infos.push(m); return Promise.resolve(); };
   const article = path.join(revue, 'articles', '01-essai', '01-essai.md');
@@ -693,8 +662,7 @@ test('ancrages : un toolkit discordant se dit en clair au rédacteur, sans excep
   process.env.SZH_FILTRE_CITATIONS = filtreDUnAutreFormat();
   cit.oublierTables();
   try {
-    // Si la commande laissait remonter l'exception, cet await la relèverait ici : passer
-    // cette ligne est la preuve qu'elle est attrapée.
+    // Si la commande laissait remonter l'exception, cet await la relèverait ici.
     await hote.executer('szh.lierReference');
   } finally {
     if (avant === undefined) { delete process.env.SZH_FILTRE_CITATIONS; }
@@ -706,16 +674,15 @@ test('ancrages : un toolkit discordant se dit en clair au rédacteur, sans excep
     + infos.join(' | '));
   assert.strictEqual(hote.erreurs.length, 1, 'un seul message attendu, reçu : ' + dit);
   assert.strictEqual(hote.erreurs[0], T('cit.toolkit.discordant'));
-  // Ce que le rédacteur lit : une cause et un geste, aucun jargon. Et pas de sens : le
-  // cockpit ne sait pas laquelle des deux moitiés est en avance, donc il ne le dit pas.
+  // Le rédacteur lit une cause et une action, sans jargon. Le cockpit ne sait pas laquelle
+  // des deux moitiés est en avance : le message ne le dit pas.
   assert.match(dit, /ne sont pas de la même version/);
   assert.match(dit, /Mettez le logiciel à jour/);
   assert.ok(!/plus ancien|plus récent/.test(dit),
     'le message prétend savoir qui est en avance : ' + dit);
   assert.ok(!/REPLI|\.lua|szh-citations|table/.test(dit),
     'le message montre de la plomberie au rédacteur : ' + dit);
-  // L'allemand dit la même chose, et pas davantage de plomberie : la revue germanophone
-  // est la moitié du lectorat de cet outil.
+  // L'allemand dit la même chose, sans plus de détails techniques.
   const de = TL('de', 'cit.toolkit.discordant');
   assert.match(de, /nicht die gleiche Version/);
   assert.match(de, /Aktualisieren Sie die Software/);

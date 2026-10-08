@@ -1,37 +1,14 @@
-﻿# Migration AUTOMATIQUE de l'arborescence, dossier de TEST seulement -- jamais SharePoint ni
-# production, dont l'arbre est celui de la bibliothèque partagée et ne doit jamais être
-# réarrangé par un simple poste qui se met à jour. Dot-sourcé par szh-common.ps1, après
-# szh-shell.ps1 dont Invoke-SzhMigrationArborescence réutilise Set-SzhRaccourciRevue.
-# Compatibilité : Windows PowerShell 5.1 (proscrire ?. ?? ?: && ||).
+﻿# Migration de l'ancienne arborescence vers la nouvelle, dans le dossier de test seulement.
+# L'arborescence de production, partagée sur SharePoint, n'est pas touchée. update.ps1
+# l'appelle à chaque mise à jour ; une fois la migration faite, elle ne fait plus rien.
+# Dot-sourcé par szh-common.ps1, après szh-shell.ps1 (Set-SzhRaccourciRevue).
+# Compatibilité : Windows PowerShell 5.1.
 #
-# POURQUOI AUTOMATIQUE. outils\migrer-arborescence.ps1 (15.09.2026) exigeait un lancement à
-# la main, une fois, sur les deux postes. Un poste de développement neuf, ou un poste qui
-# reprend une copie ancienne du dossier de test, n'a jamais ce geste : Invoke-SzhCheckin
-# vient d'apprendre qu'une collègue a des numéros de test Zeitschrift sur un poste qui ne
-# passe pas forcément par une installation supervisée. update.ps1 appelle donc cette
-# fonction à CHAQUE mise à jour -- idempotente, elle ne fait rien la deuxième fois.
-#
-# CE QU'ELLE DÉPLACE. Les mêmes six couples que l'ancien script :
-#   52_Revue\RV02_Redaction        -> Revue
-#   52_Revue\RV99_Archives         -> _Archive\Revue
-#   53_Zeitschrift\ZS02_Redaktion  -> Zeitschrift
-#   53_Zeitschrift\ZS99_Archives   -> _Archive\Zeitschrift
-#   54_Buch\BU02_Redaktion         -> Books
-#   54_Buch\BU01_Auflagen finale   -> _Archive\Books
-# mais ENFANT PAR ENFANT (chaque numéro, chaque livre), pas le dossier entier d'un coup :
-# une collègue qui a déjà un numéro « 2026-01 » des DEUX côtés (ancien ET nouveau) ne doit
-# pas voir l'un écraser l'autre -- Move-Item refuse déjà d'écraser, mais le script d'origine
-# refusait le déplacement ENTIER dès qu'un seul nom se recoupait, alors que tous les autres
-# numéros auraient pu être sauvés. Ici, un conflit sur un nom n'empêche pas les autres.
-#
-# CE QU'ELLE NE FAIT JAMAIS. Écraser un fichier ou un dossier existant : un conflit laisse la
-# SOURCE en place (rien n'est perdu) et se journalise -- jamais un repli silencieux, jamais
-# une fusion devinée. Toucher à la racine de PRODUCTION : Invoke-SzhMigrationArborescence ne
-# résout QUE l'emplacement de test, ci-dessous -- la production ne sort jamais de sa variable.
+# Le contenu de chaque ancien dossier est déplacé enfant par enfant (chaque numéro, chaque
+# livre). Un nom déjà présent dans la cible est un conflit : la source reste en place et le
+# conflit est journalisé, sans empêcher le déplacement des autres. Rien n'est écrasé.
 
-# Les six mêmes déplacements que l'ancien outils\migrer-arborescence.ps1 (recopiés et non
-# importés, pour la même raison que là-bas : un script qui touche au disque doit rester
-# lisible seul, sans remonter une table ailleurs).
+# Ancien dossier -> nouveau dossier, relatifs à la racine de test.
 $script:SzhMigrationMouvements = @(
   @{ de = '52_Revue\RV02_Redaction';       vers = 'Revue' }
   @{ de = '52_Revue\RV99_Archives';        vers = '_Archive\Revue' }
@@ -41,12 +18,10 @@ $script:SzhMigrationMouvements = @(
   @{ de = '54_Buch\BU01_Auflagen finale';  vers = '_Archive\Books' }
 )
 
-# Déplace le contenu d'un dossier source vers un dossier destination, ENFANT PAR ENFANT,
-# jamais par-dessus un enfant déjà présent. Rend { deplaces; conflits } et journalise chaque
-# geste. Move-Item sur un fichier OneDrive "en ligne seulement" (placeholder, reparse point)
-# reste une opération NTFS de renommage tant que source et destination sont sur le même
-# volume -- pas de téléchargement forcé -- mais on avale quand même toute exception : un
-# fichier verrouillé par la synchronisation ne doit jamais faire tomber toute la migration.
+# Déplace le contenu de $Source dans $Destination, enfant par enfant, sans écraser un enfant
+# déjà présent. Rend { deplaces; conflits }. Sur un même volume, Move-Item d'un fichier
+# OneDrive « en ligne seulement » est un simple renommage, sans téléchargement. Un fichier
+# verrouillé par la synchronisation compte comme conflit sans arrêter la migration.
 function Move-SzhContenuDossier([string]$Source, [string]$Destination) {
   $deplaces = 0
   $conflits = 0
@@ -70,10 +45,8 @@ function Move-SzhContenuDossier([string]$Source, [string]$Destination) {
       Move-Item -LiteralPath $enfant.FullName -Destination $cible -ErrorAction Stop
       $deplaces++
       try { Write-SzhLog ('migration arborescence : deplace "' + $enfant.FullName + '" -> "' + $cible + '"') } catch { }
-      # Le raccourci se refait dans le dossier à sa place définitive, pas avant : un numéro
-      # ou un livre porte buch.yaml/ausgabe.yaml, un dossier quelconque (fichier Word oublié,
-      # capture d'écran) n'en porte ni l'un ni l'autre et Get-SzhJetonDossier rend '' --
-      # Set-SzhRaccourciRevue s'abstient alors sans lever.
+      # Raccourci refait dans le dossier déplacé, s'il s'agit d'un numéro ou d'un livre
+      # (Get-SzhJetonDossier rend '' pour tout autre dossier).
       try {
         $jetonDeplace = Get-SzhJetonDossier $cible
         if ($jetonDeplace -eq 'livre') {
@@ -90,10 +63,8 @@ function Move-SzhContenuDossier([string]$Source, [string]$Destination) {
   return [pscustomobject]@{ deplaces = $deplaces; conflits = $conflits }
 }
 
-# Pose un id manquant sur chaque numéro ou livre trouvé sous une racine donnée -- les six
-# dossiers de produit, en cours et archives. Jamais un recalcul (Set-SzhAusgabeIdSiAbsent),
-# et journalisé seulement quand quelque chose a vraiment été écrit (silencieux sinon : cette
-# passe tourne à chaque mise à jour, la plupart du temps sans rien à faire).
+# Pose un `id:` sur chaque numéro ou livre de $Racine qui n'en a pas (en cours et archives).
+# Un id existant n'est pas recalculé. Rend le nombre d'id posés ; journalise seulement ceux-là.
 function Update-SzhIdsManquants([string]$Racine) {
   $poses = 0
   foreach ($jeton in @('revue', 'zeitschrift', 'livre')) {
@@ -118,10 +89,9 @@ function Update-SzhIdsManquants([string]$Racine) {
   return $poses
 }
 
-# Supprime un dossier UNIQUEMENT s'il est réellement vide (aucun fichier, aucun sous-dossier,
-# y compris cachés) -- jamais -Recurse, qui emporterait ce qu'un conflit vient de laisser en
-# place. Avale toute exception : un dossier encore verrouillé par OneDrive reste, et
-# réessaiera au prochain passage.
+# Supprime un dossier seulement s'il est vide, fichiers cachés compris. Pas de -Recurse :
+# il emporterait ce qu'un conflit a laissé en place. Un dossier verrouillé par OneDrive reste
+# jusqu'au prochain passage.
 function Remove-SzhDossierSiVide([string]$Dossier) {
   if (-not (Test-Path -LiteralPath $Dossier)) { return }
   $reste = @()
@@ -130,12 +100,8 @@ function Remove-SzhDossierSiVide([string]$Dossier) {
   try { Remove-Item -LiteralPath $Dossier -Force -ErrorAction Stop } catch { }
 }
 
-# Le point d'entrée, appelé par update.ps1 à chaque mise à jour -- jamais bloquant (l'appelant
-# encadre déjà l'appel d'un try/catch, mais celle-ci n'en a de toute façon pas besoin : rien
-# ici ne lève). Idempotente : une fois les six dossiers sources vidés et supprimés, les
-# `Test-Path` suivants rendent tous faux et la fonction ne fait plus qu'un passage à vide
-# (Update-SzhIdsManquants mis à part, qui continue de rattraper un id manquant si l'un
-# apparaît -- un manifeste modifié à la main, par exemple).
+# Point d'entrée, appelé par update.ps1 à chaque mise à jour. Ne lève pas. Une fois les
+# anciens dossiers vidés et supprimés, il ne reste que la pose des id manquants.
 function Invoke-SzhMigrationArborescence {
   $racine = ''
   try { $racine = Get-SzhBaseRevuesPour $SzhEmplacementTest } catch { $racine = '' }
@@ -152,17 +118,12 @@ function Invoke-SzhMigrationArborescence {
     $totalDeplaces += $resultat.deplaces
     $totalConflits += $resultat.conflits
     Remove-SzhDossierSiVide $source
-    # Le parent (« 52_Revue », « 53_Zeitschrift », « 54_Buch ») peut lui aussi être vide une
-    # fois ses deux enfants partis -- mais seulement s'il ne porte plus RIEN d'autre : un
-    # geste humain, jamais un -Recurse, reste le seul à vider un dossier qui contiendrait
-    # encore autre chose.
+    # Le parent (« 52_Revue »…) est supprimé lui aussi s'il est devenu vide.
     Remove-SzhDossierSiVide (Split-Path $source -Parent)
   }
 
-  # Les dossiers communs qui suivent la racine ACTIVE (voir szh-produits.ps1,
-  # $SzhDossiersCommuns) : créés ici comme le fait Initialize-SzhEmplacementsTest, pour
-  # qu'une migration sur un poste qui n'a jamais ouvert le lanceur en mode test les pose
-  # quand même. _Systeme\ n'y figure jamais (Get-SzhDossierSysteme, toujours SharePoint).
+  # Les dossiers communs ($SzhDossiersCommuns, szh-produits.ps1) sont créés comme le fait
+  # Initialize-SzhEmplacementsTest, même si le lanceur n'a jamais été ouvert en mode test.
   foreach ($c in $SzhDossiersCommuns) {
     $chemin = Join-Path $racine $c
     if (-not (Test-Path -LiteralPath $chemin)) {

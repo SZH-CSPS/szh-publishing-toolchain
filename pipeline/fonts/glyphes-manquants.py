@@ -1,36 +1,29 @@
 #!/usr/bin/env python3
-# Complète les faces Open Sans livrées avec les six caractères que la maquette écrit
-# et qu'Open Sans ne porte pas. Sans eux, fontconfig comble les trous au moment du build
-# avec ce qu'il trouve sur la machine (DejaVu, Noto) : le PDF cesse alors d'être
-# reproductible d'un poste à l'autre, et l'espace fine insécable se dégrade en espace
-# ordinaire dans la couche texte du PDF — donc dans un copier-coller et pour un lecteur
-# d'écran.
+# Ajoute aux faces Open Sans livrées six caractères que la maquette utilise et qu'Open Sans
+# n'a pas. Sinon fontconfig les prend dans une autre police du poste (DejaVu, Noto) : le PDF
+# n'est plus reproductible, et l'espace fine insécable devient une espace ordinaire dans la
+# couche texte (copier-coller, lecteur d'écran).
 #
 #   /opt/weasyprint/bin/python pipeline/fonts/glyphes-manquants.py [--verifier]
 #
-# Idempotent : un caractère déjà présent est laissé tel quel. À rejouer après toute
-# reprise des faces depuis le master variable (voir la recette d'instanciation dans
-# README.md) — l'instanciation repart de l'amont, qui n'a pas ces glyphes.
-# `--verifier` ne réécrit rien et sort 1 si un caractère manque : c'est ce que
-# test/polices-check.py appelle.
+# Idempotent. À relancer après toute régénération des faces depuis le master variable (voir
+# README.md), qui n'a pas ces glyphes. `--verifier` n'écrit rien et sort 1 si un caractère
+# manque (appelé par test/polices-check.py).
 #
-# Les six caractères, et d'où ils viennent :
-#   U+202F fine insécable  — filters/szh-numerotation.lua, « Source : » en français.
-#   U+25B8 triangle        — styles/print.css, la puce de toutes les listes à puces.
-#   U+21A9 flèche à crochet— l'appel de retour de note, écrit par pandoc (« ↩ »).
-#   U+FE0E sélecteur 15    — pandoc le colle derrière la flèche, pour interdire la
-#                            présentation émoji. Invisible, mais sans glyphe il déclenche
-#                            à lui seul un repli de police.
+# Les six caractères :
+#   U+202F fine insécable  — « Source : » en français (filters/szh-numerotation.lua).
+#   U+25B8 triangle        — la puce des listes (styles/print.css).
+#   U+21A9 flèche à crochet— le retour de note écrit par pandoc (« ↩ »).
+#   U+FE0E sélecteur 15    — que pandoc colle après la flèche pour éviter l'émoji.
+#                            Invisible, mais sans glyphe il provoque un changement de police.
 #   U+2010 trait d'union   — celui que WeasyPrint insère à chaque coupure de mot
-#                            (`hyphens: auto`), et non le U+002D du clavier. C'est le plus
-#                            coûteux des six : il touche toutes les pages de la revue.
-#   U+2011 idem insécable  — écrit par les rédactions dans les noms propres et les sigles.
+#                            (`hyphens: auto`), présent sur toutes les pages.
+#   U+2011 idem insécable  — dans les noms propres et les sigles.
 #
-# Licences : Open Sans est sous OFL 1.1 sans Reserved Font Name (voir la ligne de
-# copyright d'OFL-OpenSans.txt), la modification et la rediffusion sous le même nom sont
-# donc permises. La flèche est reprise d'IBM Plex Mono, également OFL 1.1 et livrée ici :
-# son nom réservé est « Plex », que la face dérivée n'emploie pas. Les deux licences sont
-# livrées à côté des fichiers.
+# Licences : Open Sans est sous OFL 1.1 sans Reserved Font Name : modification et
+# rediffusion sous le même nom sont permises. La flèche vient d'IBM Plex Mono (OFL 1.1, nom
+# réservé « Plex », que la face dérivée n'emploie pas). Les deux licences sont livrées à
+# côté des fichiers.
 
 import sys
 from pathlib import Path
@@ -50,7 +43,7 @@ CIBLES = {
     'OpenSans-SemiCondensed-Bold.ttf':     'IBMPlexMono-Medium.ttf',
     'OpenSans-SemiCondensed-SemiBoldItalic.ttf': 'IBMPlexMono-Medium.ttf',
     'OpenSans-SemiCondensed-BoldItalic.ttf':     'IBMPlexMono-Medium.ttf',
-    # Graisses déclarées par la couverture des livres seule (couverture.css).
+    # Graisses de la couverture des livres seulement (couverture.css).
     'OpenSans-SemiCondensed-Light.ttf':     'IBMPlexMono-Regular.ttf',
     'OpenSans-SemiCondensed-Medium.ttf':    'IBMPlexMono-Medium.ttf',
     'OpenSans-SemiCondensed-ExtraBold.ttf': 'IBMPlexMono-Medium.ttf',
@@ -101,18 +94,16 @@ def ajouter_glyphe(font, nom, glyphe, avance, lsb):
 
 
 def glyphe_vide():
-    """Glyphe sans contour : c'est ce que porte une espace, ou un sélecteur de variante."""
+    """Glyphe sans contour, comme une espace ou un sélecteur de variante."""
     return TTGlyphPen(None).glyph()
 
 
 def triangle(upem, hauteur_x):
     """▸ BLACK RIGHT-POINTING SMALL TRIANGLE : triangle isocèle plein, pointe à droite.
 
-    Proportions du caractère telles que la maquette les rend depuis toujours (elle a été
-    calée sur une face de repli qui le dessine sur un carré d'un demi-cadratin) : côté
-    d'environ 0,5 em, centré en hauteur sur le milieu de la hauteur d'x, pour que la puce
-    se lise à la même altitude que le texte de l'élément de liste. Le marqueur étant
-    positionné en absolu par print.css, l'avance n'entre pas dans la mise en page.
+    Côté d'environ 0,5 em (proportions sur lesquelles la maquette est calée), centré sur le
+    milieu de la hauteur d'x, à la hauteur du texte de la liste. print.css positionne la
+    puce en absolu : l'avance ne compte pas.
     """
     cote = round(0.498 * upem)
     milieu = round(hauteur_x / 2)
@@ -156,19 +147,13 @@ def completer(chemin, chemin_arrow, verifier_seulement):
     hauteur_x = font['OS/2'].sxHeight
 
     if 0x202F in manquants:
-        # La fine insécable prend le dessin (vide) et la largeur de la fine sécable
-        # U+2009 : c'est la convention des faces qui portent les deux (Source Serif 4
-        # les fait pointer sur le même glyphe). Rien à dessiner, tout est dans la largeur.
+        # Même glyphe que l'espace fine U+2009, comme dans les faces qui ont les deux.
         relier(font, 0x202F, nom_du_code(font, 0x2009))
     if 0x2010 in manquants:
-        # Le trait d'union typographique prend le dessin du trait d'union-signe moins
-        # U+002D : c'est la convention de la quasi-totalité des faces qui portent les
-        # deux, et la coupure de mot ne doit rien changer au dessin du tiret.
+        # Même glyphe que U+002D, comme dans presque toutes les faces qui ont les deux.
         relier(font, 0x2010, nom_du_code(font, 0x002D))
     if 0x2011 in manquants:
-        # Idem pour le trait d'union insécable, écrit dans les noms propres et les
-        # sigles : le caractère porte lui-même sa propriété de non-coupure, la police
-        # n'a qu'à le dessiner comme un trait d'union.
+        # Idem : l'insécabilité tient au caractère, pas au dessin.
         relier(font, 0x2011, nom_du_code(font, 0x002D))
     if 0xFE0E in manquants:
         ajouter_glyphe(font, 'uniFE0E', glyphe_vide(), 0, 0)

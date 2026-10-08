@@ -50,7 +50,7 @@ test('capacités : contextes() pose szh.peut.<capacité> à la valeur de la tabl
   for (const c of CLES) { assert.strictEqual(aucun['szh.peut.' + c], false, 'sans profil : szh.peut.' + c); }
 });
 
-// Une capacité que rien ne lit est une donnée morte : elle finirait par mentir.
+// Chaque capacité est lue quelque part ; une capacité inutilisée finirait par être fausse.
 test('capacités : chacune est lue quelque part (when, hôte ou webview)', () => {
   const sources = [path.join(COCKPIT, 'extension.js')]
     .concat(fs.readdirSync(path.join(COCKPIT, 'lib')).filter((f) => f.endsWith('.js'))

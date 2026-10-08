@@ -1,9 +1,9 @@
 'use strict';
 
 // Synthèse des compteurs d'usage : lit les fichiers de `_Systeme\compteurs` (lib/compteurs.js
-// en fixe le format) et produit une page HTML autonome plus un CSV de synthèse, pour repérer les
-// problèmes SYSTÉMATIQUES du nettoyeur de manuscrit et du parser d'import Word. Elle regarde
-// le logiciel, jamais une personne : les fichiers ne portent ni nom, ni titre, ni heure.
+// en fixe le format) et produit une page HTML autonome et un CSV de synthèse, pour repérer les
+// problèmes récurrents du nettoyeur de manuscrit et du parser d'import Word. Les fichiers ne
+// portent ni nom, ni titre, ni heure : la synthèse porte sur le logiciel, pas sur les personnes.
 //
 // Lancé par VSCodium-en-Node (ELECTRON_RUN_AS_NODE=1), comme outils/rendre-gabarit.js :
 //   node compteurs-synthese.js [--dossier D] [--depuis AAAA-MM-JJ] [--jusqua AAAA-MM-JJ]
@@ -14,8 +14,8 @@
 // Code de sortie : 0 si ok, 1 sinon.
 //
 // `--purger` supprime les fichiers de plus de 24 mois (date lue dans le nom du fichier) ; sans
-// ce drapeau, rien n'est jamais supprimé. Un fichier illisible, un en-tête différent ou une
-// mesure inconnue ne font jamais échouer la synthèse : ils sont comptés et dits.
+// ce drapeau, rien n'est supprimé. Un fichier illisible, un en-tête différent ou une mesure
+// inconnue ne font pas échouer la synthèse : ils sont comptés et signalés.
 
 const fs = require('fs');
 const path = require('path');
@@ -27,8 +27,8 @@ const GABARIT = path.join(__dirname, '..', 'export-templates', 'compteurs-synthe
 const SERVICES_RESEAU = [['crossref', 'Crossref'], ['ror', 'ROR'], ['orcid', 'ORCID']];
 const PROPOSES = [['doi.proposes', 'DOI proposés'], ['ror.proposes', 'ROR proposés'],
   ['orcid.proposes', 'ORCID proposés'], ['orcid.candidats', 'ORCID candidats']];
-// Sous ce nombre d'alertes, un pourcentage ne dit rien : la règle n'entre pas dans le
-// classement par part de rapport.
+// Sous ce nombre d'alertes, la part en rapport n'est pas significative : la règle n'entre
+// pas dans ce classement.
 const SEUIL_PART_RAPPORT = 5;
 const MAX_A_EXAMINER = 5;
 
@@ -149,9 +149,9 @@ function agreger(lecture) {
   return a;
 }
 
-// Les 3 à 5 règles à examiner : les plus bruyantes pour 1000 signes, puis celles qui
-// finissent le plus en rapport (avec assez d'alertes pour que la part veuille dire quelque
-// chose). Une règle qui figure dans les deux listes cumule ses raisons.
+// Les 3 à 5 règles à examiner : les plus fréquentes pour 1000 signes, puis celles qui
+// finissent le plus souvent dans le rapport (avec au moins SEUIL_PART_RAPPORT alertes). Une
+// règle présente dans les deux listes cumule ses raisons.
 function reglesAExaminer(a) {
   if (a.signes <= 0) { return []; }
   const choisies = new Map();
@@ -269,8 +269,8 @@ function construireCsv(a) {
 
 // ---- Purge -------------------------------------------------------------------------------
 
-// Les fichiers dont la date (AAAAMMJJ en tête du nom) a plus de 24 mois. Un nom sans date
-// n'est jamais touché. -> { purges, gardes }. Ne fait rien sans `executer`.
+// Les fichiers dont la date (AAAAMMJJ en tête du nom) a plus de 24 mois ; un nom sans date
+// est ignoré. -> { purges, gardes }. Ne supprime rien sans `executer`.
 function purgerAnciens(dossier, maintenant, executer) {
   const limite = new Date(maintenant.getFullYear(), maintenant.getMonth() - MOIS_CONSERVATION, maintenant.getDate());
   const seuil = date10(limite).replace(/-/g, '');

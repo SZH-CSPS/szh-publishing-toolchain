@@ -1,17 +1,10 @@
-// Le nettoyeur applique la typographie maison PARTOUT où il réécrit du texte, pas seulement
-// au corps (audit du 30.09.2026) :
-//   D5  les notes de bas de page passent par le pont typographique (Document.notes vivait à
-//       part et restait brut : 23 apostrophes droites sur 23 dans les notes d'un manuscrit
-//       réel, contre 1 sur 75 au corps) ;
-//   D6  les champs de l'en-tête (titre, sous-titre, résumé, mots-clés, fonction, institution)
-//       sont normalisés par le même pont avant d'être écrits dans les tableaux du gabarit ;
-//   D7  un intertitre part au filtre en Header : il y reçoit les règles de TITRE (A4, L2),
-//       et ne lève plus C3 comme s'il était du corps.
-//
-//   node --test "test/js/*.test.js"
-//
-// Un vrai .docx (Title, auteur, intertitre, corps, note de bas de page) passe par la CLI
-// réelle ; le pont joint pandoc par la WSL (sansPandocWsl), comme en production.
+// Le nettoyeur applique la typographie maison à tout le texte qu'il réécrit :
+//   D5  les notes de bas de page ;
+//   D6  les champs de l'en-tête (titre, sous-titre, résumé, mots-clés, fonction, institution),
+//       avant leur écriture dans les tableaux du gabarit ;
+//   D7  les intertitres, envoyés au filtre comme Header : ils reçoivent les règles de titre
+//       (A4, L2) et pas C3.
+// Un .docx fabriqué passe par la vraie CLI ; le pont typographique appelle pandoc dans la WSL.
 'use strict';
 
 const test = require('node:test');
@@ -78,7 +71,7 @@ with zipfile.ZipFile(spec['sortie'], 'w', zipfile.ZIP_DEFLATED) as z:
     z.writestr('word/footnotes.xml', fn)
 `;
 
-// Texte (w:t concaténés, entités décodées) de chaque paragraphe d'une partie du .docx.
+// Texte de chaque paragraphe du corps et des notes (w:t concaténés, entités décodées).
 const LIRE_PY = String.raw`import json, re, sys, zipfile
 from xml.sax.saxutils import unescape
 z = zipfile.ZipFile(sys.argv[1])

@@ -1,22 +1,19 @@
-// Le nettoyeur de manuscrit et les figures à plusieurs images (décision de Robin, 29.09.2026).
+// Le nettoyeur de manuscrit et les figures à plusieurs images.
 //
 //   node --test test/js/manuscrit-figures.test.js
 //
-// Ce que le diagnostic du 29.09.2026 avait mesuré, et que ces tests tiennent désormais :
-//   1. clés TAPÉES à la main avant une image (« Légende : … » en style Normal) : reconnues,
-//      consommées dans le bloc figure — jamais laissées en corps de texte, jamais doublées
-//      d'un second jeu de clés vides ;
+// Cas couverts :
+//   1. clés tapées à la main avant une image (« Légende : … » en style Normal) : reprises
+//      dans le bloc figure, ni laissées dans le corps, ni doublées de clés vides ;
 //   2. (a) deux images dans un paragraphe, (b) deux paragraphes d'images, (c) un tableau 1×2
-//      de mise en page : UN bloc figure, que l'import relit en UN groupe d'images (ligne FI à
-//      deux images) — au lieu de deux blocs vides, ou d'un « Tableau N » ;
-//   3. un tableau de DONNÉES qui porte une image reste un bloc tableau ;
-//   4. un document déjà au gabarit (cas A) n'est pas dénaturé : ses deux tableaux fixes ne
-//      sont pas dupliqués, ses clés « SZH Cle Abb/Tab » restent des clés ;
-//   5. l'incident « tout le corps supprimé » (manuscrit court sans bibliographie) : le corps
-//      et les images restent ;
-//   6. le garde-fou « rien ne se perd » : une perte (provoquée par injection, jamais par une
-//      modification du code de production) est dite — alerte `error` —, et une perte massive
-//      refuse la sortie.
+//      de mise en page : un seul bloc figure, que l'import relit en un groupe d'images (ligne
+//      FI à deux images) ;
+//   3. un tableau de données qui porte une image reste un bloc tableau ;
+//   4. un document déjà au gabarit (cas A) reste intact : ses deux tableaux fixes ne sont pas
+//      dupliqués, ses clés « SZH Cle Abb/Tab » restent des clés ;
+//   5. un manuscrit court sans bibliographie garde son corps et ses images ;
+//   6. le garde-fou « rien ne se perd » : une perte (provoquée par injection) donne une
+//      alerte `error`, et une perte massive refuse la sortie.
 'use strict';
 
 const test = require('node:test');
@@ -70,7 +67,7 @@ function corps(docx) {
   return JSON.parse(r.stdout);
 }
 
-// Ce que l'IMPORT lira du .docx nettoyé : les lignes d'instructions de pronto-lire.py.
+// Ce que l'import lira du .docx nettoyé : les lignes d'instructions de pronto-lire.py.
 function instructionsImport(docx, dossier) {
   const instr = path.join(dossier, 'instructions.txt');
   const r = lancerPython([PRONTO_LIRE, docx, 'essai', dossier], { SZH_META: instr, SZH_PRODUIT: 'revue' });
@@ -106,7 +103,7 @@ for (const cas of ['a', 'b', 'c']) {
         assert.strictEqual(images, 2, 'les deux images, en paragraphes, hors de tout tableau');
         assert.strictEqual(elements.filter((e) => e.t === 'tbl').length, 2,
           'seuls les deux tableaux fixes : le tableau de mise en page n’est plus un tableau');
-        // Et l'import le relit comme UN groupe : une seule ligne FI, deux images, les valeurs.
+        // L'import le relit comme un groupe : une seule ligne FI, deux images, les valeurs.
         const fi = lignesFI(instructionsImport(obj.sortie_docx, base));
         assert.strictEqual(fi.length, 1, 'une seule figure pour l’import : ' + JSON.stringify(fi));
         assert.strictEqual(fi[0][1].split(';').length, 2, 'deux images dans la figure : ' + fi[0][1]);
@@ -117,10 +114,10 @@ for (const cas of ['a', 'b', 'c']) {
     });
 }
 
-// Décision de Robin (29.09.2026) : après une série de clés, les images qui se suivent,
-// séparées de 0, 1 ou 2 paragraphes VIDES au plus, sont LA MÊME figure ; un troisième vide,
-// un texte ou une nouvelle série de clés ouvrent une autre figure. Chaque cas est relu par
-// l'import (pronto-lire.py) : c'est lui qui dira s'il y a un groupe ou deux figures.
+// Après une série de clés, les images séparées d'au plus deux paragraphes vides forment une
+// seule figure ; un troisième vide, un texte ou une nouvelle série de clés ouvrent une autre
+// figure. Chaque cas est relu par l'import (pronto-lire.py), qui dit s'il voit un groupe ou
+// deux figures.
 const ENCHAINEMENTS = [
   { nom: '0 vide', entre: [], figures: 1 },
   { nom: '1 vide', entre: [F.vide()], figures: 1 },
@@ -225,7 +222,7 @@ test('nettoyeur : un document DÉJÀ au gabarit garde ses tableaux fixes et ses 
       for (const style of ['SZHImportant', 'SZHHervorhebung', 'SZHQuestioninterview']) {
         assert.ok(apres.some((e) => e.style === style), 'style maison perdu : ' + style);
       }
-      // Et l'import relit la même chose qu'avant : une figure à deux images, ses valeurs.
+      // L'import relit la même figure à deux images, avec ses valeurs.
       const fi = lignesFI(instructionsImport(obj.sortie_docx, base));
       assert.strictEqual(fi.length, 1, JSON.stringify(fi));
       assert.deepStrictEqual(fi[0].slice(2, 5), [F.LEGENDE, F.ALT, F.CREDIT]);
@@ -260,9 +257,9 @@ test('nettoyeur : incident « tout le corps supprimé » — un manuscrit court 
     }
   });
 
-// Le garde-fou, éprouvé par INJECTION (patron du contrôle n°15 de manuscrit-nettoyer.test.js) :
-// la reconnaissance du bloc d'autrices final est remplacée, après chargement, par l'ancienne
-// faute — « tout ce qui suit l'en-tête est un bloc d'autrices » —, sans toucher au code livré.
+// Le garde-fou s'éprouve par injection : après chargement, la reconnaissance du bloc
+// d'autrices final est remplacée par une fonction qui prend une portion du corps (argument
+// `portion`) pour un bloc d'autrices.
 const PONT_SABOTE = String.raw`
 import importlib.util, sys
 dossier, chemin, portion = sys.argv[1], sys.argv[2], float(sys.argv[3])
@@ -315,11 +312,12 @@ test('nettoyeur : garde-fou — une perte massive refuse la sortie, une perte pa
     }
   });
 
-// ---- La note d'une figure ou d'un tableau (30.09.2026) ------------------------------------
+// ---- La note d'une figure ou d'un tableau --------------------------------------------------
 //
-// Un manuscrit brut porte souvent la note sous le contenu : « Note : … » dans le paragraphe
-// qui SUIT immédiatement l'image ou le tableau. Le nettoyeur la reprend dans la clé Note du bloc
-// (sans l'étiquette), la retire du corps et le dit dans le rapport. Jamais un « Note : » ailleurs.
+// Un manuscrit brut porte souvent la note dans le paragraphe qui suit immédiatement l'image
+// ou le tableau (« Note : … »). Le nettoyeur la reprend dans la clé Note du bloc (sans
+// l'étiquette), la retire du corps et le dit dans le rapport. Un « Note : » placé ailleurs
+// reste dans le corps.
 
 const NOTE = 'Données recueillies en 2025, n = 48.';
 const DONNEES = { tbl: [[[{ p: [{ t: 'Mesure' }] }], [{ p: [{ t: 'Valeur' }] }]],
@@ -333,8 +331,7 @@ for (const { nom, apres, contenu } of [
   { nom: 'figure', apres: [F.p('Note : ' + NOTE)] },
   { nom: 'figure (Remarque)', apres: [F.p('Remarque : ' + NOTE)] },
   { nom: 'tableau', apres: [F.p('Note : ' + NOTE)], contenu: [DONNEES] },
-  // La forme APA 7 (point, sans deux-points), mesurée sur RV02_Redaction : 45 paragraphes
-  // dans 19 fichiers, tous de vraies notes de tableau ou de figure.
+  // La forme APA 7 (point, sans deux-points), fréquente dans les manuscrits reçus.
   { nom: 'tableau (Note. APA)', apres: [F.p('Note. ' + NOTE)], contenu: [DONNEES] },
   { nom: 'figure (Anmerkung.)', apres: [F.p('Anmerkung. ' + NOTE)] },
 ]) {

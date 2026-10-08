@@ -1,17 +1,17 @@
-// pipeline/manuscrit-nettoyer.py : l'objet `compteurs` de la ligne stdout et le plantage rattrapé
-// (§8 de docs/ARCHITECTURE-nettoyeur-manuscrit.md). Deux promesses, une seule
-// menace : qu'un mot du manuscrit sorte de la CLI par ce canal.
+// pipeline/manuscrit-nettoyer.py : l'objet `compteurs` de la ligne stdout et le plantage
+// rattrapé (voir docs/ARCHITECTURE-nettoyeur-manuscrit.md). Aucun mot du manuscrit ne doit
+// sortir de la CLI par ce canal.
 //
 //   1. `compteurs` ne porte que des noms de mesure d'une liste blanche et des entiers, plus un
-//      `passage` (12 hexadécimaux du SHA-256 du fichier d'entrée) -- jamais le titre, les
-//      auteurs, les courriels, le nom du fichier, ni le message d'une exception ;
-//   2. une exception Python non rattrapée ne sort plus en code 1 (confondu avec « alertes
-//      error ») : principal() la rattrape, écrit UNE ligne JSON `{plantage, type, lieu,
-//      etape, ...}` et sort en code 4. Le message de l'exception n'y figure jamais.
+//      `passage` (12 hexadécimaux du SHA-256 du fichier d'entrée) : ni titre, ni auteurs, ni
+//      courriels, ni nom de fichier, ni message d'exception ;
+//   2. une exception Python non rattrapée sort en code 4, distinct du code 1 des « alertes
+//      error » : principal() la rattrape et écrit une ligne JSON `{plantage, type, lieu,
+//      etape, ...}`, sans le message de l'exception.
 //
 // Le manuscrit fabriqué, son nom de fichier et l'exception provoquée portent chacun une
-// SENTINELLE unique ; le test cherche chaque sentinelle, en casse pliée, dans ce que la CLI
-// met à la disposition du lanceur.
+// sentinelle unique ; le test cherche chaque sentinelle, en casse pliée, dans ce que la CLI
+// rend au lanceur.
 //
 //   node --test test/js/manuscrit-compteurs.test.js
 'use strict';
@@ -225,8 +225,8 @@ test('refus : suivi-modifications, fichier-verrou, extension-inconnue et lecture
 // 3. Le plantage : une exception Python rattrapée, le message jamais recopié
 // ---------------------------------------------------------------------------------------
 
-// Un pilote qui remplace UNE fonction de la chaîne par une fonction qui lève, puis appelle
-// principal() -- le code de production n'est jamais modifié pour le faire échouer.
+// Pilote qui remplace une fonction de la chaîne par une fonction qui lève, puis appelle
+// principal().
 const PILOTE_PLANTAGE = [
   'import importlib.util, sys',
   'pipeline, entree, sortie, module, fonction, exception, message = sys.argv[1:8]',
@@ -295,7 +295,7 @@ test('plantage : le type vient de la classe (KeyError), le lieu du fichier du d�
     }
   });
 
-// Le lieu est le DERNIER cadre d'un fichier du dépôt : une exception levée au fond d'un module
+// Le lieu est le dernier cadre d'un fichier du dépôt : une exception levée au fond d'un module
 // (ici manuscrit_modele.py, appelé de travers) se localise dans ce module, pas dans l'appelant.
 test('plantage : une exception levée dans un autre module du dépôt est localisée dans CE module (fichier:ligne)', { skip: sansPython }, () => {
     const base = dossierJetable();
@@ -418,12 +418,11 @@ test('principal() : le try global rattrape Exception (jamais BaseException : Ctr
 });
 
 // ---------------------------------------------------------------------------------------
-// 6. reseau.*.panne : une VRAIE panne, pas un DOI inconnu
+// 6. reseau.*.panne : une vraie panne, pas un DOI inconnu
 // ---------------------------------------------------------------------------------------
 
-// Mesuré le 01.10.2026 sur un manuscrit réel : 4 DOI consultés, 2 confirmés, et
-// stats['crossref']['indisponible'] vrai alors que le réseau répondait (un DOI inconnu, en 404,
-// suffit). Le compteur doit suivre `_hors_service` (panne du réseau), pas ce drapeau-là.
+// stats['crossref']['indisponible'] devient vrai dès qu'un DOI répond 404, réseau en marche.
+// Le compteur suit donc `_hors_service` (panne du réseau), pas ce drapeau.
 //
 // Sabotage : dans _mesures_passage(), remplacer `mb._hors_service` par
 // `(stats_biblio.get('crossref') or {}).get('indisponible')` -- le cas 404 lève la mesure.

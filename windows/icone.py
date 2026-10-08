@@ -1,48 +1,30 @@
 #!/usr/bin/env python3
-# icone.py — fabrique les quatre icônes du toolkit, à côté de ce script :
+# icone.py : fabrique les icônes de produit du toolkit, à côté de ce script.
 #
-#     szh-revue.ico        boîte « Nouvelle revue… », ouverte depuis l'onglet « Revue »
-#     szh-zeitschrift.ico  boîte « Nouvelle Zeitschrift… », ouverte depuis cet onglet
-#     szh-maj.ico          plus référencé nulle part depuis le renommage en « Pronto » ;
-#                          gardé et fabriqué le temps qu'on décide de son sort
-#     szh-livre.ico        boîte « Nouveau livre… », ouverte depuis l'onglet « Book »
+#     szh-revue.ico        boîte « Nouvelle revue… » (onglet « Revue »)
+#     szh-zeitschrift.ico  boîte « Nouvelle Zeitschrift… » (onglet « Zeitschrift »)
+#     szh-livre.ico        boîte « Nouveau livre… » (onglet « Book »)
+#     szh-maj.ico          utilisée nulle part, encore fabriquée
 #
-#     python3 windows/icone.py        (réécrit les quatre .ico à côté)
+#     python3 windows/icone.py
 #
-# Une icône à nous plutôt que celle de VSCodium : les entrées se suivent dans la
-# boîte « Ouvrir avec », et l'utilisateur doit reconnaître d'un coup d'œil celle qu'il
-# coche une fois pour toutes. Sans icône, le shell affiche celle de wscript.exe, qui ne
-# dit rien à personne. Épinglé à la barre des tâches, un raccourci perd son libellé et
-# l'icône devient le seul repère.
+# Les icônes de l'application (pronto.ico, pronto-maj.ico) sont faites par icone-pronto.py.
 #
-# Il y avait un raccourci par produit jusqu'au 13.09.2026, donc une icône par raccourci.
-# Le lanceur unique a repris celle de la revue jusqu'au renommage en « Pronto » du
-# 15.09.2026 : les deux entrées du menu Démarrer portent depuis pronto.ico et
-# pronto-maj.ico, d'un tout autre dessin, fabriquées par icone-pronto.py à partir des .svg.
-# Les icônes ci-dessous restent fabriquées et livrées : elles habillent les boîtes
-# « Nouveau… » d'un onglet, les seules fenêtres du lanceur qui appartiennent à un produit.
+# Le dessin, « l'étagère » : trois dos de fascicule couleur papier posés sur une tablette
+# de la couleur du produit (capucine #EB5E51 pour la Revue, moutarde #C7CF1C pour la
+# Zeitschrift, sarcelle #1B6E6A pour les livres), sur une tuile bleu nuit. Pas de lettre :
+# à 16 px elle deviendrait une tache. Les trois couleurs de tablette diffèrent d'au moins
+# 48 niveaux de gris deux à deux : les icônes se distinguent aussi en niveaux de gris et
+# pour un œil qui confond le rouge et le vert.
 #
-# Le dessin, « l'étagère » : trois dos de fascicule couleur papier, de hauteurs inégales,
-# posés sur une tablette de la couleur du produit — capucine #EB5E51 pour la Revue,
-# moutarde #C7CF1C pour la Zeitschrift, sarcelle #1B6E6A pour les livres — sur la tuile
-# bleu nuit du hero de couverture. Aucune lettre : à 16 px un glyphe devient une tache. Les
-# trois couleurs de tablette sont séparées d'au moins 48 niveaux de gris deux à deux, donc
-# les icônes se distinguent aussi en niveaux de gris et pour un œil qui confond le rouge et
-# le vert — la sarcelle a été choisie contre les deux autres, pas seulement contre l'une.
+# szh-maj.ico remplace les dos par une flèche vers le bas, sur une tablette bleu acier
+# #5F9FBC. Ce bleu n'est qu'à 8 niveaux de gris de la capucine : c'est la flèche qui
+# distingue l'icône.
 #
-# La mise à jour, elle, garde la tuile et la tablette — la famille — mais remplace les dos
-# par une grosse flèche vers le bas, le signe attendu pour « installer ». Ici la différence
-# est portée par le dessin et non par la couleur : la tablette prend le bleu acier #5F9FBC
-# de la charte, qui dit « l'outil » plutôt que l'un des produits, mais il ne s'écarte que de
-# 8 niveaux de gris de la capucine. C'est la flèche, pas la teinte, qui distingue cette
-# icône à 16 px et en niveaux de gris.
+# Les formes sont en unités d'un SVG de 256 × 256, ramenées à chaque taille au rendu.
 #
-# La géométrie est la transcription du SVG livré (viewBox 0 0 256 256) : les rectangles y
-# gardent leurs coordonnées d'origine, et le rendu ne fait que ramener ces 256 unités à la
-# taille demandée. Changer le dessin, c'est changer ce tableau, rien d'autre.
-#
-# stdlib seule : un ICO n'est qu'un en-tête suivi d'images PNG, et un PNG un en-tête suivi
-# de blocs zlib. Rien à installer, les icônes restent régénérables partout.
+# Bibliothèque standard seule : un ICO est un en-tête suivi d'images PNG, et un PNG un
+# en-tête suivi de blocs zlib.
 
 import os
 import struct
@@ -56,29 +38,27 @@ BLEUACIER = (0x5F, 0x9F, 0xBC)
 SARCELLE = (0x1B, 0x6E, 0x6A)
 
 # Deux sortes de formes, en unités du SVG : un rectangle à coins arrondis
-# (x, y, largeur, hauteur, rayon), cinq nombres, ou un triangle — ses trois sommets.
+# (x, y, largeur, hauteur, rayon) ou un triangle (ses trois sommets).
 UNITE = 256.0
 TUILE = (0, 0, 256, 256, 43.5)
 DOS = ((52, 52, 40, 136, 5), (108, 40, 40, 148, 5), (164, 60, 40, 128, 5))
 TABLETTE = (24, 188, 208, 48, 6)
-# La flèche : sa hampe, puis sa pointe. Elle s'arrête 14 unités au-dessus de la tablette,
-# soit presque un pixel à 16 px : de quoi garder un liseré de tuile entre les deux.
+# La flèche : hampe, puis pointe. Elle s'arrête 14 unités au-dessus de la tablette (presque
+# un pixel à 16 px), pour garder un liseré de tuile entre les deux.
 FLECHE_HAMPE = (104, 36, 48, 86, 6)
 FLECHE_POINTE = ((64, 108), (192, 108), (128, 174))
 
-# Un dessin : les formes à peindre dans l'ordre, chacune avec sa couleur — None voulant
-# dire « la couleur du produit ». La tuile est peinte en dernier, par `couleur`, pour
-# servir de fond à tout le reste. Changer le dessin, c'est changer ces deux lignes.
+# Un dessin : les formes dans l'ordre de priorité, chacune avec sa couleur (None : la
+# couleur du produit). La tuile sert de fond (voir `couleur`).
 ETAGERE = ((TABLETTE, None),) + tuple((d, PAPIER) for d in DOS)
 FLECHE = ((TABLETTE, None), (FLECHE_HAMPE, PAPIER), (FLECHE_POINTE, PAPIER))
 
-# Les tailles que Windows demande : 16 et 20 pour la barre des tâches et les listes, 24 à
-# 48 pour le menu Démarrer et Alt+Tab selon la mise à l'échelle, 64 à 256 pour les grandes
+# Tailles demandées par Windows : 16 et 20 pour la barre des tâches et les listes, 24 à 48
+# pour le menu Démarrer et Alt+Tab selon la mise à l'échelle, 64 à 256 pour les grandes
 # tuiles et les propriétés de fichier.
 TAILLES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
 ICI = os.path.dirname(os.path.abspath(__file__))
-# Un fichier par usage. Ces noms sont ceux que cherche szh-produits.ps1 : les changer ici
-# sans les changer là-bas fait retomber les raccourcis sur VSCodium.
+# Noms de fichier lus par szh-produits.ps1 : un changement se fait aux deux endroits.
 VARIANTES = (('szh-revue.ico', CAPUCINE, ETAGERE),
              ('szh-zeitschrift.ico', MOUTARDE, ETAGERE),
              ('szh-maj.ico', BLEUACIER, FLECHE),
@@ -86,8 +66,8 @@ VARIANTES = (('szh-revue.ico', CAPUCINE, ETAGERE),
 
 
 def dans_rectangle(rect, u, v):
-    """Le point (u, v) est-il dans ce rectangle à coins arrondis ? Hors du cadre : non.
-    Dans la zone d'un coin : distance au centre de l'arrondi. Ailleurs : oui."""
+    """Vrai si le point (u, v) est dans le rectangle à coins arrondis. Dans la zone d'un
+    coin, on compare la distance au centre de l'arrondi."""
     x, y, larg, haut, r = rect
     if not (x <= u <= x + larg and y <= v <= y + haut):
         return False
@@ -99,8 +79,8 @@ def dans_rectangle(rect, u, v):
 
 
 def dans_triangle(tri, u, v):
-    """Le point (u, v) est-il dans ce triangle ? Il l'est s'il tombe du même côté des
-    trois arêtes, quel que soit le sens dans lequel les sommets ont été donnés."""
+    """Vrai si le point (u, v) est du même côté des trois arêtes du triangle, quel que soit
+    l'ordre des sommets."""
     (x1, y1), (x2, y2), (x3, y3) = tri
     d1 = (u - x2) * (y1 - y2) - (x1 - x2) * (v - y2)
     d2 = (u - x3) * (y2 - y3) - (x2 - x3) * (v - y3)
@@ -126,10 +106,8 @@ def couleur(u, v, accent, dessin):
 
 
 def dessiner(n, accent, dessin):
-    """Damier RGBA de n×n pixels, échantillonné puis moyenné — c'est le seul anti-aliasing
-    possible sans bibliothèque graphique, et sans lui les arrondis crénellent et les
-    intervalles entre les dos disparaissent. L'échantillonnage est plus fin aux petites
-    tailles, où un pixel porte un détail entier."""
+    """Image RGBA de n×n pixels. Chaque pixel est la moyenne de plusieurs échantillons
+    (anti-aliasing), plus nombreux aux petites tailles où un pixel porte un détail entier."""
     e = 8 if n <= 64 else 4
     echelle = UNITE / (n * e)
     n_sous = e * e
@@ -158,7 +136,7 @@ def dessiner(n, accent, dessin):
 
 
 def png(pixels):
-    """Encode un damier RGBA en PNG : trois blocs et un CRC."""
+    """Encode une image RGBA en PNG."""
     n = len(pixels)
     brut = b''.join(b'\x00' + bytes(v for px in ligne for v in px) for ligne in pixels)
 
@@ -173,8 +151,7 @@ def png(pixels):
 
 
 def ecrire(nom, accent, dessin):
-    """Assemble le .ico multi-tailles `nom`, dans ce dossier, avec ce dessin et cette
-    couleur de tablette."""
+    """Écrit le .ico multi-tailles `nom` dans ce dossier et rend son chemin."""
     images = [(t, png(dessiner(t, accent, dessin))) for t in TAILLES]
     entetes = b''
     corps = b''

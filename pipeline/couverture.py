@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# couverture.py — compose la couverture d'un livre, en deux versions tirées du même gabarit :
-#   * impression : UNE page à plat, 4e + dos + 1re, CMJN exact, fond perdu, traits de coupe
-#     et de pli — ce que l'imprimeur massicote (PDF/X-4) ;
+# Compose la couverture d'un livre, en deux versions tirées du même gabarit :
+#   * impression : une page à plat, 4e + dos + 1re, CMJN exact, fond perdu, traits de coupe
+#     et de pli, pour l'imprimeur (PDF/X-4) ;
 #   * écran : deux pages, 1re puis 4e, RGB exact, sans dos ni fond perdu (PDF/UA-1, PNG).
 #
 #   couverture.py --mode impression|ecran|dos --meta buch.yaml --pdf-interieur out/<livre>.pdf \
@@ -10,15 +10,15 @@
 #   couverture.py --imprimer <impression.html> <sortie.pdf> --meta buch.yaml [--icc-dir …]
 #
 # --mode dos écrit out/<livre>-dos.json. --imprimer compose le PDF/X-4 par l'API de
-# WeasyPrint (il faut donc le python de l'image, /opt/weasyprint/bin/python) : c'est le seul
-# moyen de poser une BleedBox à la valeur du fond perdu, WeasyPrint la fixant à 10 pt.
+# WeasyPrint (donc avec /opt/weasyprint/bin/python) : c'est le seul moyen de poser une
+# BleedBox à la valeur du fond perdu, que la ligne de commande fixe à 10 pt.
 #
-# Couleurs : SEULE source, styles/couleurs-reference.json. L'impression prend son CMJN, les
-# sorties RGB son RGB ; jamais l'un n'est converti en l'autre. Seule l'illustration
-# matricielle passe par un profil ICC (sRGB -> profil d'impression), pour l'impression.
+# Couleurs : styles/couleurs-reference.json seulement. L'impression prend son CMJN, l'écran
+# son RGB ; aucune conversion de l'un à l'autre. Seule l'illustration matricielle passe par
+# un profil ICC (sRGB -> profil d'impression), pour l'impression.
 #
-# Ce script n'invente aucune métadonnée : une collection ou un tome absents laissent le
-# bloc vide, une couleur-impression hors de la liste arrête la compilation.
+# Aucune métadonnée n'est inventée : une collection ou un tome absents laissent le bloc
+# vide, une couleur-impression hors de la liste arrête la compilation.
 
 import base64
 import html
@@ -43,16 +43,15 @@ FONDS_DIR = os.path.join(PIPELINE_DIR, 'media', 'fonds')
 
 
 def _importer(nom_module, nom_fichier):
-    """Importe un module frère par son CHEMIN : livre-assembler.py porte un tiret,
-    imprononçable pour `import`. Aucun effet de bord au chargement."""
+    """Importe un module voisin par son chemin (livre-assembler.py a un tiret, que
+    `import` refuse)."""
     chemin = os.path.join(PIPELINE_DIR, nom_fichier)
     spec = importlib.util.spec_from_file_location(nom_module, chemin)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
-# _auteurs_ligne() et _remplacer_jetons() restent dans livre-assembler.py : les recopier
-# ici diverguerait à la première modification de l'une des deux copies.
+# _auteurs_ligne() et _remplacer_jetons() sont repris de livre-assembler.py, pas recopiés.
 _assembleur = _importer('szh_livre_assembler', 'livre-assembler.py')
 _auteurs_ligne = _assembleur._auteurs_ligne
 _remplacer_jetons = _assembleur._remplacer_jetons
@@ -60,41 +59,30 @@ apca = _importer('szh_apca', 'apca.py')
 
 
 # ──────────────────────────────────────────────────────────────────────────────────────
-# 1. Compte de pages d'un PDF, SANS dépendance externe.
+# 1. Nombre de pages d'un PDF, sans dépendance externe.
 # ──────────────────────────────────────────────────────────────────────────────────────
-# Écrit du temps où ce script tournait sous le python3 du système, sans pypdf ; il tourne
-# désormais dans celui de WeasyPrint, mais le compte de pages reste lisible sans lui (le
-# test du dos l'importe sous n'importe quel python3). Ce lecteur est écrit à la main, et il
-# faut le dire : ce n'est pas un analyseur PDF général, c'est un lecteur ciblé sur ce que
-# WeasyPrint 69 écrit réellement — mesuré ici sur les deux livres de banc :
-#   * table de références sous forme de flux compressé (/Type /XRef), pas la table `xref`
-#     classique en texte clair ;
-#   * les objets eux-mêmes (Catalog, Pages…) vivent dans des flux d'objets compressés
-#     (/Type /ObjStm), pas comme des objets indirects lisibles tels quels.
-# C'est précisément pourquoi compter les occurrences de « /Type /Page » dans les octets
-# bruts est fragile (l'avertissement de la mission) : ces octets n'existent nulle part en
-# clair dans un PDF WeasyPrint, ils sont dans un flux zlib. La bonne donnée, elle, est
-# toujours lisible sans tout décompresser : /Root -> /Pages -> /Count, un entier que la
-# norme PDF garantit égal au nombre de pages FEUILLES de tout l'arbre, quelle que soit sa
-# profondeur — inutile donc de descendre dans /Kids.
+# Sans pypdf, pour que le test du dos tourne sous n'importe quel python3. Ce n'est pas un
+# analyseur PDF général : il lit ce qu'écrit WeasyPrint, soit une table de références en
+# flux compressé (/Type /XRef) et des objets dans des flux d'objets (/Type /ObjStm).
+# Chercher « /Type /Page » dans les octets bruts ne marche donc pas (tout est compressé).
+# On lit /Root -> /Pages -> /Count, qui vaut le nombre total de pages de l'arbre.
 #
-# Une table `xref` classique (PDF antérieur à 1.5, ou réécrit par un autre outil) est prise
-# en charge en repli, par simplicité et parce que le coût est faible ; elle ne connaît pas
-# les objets compressés, donc pas d'étape ObjStm dans cette branche.
+# Une table `xref` classique en texte (PDF antérieur à 1.5, ou réécrit par un autre outil)
+# est aussi lue ; elle n'a pas d'objets compressés.
 
 class _PdfIllisible(Exception):
-    """Le PDF n'a pas la forme attendue : mieux vaut le dire clairement que de deviner."""
+    """Le PDF n'a pas la forme attendue."""
 
 
 def _trouver_stream(data, debut_dict):
-    """À partir de la position qui suit un dictionnaire d'objet, rend (contenu_decompresse,
-    position_apres_endstream). `debut_dict` pointe juste après le dictionnaire ('>>')."""
+    """Rend (contenu du flux, position après endstream). `debut_dict` pointe juste après
+    le dictionnaire de l'objet ('>>'). Le contenu n'est pas décompressé."""
     i = data.find(b'stream', debut_dict)
     if i < 0:
         raise _PdfIllisible('mot-clé stream introuvable')
     j = i + len(b'stream')
-    # Le flux commence juste après l'EOL qui suit "stream" (CR LF, ou LF seul — la norme
-    # interdit CR seul ici, ce que WeasyPrint respecte).
+    # Le flux commence après la fin de ligne qui suit "stream" (CR LF ou LF ; la norme
+    # interdit CR seul).
     if data[j:j + 2] == b'\r\n':
         j += 2
     elif data[j:j + 1] == b'\n':
@@ -106,9 +94,8 @@ def _trouver_stream(data, debut_dict):
 
 
 def _dict_brut(data, pos):
-    """Le texte entre le PREMIER « << » à partir de `pos` et son « >> » de fermeture,
-    profondeur comptée — un dictionnaire de couverture (Names, Dests…) en contient
-    d'imbriqués, une recherche non gourmande s'arrêterait au premier. Rend (texte, fin)."""
+    """Texte entre le premier « << » à partir de `pos` et son « >> », en comptant
+    l'imbrication (un dictionnaire en contient souvent d'autres). Rend (texte, fin)."""
     i = data.find(b'<<', pos)
     if i < 0:
         raise _PdfIllisible('dictionnaire introuvable')
@@ -178,8 +165,8 @@ def _lire_xref_stream(data, offset):
 
 def _lire_xref_table(data, offset):
     """Table `xref` classique, en texte : sous-sections « depart compte », puis `compte`
-    lignes de 20 octets, puis `trailer` et son dictionnaire. Pas d'objets compressés
-    possibles dans ce format — /Prev, s'il existe, chaîne vers une AUTRE table classique."""
+    lignes de 20 octets, puis `trailer` et son dictionnaire. /Prev, s'il existe, mène à
+    une autre table classique."""
     m = re.match(rb'\s*xref\s*\r?\n', data[offset:offset + 20])
     if not m:
         raise _PdfIllisible('pas une table xref à cet offset')
@@ -204,9 +191,9 @@ def _lire_xref_table(data, offset):
 
 
 def _resoudre_objet(data, entrees, num, _vus=None):
-    """Les octets du CONTENU d'un objet (après « N G obj », dictionnaire compris), qu'il
-    soit direct (type 1, à un offset) ou compressé dans un flux d'objets (type 2). `_vus`
-    coupe une boucle de renvois malformée plutôt que de partir en récursion infinie."""
+    """Octets du contenu d'un objet (après « N G obj », dictionnaire compris), direct
+    (type 1, à un offset) ou dans un flux d'objets (type 2). `_vus` arrête une boucle de
+    renvois."""
     _vus = _vus or set()
     if num in _vus:
         raise _PdfIllisible('renvoi circulaire sur l\'objet %d' % num)
@@ -218,9 +205,9 @@ def _resoudre_objet(data, entrees, num, _vus=None):
         m = re.match(rb'\s*\d+\s+\d+\s+obj', data[f2:f2 + 40])
         if not m:
             raise _PdfIllisible('objet %d : pas de « obj » à son offset déclaré' % num)
-        return data[f2 + m.end():f2 + m.end() + 20000]  # fenêtre large, pas tout le fichier
+        return data[f2 + m.end():f2 + m.end() + 20000]  # fenêtre large suffisante
     if t == 2:
-        # f2 = numéro du flux d'objets porteur, f3 = son rang dans ce flux.
+        # f2 = numéro du flux d'objets qui le contient, f3 = son rang dans ce flux.
         t_flux, off_flux, _ = entrees[f2]
         if t_flux != 1:
             raise _PdfIllisible('flux d\'objets %d lui-même compressé : non géré' % f2)
@@ -242,12 +229,10 @@ def _resoudre_objet(data, entrees, num, _vus=None):
 
 
 def compter_pages_pdf(chemin):
-    """Le nombre de pages du PDF à `chemin`, lu par /Root -> /Pages -> /Count. Lève
-    _PdfIllisible avec un message clair plutôt que de renvoyer un nombre plausible : un dos
-    calculé sur un compte inventé serait le défaut que ce script existe pour éviter."""
+    """Nombre de pages du PDF, lu par /Root -> /Pages -> /Count. Lève _PdfIllisible
+    plutôt que de rendre un nombre approximatif : le dos en dépend."""
     data = open(chemin, 'rb').read()
-    # Plusieurs « startxref » sont possibles après des mises à jour incrémentales ; seul le
-    # dernier fait foi — c'est lui que rend `finditer` en dernière position.
+    # Après des mises à jour incrémentales, seul le dernier « startxref » compte.
     toutes = list(re.finditer(rb'startxref\s+(\d+)', data))
     if not toutes:
         raise _PdfIllisible('mot-clé startxref introuvable — ce n\'est pas un PDF valide '
@@ -259,15 +244,14 @@ def compter_pages_pdf(chemin):
     vus_offsets = set()
     while offset is not None:
         if offset in vus_offsets:
-            break   # chaîne /Prev bouclée : on s'arrête sur ce qu'on a déjà
+            break   # chaîne /Prev qui boucle
         vus_offsets.add(offset)
         debut = data[offset:offset + 20].lstrip()
         if debut.startswith(b'xref'):
             nouvelles, entete = _lire_xref_table(data, offset)
         else:
             nouvelles, entete = _lire_xref_stream(data, offset)
-        # Une entrée plus ancienne (table /Prev) ne doit jamais écraser une entrée déjà lue
-        # depuis une table plus récente.
+        # Une table plus ancienne (/Prev) n'écrase pas une entrée plus récente.
         for k, v in nouvelles.items():
             entrees.setdefault(k, v)
         if racine_dict is None:
@@ -291,7 +275,7 @@ def compter_pages_pdf(chemin):
 
 # ──────────────────────────────────────────────────────────────────────────────────────
 # 2. Le dos : la formule du tableur de l'imprimeur (docs/ARCHITECTURE-LIVRES.md, « Calcul
-#    du dos »), et rien de plus.
+#    du dos »).
 # ──────────────────────────────────────────────────────────────────────────────────────
 
 # Valeurs du tableur Buchrueckenberechnung_2022 : Mondi DNS Premium 90 g vol. 1,27,
@@ -310,8 +294,8 @@ def _nombre(valeur, defaut):
 def calculer_dos(nb_pages, impression):
     """{'dos_mm', 'grammage_couverture'} pour `nb_pages` pages intérieures.
     dos = 4 × g_couv/2000 × vol_couv + pages × g_int/2000 × vol_int + colle.
-    impression.dos-mm, imposé par l'imprimeur, gagne toujours ; couverture-grammage
-    impose le papier de couverture, sinon 250 g sous 20 mm et 300 g au-delà."""
+    impression.dos-mm, donné par l'imprimeur, l'emporte toujours. couverture-grammage
+    impose le papier de couverture ; sinon 250 g sous 20 mm, 300 g au-delà."""
     imp = impression if isinstance(impression, dict) else {}
     g_int = _nombre(imp.get('grammage'), DOS_DEFAUTS['grammage'])
     v_int = _nombre(imp.get('main'), DOS_DEFAUTS['main'])
@@ -336,7 +320,7 @@ def calculer_dos(nb_pages, impression):
 
 
 def source_dos(nb_pages, impression, resultat, nom_pdf):
-    """Une ligne lisible pour dos.json et le journal : d'où vient le chiffre."""
+    """Ligne lisible pour dos.json et le journal : d'où vient la valeur du dos."""
     imp = impression if isinstance(impression, dict) else {}
     if imp.get('dos-mm') not in (None, ''):
         return 'imposé par buch.yaml (impression.dos-mm)'
@@ -350,7 +334,7 @@ def source_dos(nb_pages, impression, resultat, nom_pdf):
 
 
 # ──────────────────────────────────────────────────────────────────────────────────────
-# 3. Couleurs : la table de référence, rien d'autre.
+# 3. Couleurs, tirées de la table de référence.
 # ──────────────────────────────────────────────────────────────────────────────────────
 
 class ErreurCouverture(Exception):
@@ -363,17 +347,16 @@ def charger_reference():
 
 
 def _cle_couverture(buch):
-    """Le bloc `couverture:` de buch.yaml. SEUL point de lecture de ses clés (modele, fond,
+    """Le bloc `couverture:` de buch.yaml, seul point de lecture de ses clés (modele, fond,
     fond-teinte, illustration-x-mm, illustration-y-mm, illustration-plein, titre-2,
-    sous-titre-2) : ces noms sont provisoires."""
+    sous-titre-2), dont les noms sont provisoires."""
     couv = buch.get('couverture')
     return couv if isinstance(couv, dict) else {}
 
 
-# Les modèles de couverture, chacun calqué sur une référence InDesign (docs/ARCHITECTURE-
+# Modèles de couverture, chacun reproduit d'une maquette InDesign (docs/ARCHITECTURE-
 # LIVRES.md) : falc, classique (la collection courante), recherche (Sonderpädagogische
-# Forschung in der Schweiz), prospectrum. La maquette de l'intérieur n'en décide que par
-# défaut.
+# Forschung in der Schweiz), prospectrum. La maquette de l'intérieur ne fixe que le défaut.
 MODELES = ('falc', 'classique', 'recherche', 'prospectrum')
 
 # Fond par défaut de chaque modèle : (clé de référence, teinte en %).
@@ -416,8 +399,8 @@ def decalage_illustration(buch):
 
 
 def variables_illustration(buch):
-    """Les propriétés CSS du décalage, posées sur <html> à l'identique pour les quatre
-    sorties (couverture.css les applique par translate)."""
+    """Variables CSS du décalage, posées sur <html> pour les quatre sorties
+    (couverture.css les applique par translate)."""
     x, y = decalage_illustration(buch)
     return '--szh-couv-illus-x: %gmm; --szh-couv-illus-y: %gmm;' % (round(x, 3), round(y, 3))
 
@@ -437,12 +420,12 @@ def teinte_rgb(hexa, pourcent):
 
 
 def teinte_cmjn(cmjn, pourcent):
-    """La teinte d'un ton direct se tramerait : t % de chaque encre."""
+    """Teinte à t % : t % de chaque encre (un ton direct se tramerait)."""
     return [v * pourcent / 100.0 for v in cmjn]
 
 
 def palette(buch, ref, mode):
-    """Les couleurs de la couverture, toutes en CSS, pour `mode` (impression | ecran)."""
+    """Couleurs de la couverture en CSS, pour `mode` (impression | ecran)."""
     cle = str(buch.get('couleur-impression') or '').strip()
     if cle not in ref:
         raise ErreurCouverture(
@@ -453,8 +436,8 @@ def palette(buch, ref, mode):
         raise ErreurCouverture('couverture.fond « %s » hors de la liste (%s)'
                                % (fond_cle, ', '.join(ref)))
     accent = ref[cle]
-    # Texte sur le bandeau (maquette normal) : noir ou blanc par contraste APCA, jugé sur le
-    # RGB de référence ; le CMJN ne sert qu'à l'encre, pas au jugement.
+    # Texte sur le bandeau (maquette normal) : noir ou blanc selon le contraste APCA, jugé
+    # sur le RGB de référence.
     sur_accent_blanc = apca.meilleure_polarite(accent['rgb'])[0] == apca.BLANC
     if mode == 'impression':
         p = {'encre': _cmjn_css([0, 0, 0, 1]), 'papier': _cmjn_css([0, 0, 0, 0]),
@@ -492,10 +475,10 @@ def _data_uri(mime, brut):
 
 
 def illustration_cmjn(chemin, profil_icc, fond_cmjn):
-    """L'illustration RGB en JPEG CMJN, par le profil d'impression : intention relative
-    colorimétrique et compensation du point noir. Une transparence est aplatie APRÈS la
-    conversion, sur le CMJN exact du fond (faute d'alpha en JPEG) : aplatie sur son RGB,
-    le fond converti par le profil sortait en rectangle visible sur l'aplat (mesuré)."""
+    """L'illustration RGB en JPEG CMJN, par le profil d'impression (intention relative
+    colorimétrique, compensation du point noir). La transparence est aplatie après la
+    conversion, sur le CMJN exact du fond (le JPEG n'a pas d'alpha) : aplatie avant, sur
+    le RGB du fond, elle laisserait un rectangle visible sur l'aplat."""
     from PIL import Image, ImageCms
     im = Image.open(chemin)
     source = None
@@ -506,7 +489,7 @@ def illustration_cmjn(chemin, profil_icc, fond_cmjn):
         im = im.convert('RGBA')
         alpha = im.split()[-1]
         im = im.convert('RGB')
-    elif im.mode == 'CMYK':   # déjà séparée : on n'y touche pas
+    elif im.mode == 'CMYK':   # déjà en CMJN : inchangée
         tampon = io.BytesIO()
         im.save(tampon, 'JPEG', quality=95, subsampling=0)
         return _data_uri('image/jpeg', tampon.getvalue())
@@ -542,14 +525,14 @@ def illustration_uri(chemin, mode, profil_icc, fond_cmjn):
     elif ext in ('.jpg', '.jpeg'):
         from PIL import Image
         im = Image.open(chemin)
-        if im.mode == 'CMYK':   # JPEG CMJN d'InDesign ou de Photoshop : l'écran n'a que du RGB
+        if im.mode == 'CMYK':   # JPEG CMJN (InDesign, Photoshop) : converti pour l'écran
             return _cmjn_vers_srgb(im, profil_icc)
     return _data_uri(mime, open(chemin, 'rb').read())
 
 
 def fond_uri(nom, mode, profil_icc):
-    """Un fond de media/fonds/, JPEG CMJN : tel quel pour l'impression, passé en sRGB par
-    le profil d'impression pour les sorties écran, qui n'ont droit qu'au RGB."""
+    """Un fond de media/fonds/ (JPEG CMJN) : tel quel pour l'impression, converti en sRGB
+    par le profil d'impression pour l'écran."""
     chemin = os.path.join(FONDS_DIR, nom)
     if mode == 'impression':
         return _data_uri('image/jpeg', open(chemin, 'rb').read())
@@ -594,8 +577,8 @@ ALT_EDITION = 'EDITION SZH/CSPS'
 
 
 def responsables(buch, lang):
-    """Les auteur·e·s ; à défaut, les éditeur·rice·s suivi·e·s de leur mention entre
-    parenthèses (« Prénom Nom et Prénom Nom (Éditrices) »)."""
+    """Les auteurs ; à défaut, les éditeurs suivis de leur mention entre parenthèses
+    (« Prénom Nom et Prénom Nom (Éditrices) »)."""
     ligne = _auteurs_ligne(buch, lang)
     if ligne:
         return ligne
@@ -630,7 +613,7 @@ def _lignes(texte):
 
 
 def bloc_isbn(buch, lang):
-    """Les ISBN en pied de 4e, l'e-book puis l'imprimé ; rien si aucun n'est posé."""
+    """Les ISBN en pied de 4e, l'e-book puis l'imprimé ; '' si aucun n'est donné."""
     valeurs = [str(buch.get(k) or '').strip() for k in ('isbn-ebook', 'isbn-print')]
     libelles = ISBN_LIBELLES.get(lang, ISBN_LIBELLES['fr'])
     lignes = [html.escape(l + v) for l, v in zip(libelles, valeurs) if v]
@@ -638,17 +621,17 @@ def bloc_isbn(buch, lang):
 
 
 def petites_capitales(texte):
-    """Petites capitales composées : chaque suite de minuscules passe en capitales au corps
-    réduit (.szh-couv-pc, 70 % comme la référence du modèle recherche), les capitales gardent
-    le leur. La face petites capitales des polices (80 %, graisse au-dessus) faisait la
-    collection plus large de 3 mm (mesuré)."""
+    """Petites capitales composées à la main : chaque suite de minuscules passe en
+    capitales à corps réduit (.szh-couv-pc, 70 % comme la maquette du modèle recherche).
+    Les petites capitales des polices (80 %, graisse au-dessus) élargissaient la ligne de
+    3 mm."""
     morceaux = re.split(r'([^\W\d_A-ZÀ-ÖØ-Þ]+)', str(texte))
     return ''.join('<span class="szh-couv-pc">%s</span>' % html.escape(m) if i % 2 else
                    html.escape(m) for i, m in enumerate(morceaux) if m)
 
 
 def _decor(*classes):
-    """Des aplats et filets sans contenu : ni texte ni balise pour le lecteur d'écran."""
+    """Aplats et filets vides, que le lecteur d'écran ignore."""
     return '\n'.join('<div class="%s"></div>' % c for c in classes)
 
 
@@ -658,13 +641,13 @@ def _fond_image(uri):
 
 
 def blocs_maquette(buch, lang, modele, couleurs, titre, resp, fond=None):
-    """Les fragments de chaque emplacement du gabarit pour `modele` : pied de 1re, dos,
+    """Fragments HTML de chaque emplacement du gabarit pour `modele` : pied de 1re, dos,
     décor du haut de la 1re et de la 4e, titre second dans le bandeau, pied de 4e.
-    `fond` est l'URI du fond ProSpectrum (None : pas de fond image)."""
+    `fond` est l'URI du fond ProSpectrum, ou None."""
     collection = html.escape(str(buch.get('collection') or ''))
     tome = html.escape(str(buch.get('tome') or ''))
-    # Le dos se lit de bas en haut : la ligne commence par les responsables, qui tombent
-    # ainsi sous le titre une fois tournée.
+    # Le dos se lit de bas en haut : les responsables d'abord, qui se retrouvent sous le
+    # titre une fois la ligne tournée.
     ligne_dos = ('<div class="szh-couv-dos-texte"><span class="szh-couv-dos-auteurs">%s</span>'
                  '<span class="szh-couv-dos-titre">%s</span></div>' % (resp, titre))
     blocs = {'pied': '', 'dos': '', '1re-haut': '', 'bandeau-extra': '', '4e-haut': '',
@@ -738,7 +721,7 @@ def blocs_maquette(buch, lang, modele, couleurs, titre, resp, fond=None):
         lignes = [x for x in (collection, (MOT_LIVRE.get(lang, MOT_LIVRE['fr']) + ' ' + tome)
                               if tome else '') if x]
         pied = '\n'.join([
-            # Picto plein : son blanc est une réserve dans l'encre, donc la couleur du fond.
+            # Picto plein : son blanc est une réserve, donc de la couleur du fond.
             _img('szh-couv-picto', logo_uri('leichte-sprache.svg', couleurs['accent'],
                                             couleurs['fond']),
                  ALT_PICTO.get(lang, ALT_PICTO['fr'])),
@@ -791,7 +774,7 @@ def traits(largeur, dos, hauteur, fp):
 # ──────────────────────────────────────────────────────────────────────────────────────
 
 def profil_icc(buch, icc_dir):
-    """Chemin du profil CMJN d'impression.profil-cmjn (un seul profil pour tout)."""
+    """Chemin du profil CMJN impression.profil-cmjn (le même pour toute la couverture)."""
     imp = buch.get('impression') if isinstance(buch.get('impression'), dict) else {}
     nom = str(imp.get('profil-cmjn') or 'PSOuncoated_v3_FOGRA52.icc').strip()
     for c in (os.path.join(icc_dir or '', nom), nom):
@@ -943,8 +926,8 @@ def _couleurs_rgb(chemin):
 
 
 def imprimer(source_html, sortie_pdf, buch):
-    """HTML d'impression -> PDF/X-4, OutputIntent du profil, BleedBox = fond perdu. Échoue
-    (code 1) s'il reste du RGB : un PDF d'impression faux ne part jamais."""
+    """HTML d'impression -> PDF/X-4, OutputIntent du profil, BleedBox = fond perdu. Lève
+    ErreurCouverture s'il reste du RGB."""
     import logging
     import pydyf
     import weasyprint
@@ -952,8 +935,8 @@ def imprimer(source_html, sortie_pdf, buch):
     marge = fond_perdu_mm(buch) * 72 / 25.4
 
     def poser_bleedbox(_document, pdf):
-        # WeasyPrint fixe la BleedBox à min(bleed, 10 pt) du rogné ; le fond perdu réel est
-        # celui de buch.yaml, le reste du bleed CSS ne sert qu'aux traits.
+        # WeasyPrint fixe la BleedBox à min(bleed, 10 pt) du rogné. Le fond perdu réel vient
+        # de buch.yaml ; le reste du bleed CSS sert aux traits.
         for obj in pdf.objects:
             if isinstance(obj, dict) and 'TrimBox' in obj:
                 x0, y0, x1, y1 = (float(v) for v in obj['TrimBox'])
@@ -971,7 +954,7 @@ def imprimer(source_html, sortie_pdf, buch):
 
 
 def main(argv):
-    try:  # console Windows en cp1252 : un accent combinant (nom venu du partage) y plante.
+    try:  # console Windows en cp1252 : un accent combinant y ferait planter print().
         sys.stdout.reconfigure(encoding='utf-8')
         sys.stderr.reconfigure(encoding='utf-8')
     except Exception:

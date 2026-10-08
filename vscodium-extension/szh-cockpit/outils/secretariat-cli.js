@@ -3,22 +3,26 @@
 // Windows avec le Node qu'embarque VSCodium :
 //   ELECTRON_RUN_AS_NODE=1 VSCodium.exe <chemin>\outils\secretariat-cli.js <commande> [options]
 //
-// Contrat figé (voir lib/secretariat.js pour la logique) : JSON Lines sur stdout, UTF-8, un
-// objet par ligne, vidé à chaque ligne — rien d'autre sur stdout, une trace de pile va sur
-// stderr. Types de ligne : `etape` (texte libre, ce qui se passe), `avert` (avertissement
-// non bloquant), `numero` (un numéro OJS trouvé), `fichier` (un fichier produit), `progres`
-// ({fait, total} — total à 0 quand il est inconnu d'avance, cas du moissonnage OAI-PMH : le
-// lanceur y affiche une barre indéterminée), `fin` (bilan, TOUJOURS la dernière ligne).
-// Code de sortie 0 si `ok`, sinon 1. --langue fr|de choisit la langue des textes ; le français
-// à défaut, que le lanceur WinForms reçoit sans la passer.
+// Format de sortie (la logique est dans lib/secretariat.js) : JSON Lines sur stdout, UTF-8,
+// un objet par ligne, vidé à chaque ligne ; rien d'autre sur stdout, les traces de pile vont
+// sur stderr. Types de ligne :
+//   etape    texte libre, ce qui se passe
+//   avert    avertissement non bloquant
+//   numero   un numéro OJS trouvé
+//   fichier  un fichier produit
+//   progres  { fait, total } ; total vaut 0 s'il est inconnu (moissonnage OAI-PMH), et le
+//            lanceur affiche alors une barre indéterminée
+//   fin      bilan, toujours la dernière ligne
+// Code de sortie 0 si `ok`, sinon 1. --langue fr|de choisit la langue des textes (fr par
+// défaut, le lanceur WinForms ne la passe pas).
 'use strict';
 
 const path = require('path');
 const secretariat = require(path.join(__dirname, '..', 'lib', 'secretariat.js'));
 
 // « --cle valeur » répétable ; « --cle » seul (sans valeur suivante) vaut booléen true.
-// Une clé vue plusieurs fois devient un tableau, dans l'ordre reçu — utile à
-// « --numero » de la commande metadonnees, qui peut apparaître plusieurs fois.
+// Une clé répétée devient un tableau, dans l'ordre reçu (« --numero » de metadonnees et
+// d'edudoc).
 function analyserArguments(argv) {
   const sortie = {};
   for (let i = 0; i < argv.length; i++) {
@@ -53,8 +57,8 @@ async function main() {
       throw new Error(secretariat.dire(secretariat.langueDe(args), 'commande.inconnue', [commande || '', commandesConnues.join(', ')]));
     }
 
-    // --gabarits : aide de mise au point (et porte d'entrée des tests), jamais un réglage de
-    // rédacteur — en usage normal les gabarits sont toujours ceux livrés dans export-templates/.
+    // --gabarits sert à la mise au point et aux tests ; sinon, les gabarits sont ceux
+    // livrés dans export-templates/.
     dossierGabarits = (typeof args.gabarits === 'string' ? args.gabarits : null) || secretariat.dossierGabaritsSource();
 
     const opts = { emettre: emettre, dossierGabarits: dossierGabarits, langue: args.langue };
@@ -62,9 +66,9 @@ async function main() {
     if (commande === 'numeros-ojs') {
       opts.revue = args.revue;
       opts.cheminCache = args.cache;
-      // Absente : moisson complète, comme avant. Présente : l'année à partir de laquelle
-      // moissonner (voir lib/secretariat.js, commandeNumerosOjs) ; remonter d'une année se
-      // fait en relançant avec une valeur plus petite, jamais en cumulant les appels.
+      // --depuis-annee : l'année à partir de laquelle moissonner (voir commandeNumerosOjs) ;
+      // absente, moisson complète. Pour remonter plus loin, on relance avec une année plus
+      // petite : les appels ne se cumulent pas.
       opts.depuisAnnee = args['depuis-annee'];
       resultat = await secretariat.commandeNumerosOjs(opts);
     } else if (commande === 'newsletter') {
@@ -74,11 +78,10 @@ async function main() {
     } else if (commande === 'edudoc') {
       opts.cheminCache = args.cache;
       opts.cles = listeCles(args.numeros);
-      // --numero (répétable, comme pour « metadonnees ») : les numéros locaux dont on tire
-      // les mots-clés (690), joints aux lignes OAI par DOI. Optionnel — sans lui, le CSV
-      // sort comme avant, sans colonnes 690.
+      // --numero (répétable, facultatif) : les numéros locaux dont on tire les mots-clés
+      // (690), joints aux lignes OAI par DOI. Sans lui, le CSV n'a pas de colonnes 690.
       opts.racinesNumeros = Array.isArray(args.numero) ? args.numero : (args.numero ? [args.numero] : []);
-      // --mots-cles : le cache du thésaurus edudoc, passé par la variable que lit
+      // --mots-cles : le cache du thésaurus edudoc, transmis par la variable que lit
       // lib/mots-cles-edudoc.js ; absent, son emplacement par défaut.
       if (typeof args['mots-cles'] === 'string') { process.env.SZH_MOTS_CLES_CACHE = args['mots-cles']; }
       opts.dossierSortie = args.sortie;
@@ -95,8 +98,8 @@ async function main() {
       resultat = await secretariat.commandeMetadonnees(opts);
     }
 
-    // anneePlancher : seule commandeNumerosOjs le rend (string ou null) ; les autres
-    // commandes ne portent pas ce champ, la ligne `fin` ne le porte alors pas non plus.
+    // anneePlancher (chaîne ou null) n'existe que pour numeros-ojs ; la ligne `fin` ne le
+    // porte que dans ce cas.
     const ligneFin = { t: 'fin', ok: true, texte: (resultat && resultat.texte) || '', gabarits: dossierGabarits };
     if (resultat && resultat.anneePlancher !== undefined) { ligneFin.anneePlancher = resultat.anneePlancher; }
     emettre(ligneFin);

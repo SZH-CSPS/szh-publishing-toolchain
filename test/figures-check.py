@@ -1,38 +1,29 @@
-# Une figure sort entière, et à son rapport : contrôle sur la PAGINATION, pas sur le CSS.
+# Vérifie sur la pagination rendue qu'une figure reste avec sa légende et garde ses
+# proportions.
 #
 #   /opt/weasyprint/bin/python3 test/figures-check.py out/<slug>/<slug>.html […]
-#   (depuis WSL, distro SZH-Publishing — c'est là que vit WeasyPrint)
+#   (dans la WSL SZH-Publishing, où vit WeasyPrint)
 #
-# DEUX règles sont tenues ici, et la seconde vient d'un correctif qui s'est retourné.
+# 1. La page qui porte la légende d'une figure porte aussi une partie du visuel. Une
+#    <figure> plus haute qu'une page fait abandonner `break-inside: avoid` à WeasyPrint,
+#    qui coupe juste sous la légende : « Figure N — … » reste seule sur une page presque vide, l'image
+#    passe à la suivante, sans aucun avertissement. `break-after: avoid` sur la
+#    <figcaption> est sans effet dans WeasyPrint ; seule la hauteur des images, plafonnée
+#    par --plafond-figure dans socle.css, l'évite.
 #
-# 1. La page qui porte la légende d'une figure doit aussi porter un morceau de ce que
-#    cette figure montre. Une <figure> plus haute qu'une page ne peut pas tenir d'un
-#    bloc : WeasyPrint abandonne alors son `break-inside: avoid` et coupe au premier
-#    point permis — juste sous la légende. On lit « Figure N — … » seul en haut d'une
-#    page presque vide, l'image à la suivante. Le PDF se compile, la porte PDF/UA passe,
-#    aucun avertissement n'est écrit : seul l'œil sur un PNG l'attrapait.
+# 2. Aucune image n'est déformée. Un `max-height` sur une image en `width: 100%` la fait
+#    écraser par WeasyPrint au lieu de la réduire. Dans une grille, le plafond se pose
+#    donc en `max-width` sur la case, pas en `max-height` sur l'image.
 #
-#    `break-after: avoid` sur la <figcaption> n'y change rien — WeasyPrint 69 l'ignore
-#    (mesuré). Le seul levier est la hauteur des images, plafonnée par --plafond-figure
-#    dans socle.css.
-#
-# 2. Aucune image ne sort déformée. Le premier plafond posé — `max-height` sur une image
-#    en `width: 100%` — a bien recollé les légendes, mais WeasyPrint 69 ÉCRASE alors
-#    l'image au lieu de la rétrécir : un fichier 900 × 1400 sortait en 650 × 377. Rendre
-#    la légende à son image en aplatissant les visages n'est pas un progrès, et la
-#    planche contact ne le montrait pas. Dans une grille, le plafond se pose donc en
-#    `max-width` sur la CASE, jamais en `max-height` sur l'image.
-#
-# Ce script vérifie le RÉSULTAT, pas la présence d'une règle : une valeur de plafond trop
-# généreuse, une marge de figure qui grossit, une légende de six lignes de crédits, et le
-# défaut revient sans qu'aucune règle ait bougé.
+# On vérifie le résultat et non les règles CSS : un plafond trop grand, une marge qui
+# grossit ou une longue légende suffisent à faire revenir le défaut.
 import sys
 from weasyprint import HTML
 
 VISUELS = ('img', 'svg', 'video')
 
-# Une image reste « à son rapport » à 1 % près : en dessous c'est l'arrondi de la mise en
-# page, au-dessus c'est une déformation qui se voit à l'œil sur un visage.
+# Écart de proportions toléré : 1 %, l'arrondi de la mise en page. Au-delà, la
+# déformation se voit.
 TOLERANCE = 0.01
 
 
@@ -58,9 +49,8 @@ def _classes(boite):
 def _figures(document, pages):
     """[(élément figure, pages de la légende, pages du visuel)] — une entrée par figure.
 
-    Une figure coupée en deux apparaît en plusieurs boîtes : on rassemble par élément
-    source, sinon chaque fragment passerait pour une figure à part et le contrôle ne
-    verrait jamais la coupure.
+    Une figure coupée apparaît en plusieurs boîtes : on les regroupe par élément source,
+    sinon la coupure ne se verrait pas.
     """
     legendes, visuels, ordre = {}, {}, []
     for page in document.pages:
@@ -86,9 +76,8 @@ def _figures(document, pages):
 
 
 def _titre(element):
-    """De quoi nommer la figure fautive dans le rapport : son numéro, ou son identifiant."""
-    # L'arbre de WeasyPrint est un ElementTree : pas de .text_content(), on ramasse le
-    # texte des descendants.
+    """Nom de la figure fautive pour le rapport : son texte, ou son identifiant."""
+    # Arbre ElementTree : pas de .text_content(), on assemble le texte des descendants.
     texte = ' '.join(''.join(element.itertext()).split())
     return (texte[:60] + '…') if len(texte) > 60 else (texte or element.get('id') or '?')
 
@@ -98,7 +87,7 @@ def _orphelines(document, pages):
     ecarts = []
     for element, p_legende, p_visuel in _figures(document, pages):
         if not p_legende or not p_visuel:
-            continue                      # figure sans légende, ou sans visuel : rien à tenir
+            continue                      # figure sans légende ou sans visuel
         if not (p_legende & p_visuel):
             ecarts.append((sorted(p_legende), sorted(p_visuel), _titre(element)))
     return ecarts
@@ -114,9 +103,8 @@ def _deformees(document):
             pile.extend(getattr(boite, 'children', []))
             if getattr(boite, 'element_tag', None) != 'img' or not boite.height:
                 continue
-            # `ratio` et non `intrinsic_ratio` : le nom de la propriété CSS n'est pas
-            # celui de l'objet WeasyPrint. Écrit à côté, le contrôle passait à vide et
-            # ne pouvait plus rien signaler — un contrôle qui ne peut pas échouer est mort.
+            # L'attribut WeasyPrint s'appelle `ratio`, pas `intrinsic_ratio`. Avec un
+            # mauvais nom, getattr rend None et le contrôle ne trouve jamais rien.
             remplacement = getattr(boite, 'replacement', None)
             naturel = getattr(remplacement, 'ratio', None)
             if not naturel:

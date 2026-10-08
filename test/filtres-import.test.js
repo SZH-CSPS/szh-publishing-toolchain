@@ -1,18 +1,15 @@
-// Onze filtres Lua branchés en production (pipeline/Makefile, pipeline/profils/livre.mk,
-// pipeline/import-docx.sh) qu'aucun test ne faisait tourner sous pandoc avant ce fichier.
-// Même patron que test/filtres-pandoc.test.js, qu'il faut lire d'abord : paire
-// « préparation » (le défaut existe sans le filtre) + « filtré » (le filtre change la
-// forme), comparaisons sur des structures stables plutôt que sur une balise figée, et
-// AUCUN saut silencieux — si pandoc manque, les tests ÉCHOUENT.
+// Teste sous pandoc des filtres Lua de l'import, du livre et du galley (pipeline/Makefile,
+// pipeline/profils/livre.mk, pipeline/import-docx.sh). Même patron que
+// test/filtres-pandoc.test.js, à lire d'abord : une paire « préparation » (le défaut
+// existe sans le filtre) et « filtré » (le filtre change la forme), des comparaisons sur
+// des structures stables plutôt que sur une balise exacte. Sans pandoc, les tests échouent.
 //
 //   node --test test/filtres-import.test.js
 //
-// Fixtures en ASCII pur : le pandoc 3.9 de Windows (celui de ce poste) plie mal les
-// majuscules accentuées, et rien ici ne teste le pliage des accents — inutile de s'y
-// exposer. Comme filtres-pandoc.test.js, ce fichier tourne avec le pandoc du PATH, pas
-// forcément celui qui compile (3.5 en CI/production) : assertions sur des comptes et des
-// motifs stables, jamais un nombre de colonnes ou une balise que le writer pourrait
-// formuler autrement d'une version à l'autre.
+// Données en ASCII : le pandoc 3.9 de Windows plie mal les majuscules accentuées. Le
+// fichier tourne avec le pandoc du PATH, pas forcément celui de la WSL qui compile : les
+// assertions portent sur des comptes et des motifs stables, pas sur une balise ou un
+// nombre de colonnes qui varie d'une version à l'autre.
 'use strict';
 
 const test = require('node:test');
@@ -26,9 +23,8 @@ const { spawnSync } = require('child_process');
 const RACINE = path.resolve(__dirname, '..');
 const FILTRES = path.join(RACINE, 'pipeline', 'filters');
 
-// Même helper que filtres-pandoc.test.js, avec en plus `env` : plusieurs de ces filtres
-// (szh-meta, szh-titres, szh-livre-auteurs, szh-notes) lisent une variable d'environnement
-// plutôt qu'un fichier de métadonnées pandoc.
+// Même fonction que dans filtres-pandoc.test.js, plus `env` : szh-meta, szh-titres,
+// szh-livre-auteurs et szh-notes lisent une variable d'environnement.
 function pandoc(entree, options) {
   const o = options || {};
   const args = ['--from=' + (o.de || 'markdown'), '--to=' + (o.vers || 'markdown'), '--wrap=none'];
@@ -41,9 +37,9 @@ function pandoc(entree, options) {
   return r.stdout;
 }
 
-// szh-meta.lua et szh-titres.lua lisent leurs instructions par io.open(chemin), le chemin
-// venant d'une variable d'environnement (SZH_META, SZH_TITRES) — jamais par stdin. Un
-// dossier jetable par appel, nettoyé même si l'assertion lève.
+// szh-meta.lua et szh-titres.lua lisent leurs instructions dans un fichier dont le chemin
+// est dans SZH_META ou SZH_TITRES. Un dossier jetable par appel, nettoyé même en cas
+// d'échec.
 function instructionsTemporaires(contenu) {
   const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-import-'));
   const chemin = path.join(dossier, 'instructions.txt');
@@ -51,9 +47,8 @@ function instructionsTemporaires(contenu) {
   return { chemin: chemin, nettoyer: function () { fs.rmSync(dossier, { recursive: true, force: true }); } };
 }
 
-// Lance un script par l'interprète Lua embarqué de pandoc (`pandoc lua`), pour lire
-// szh-titre-metriques.lua directement : ce fichier ne branche aucune fonction d'élément
-// (Meta, Header, …), le passer en --lua-filter ne ferait donc tourner aucun code utile.
+// Lance un script par l'interprète Lua de pandoc (`pandoc lua`), pour lire
+// szh-titre-metriques.lua : c'est une table de données, pas un filtre.
 function pandocLua(script) {
   const r = spawnSync('pandoc', ['lua', '-e', script], { encoding: 'utf8' });
   if (r.error) { throw new Error('pandoc introuvable : ' + r.error.message); }
@@ -62,9 +57,8 @@ function pandocLua(script) {
 }
 
 // ── szh-notes.lua : les notes de bas de page groupées en fin de writer HTML ────────────
-// pipeline/Makefile place ce filtre en dernier de la chaîne PDF (--to=html5), jamais en
-// EPUB ni sous SZH_APERCU=1 (le filtre s'abstient lui-même dans les deux cas — voir sa
-// tête). Sortie observée : un <span class="szh-note"> à la place du renvoi numéroté.
+// Dernier filtre de la chaîne PDF (--to=html5) ; inactif en EPUB et sous SZH_APERCU=1.
+// Sortie observée : un <span class="szh-note"> à la place du renvoi numéroté.
 const NOTE_MD = 'Un texte avec un appel[^1].\n\n[^1]: Contenu de la note.\n';
 
 test('notes (préparation) : sans le filtre, la note part en bas de document', () => {
@@ -85,9 +79,8 @@ test('notes : sous SZH_APERCU, le filtre reste inactif — l\'aperçu n\'est pas
   assert.ok(!/szh-note/.test(html), html);
 });
 
-// Cas limite : une note à deux blocs (deux paragraphes) doit s'aplatir en une seule ligne,
-// jointe par une espace — jamais deux <p> dans un <span>, ce que la zone @footnote de
-// WeasyPrint ne saurait pas composer.
+// Cas limite : une note de deux paragraphes devient une seule ligne, jointe par une
+// espace. La zone @footnote de WeasyPrint ne sait pas composer deux <p> dans un <span>.
 const NOTE_DEUX_BLOCS = 'Un texte avec un appel[^1].\n\n[^1]: Premiere phrase de la note.\n\n'
   + '    Seconde phrase de la note.\n';
 
@@ -114,8 +107,8 @@ test('listes : une liste qui commence à 1 reste nue', () => {
 });
 
 // ── szh-listes-serrees.lua : une liste lâche perd ses <p> internes (PDF/UA-1 7.2-20) ───
-// Branché deux fois dans pipeline/Makefile (PDF et aperçu), toujours avant
-// szh-tabelle-inclure. Sortie observée : le nombre de <p> à l'intérieur de la liste.
+// Dans les chaînes PDF et aperçu, avant szh-tabelle-inclure. Sortie observée : le nombre
+// de <p> dans la liste.
 const LISTE_LACHE = '- Premiere phrase.\n\n  Deuxieme phrase du meme item.\n- Un item simple.\n';
 
 test('listes (préparation) : sans le filtre, une liste lâche imprime un <p> par item', () => {
@@ -132,9 +125,8 @@ test('listes : le filtre fusionne les paragraphes de tête, un seul <br> les sé
   assert.match(html, /Deuxieme phrase du meme item\./, html);
 });
 
-// Cas limite : un item « texte + sous-liste ». Le texte de tête perd son <p> comme
-// ci-dessus, mais la sous-liste n'est ni fusionnée ni touchée — elle passe déjà la porte
-// PDF/UA telle quelle (voir le commentaire de tête du filtre).
+// Cas limite : un item « texte + sous-liste ». Le texte perd son <p>, la sous-liste reste
+// intacte (elle est déjà conforme PDF/UA).
 const LISTE_MIXTE = '- Texte de tete.\n\n  - Sous-item un.\n  - Sous-item deux.\n';
 
 test('listes : un item « texte + sous-liste », le texte perd son <p>, la sous-liste reste intacte', () => {
@@ -146,9 +138,9 @@ test('listes : un item « texte + sous-liste », le texte perd son <p>, la sous-
 });
 
 // ── szh-meta.lua : import DOCX, retire du corps ce qui est déjà parti en meta.yaml ─────
-// pipeline/import-docx.sh (docx -> markdown) le place en tête de chaîne, avant
-// szh-legendes et szh-titres. SZH_META pointe un fichier « LETTRE<TAB>valeur » écrit par
-// docx-meta.py. Sortie observée : le texte du corps une fois le filtre passé.
+// En tête de la chaîne d'import (pipeline/import-docx.sh), avant szh-legendes et
+// szh-titres. SZH_META désigne un fichier « LETTRE<TAB>valeur » écrit par docx-meta.py.
+// Sortie observée : le texte du corps après le filtre.
 const META_DUP = 'Ligne a retirer.\n\nLigne a retirer.\n\nCorps du texte.\n';
 
 test('méta (préparation) : sans SZH_META, les deux paragraphes dupliqués restent', () => {
@@ -166,13 +158,11 @@ test('méta : une ligne P ne retire qu\'une occurrence, la première — file de
   } finally { instr.nettoyer(); }
 });
 
-// Cas limite : G<TAB>n retire les n premiers paragraphes-image de la ZONE DE TÊTE
-// seulement — une image du corps, après le premier texte réel, n'est jamais touchée.
-// ⚠ ENTRÉE NATIVE, PAS MARKDOWN : le lecteur markdown de pandoc 3.9 range un paragraphe
-//   ne contenant qu'une image dans un bloc Figure (implicit_figures), que
-//   bloc_image_seule() ne reconnaît pas (elle teste Para/Plain). Le lecteur docx, lui,
-//   rend un paragraphe-image ordinaire en Para/Plain — la forme que native reproduit ici.
-//   Un essai en markdown ne prouverait donc rien de ce que ce filtre voit vraiment.
+// Cas limite : G<TAB>n retire les n premiers paragraphes-image de la zone de tête
+// seulement ; une image du corps, après le premier texte, reste.
+// Entrée en format native : le lecteur markdown met une image seule dans un bloc Figure,
+// alors que le lecteur docx de la vraie chaîne rend un Para, la forme que teste
+// bloc_image_seule().
 const META_LOGO_NATIVE = '[ Para [Image ("",[],[]) [Str "logo"] ("logo.png","")]\n'
   + ', Para [Str "Corps",Space,Str "du",Space,Str "texte."]\n'
   + ', Para [Image ("",[],[]) [Str "figure"] ("figure.png","")]\n'
@@ -190,16 +180,13 @@ test('méta : G retire le logo de tête, jamais une image du corps', () => {
 });
 
 // ── szh-legendes.lua : les champs d'un bloc du gabarit Pronto ──────────────────────────
-// pipeline/import-docx.sh, juste après szh-meta.lua. Une ligne FI de $SZH_META dit, pour une
-// image donnée, ce que l'autrice ou l'auteur a tapé sous « Légende : », « Texte alternatif : »,
-// « Crédit : » et « Source : ». Sans cette reprise, ces quatre paragraphes s'impriment tels
-// quels au milieu de l'article et le texte alternatif est perdu — mesuré sur le gabarit réel,
-// chaîne complète, avant le branchement du 22.09.2026.
+// Dans pipeline/import-docx.sh, juste après szh-meta.lua. Une ligne FI de $SZH_META donne,
+// pour une image, ce qui a été tapé sous « Légende : », « Texte alternatif : »,
+// « Crédit : » et « Source : ». Sans ce filtre, ces quatre paragraphes s'imprimeraient au
+// milieu de l'article et le texte alternatif serait perdu.
 //
-// ⚠ ENTRÉE NATIVE, PAS MARKDOWN, pour la même raison que le test du logo ci-dessus : le
-//   lecteur markdown range un paragraphe ne portant qu'une image dans un bloc Figure, là où le
-//   lecteur docx — celui de la vraie chaîne — rend un Para. C'est ce Para que para_image()
-//   reconnaît.
+// Entrée en format native, comme pour le logo ci-dessus : para_image() reconnaît le Para
+// que rend le lecteur docx.
 const FIGURE_NATIVE = '[ Para [Image ("",[],[]) [] ("media/image1.png","")]\n'
   + ', Para [Str "Corps",Space,Str "du",Space,Str "texte."]\n'
   + ']\n';
@@ -212,7 +199,7 @@ test('legendes (préparation) : sans ligne FI, l\'image reste nue', () => {
 
 test('legendes : une ligne FI pose légende, texte alternatif, crédit et source sur l\'image', () => {
   // Deux noms séparés par « | » : une image vectorielle en porte deux dans le .docx (l'aperçu
-  // PNG que voit le lecteur, le SVG qu'écrit pandoc). N'importe lequel doit apparier.
+  // PNG et le SVG qu'écrit pandoc). L'un ou l'autre suffit.
   const instr = instructionsTemporaires(
     'FI\tmedia-inconnue.png|image1.png\tUne legende\tUn texte alternatif\t(c) X\tArchives Y\n');
   try {
@@ -227,9 +214,8 @@ test('legendes : une ligne FI pose légende, texte alternatif, crédit et source
 });
 
 test('legendes : une ligne FI l\'emporte sur un voisin en gras, qui ne vole plus la légende', () => {
-  // Le gabarit est explicite : quand les champs sont écrits, la règle du voisinage ne doit
-  // PAS s'appliquer, sans quoi un intertitre en gras juste au-dessus de la figure lui
-  // prendrait sa légende.
+  // Quand les champs du gabarit sont remplis, la règle du voisinage ne s'applique pas :
+  // sinon un intertitre en gras juste au-dessus de la figure deviendrait sa légende.
   const avecVoisin = '[ Para [Strong [Str "Un",Space,Str "intertitre",Space,Str "en",Space,Str "gras"]]\n'
     + ', Para [Image ("",[],[]) [] ("media/image1.png","")]\n'
     + ']\n';
@@ -242,13 +228,13 @@ test('legendes : une ligne FI l\'emporte sur un voisin en gras, qui ne vole plus
   } finally { instr.nettoyer(); }
 });
 
-// ── szh-legendes.lua : les groupes d'images (décision de Robin, 29.09.2026) ─────────────
-// Un en-tête de figure suivi de PLUSIEURS images est UNE figure — le groupe `.szh-grille`
-// que crée « Ajouter une image à côté » dans le formulaire Médias. Trois formes dans le Word :
-// (a) deux images dans le même paragraphe, (b) plusieurs paragraphes d'images à la suite,
-// (c) un tableau de mise en page qui ne porte que des images (ligne FG, szh-meta.lua puis
-// szh-legendes.lua). Et la garantie qui va avec : les clés ne quittent le corps qu'au moment
-// où leurs valeurs sont posées ; sinon elles restent, et c'est dit.
+// ── szh-legendes.lua : les groupes d'images ──────────────────────────────────────────────
+// Un en-tête de figure suivi de plusieurs images forme une seule figure, le groupe
+// `.szh-grille` que crée « Ajouter une image à côté » dans le formulaire Médias. Trois
+// formes dans le Word : (a) deux images dans le même paragraphe, (b) plusieurs paragraphes
+// d'images à la suite, (c) un tableau de mise en page qui ne porte que des images (ligne
+// FG, szh-meta.lua puis szh-legendes.lua). Les clés ne quittent le corps qu'une fois leurs
+// valeurs posées ; sinon elles restent, avec un avertissement.
 
 const refsCockpit = require(path.join(RACINE, 'vscodium-extension', 'szh-cockpit', 'lib',
   'references.js'));
@@ -273,8 +259,8 @@ const IMG_B = 'Image ("",[],[]) [Str "descr",Space,Str "B"] ("media/image2.png",
 const QUEUE_CLES = '\t\tLegende : Deux vues\tTexte alternatif : Vue nord\tCredit : (c) X';
 const FI_GROUPE = 'FI\timage1.png;image2.png\tDeux vues\tVue nord\t(c) X\t' + QUEUE_CLES + '\n';
 
-// Les membres de la grille tels que le formulaire Médias les relit : c'est LA preuve que le
-// groupe écrit par l'import s'édite ensuite comme un groupe créé dans le cockpit.
+// Les membres de la grille lus comme le fait le formulaire Médias : le groupe importé
+// s'édite comme un groupe créé dans le cockpit.
 function grillesDuCockpit(md) {
   return refsCockpit.lireGrilles(md.replace(/\r\n/g, '\n'));
 }
@@ -409,9 +395,8 @@ test('legendes (c) : un tableau de mise en page d’images (FG) devient un group
 });
 
 test('legendes : un bloc qu’on ne sait pas poser GARDE ses clés dans le texte, et le dit', () => {
-  // Cas volontairement inattendu : l'image du bloc est dans une phrase. Aucune place pour la
-  // poser — avant le 29.09.2026, les clés étaient retirées d'avance par szh-meta.lua et
-  // légende, texte alternatif et crédit disparaissaient sans un mot.
+  // Cas inattendu : l'image du bloc est dans une phrase. Les clés restent dans le corps,
+  // pour que légende, texte alternatif et crédit ne se perdent pas.
   const doc = '[' + CLES_NATIVES.slice(1)
     + ', Para [Str "Voir",Space,' + IMG_A + ',Space,Str "ci-contre."]\n]\n';
   const instr = instructionsTemporaires('FI\timage1.png\tDeux vues\tVue nord\t(c) X\t' + QUEUE_CLES + '\n');
@@ -427,10 +412,9 @@ test('legendes : un bloc qu’on ne sait pas poser GARDE ses clés dans le texte
 });
 
 test('legendes : deux blocs aux clés identiques (« Source : » vide) retirent chacun LES LEURS', () => {
-  // Mesuré le 29.09.2026 sur le gabarit : les clés d'un bloc tableau partaient en lignes P,
-  // que szh-meta.lua applique à la PREMIÈRE occurrence du texte — le « Source : » vide de la
-  // figure qui précède. Celui du tableau restait imprimé. Les clés sont désormais retirées
-  // juste devant leur propre contenu, image ou tableau.
+  // Les clés sont retirées juste devant leur propre contenu, image ou tableau. Retirées
+  // par texte, le « Source : » vide de la figure précédente partirait à la place de celui
+  // du tableau.
   const source = ', Para [Str "Source",Space,Str ":"]\n';
   const cellule = '(Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1) [Plain [Str "A1"]])';
   const table = 'Table ("",[],[]) (Caption Nothing []) [(AlignDefault,ColWidthDefault)] '
@@ -465,8 +449,9 @@ test('legendes : la table des dispositions recopiée reste celle du cockpit', ()
 });
 
 // ── szh-titres.lua : import DOCX, promeut un paragraphe en Header ──────────────────────
-// pipeline/import-docx.sh, juste après szh-legendes. SZH_TITRES pointe un fichier
-// « niveau<TAB>texte » écrit par docx-titres.py (tailles de police perdues par pandoc).
+// Dans pipeline/import-docx.sh, juste après szh-legendes. SZH_TITRES désigne un fichier
+// « niveau<TAB>texte » écrit par docx-titres.py (d'après les tailles de police, que
+// pandoc perd).
 const TITRE_PARA = 'Ceci est un titre de section.\n\nTexte normal qui suit.\n';
 
 test('titres (préparation) : sans SZH_TITRES, le paragraphe reste un paragraphe', () => {
@@ -483,8 +468,8 @@ test('titres : une correspondance promeut le paragraphe au niveau demandé', () 
   } finally { instr.nettoyer(); }
 });
 
-// Cas limite : un titre saisi en gras dans Word (souvent une entorse au style) doit être
-// promu SANS garder le gras — deballer() défait Strong/Emph/Underline/Span.
+// Cas limite : un titre saisi en gras dans Word est promu sans le gras (deballer() retire
+// Strong/Emph/Underline/Span).
 const TITRE_GRAS = '**Titre en gras**\n\nTexte suivant.\n';
 
 test('titres : un paragraphe en gras est promu sans garder sa mise en forme', () => {
@@ -496,8 +481,8 @@ test('titres : un paragraphe en gras est promu sans garder sa mise en forme', ()
 });
 
 // ── szh-tabelle-reference.lua : import DOCX, un tableau devient une référence ──────────
-// pipeline/import-docx.sh, après szh-titres. Le rendu réel est fait avant pandoc par
-// docx-tables.py ; ce filtre ne pose qu'une référence numérotée, alignée sur son ordre.
+// Dans pipeline/import-docx.sh, après szh-titres. Le tableau est rendu avant pandoc par
+// docx-tables.py ; ce filtre pose une référence numérotée dans le même ordre.
 const TABLE_SIMPLE = '| A | B |\n|---|---|\n| 1 | 2 |\n';
 
 test('tabelle-reference (préparation) : sans le filtre, aucune référence szh-tabelle', () => {
@@ -521,8 +506,8 @@ test('tabelle-reference : deux tableaux sont numérotés 01 puis 02, dans l\'ord
 });
 
 // ── szh-livre-auteurs.lua : livre seulement, la ligne d'auteur·e·s d'un chapitre ───────
-// pipeline/profils/livre.mk, après szh-sections. Décide sur SZH_LIVRE (posée par le
-// Makefile livre, jamais par celui de la revue) et sur la clé `ouvrage` de la fiche.
+// Dans pipeline/profils/livre.mk, après szh-sections. Agit selon SZH_LIVRE (posée pour
+// le livre seulement) et la clé `ouvrage` de la fiche.
 const CHAPITRE_MD = '---\nlang: fr\nouvrage: collectif\nauthor:\n'
   + '  - prenom: "Jean"\n    nom: "Dupont"\n  - prenom: "Marie"\n    nom: "Martin"\n---\n\n'
   + '# Titre du chapitre\n\nTexte du chapitre.\n';
@@ -549,8 +534,8 @@ test('livre-auteurs : sans réglage, la ligne d’un chapitre collectif précèd
     html);
 });
 
-// Cas limite : une monographie ne reçoit jamais la ligne, même avec des auteur·e·s dans
-// la fiche — ce sont les auteur·e·s du LIVRE, les répéter à chaque chapitre serait faux.
+// Cas limite : une monographie ne reçoit pas la ligne, même avec des auteur·e·s dans la
+// fiche : ce sont ceux du livre entier.
 const CHAPITRE_MONO = CHAPITRE_MD.replace('ouvrage: collectif', 'ouvrage: monographie');
 
 test('livre-auteurs : une monographie ne reçoit jamais de ligne, quels que soient les auteurs', () => {
@@ -559,10 +544,9 @@ test('livre-auteurs : une monographie ne reçoit jamais de ligne, quels que soie
 });
 
 // ── szh-tableau-boite.lua : enveloppe chaque tableau pour ne pas le voir couper ────────
-// pipeline/Makefile, après szh-numerotation. Corrige un plantage WeasyPrint
-// (« Table wrapper without a table ») que le Makefile rattrape en PDF NON balisé, sans
-// un mot — voir la tête du filtre. Deux formes à couvrir : un Table pandoc, et un tableau
-// déjà réinjecté en RawBlock html (szh-tabelle-inclure).
+// Après szh-numerotation. Évite un plantage de WeasyPrint (« Table wrapper without a
+// table ») après lequel le Makefile produit un PDF non balisé. Deux formes : un Table
+// pandoc, et un tableau inséré en RawBlock html par szh-tabelle-inclure.
 test('tableau-boite (préparation) : sans le filtre, un <table> n\'est enveloppé de rien', () => {
   const html = pandoc(TABLE_SIMPLE, { vers: 'html5' });
   assert.ok(!/szh-tableau-boite/.test(html), html);
@@ -573,8 +557,8 @@ test('tableau-boite : un tableau markdown est enveloppé dans un <div> dédié',
   assert.match(html, /<div class="szh-tableau-boite">\s*<table>/, html);
 });
 
-// Cas limite : un tableau réinjecté en RawBlock (contient « <table ») est enveloppé, un
-// RawBlock qui ne fait que MENTIONNER le mot « table » sans balise ne l'est pas.
+// Cas limite : un RawBlock qui contient « <table » est enveloppé, un RawBlock qui contient
+// seulement le mot « table » ne l'est pas.
 const RAW_TABLE_ET_TEXTE = '[ RawBlock (Format "html") "<table><tr><td>x</td></tr></table>"\n'
   + ', RawBlock (Format "html") "<p>Ceci mentionne le mot table sans balise.</p>"\n]\n';
 
@@ -587,10 +571,8 @@ test('tableau-boite : un tableau réinjecté est enveloppé, une simple mention 
 });
 
 // ── szh-titre-metriques.lua : la table de largeurs d'avance, chargée par dofile ────────
-// Ce fichier ne branche aucune fonction d'élément pandoc (Meta, Header, …) : c'est une
-// table de données pure, lue par szh-titre-lignes.lua via dofile — le passer en
-// --lua-filter ne ferait tourner aucun code utile (voir pandocLua ci-dessus). Sortie
-// observée : le contenu de la table elle-même, par l'interprète Lua de pandoc.
+// Table de données lue par szh-titre-lignes.lua (dofile), pas un filtre : on la lit par
+// pandocLua. Sortie observée : le contenu de la table.
 test('titre-metriques : upem, repli et deux avances connues (A, é)', () => {
   const chemin = path.join(FILTRES, 'szh-titre-metriques.lua').replace(/\\/g, '/');
   const sortie = pandocLua('local m = dofile([[' + chemin + ']]); '
@@ -599,9 +581,8 @@ test('titre-metriques : upem, repli et deux avances connues (A, é)', () => {
     'la table de métriques ne correspond plus à la police livrée : ' + sortie);
 });
 
-// Cas limite : un caractère absent de la table (ici une lettre cyrillique, jamais
-// rencontrée dans un titre de la maquette) ne doit RIEN valoir — szh-titre-lignes.lua
-// retombe alors sur `defaut`, mais la table elle-même ne doit jamais fabriquer d'entrée.
+// Cas limite : un caractère absent de la table (ici une lettre cyrillique) n'a pas
+// d'entrée ; szh-titre-lignes.lua prend alors `defaut`.
 test('titre-metriques : un caractère hors table ne vaut rien, il n\'est pas inventé', () => {
   const chemin = path.join(FILTRES, 'szh-titre-metriques.lua').replace(/\\/g, '/');
   const sortie = pandocLua('local m = dofile([[' + chemin + ']]); print(m.avance[1040] == nil)');
@@ -609,15 +590,14 @@ test('titre-metriques : un caractère hors table ne vaut rien, il n\'est pas inv
 });
 
 // ── szh-titre-lignes.lua : coupe le titre de couverture en escalier ────────────────────
-// pipeline/Makefile, juste après szh-typographie — impératif, voir la tête du filtre :
-// les insécables (L2) doivent déjà être posées avant de mesurer. Lit la géométrie réelle
-// dans pipeline/styles/socle.css et print.css, et la table de szh-titre-metriques.lua.
-// Sortie observée : la clé `titre-lignes` du bloc YAML (writer markdown --standalone).
+// Juste après szh-typographie, qui doit avoir posé les insécables (L2) avant la mesure.
+// Lit la géométrie dans pipeline/styles/socle.css et print.css, et la table de
+// szh-titre-metriques.lua. Sortie observée : la clé `titre-lignes` du bloc YAML (writer
+// markdown --standalone).
 //
-// Le titre du cas nominal est celui cité dans le commentaire de tête du filtre lui-même
-// (le défaut qu'il corrige, mesuré sur un vrai numéro) : pas de largeur inventée ici, la
-// preuve tient sur le CONTENU reconstitué, jamais sur la position exacte de la coupure —
-// qui bougerait si la police, la taille du hero ou les marges de page changeaient.
+// Le titre du cas nominal est celui de l'en-tête du filtre. On vérifie le contenu
+// reconstitué, pas la position de la coupure, qui changerait avec la police, la taille du
+// hero ou les marges.
 const BR_TITRE_LIGNE = '`<br class="szh-titre-ligne" />`{=html}';
 
 function docTitre(titre) {
@@ -650,9 +630,8 @@ test('titre-lignes : un titre qui déborde reçoit un escalier, le texte est int
   assert.ok(signet && signet.includes(titre), 'titre-signet absent ou pas à plat : ' + signet);
 });
 
-// Cas limite : un titre d'un seul mot ne peut jamais former d'escalier (il faut au moins
-// deux groupes insécables) — vrai quelle que soit la géométrie lue, donc indépendant de
-// tout changement futur de socle.css/print.css.
+// Cas limite : un titre d'un seul mot ne forme pas d'escalier (il faut au moins deux
+// groupes insécables), quelle que soit la géométrie.
 test('titre-lignes : un titre d\'un seul mot ne reçoit jamais d\'escalier', () => {
   const md = pandoc(docTitre('Unique'), { vers: 'markdown', standalone: true,
     filtres: ['szh-typographie.lua', 'szh-titre-lignes.lua'] });
@@ -660,9 +639,8 @@ test('titre-lignes : un titre d\'un seul mot ne reçoit jamais d\'escalier', () 
 });
 
 // ── szh-tabelle-scope.lua : scope="col"/"row" sur les <th> (RGAA 5.7) ──────────────────
-// pipeline/Makefile, après szh-tabelle-inclure. Les colonnes d'en-tête de RANGÉE
-// n'existent pas dans la syntaxe pipe-table de markdown : reproduites en native, comme
-// szh-legendes.lua le fait pour une Figure que le markdown ne sait pas écrire à la main.
+// Après szh-tabelle-inclure. Les colonnes d'en-tête de rangée n'existent pas dans les
+// pipe tables de markdown : elles sont écrites en format native.
 test('tabelle-scope (préparation) : sans le filtre, un <th> ne porte aucun scope', () => {
   const html = pandoc(TABLE_SIMPLE, { vers: 'html5' });
   assert.ok(!/scope=/.test(html), html);
@@ -674,8 +652,8 @@ test('tabelle-scope : les cellules du thead reçoivent scope="col"', () => {
   assert.match(html, /<th scope="col">B<\/th>/, html);
 });
 
-// Cas limite : une colonne d'en-tête de rangée (row_head_columns > 0, ce que seul un
-// lecteur comme docx pose) reçoit scope="row", jamais "col".
+// Cas limite : une colonne d'en-tête de rangée (row_head_columns > 0, posé par le lecteur
+// docx) reçoit scope="row".
 const TABLE_ENTETE_RANGEE = '[ Table ("",[],[]) (Caption Nothing [])\n'
   + '  [(AlignDefault,ColWidthDefault),(AlignDefault,ColWidthDefault)]\n'
   + '  (TableHead ("",[],[]) [Row ("",[],[]) ['
@@ -693,9 +671,8 @@ test('tabelle-scope : une colonne d\'en-tête de rangée reçoit scope="row"', (
 });
 
 // ── szh-galley-docx.lua : nettoie le galley Word de l'export OJS ───────────────────────
-// pipeline/Makefile, seul filtre de la recette HTML -> docx (--from=html). Le lecteur
-// html ne voit pas le CSS : ce que print.css masque à l'écran/au PDF réapparaîtrait en
-// clair dans le Word si ce filtre ne le retirait pas.
+// Seul filtre de la recette HTML -> docx (--from=html). Le lecteur html ignore le CSS :
+// ce filtre retire ce que print.css masque, qui réapparaîtrait sinon dans le Word.
 const GALLEY_HTML = '<div class="szh-description">Description longue.</div>'
   + '<div class="szh-encadre">Encadre normal.</div><p>Paragraphe normal.</p>';
 
@@ -711,8 +688,7 @@ test('galley-docx : la description technique disparaît, le reste du galley surv
   assert.match(md, /Paragraphe normal\./, md);
 });
 
-// Cas limite : un Div à DEUX classes, dont szh-description, doit disparaître ENTIER — ce
-// n'est pas un filtrage attribut par attribut, tout le bloc technique s'en va.
+// Cas limite : un Div à deux classes, dont szh-description, disparaît en entier.
 const GALLEY_MIXTE = '<div class="autre szh-description">Cas mixte a retirer.</div>';
 
 test('galley-docx : un Div à deux classes dont szh-description disparaît entièrement', () => {
@@ -720,9 +696,9 @@ test('galley-docx : un Div à deux classes dont szh-description disparaît enti�
   assert.ok(!/Cas mixte a retirer/.test(md), 'le Div mixte a survécu en partie ou en totalité : ' + md);
 });
 
-// Notes du galley : szh-notes.lua pose chaque note en <span class="szh-note"> a l'endroit
-// de l'appel (float: footnote). Lu tel quel, le texte de la note restait dans la phrase ;
-// le filtre en refait une Note, que le writer docx ecrit en note de bas de page Word.
+// Notes du galley : szh-notes.lua pose chaque note en <span class="szh-note"> à l'endroit
+// de l'appel (float: footnote). Le filtre en refait une Note, que le writer docx écrit en
+// note de bas de page Word ; sinon son texte resterait dans la phrase.
 const GALLEY_NOTE = '<p>Texte<span class="szh-note">Note <em>en italique</em> et '
   + '<a href="https://www.szh.ch">un lien</a>.</span> suite.</p>'
   + '<table><thead><tr><th>A</th></tr></thead><tbody><tr><td>Cellule<span class="szh-note">'
@@ -734,15 +710,15 @@ test('galley-docx : une note szh-note redevient une Note, a sa place, sans resid
   assert.ok(!/szh-note/.test(natif), 'un Span szh-note a survecu : ' + natif);
   assert.match(natif, /Emph/, 'l\'italique de la note est perdu : ' + natif);
   assert.match(natif, /Link/, 'le lien de la note est perdu : ' + natif);
-  // Le texte de la phrase continue apres l'appel, et la note n'y est plus.
+  // La phrase continue après l'appel, sans le texte de la note.
   const md = pandoc(GALLEY_NOTE, { de: 'html', vers: 'markdown', filtres: ['szh-galley-docx.lua'] });
   assert.match(md, /Texte\[\^1\] suite\./, md);
 });
 
-// Figures du galley : une image alt="" est un decor, fond CSS d'un span.szh-decor-N, que
-// pandoc ne voit pas. Une figure LEGENDEE n'est pas un decor (regle retenue le 30.09.2026) :
-// le galley lui rend son image, decrite par sa legende. Un decor sans legende reste absent.
-// Le filtre lit les fonds dans le fichier HTML lui-meme : l'entree passe donc par un fichier.
+// Figures du galley : une image alt="" est un décor, posé en fond CSS d'un
+// span.szh-decor-N que pandoc ne voit pas. Une figure légendée n'est pas un décor : le
+// galley lui rend son image, décrite par sa légende. Un décor sans légende reste absent.
+// Le filtre lit les fonds dans le fichier HTML : l'entrée passe donc par un fichier.
 const PIXEL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 const GALLEY_FIGURES = '<figure><figcaption><span class="szh-numero">Figure 1 -</span> Eleves'
   + '<span class="szh-note">Note de legende.</span></figcaption>'

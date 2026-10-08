@@ -2,12 +2,12 @@
 //
 //   node --test test/js/livre-vue-chapitres.test.js
 //
-// Trois gestes qu'une revue n'a pas : le clic sur un chapitre ne compile que ce chapitre
+// Trois gestes propres au livre : le clic sur un chapitre ne compile que ce chapitre
 // (make livre-chapitre-pdf CHAPITRE=<slug>, out/chapitres/<slug>.pdf), le clic sur l'en-tête
 // CHAPITRES ouvre une vue de cartes lue dans les fiches <slug>.meta.yaml et dans l'ordre de
-// buch.yaml, et le formulaire du livre s'atteint depuis l'arbre sans passer par la palette.
-// La revue, elle, garde ce qu'elle faisait : ses assertions vivent dans hote.test.js, et
-// les deux tables de profil ci-dessous disent qu'elle n'y gagne aucune entrée.
+// buch.yaml, et le formulaire du livre s'atteint depuis l'arbre.
+// La revue est vérifiée dans hote.test.js ; les tables de profil ci-dessous montrent
+// qu'elle n'y gagne aucune entrée.
 'use strict';
 
 const test = require('node:test');
@@ -17,8 +17,8 @@ const path = require('path');
 
 const COCKPIT = path.resolve(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit');
 
-// Comme hote-livre.test.js : le script de déplacement du toolkit ne doit pas partir pour de
-// vrai, et il se capture au chargement de lib/cycle-vie.js.
+// Comme dans hote-livre.test.js : le script de déplacement du toolkit est neutralisé avant
+// le chargement de lib/cycle-vie.js, qui le capture.
 const archivage = require(path.join(COCKPIT, 'lib', 'archivage.js'));
 archivage.lancerArchivage = () => null;
 
@@ -248,7 +248,7 @@ test('vue des chapitres : une carte par chapitre, dans l’ordre de buch.yaml, t
      '  fonction: ""', '  affiliation: "HEP"', '  orcid: ""', ''].join('\n'));
   fs.writeFileSync(path.join(LIVRE, 'chapitres', '02-suite', '02-suite.meta.yaml'),
     ['lang: fr', 'sommaire: non', 'title:', '  fr: "La suite"', ''].join('\n'));
-  // Le .md ne porte plus le titre : s'il était lu, ces cartes porteraient « Un titre de chapitre ».
+  // Le titre vient de la fiche, pas du .md, qui porte « Un titre de chapitre ».
   const ext = require(path.join(COCKPIT, 'extension.js'));
   assert.strictEqual(typeof ext._pur.chargeChapitres, 'function', 'chargeChapitres n’est pas exposée');
 
@@ -313,9 +313,8 @@ test('package.json : szh.vueChapitres existe, réservée au livre, avec son entr
   assert.strictEqual(art.when, 'szh.estRevue');
 });
 
-// Le formulaire du livre monté dans la vue : il vient de lib/metadonnees-hote.js (lot D1).
-// Tant que ses trois fonctions n'y sont pas exportées, la page ne peut pas s'ouvrir ; ce
-// contrôle le dit au lieu de laisser une erreur obscure au premier clic.
+// Le formulaire du livre monté dans la vue vient de lib/metadonnees-hote.js : sans ses
+// trois fonctions exportées, la page ne peut pas s'ouvrir.
 test('vue des chapitres : le formulaire du livre est monté (SZH.formulaireLivre) et les fonctions de l’hôte sont exportées', () => {
   const hote = require(path.join(COCKPIT, 'lib', 'metadonnees-hote.js'));
   for (const nom of ['chargeLivre', 'messageLivre', 'textesLivre']) {

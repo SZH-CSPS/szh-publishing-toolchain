@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Contrôle de reproductibilité des polices — la porte qui rend le PDF portable.
+"""Vérifie que les PDF n'embarquent que les polices livrées, pour qu'ils soient identiques
+d'un poste à l'autre.
 
     python test/polices-check.py [dossier de sorties…]
 
@@ -9,22 +10,17 @@ Sans argument, il regarde `test/out/`. On peut lui passer le `out/` d'un vrai nu
 
 Deux contrôles, dans cet ordre :
 
-1. **Couverture des faces livrées.** Les caractères que la maquette écrit d'elle-même
-   — la fine insécable de « Source : », le triangle des puces, le trait d'union des
-   coupures de mot, la flèche de retour de note — doivent être portés par les faces de
-   `pipeline/fonts/`. Le tableau est imprimé en entier, à lire d'un coup d'œil.
-   `pipeline/fonts/glyphes-manquants.py` les y ajoute, et sait se relancer.
+1. **Couverture des faces livrées.** Les caractères que la maquette pose elle-même (fine
+   insécable de « Source : », triangle des puces, trait d'union de césure, flèche de
+   retour de note) doivent exister dans les faces de `pipeline/fonts/`. Le tableau est
+   imprimé en entier. `pipeline/fonts/glyphes-manquants.py` les y ajoute.
 
-2. **Aucune police étrangère embarquée.** C'est le contrôle qui compte : si une face de
-   `pipeline/fonts/` ne couvre pas un caractère, fontconfig comble le trou au moment du
-   build avec ce qu'il trouve sur la machine — DejaVu ici, Noto ailleurs, rien du tout
-   sur un troisième poste. Le PDF cesse alors d'être le même d'un poste à l'autre, et
-   `docs/MAINTENANCE.md` §2 promet exactement le contraire. Un caractère rendu par une
-   police de repli perd en outre son identité dans la couche texte : l'espace fine
-   insécable ressortait en espace ordinaire d'un copier-coller — mesuré.
+2. **Aucune police étrangère embarquée.** Si une face livrée ne couvre pas un caractère,
+   fontconfig prend une police du poste (DejaVu, Noto ou rien), et le PDF change d'un
+   poste à l'autre. Le caractère perd aussi son identité dans la couche texte : une fine
+   insécable ressort en espace ordinaire au copier-coller.
 
-Sortie : 0 si tout est en ordre, 1 sinon. Les messages sont en français puis en allemand
-(orthographe suisse), comme tout ce que lit un utilisateur.
+Sortie : 0 si tout est en ordre, 1 sinon. Messages en français puis en allemand.
 """
 
 import glob
@@ -36,16 +32,15 @@ import zlib
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOSSIER_POLICES = os.path.join(RACINE, 'pipeline', 'fonts')
 
-# Ce que la maquette écrit et qu'aucune face de repli ne doit avoir à combler. À garder
-# aligné sur ATTENDUS de pipeline/fonts/glyphes-manquants.py.
+# Caractères que la maquette pose elle-même. Même liste que ATTENDUS dans
+# pipeline/fonts/glyphes-manquants.py.
 ATTENDUS = (0x202F, 0x2010, 0x2011, 0x25B8, 0x21A9, 0xFE0E)
 # Libellés du tableau : le nom Unicode est en anglais et trop long pour une colonne.
 LIBELLES = {0x202F: 'fine insécable', 0x2010: "trait d'union", 0x2011: "t. d'union inséc.",
             0x25B8: 'puce triangle', 0x21A9: 'retour de note', 0xFE0E: 'sélecteur 15'}
-# Les faces qui portent le texte : le corps de la revue est en Open Sans, et c'est donc
-# elle qui doit tout couvrir. IBM Plex Mono ne sert qu'au code, Source Serif 4 n'est plus
-# déclarée dans print.css (elle reste livrée pour test/palette-html.py). SZH Couverture est
-# l'Open Sans de chasse normale renommée, qui compose la couverture FALC.
+# Faces qui doivent tout couvrir : Open Sans (le corps) et SZH Couverture (l'Open Sans de
+# chasse normale renommée, pour la couverture FALC). IBM Plex Mono ne sert qu'au code ;
+# Source Serif 4 n'est livrée que pour test/palette-html.py.
 FACES_DU_CORPS = ('OpenSans-', 'SZHCouverture-')
 
 
@@ -57,9 +52,8 @@ def _normaliser(nom):
 def familles_livrees():
     """Préfixes normalisés des familles de pipeline/fonts/, lus dans les fichiers mêmes.
 
-    Le nom qu'écrit WeasyPrint dans /BaseFont ne vient pas de la table `name` mais de la
-    description fontconfig (« Open-Sans-Bold-Semi-Condensed » là où la table dit « Open
-    Sans Regular ») : on ne peut donc comparer que des préfixes de famille. Un nom
+    WeasyPrint écrit dans /BaseFont le nom fontconfig (« Open-Sans-Bold-Semi-Condensed »),
+    pas celui de la table `name` : on compare donc des préfixes de famille. Un nom
     embarqué est accepté s'il commence par l'un d'eux.
     """
     from fontTools.ttLib import TTFont
@@ -75,8 +69,7 @@ def familles_livrees():
                     brut.add(_normaliser(entree.toUnicode()))
                 except Exception:
                     pass
-    # « ibmplexmonomedm » est un sur-nom d'« ibmplexmono » : on garde le plus court, sinon
-    # le préfixe le plus long ne servirait jamais.
+    # On garde le préfixe le plus court (« ibmplexmono » plutôt que « ibmplexmonomedm »).
     return {n for n in brut if n and not any(a != n and n.startswith(a) for a in brut)}
 
 
@@ -104,8 +97,8 @@ def couverture_des_faces():
 def polices_embarquees(chemin_pdf):
     """Noms de /BaseFont du PDF, préfixe de sous-ensemble retiré.
 
-    Les dictionnaires de WeasyPrint vivent dans des flux d'objets compressés : il faut
-    décompresser chaque flux avant de chercher, un grep brut ne voit rien.
+    WeasyPrint range ces dictionnaires dans des flux d'objets compressés : chaque flux est
+    décompressé avant la recherche.
     """
     brut = open(chemin_pdf, 'rb').read()
     tout = bytearray(brut)

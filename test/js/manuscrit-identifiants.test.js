@@ -1,13 +1,13 @@
-// pipeline/manuscrit_identifiants.py — ROR et ORCID des autrices et auteurs (contrat §5.5
-// sexies), et leur écriture « à vérifier » par manuscrit_gabarit. Module pur, appelé par
-// python() de gardes.js.
+// pipeline/manuscrit_identifiants.py : ROR et ORCID des autrices et auteurs, et leur
+// écriture « à vérifier » par manuscrit_gabarit (voir docs/ARCHITECTURE-nettoyeur-manuscrit.md).
+// Module pur, appelé par python() de gardes.js.
 //
 //   node --test test/js/manuscrit-identifiants.test.js
 //
-// Le réseau n'est JAMAIS appelé ici : chaque programme Python remplace
-// manuscrit_identifiants._requete par une fonction qui répond depuis un petit annuaire
-// (FAUX) et compte ses appels. Les réponses imitent ce qui a été mesuré sur api.ror.org et
-// pub.orcid.org (item `chosen`, expanded-result, institution-name).
+// Sans réseau : chaque programme Python remplace manuscrit_identifiants._requete par une
+// fonction qui répond depuis un petit annuaire (FAUX) et compte ses appels. Les réponses
+// imitent celles d'api.ror.org et pub.orcid.org (item `chosen`, expanded-result,
+// institution-name).
 'use strict';
 
 const test = require('node:test');

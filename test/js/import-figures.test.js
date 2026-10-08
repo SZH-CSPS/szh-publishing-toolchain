@@ -1,18 +1,18 @@
-// L'import et les figures à plusieurs images, et son FILET DE SÉCURITÉ « rien ne disparaît »
-// (décision de Robin, 29.09.2026).
+// L'import des figures à plusieurs images, et le filet de sécurité qui garantit que rien ne
+// disparaît.
 //
 //   node --test test/js/import-figures.test.js
 //
 // Deux étages :
 //   1. pipeline/docx-controle-import.py seul, sur un article fabriqué à la main (sans WSL) :
-//      une valeur lue dans le Word mais absente de l'article est REMISE dans le texte et dite ;
-//      une image du Word absente est remise (avant la purge d'import-medias.py, qui l'aurait
-//      effacée) et nommée sous son nom définitif ; une image de groupe sans texte alternatif
-//      est nommée. Et un article complet ne déclenche rien.
-//   2. la vraie chaîne, import-docx.sh DANS la WSL (patron de smoke-import-docx.test.js) :
-//      (a) deux images dans un paragraphe sous un en-tête du gabarit -> UN groupe, lisible par
-//      le formulaire Médias ; un cas volontairement inattendu (l'image au milieu d'une phrase)
-//      garde ses clés visibles et le dit ; la chaîne nettoyeur -> import d'un manuscrit brut.
+//      une valeur lue dans le Word mais absente de l'article est remise dans le texte et
+//      signalée ; une image du Word absente est remise (avant la purge d'import-medias.py)
+//      et nommée sous son nom définitif ; une image de groupe sans texte alternatif est
+//      nommée. Un article complet ne déclenche rien.
+//   2. la vraie chaîne, import-docx.sh dans la WSL (comme smoke-import-docx.test.js) :
+//      deux images dans un paragraphe sous un en-tête du gabarit donnent un groupe, lisible
+//      par le formulaire Médias ; une image au milieu d'une phrase garde ses clés visibles et
+//      le signale ; la chaîne nettoyeur -> import d'un manuscrit brut.
 'use strict';
 
 const test = require('node:test');
@@ -72,8 +72,7 @@ test('contrôle d’import : un article complet ne déclenche rien, et reste oct
 test('contrôle d’import : une valeur lue dans le Word et absente de l’article est remise, visible, et dite', { skip: sansPython || sansPandoc }, () => {
   const base = F.dossierJetable();
   try {
-    // Cas qu'aucune règle n'a prévu : la grille est là, mais ni sa légende ni son texte
-    // alternatif — comme si une étape future les avait perdus en route.
+    // Cas imprévu : la grille est là, sans sa légende ni son texte alternatif.
     const md = 'Avant.\n\n::: {.szh-grille disposition="2"}\n  ![](media/photoA.png)\n'
       + '  ![](media/photoB.png){alt="Vue sud"}\n:::\n\nApres.\n';
     const a = articleConverti(base, md,
@@ -121,10 +120,10 @@ test('contrôle d’import : une image de groupe sans texte alternatif est nomm�
 
 // ---- Le lecteur du gabarit : 0, 1 ou 2 paragraphes vides entre deux images -------------
 //
-// Décision de Robin (29.09.2026) : après une série de clés, les images qui se suivent,
-// séparées de 0, 1 ou 2 paragraphes VIDES au plus, sont LA MÊME figure (une ligne FI à deux
-// images, que szh-legendes.lua compose en groupe) ; un troisième vide, un texte ou une
-// nouvelle série de clés ouvrent une autre figure.
+// Après une série de clés, les images qui se suivent, séparées d'au plus deux paragraphes
+// vides, forment une seule figure (une ligne FI à deux images, que szh-legendes.lua compose
+// en groupe). Un troisième vide, un texte ou une nouvelle série de clés ouvrent une autre
+// figure.
 
 const PRONTO_LIRE = path.join(PIPELINE, 'pronto-lire.py');
 

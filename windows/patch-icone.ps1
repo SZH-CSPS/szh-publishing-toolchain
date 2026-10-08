@@ -3,37 +3,29 @@
   Pose l'icône Pronto sur VSCodium, après coup :
     powershell -ExecutionPolicy Bypass -File .\patch-icone.ps1
 
-  Se lance seul sur un poste déjà installé, et bootstrap.ps1 l'appelle après avoir posé
-  l'éditeur. Rejouable : un second passage ne fait rien de plus.
+  Se lance seul sur un poste installé ; bootstrap.ps1 l'appelle après avoir installé
+  l'éditeur. Un second passage ne change rien.
 
-  Deux gestes, et deux seulement :
+  Deux modifications :
 
-    1. l'icône des raccourcis qui visent VSCodium.exe. C'est ELLE qui décide du bouton de
-       la barre des tâches : Windows 11 groupe par AppUserModelID et prend l'image du
-       raccourci du menu Démarrer qui porte le même — mesuré le 15.09.2026 en lançant
-       l'éditeur trois fois avec trois icônes différentes, le bouton a suivi à chaque fois,
-       sans redémarrer l'explorateur ;
-    2. resources\app\out\media\code-icon.svg, l'image que le workbench affiche dans sa
-       barre de titre (VSCodium est en barre de titre personnalisée : cette image ne vient
-       pas de l'exécutable). Ce fichier n'est PAS dans les `checksums` de product.json —
-       le remplacer ne déclenche donc pas « votre installation semble corrompue ».
+    1. l'icône des raccourcis qui visent VSCodium.exe. C'est elle qui donne l'image du
+       bouton de la barre des tâches : Windows 11 groupe les fenêtres par AppUserModelID et
+       prend l'image du raccourci du menu Démarrer qui porte le même ;
+    2. resources\app\out\media\code-icon.svg, l'image de la barre de titre de VSCodium.
+       Ce fichier ne figure pas dans les `checksums` de product.json : le remplacer ne
+       déclenche pas l'alerte « installation corrompue ».
 
-  AUCUN binaire n'est modifié. VSCodium.exe reste octet pour octet celui que l'installeur a
-  posé : l'empreinte d'apps.lock continue de porter, et il n'y a pas de signature à casser
-  (seul l'installeur est signé, l'exécutable ne l'est pas).
+  Aucun binaire n'est modifié : VSCodium.exe garde l'empreinte inscrite dans apps.lock.
+  Alt+Tab et la vignette de survol gardent donc l'icône de l'exécutable.
 
-  Ce qui reste à l'ancienne icône : Alt+Tab et la vignette de survol, qui lisent l'icône de
-  l'exécutable. Les corriger demanderait de réécrire les ressources du binaire — hors de
-  proportion avec le gain.
+  -Restaurer remet l'état d'origine (sauvegarde prise au premier passage).
+  -Simuler affiche ce qui serait fait, sans rien écrire.
 
-  -Restaurer remet l'état d'origine (sauvegarde déposée au premier passage).
-  -Simuler dit ce qui serait fait, sans rien écrire.
+  Administrateur : nécessaire si l'éditeur est dans Program Files ou si les raccourcis sont
+  dans le menu Démarrer commun, ce qui est le cas normal. Sur une installation par
+  utilisateur, le script tourne sans élévation.
 
-  Administrateur : nécessaire seulement si l'éditeur est dans Program Files ou si les
-  raccourcis sont dans le menu Démarrer commun — c'est le cas normal d'un poste de
-  rédacteur. Sur une installation par utilisateur, le script tourne sans élévation.
-
-  Compatibilité : Windows PowerShell 5.1 (proscrire ?. ?? ?: && ||).
+  Compatibilité : Windows PowerShell 5.1.
 #>
 [CmdletBinding()]
 param(
@@ -52,11 +44,9 @@ $script:Soucis = 0
 
 # ---- Où prendre les images ----
 #
-# Le .ico doit être désigné par un chemin DURABLE : un raccourci garde le chemin, pas
-# l'image. $SzhToolkit\windows est cet endroit — c'est déjà là que pointent les raccourcis
-# du lanceur, et update.ps1 y remet les fichiers à chaque passage. $PSScriptRoot n'est un
-# repli que pour un essai depuis un dossier quelconque : bootstrap.ps1 lance ses scripts
-# depuis une copie temporaire, qui aura disparu quand l'utilisateur ouvrira son menu.
+# Un raccourci garde le chemin du .ico, pas l'image : le chemin doit durer. On prend
+# $SzhToolkit\windows, qu'update.ps1 remet à jour. $PSScriptRoot n'est qu'un repli pour un
+# essai : bootstrap.ps1 lance ses scripts depuis une copie temporaire.
 $icoToolkit = Join-Path $SzhToolkit 'windows\pronto.ico'
 $icoLocal   = Join-Path $PSScriptRoot 'pronto.ico'
 $svgLocal   = Join-Path $PSScriptRoot 'pronto.svg'
@@ -77,9 +67,8 @@ if (-not $codium) { throw 'VSCodium introuvable — lancer d''abord bootstrap.ps
 $racine = Split-Path -Parent $codium
 Info ('Éditeur : ' + $codium)
 
-# Un éditeur ouvert tient sa barre de titre en mémoire : le fichier se remplace quand même,
-# mais l'image ne changera qu'à la prochaine ouverture. Le dire plutôt que de laisser croire
-# à un échec.
+# Un éditeur ouvert garde son image de barre de titre jusqu'à sa prochaine ouverture : on
+# l'annonce, pour qu'on ne croie pas à un échec.
 $ouverts = @(Get-Process -Name 'VSCodium' -ErrorAction SilentlyContinue)
 if ($ouverts.Count -gt 0) {
   Attention ('VSCodium est ouvert (' + $ouverts.Count + ' processus) : la barre de titre ne changera qu''à sa prochaine ouverture.')
@@ -115,8 +104,7 @@ if (-not (Test-Path -LiteralPath $cible)) {
     Info ('[SIMULE] écrire pronto.svg dans ' + $cible)
   } else {
     try {
-      # La sauvegarde n'est prise qu'une fois : au deuxième passage, $cible porte déjà notre
-      # image, et l'écraser ferait perdre l'original pour de bon.
+      # Sauvegarde prise une seule fois : aux passages suivants, $cible porte déjà notre image.
       if (-not (Test-Path -LiteralPath $sauvegarde)) { Copy-Item -LiteralPath $cible -Destination $sauvegarde -Force }
       Copy-Item -LiteralPath $svgLocal -Destination $cible -Force
       Fait ('Barre de titre : ' + $cible)
@@ -131,10 +119,9 @@ if (-not (Test-Path -LiteralPath $cible)) {
 
 # ---- 2/2 Les raccourcis ----
 #
-# Tous ceux qui visent VSCodium.exe, où qu'ils soient : menu Démarrer commun et par
-# utilisateur, bureaux, et la barre des tâches épinglée. On ne devine pas un chemin, on
-# lit la cible de chaque .lnk — l'installeur Inno ne range pas ses raccourcis au même
-# endroit selon qu'il pose la variante système ou celle par utilisateur.
+# Tous les .lnk qui visent VSCodium.exe : menus Démarrer commun et du compte, bureaux,
+# barre des tâches. On lit la cible de chaque .lnk, car l'installeur range ses raccourcis
+# ailleurs selon qu'il s'agit de la variante système ou par utilisateur.
 $racinesLnk = @(
   (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs'),
   (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'),
@@ -167,10 +154,8 @@ foreach ($racineLnk in $racinesLnk) {
       continue
     }
 
-    # L'AppUserModelID est relu avant et après : c'est lui qui rattache la fenêtre au
-    # raccourci, donc à son image. WScript.Shell le préserve (vérifié), mais s'il venait à
-    # le perdre, le bouton de la barre retomberait sur l'icône de l'exécutable sans que
-    # rien ne le dise — d'où le contrôle, et le repli par le pont COM de szh-shell.ps1.
+    # L'AppUserModelID rattache la fenêtre au raccourci, donc à son image. On le relit après
+    # l'écriture et on le remet par szh-shell.ps1 s'il a été perdu.
     $identite = Get-SzhLnkAppId $lien.FullName
     try {
       $raccourci.IconLocation = $voulu
@@ -202,8 +187,7 @@ if ($trouves -eq 0) {
 
 # ---- Cache d'icônes ----
 #
-# Sans ça, l'explorateur continue de servir l'ancienne image depuis son cache, et on croit
-# le script en échec. Ne touche pas aux fenêtres déjà ouvertes.
+# Rafraîchit le cache d'icônes de l'explorateur, qui servirait sinon l'ancienne image.
 if (($script:Poses -gt 0) -and (-not $Simuler)) {
   try { Invoke-SzhNatif { & (Join-Path $env:WINDIR 'System32\ie4uinit.exe') -show | Out-Null } } catch { }
 }

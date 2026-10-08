@@ -1,66 +1,50 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# manuscrit_docx.py — le lecteur .docx du nettoyeur de manuscrit (article) : rend le modèle
-# riche de manuscrit_modele.py (§4 du contrat) et projeter_pronto(), qui rend EXACTEMENT ce
-# que pronto_docx.lire() rend sur le même fichier (§3, « dette assumée »). AUCUNE décision
-# ici — ni classement de titre, ni nettoyage de mise en forme : seulement de la lecture.
-# Contrat : docs/ARCHITECTURE-nettoyeur-manuscrit.md, §3, §4, §10, §11.
+# Lecteur .docx du nettoyeur de manuscrit. lire() rend le modèle riche de manuscrit_modele.py ;
+# projeter_pronto() rend exactement ce que pronto_docx.lire() rend sur le même fichier. Ce
+# module lit seulement : il ne classe pas les titres et ne nettoie pas la mise en forme. Voir
+# docs/ARCHITECTURE-nettoyeur-manuscrit.md.
 #
-# Pris dans ooxml_lecture.py, comme pronto_docx.py : résolution de style (charger_styles/pstyle/
-# resoudre_style), comptage des marqueurs de page (compter_marqueurs_page), liste des blocs
-# de premier niveau (blocs_du_corps) — les deux lecteurs appellent le même code, donc ne
-# peuvent pas diverger sur ces points. Idem pour niveau_depuis_style()/normaliser(), repris
-# de pronto_modele.py. Le reste (runs, mise en forme directe, hyperliens, images DrawingML,
-# fusions verticales, révisions, commentaires, notes) est écrit ici : pronto_docx.py ne le lit
-# pas.
+# Repris de ooxml_lecture.py, comme pronto_docx.py, pour que les deux lecteurs ne divergent
+# pas : résolution de style (charger_styles, pstyle, resoudre_style), marqueurs de page
+# (compter_marqueurs_page), blocs de premier niveau (blocs_du_corps). niveau_depuis_style() et
+# normaliser() viennent de pronto_modele.py. Le reste (runs, mise en forme directe, liens,
+# images DrawingML, fusions verticales, révisions, commentaires, notes) est propre à ce module.
+# Bibliothèque standard seule, sans python-docx ni lxml.
 #
-# stdlib uniquement : zipfile, xml.etree.ElementTree, re, json, hashlib — pas de
-# python-docx, pas de lxml (§2 du contrat).
+# Points à connaître :
 #
-# Pièges mesurés sur le corpus réel, à ne pas repayer :
-#
-# - `Fragment.texte` garde le TIRET RÉEL du document (–/—/‑), jamais normalisé ici — un
-#   premier jet appliquait les substitutions de pronto_modele.normaliser() à la lecture et
-#   dégradait cadratins/demi-cadratins en simple trait d'union avant que le filtre
-#   typographique (règle T2) ait pu les voir. Seul `projeter_pronto()` normalise, en miroir
-#   exact de pronto_docx.lire(). Le compactage d'espaces, lui, n'est jamais appliqué par
-#   Fragment séparé (`_texte_depuis_enfants()`) : un mot coupé pile sur une espace de run
-#   perdrait cette espace à la concaténation.
-# - Un ancrage flottant sans `<a:blip>` (rectangle, groupe de formes) n'est pas une image :
-#   recensé (`forme_vectorielle_ignoree`), jamais fabriqué en Image vide. Beaucoup sont
-#   enveloppés dans `mc:AlternateContent` deux niveaux sous leur `w:r` — sans dépliage
-#   (`_enfants_utiles`), ils disparaissent sans le moindre avertissement. `mc:Fallback` est
-#   ignoré par défaut (même forme que `mc:Choice`, compter les deux doublerait), SAUF quand la
-#   Choice ne porte aucune image propre : son Fallback peut alors porter un vrai groupe
-#   `<v:imagedata>` que la Choice n'a pas (`_images_fantomes_du_repli`).
-# - Les images VML héritées, zones de texte, en-têtes/pieds et champs Word restent hors de ce
-#   module (couverts par pronto_docx.py/docx-meta.py pour le corpus hérité) : un manuscrit
-#   arrivant aujourd'hui est du DrawingML moderne. Recensé (§10), jamais lu en double.
-# - `projeter_pronto()` ne relit aucun XML : il part du Document déjà construit et diverge de
-#   pronto_docx.lire() sur deux points seulement, aucun exercé par le corpus réel — une fusion
-#   verticale (w:vMerge, masquée ici, jamais par pronto_docx.py) et une image VML non résolue.
-# - `w:noBreakHyphen` rend U+2011 (jamais un simple `-`) ; `w:tab`/`w:br`/`w:cr` rendent le
-#   vrai caractère (`'\t'`/`'\n'`), pas une espace — sinon le nettoyage §5.2 (qui cherche ces
-#   caractères en tête/queue de paragraphe) ne trouve jamais rien. `w:sym` est lu
-#   (`_rendu_sym`). `w:fldSimple` est déplié comme conteneur passe-plat (`w:fldChar` n'a
-#   jamais eu ce problème). `w:sdt` de niveau BLOC est déplié AVANT tout parcours
-#   (`_deplier_sdt_niveau_bloc`) : sans ça, ces paragraphes disparaissent sans avertissement.
-# - `word/endnotes.xml` est lu comme les notes de bas de page, identifiant décalé au-delà du
-#   plus grand id de footnote (`_decalage_notes_fin`) ; `Document.notes` est un
-#   `dict{id: contenu}`, jamais une liste plate.
-# - Le décompte d'images VML comptait les OCCURRENCES de `v:imagedata`, pas les identifiants
-#   DISTINCTS (un même r:id répété gonflait le compte) ; ces images sont récupérées quand leur
-#   relation résout vers un média présent dans l'archive (`_images_depuis_vml`).
-# - `Image.source` porte l'indice du `w:p` PORTEUR, jamais celui du `w:r` (qui reste
-#   `Fragment.source`) — voir `indice_paragraphe` dans `_fragments_de_run`.
-# - Une liste se résout aussi depuis un `numPr` HÉRITÉ du style de paragraphe
-#   (`_index_styles_complet`/`_numpr_depuis_style`), pas seulement posé directement ;
-#   `numId="0"` (Word : « retire la numérotation héritée ») rend `None`, jamais un format
-#   indéterminé.
-# - `_compter_revisions()` compte aussi footnotes.xml/endnotes.xml, pas seulement document.xml.
-# - `Fragment.effectif`/`Paragraphe.alignement_effectif` (§4 du contrat) : mise en forme
-#   EFFECTIVE — directe, sinon style de caractère (w:rStyle), sinon chaîne de styles de
-#   paragraphe (w:pStyle → w:basedOn → …), sinon docDefaults (`_index_styles_complet`,
+# - `Fragment.texte` garde les tirets du document (–, —, ‑). Seul projeter_pronto() les
+#   normalise, comme pronto_docx.lire() ; sinon le filtre typographique (règle T2) ne les
+#   verrait plus. Les espaces ne sont pas compactées fragment par fragment : un mot coupé sur
+#   une espace de run la perdrait.
+# - Un ancrage flottant sans `<a:blip>` (rectangle, groupe de formes) n'est pas une image : il
+#   est compté dans `forme_vectorielle_ignoree`. Beaucoup sont dans un `mc:AlternateContent`
+#   deux niveaux sous leur `w:r`, d'où le dépliage de `_enfants_utiles`. `mc:Fallback` est
+#   ignoré (il répète `mc:Choice`), sauf quand la Choice n'a aucune image et que le Fallback
+#   porte un `<v:imagedata>` (`_images_fantomes_du_repli`).
+# - Les zones de texte, en-têtes et pieds de page et champs Word ne sont pas lus ici
+#   (pronto_docx.py et docx-meta.py les couvrent pour les anciens fichiers) ; ils sont
+#   recensés.
+# - projeter_pronto() part du Document déjà construit. Il ne diverge de pronto_docx.lire() que
+#   pour une fusion verticale (w:vMerge, masquée ici) et une image VML non résolue.
+# - `w:noBreakHyphen` rend U+2011 ; `w:tab`, `w:br` et `w:cr` rendent '\t' et '\n', que le
+#   nettoyage cherche en tête et en fin de paragraphe. `w:sym` est lu (`_rendu_sym`).
+#   `w:fldSimple` est traversé comme conteneur. Les `w:sdt` de niveau bloc sont dépliés avant
+#   tout parcours (`_deplier_sdt_niveau_bloc`), sinon leurs paragraphes disparaîtraient.
+# - `word/endnotes.xml` se lit comme les notes de bas de page, avec un identifiant décalé
+#   au-delà du plus grand id de footnote (`_decalage_notes_fin`). `Document.notes` est un
+#   dict {id: contenu}.
+# - Les images VML se comptent par identifiant distinct ; elles sont récupérées quand leur
+#   relation mène à un média présent dans l'archive (`_images_depuis_vml`).
+# - `Image.source` porte l'indice du `w:p` qui contient l'image, `Fragment.source` celui du
+#   `w:r` (voir `indice_paragraphe` dans `_fragments_de_run`).
+# - Une liste se résout aussi depuis un `numPr` hérité du style de paragraphe
+#   (`_numpr_depuis_style`). `numId="0"` (Word : « retire la numérotation héritée ») rend None.
+# - `_compter_revisions()` compte aussi footnotes.xml et endnotes.xml.
+# - `Fragment.effectif` et `Paragraphe.alignement_effectif` : mise en forme effective, prise
+#   dans la forme directe, sinon le style de caractère (w:rStyle), sinon la chaîne des styles
+#   de paragraphe (w:pStyle → w:basedOn → …), sinon docDefaults (`_index_styles_complet`,
 #   `_chaine_styles`, `_forme_effective`).
 
 import hashlib
@@ -81,51 +65,37 @@ import pronto_docx
 import pronto_modele as pm
 import manuscrit_modele as mm
 
-# Contexte de lecture, calculé UNE fois par document (lire()) puis transmis tel quel à toutes
-# les fonctions qui en ont besoin, à la place de plusieurs paramètres épars — AJOUTÉ le
-# 19.09.2026 avec Fragment.effectif et les notes de fin, qui en ont chacun besoin plus loin
-# dans l'arbre (paragraphes de cellule, notes elles-mêmes).
-#   numerotation        {(numId, ilvl): 'puce'|'numero'|''} — voir _charger_numerotation
-#   index_styles        {styleId: {'basedOn', 'ppr', 'rpr'}} — voir _index_styles_complet
-#   rpr_defaut, ppr_defaut   Element|None de w:docDefaults — voir _index_styles_complet
-#   decalage_notes_fin  int : à ajouter à un identifiant BRUT de w:endnoteReference /
-#                        w:endnote pour obtenir son identifiant FINAL, jamais en collision
-#                        avec un identifiant de footnote (voir lire()).
+# Contexte de lecture, calculé une fois par document par lire() et transmis aux fonctions
+# qui en ont besoin, jusque dans les cellules et les notes.
+#   numerotation        {(numId, ilvl): 'puce'|'numero'|''} : voir _charger_numerotation
+#   index_styles        {styleId: {'basedOn', 'ppr', 'rpr'}} : voir _index_styles_complet
+#   rpr_defaut, ppr_defaut   Element|None de w:docDefaults : voir _index_styles_complet
+#   decalage_notes_fin  int à ajouter à l'identifiant brut d'une note de fin pour qu'il ne
+#                        rencontre aucun identifiant de footnote (voir lire()).
 Contexto = namedtuple('Contexto', ('numerotation', 'index_styles', 'rpr_defaut', 'ppr_defaut',
                                     'decalage_notes_fin'))
 
 from ooxml_lecture import W, A, R, WP, PKG_RELS, MC, V
 
-# Conteneurs qui enveloppent des w:r sans leur ajouter de texte ou de lien propres : les
-# révisions (w:ins/w:del — comptées à part, voir _compter_revisions), les balises de contenu
-# structuré et leur enveloppe (niveau RUN — le niveau BLOC est couvert séparément, voir
-# _deplier_sdt_niveau_bloc), et w:fldSimple (champ Word à valeur mise en cache : sa valeur
-# affichée vit dans un w:r ordinaire, enfant direct du w:fldSimple — AJOUTÉ le 19.09.2026,
-# voir le point 5 de l'en-tête). On y « passe à travers » plutôt que d'ignorer leur contenu,
-# car un document en suivi de modifications (refusé plus tard par la CLI, §8) ne doit pas pour
-# autant faire planter LA LECTURE : lire() doit rester utilisable sur les onze fichiers réels
-# de lot-A, dont un porte des révisions ouvertes.
+# Conteneurs de w:r qui n'ajoutent ni texte ni lien : révisions (w:ins, w:del, comptées à
+# part par _compter_revisions), contenu structuré de niveau run (le niveau bloc est traité
+# par _deplier_sdt_niveau_bloc) et w:fldSimple (sa valeur affichée est un w:r enfant). On les
+# traverse : un document en suivi de modifications, que la CLI refusera ensuite, doit rester
+# lisible.
 _CONTENEURS_PASSE_PLAT = (W + 'ins', W + 'del', W + 'smartTag', W + 'customXml',
                           W + 'sdt', W + 'sdtContent', W + 'fldSimple')
 
-# w:t et w:delText (texte d'une suppression suivie) sont tous deux du texte visible au sens
-# de ce lecteur — voir la note ci-dessus sur les révisions.
+# w:t et w:delText (texte d'une suppression suivie) comptent tous deux comme texte.
 _TAGS_TEXTE = (W + 't', W + 'delText')
 
-# Ajout du 19.09.2026 (superviseur, sur mesure de l'agent de l'écrivain) : 'continuationNotice'
-# (le petit texte « … suite » que Word pose en bas d'une page où une note continue) est un
-# type technique de plus, jamais une vraie note de bas de page — mesuré sur 1bis, 2-dense,
-# 2-grappes et 5bis, où ce type apparaît dans footnotes.xml ET endnotes.xml SANS AUCUN
-# w:footnoteReference/w:endnoteReference correspondant dans document.xml : ces quatre fichiers
-# n'ont AUCUNE vraie note. Voir aussi le filtre orphelines plus bas (lire()), qui retire
-# maintenant toute note — technique ou non — jamais appelée dans le corps.
+# Types de notes techniques, qui ne sont pas des notes. 'continuationNotice' est le « … suite »
+# que Word pose en bas d'une page où une note continue. lire() écarte en outre toute note
+# jamais appelée dans le corps.
 _TYPES_NOTE_TECHNIQUES = ('separator', 'continuationSeparator', 'continuationNotice')
 
-# w:sym (Insertion > Symbole) : Word ne pose alors aucun w:t, seulement w:char (un point de
-# code, en hexadécimal) et w:font. Une puce Wingdings/Symbol courante a un équivalent Unicode
-# réel — U+F0B7 est LE POINT MÉDIAN de ces polices, universellement utilisé comme puce ; tout
-# le reste rend le caractère TEL QUEL (perte silencieuse sinon, §10 du contrat) et se signale
-# (voir _rendu_sym et le recensement 'symboles_police_speciale').
+# w:sym (Insertion > Symbole) : pas de w:t, seulement w:char (point de code hexadécimal) et
+# w:font. U+F0B7, la puce de Wingdings et Symbol, devient « • ». Tout autre symbole de ces
+# polices est rendu tel quel et recensé dans 'symboles_police_speciale' (voir _rendu_sym).
 _MAP_SYM_PUCES = {0xF0B7: '•'}
 _POLICES_SYMBOLES = ('wingdings', 'wingdings2', 'wingdings3', 'symbol', 'webdings')
 
@@ -137,13 +107,11 @@ def avertir(code, champs, fr, de):
 
 
 # ---------------------------------------------------------------------------------
-# Texte d'un run — voir le point 1 de l'en-tête : les substitutions de tiret n'ont plus leur
-# place ici depuis le 19.09.2026, Fragment.texte porte le tiret RÉEL du document.
+# Texte d'un run, tirets du document conservés (voir l'en-tête).
 
 def _rendu_sym(el, recensement):
-    """Le caractère qu'un w:sym représente — voir la note sur _MAP_SYM_PUCES ci-dessus.
-    w:char hors plage Unicode valide, ou illisible : '' (rien à restituer), jamais une
-    exception qui ferait échouer la lecture d'un manuscrit entier pour un seul symbole."""
+    """Le caractère d'un w:sym (voir _MAP_SYM_PUCES). '' si w:char est illisible ou hors de
+    la plage Unicode, pour ne pas faire échouer la lecture pour un symbole."""
     brut = el.get(W + 'char') or ''
     try:
         point = int(brut, 16)
@@ -155,22 +123,17 @@ def _rendu_sym(el, recensement):
     if police in _POLICES_SYMBOLES:
         if point in _MAP_SYM_PUCES:
             return _MAP_SYM_PUCES[point]
-        # Police à mise en correspondance non standard connue : le caractère est repris tel
-        # quel (mieux qu'un silence total), mais signalé — voir le recensement dans lire().
+        # Police à correspondance non standard : caractère repris tel quel, et recensé.
         recensement['symboles_police_speciale'] += 1
         recensement.setdefault('polices_symboles_vues', set()).add(el.get(W + 'font') or police)
     return chr(point)
 
 
 def _enfants_utiles(el):
-    """Les enfants de `el` (un w:r), en dépliant tout mc:AlternateContent sur sa PREMIÈRE
-    branche mc:Choice — jamais mc:Fallback, qui répète le MÊME contenu en VML pour la
-    compatibilité avec les vieux Word : le compter aussi doublerait chaque dessin ou forme
-    concerné. Mesuré sur le corpus réel (lot-A/4_La méthode Flip Flap.docx, 18.09.2026) : ses
-    10 ancrages flottants sont TOUS enveloppés dans un mc:AlternateContent, deux niveaux sous
-    le w:r — un simple r.findall(W+'drawing') (enfants DIRECTS seulement) ne les voit JAMAIS,
-    ce qui les aurait fait disparaître sans le moindre avertissement, à l'exact endroit où le
-    §10 du contrat interdit le silence."""
+    """Les enfants de `el` (un w:r), avec chaque mc:AlternateContent remplacé par le contenu
+    de sa première branche mc:Choice. mc:Fallback répète le même contenu en VML pour les
+    anciens Word : le lire aussi doublerait chaque dessin. Sans ce dépliage, un
+    r.findall(W + 'drawing') ne verrait pas les ancrages enveloppés deux niveaux plus bas."""
     resultat = []
     for enfant in el:
         if enfant.tag == MC + 'AlternateContent':
@@ -183,15 +146,10 @@ def _enfants_utiles(el):
 
 
 def _texte_depuis_enfants(enfants, recensement):
-    """⚠ Révision du 19.09.2026 : w:tab rend désormais '\\t' et w:br/w:cr rendent '\\n' — plus
-    une simple espace comme avant (voir le point 5 de l'en-tête). C'est ce qui rend enfin
-    UTILE la logique de nettoyer_mise_en_forme() qui cherche une tabulation en tête et un
-    saut de ligne en queue de paragraphe : avant cette révision, cette logique ne pouvait
-    JAMAIS se déclencher, ces caractères étant déjà des espaces à son arrivée — du code mort.
-    Sans conséquence sur projeter_pronto() : pronto_modele.normaliser() finit par
-    ' '.join(t.split()), qui traite '\\t'/'\\n' exactement comme une espace (str.split() les
-    reconnaît tous deux comme des blancs) — la projection reste donc identique à
-    pronto_docx.lire(), qui rend '\\t'/'\\n' en espace dès la lecture."""
+    """Texte des enfants d'un run. w:tab rend '\\t' et w:br/w:cr rendent '\\n', que
+    nettoyer_mise_en_forme() cherche en tête et en fin de paragraphe. projeter_pronto() n'en
+    est pas affecté : pronto_modele.normaliser() les ramène à une espace, comme
+    pronto_docx.lire()."""
     morceaux = []
     for e in enfants:
         if e.tag in _TAGS_TEXTE:
@@ -201,19 +159,18 @@ def _texte_depuis_enfants(enfants, recensement):
         elif e.tag in (W + 'br', W + 'cr'):
             morceaux.append('\n')
         elif e.tag == W + 'noBreakHyphen':
-            morceaux.append('‑')  # le VRAI trait d'union insécable, jamais un '-' banal
+            morceaux.append('‑')  # trait d'union insécable U+2011
         elif e.tag == W + 'sym':
             morceaux.append(_rendu_sym(e, recensement))
-        # w:softHyphen : invisible sauf en fin de ligne rendue, jamais un caractère du texte
-        # normalisé — ignoré, comme le fait déjà pronto_docx.texte_paragraphe.
+        # w:softHyphen (césure facultative) est ignoré, comme dans pronto_docx.texte_paragraphe.
     return ''.join(morceaux)
 
 
 # ---------------------------------------------------------------------------------
-# Mise en forme DIRECTE d'un w:rPr — jamais la cascade des styles : le §5.2 du contrat ne
-# parle que du formatage MANUEL, celui qu'un style seul ne porte pas. Une clé absente du XML
-# vaut None (non déclaré) ; une balise présente avec w:val="0"/"false"/"off"/"none" vaut False
-# (déclaré éteint) — jamais confondus (§4 du contrat, ⚠).
+# Mise en forme directe d'un w:rPr, sans la cascade des styles : le nettoyage ne vise que la
+# mise en forme manuelle. Une balise absente vaut None (non déclaré) ; une balise à
+# w:val="0", "false", "off" ou "none" vaut False (déclaré éteint). Les deux ne se confondent
+# pas.
 
 def _lire_onoff(rpr, tag):
     if rpr is None:
@@ -228,9 +185,8 @@ def _lire_onoff(rpr, tag):
 
 
 def _lire_souligne(rpr):
-    """w:u porte une énumération (single, double, wave, none…), pas un simple on/off : val
-    absent (rare) vaut « déclaré actif » (Word n'écrit alors aucun w:val, mais l'élément est
-    bien présent) ; val="none" est la seule valeur qui éteint le soulignement."""
+    """w:u porte une énumération (single, double, wave, none…). Sans w:val, le soulignement
+    est actif ; "none" l'éteint."""
     if rpr is None:
         return None
     el = rpr.find(W + 'u')
@@ -241,9 +197,8 @@ def _lire_souligne(rpr):
 
 
 def _lire_vertalign(rpr):
-    """(exposant, indice) : w:vertAlign est un exclusif à trois valeurs (baseline,
-    superscript, subscript) — sa seule PRÉSENCE déclare les deux champs (baseline déclare
-    les deux à False), son ABSENCE laisse les deux à None."""
+    """(exposant, indice). w:vertAlign vaut baseline, superscript ou subscript : présent, il
+    déclare les deux champs (baseline les met à False) ; absent, les deux restent None."""
     if rpr is None:
         return None, None
     el = rpr.find(W + 'vertAlign')
@@ -302,8 +257,8 @@ def _forme_directe(rpr):
 
 
 def _lire_rstyle(rpr):
-    """Le style de CARACTÈRE porté par ce rPr (w:rStyle), ou None — distinct d'un style de
-    PARAGRAPHE (w:pStyle, résolu par ooxml_lecture.resoudre_style/pstyle)."""
+    """Le style de caractère (w:rStyle) de ce rPr, ou None. Le style de paragraphe (w:pStyle)
+    se résout par ooxml_lecture.resoudre_style et pstyle."""
     if rpr is None:
         return None
     el = rpr.find(W + 'rStyle')
@@ -311,26 +266,20 @@ def _lire_rstyle(rpr):
 
 
 # ---------------------------------------------------------------------------------
-# Mise en forme EFFECTIVE (§4 du contrat, Fragment.effectif, ajouté le 19.09.2026) : directe
-# (w:rPr du run — _forme_directe ci-dessus, INCHANGÉE) sinon style de caractère (w:rStyle)
-# sinon chaîne des styles de paragraphe (w:pStyle -> w:basedOn -> ...) sinon
-# w:docDefaults/w:rPrDefault. Motivé par classer_titres() (§5.1) : « corps sans taille
-# déclarée » et « faux titre déclaré 12 pt » sont aujourd'hui jugés différents par la forme
-# DIRECTE alors qu'ils font tous deux 12 pt une fois la cascade résolue — ce champ est ce
-# qu'un lot ultérieur utilisera pour comparer les DEUX sur un pied d'égalité. `forme` reste
-# strictement inchangée (§5.2 : jamais la cascade des styles pour le NETTOYAGE).
+# Mise en forme effective (Fragment.effectif) : directe (w:rPr du run), sinon style de
+# caractère (w:rStyle), sinon chaîne des styles de paragraphe (w:pStyle → w:basedOn → …),
+# sinon w:docDefaults/w:rPrDefault. Elle permet de comparer un corps sans taille déclarée et
+# un faux titre déclaré à 12 pt, qui font tous deux 12 pt. `forme` reste la mise en forme
+# directe, seule visée par le nettoyage.
 #
-# styles.xml n'est lu ICI qu'une seule fois par document (_index_styles_complet), séparément
-# de pronto_docx.charger_styles (qui ne garde que id -> nom, insuffisant pour remonter une
-# chaîne de w:rPr/w:pPr) — les deux coexistent : celui-ci résout les NOMS affichés (§3,
-# repris tel quel de pronto_docx.py), celui-là résout les ATTRIBUTS hérités.
+# _index_styles_complet lit styles.xml une fois par document, pour les attributs hérités.
+# pronto_docx.charger_styles ne garde que id → nom, ce qui sert aux noms affichés.
 
 def _index_styles_complet(z):
     """{styleId: {'basedOn': styleId|None, 'ppr': Element|None, 'rpr': Element|None}}, plus
-    (rPrDefault, pPrDefault) de w:docDefaults — une seule lecture de styles.xml, réutilisée
-    pour la mise en forme EFFECTIVE (ce module) et pour un numPr HÉRITÉ d'un style (§5.4, voir
-    _numpr_depuis_style). styles.xml absent : index vide, les deux None — la mise en forme
-    effective retombe alors sur la forme directe seule, jamais une exception."""
+    (rPrDefault, pPrDefault) de w:docDefaults. Sert à la mise en forme effective et au numPr
+    hérité d'un style (_numpr_depuis_style). Sans styles.xml : index vide et deux None, la
+    mise en forme effective se réduit alors à la forme directe."""
     try:
         racine = ET.fromstring(z.read('word/styles.xml'))
     except Exception:
@@ -354,9 +303,8 @@ def _index_styles_complet(z):
 
 
 def _chaine_styles(style_id, index_styles):
-    """[style_id, parent, grand-parent, ...] en remontant w:basedOn — jamais deux fois le
-    même styleId (une boucle basedOn est un styles.xml corrompu ; absent du corpus réel, mais
-    un parcours qui bouclerait dessus figerait la lecture d'un manuscrit entier)."""
+    """[style_id, parent, grand-parent, ...] en remontant w:basedOn. Un styleId déjà vu
+    arrête la remontée : une boucle basedOn (styles.xml corrompu) figerait la lecture."""
     chaine = []
     vus = set()
     while style_id and style_id not in vus and style_id in index_styles:
@@ -367,9 +315,8 @@ def _chaine_styles(style_id, index_styles):
 
 
 def _fusionner_forme(base, complement):
-    """Remplit dans `base` les clés encore None avec celles de `complement` — ne modifie
-    jamais un champ déjà déclaré : la source la plus proche (la plus prioritaire) l'emporte
-    toujours, seuls les TROUS se comblent en remontant la cascade."""
+    """Remplit les clés encore None de `base` avec celles de `complement`. Un champ déjà
+    déclaré est gardé : la source la plus proche l'emporte."""
     for cle in mm.FORME_CLES:
         if base.get(cle) is None and complement.get(cle) is not None:
             base[cle] = complement[cle]
@@ -377,9 +324,8 @@ def _fusionner_forme(base, complement):
 
 
 def _forme_depuis_chaine(style_id, index_styles, base):
-    """Comble les trous de `base` (mutée en place) en remontant la chaîne basedOn de
-    `style_id`, du plus spécifique au plus général — s'arrête dès que les 12 clés sont
-    toutes déclarées, inutile d'aller plus loin."""
+    """Comble les trous de `base` (modifié en place) en remontant la chaîne basedOn de
+    `style_id`. S'arrête quand les 12 clés sont déclarées."""
     for sid in _chaine_styles(style_id, index_styles):
         rpr = index_styles.get(sid, {}).get('rpr')
         if rpr is not None:
@@ -390,8 +336,8 @@ def _forme_depuis_chaine(style_id, index_styles, base):
 
 
 def _forme_effective(forme_directe, rstyle_id, pstyle_id, index_styles, rpr_defaut):
-    """directe -> style de caractère -> chaîne des styles de paragraphe -> docDefaults —
-    l'ordre exact du §4 du contrat (révision du 19.09.2026)."""
+    """Directe, puis style de caractère, puis chaîne des styles de paragraphe, puis
+    docDefaults."""
     effectif = dict(forme_directe)
     if any(effectif.get(c) is None for c in mm.FORME_CLES) and rstyle_id:
         _forme_depuis_chaine(rstyle_id, index_styles, effectif)
@@ -403,9 +349,9 @@ def _forme_effective(forme_directe, rstyle_id, pstyle_id, index_styles, rpr_defa
 
 
 def _numpr_depuis_style(style_id, index_styles):
-    """Le premier w:numPr trouvé en remontant la chaîne basedOn de `style_id` (§5.4, ajouté
-    le 19.09.2026) : un style de liste porte son numPr dans son propre w:pPr, jamais dans
-    celui d'un paragraphe qui se contente de l'appliquer."""
+    """Le premier w:numPr trouvé en remontant la chaîne basedOn de `style_id`. Un style de
+    liste porte son numPr dans son propre w:pPr, pas dans celui du paragraphe qui
+    l'applique."""
     for sid in _chaine_styles(style_id, index_styles):
         ppr = index_styles.get(sid, {}).get('ppr')
         if ppr is not None:
@@ -430,9 +376,8 @@ def _alignement_depuis_style(style_id, index_styles, ppr_defaut):
 
 
 # ---------------------------------------------------------------------------------
-# Relations du paquet : médias ET hyperliens (pronto_docx.charger_rels_images ne garde que
-# les médias, ce module a aussi besoin des cibles d'hyperlien, qui ne portent jamais
-# 'media/').
+# Relations du paquet : médias et liens (pronto_docx.charger_rels_images ne garde que les
+# médias).
 
 def charger_relations(z):
     rels = {}
@@ -463,35 +408,24 @@ def _resoudre_lien_hyperlink(el, rels):
 
 
 # ---------------------------------------------------------------------------------
-# Dimensions en PIXELS du FICHIER image — jamais celles de sa boîte d'affichage (wp:extent,
-# cx/cy, en EMU) : cx/cy disent à quelle taille Word AFFICHE l'image, pas la résolution du
-# fichier qu'elle affiche. C'est cette dernière, et elle seule, qui dit si une image tiendra
-# la qualité d'impression (§4 et §7 du contrat : ce module MESURE, `qualite-image.js` JUGE).
+# Dimensions en pixels du fichier image, et non de sa boîte d'affichage (wp:extent, cx/cy en
+# EMU, la taille à laquelle Word l'affiche). Seules les premières disent si l'image tiendra à
+# l'impression ; ce module mesure, `qualite-image.js` juge.
 #
-# Reconnaissance par SIGNATURE D'OCTETS, jamais par extension de nom de fichier (un nom peut
-# mentir) — même principe que lib/medias.js#lireDimensionsImage côté JS, dont les décalages
-# ci-dessous sont la contrepartie mesurée : PNG (readUInt32BE(16)/(20)), GIF
-# (readUInt16LE(6)/(8)), JPEG (SOF hors DHT/JPG/DAC). BMP est ajouté ici, absent côté JS.
+# Le format se reconnaît à la signature des octets, pas à l'extension, comme dans
+# lib/medias.js#lireDimensionsImage (mêmes décalages pour PNG, GIF et JPEG ; BMP en plus ici).
 #
-# Tout format non couvert (SVG, EMF, WMF — vectoriels, JAMAIS mesurés : un vectoriel est net
-# à toute taille, prétendre lui donner une résolution serait faux) ou tout fichier tronqué/
-# illisible rend (0, 0), SANS JAMAIS lever : une image abîmée ne doit pas faire échouer la
-# lecture d'un manuscrit entier — voir _dimensions_image().
+# Les formats vectoriels (SVG, EMF, WMF), qui n'ont pas de résolution, et les fichiers
+# tronqués ou illisibles rendent (0, 0) sans lever (voir _dimensions_image()).
 
 def _dimensions_png(octets):
-    """PNG : signature fixe de 8 octets, puis le chunk IHDR — toujours le premier, la norme
-    l'exige. Chunk = 4 octets de longueur, 4 octets de type ('IHDR'), puis sa charge : 4
-    octets de largeur, 4 octets de hauteur, entiers 32 bits GROS-boutistes (réseau). D'où les
-    octets 16 à 24 : 8 (signature) + 4 (longueur du chunk) + 4 (le mot 'IHDR') = 16.
+    """PNG : signature de 8 octets, puis le chunk IHDR, toujours premier (4 octets de
+    longueur, 4 octets 'IHDR', puis largeur et hauteur en 32 bits gros-boutistes). D'où les
+    octets 16 à 24.
 
-    Ne vérifie PAS elle-même la longueur totale du buffer avant de trancher — un slicing
-    Python sur un buffer trop court ne lève jamais (il rend simplement moins d'octets), donc
-    la comparaison de signature reste sûre même sur un fichier tronqué très court ; seul le
-    struct.unpack final peut lever sur un buffer coupé PLUS LOIN (signature et étiquette
-    'IHDR' présentes, mais la charge de largeur/hauteur manque). C'est un choix délibéré :
-    le SEUL filet de sécurité contre un fichier tronqué est le `try` de _dimensions_image()
-    ci-dessous, qui encadre les quatre lecteurs — une garde locale ici serait redondante et,
-    pire, rendrait ce filet invisible à un sabotage (il ne servirait jamais)."""
+    Pas de contrôle de longueur ici : struct.unpack lève sur un fichier tronqué, et le `try`
+    de _dimensions_image() est le seul filet, commun aux quatre lecteurs. Une garde locale
+    rendrait ce filet impossible à éprouver."""
     if octets[:8] != b'\x89PNG\r\n\x1a\n' or octets[12:16] != b'IHDR':
         return 0, 0
     largeur, hauteur = struct.unpack('>II', octets[16:24])
@@ -499,10 +433,8 @@ def _dimensions_png(octets):
 
 
 def _dimensions_gif(octets):
-    """GIF : signature de 6 octets ('GIF87a' ou 'GIF89a'), puis le Logical Screen Descriptor
-    commence immédiatement : 2 octets de largeur, 2 octets de hauteur, entiers 16 bits
-    PETIT-boutistes — le seul des quatre formats à l'être pour ses dimensions. Même choix
-    que _dimensions_png() pour la sécurité anti-troncature : voir sa note."""
+    """GIF : signature de 6 octets ('GIF87a' ou 'GIF89a'), puis largeur et hauteur en
+    16 bits petit-boutistes. Fichier tronqué : voir _dimensions_png()."""
     if octets[:3] != b'GIF':
         return 0, 0
     largeur, hauteur = struct.unpack('<HH', octets[6:10])
@@ -510,45 +442,38 @@ def _dimensions_gif(octets):
 
 
 def _dimensions_bmp(octets):
-    """BMP : BITMAPFILEHEADER de 14 octets ('BM' + 12 octets ignorés), puis
-    BITMAPINFOHEADER : 4 octets de taille d'en-tête (ignorés), puis largeur et hauteur en
-    entiers 32 bits SIGNÉS petit-boutistes, à partir de l'octet 14 + 4 = 18. La hauteur peut
-    être négative (bitmap 'top-down', rare) : on rend sa valeur absolue, une dimension en
-    pixels n'étant jamais négative. Même choix que _dimensions_png() pour la sécurité
-    anti-troncature : voir sa note."""
+    """BMP : en-tête de fichier de 14 octets ('BM'…), puis BITMAPINFOHEADER : 4 octets de
+    taille, puis largeur et hauteur en 32 bits signés petit-boutistes, dès l'octet 18. Une
+    hauteur négative (bitmap « top-down ») est rendue en valeur absolue. Fichier tronqué :
+    voir _dimensions_png()."""
     if octets[:2] != b'BM':
         return 0, 0
     largeur, hauteur = struct.unpack('<ii', octets[18:26])
     return abs(largeur), abs(hauteur)
 
 
-# JPEG : marqueurs de début de trame (Start Of Frame). La plage 0xFFC0-0xFFCF contient aussi
-# trois marqueurs qui N'EN SONT PAS — le piège classique de ce parcours, explicitement rappelé
-# par le contrat : 0xFFC4 (DHT, table de Huffman), 0xFFC8 (JPG, réservé, jamais émis en
-# pratique) et 0xFFCC (DAC, table arithmétique). Les confondre avec un SOF lit la largeur/
-# hauteur de la charge d'une table de Huffman : des dimensions absurdes, pas une panne — donc
-# jamais détecté par un simple essai/exception, seulement par ce test explicite.
+# JPEG : la plage des marqueurs SOF (0xFFC0-0xFFCF) contient trois marqueurs qui n'en sont
+# pas : 0xFFC4 (DHT, table de Huffman), 0xFFC8 (JPG, réservé) et 0xFFCC (DAC, table
+# arithmétique). Les prendre pour un SOF donnerait des dimensions absurdes, sans erreur.
 _SOF_JPEG_EXCLUS = (0xC4, 0xC8, 0xCC)
 
 
 def _dimensions_jpeg(octets):
     """JPEG : après le SOI (0xFFD8), une suite de marqueurs 0xFF + 1 octet. Les marqueurs
-    sans charge (SOI, RST0-7, TEM) sont sautés de 2 octets ; les autres portent une longueur
-    16 bits GROS-boutiste juste après le marqueur (elle-même comptée dedans). Le SOF trouvé
-    porte, après ses 2 octets de marqueur + 2 octets de longueur : 1 octet de précision, puis
-    hauteur et largeur en 16 bits GROS-boutistes, DANS CET ORDRE (Y avant X) — d'où le
-    décalage de 5 (2+2+1) avant les deux entiers demandés par l'énoncé."""
+    sans charge (SOI, RST0-7, TEM) font 2 octets ; les autres sont suivis d'une longueur en
+    16 bits gros-boutiste, qui se compte elle-même. Dans un SOF, après le marqueur (2) et la
+    longueur (2) vient 1 octet de précision, puis la hauteur et la largeur en 16 bits
+    gros-boutistes, dans cet ordre : d'où le décalage de 5."""
     n = len(octets)
     if n < 4 or octets[0:2] != b'\xff\xd8':
         return 0, 0
     i = 2
-    # Garde-fou anti-boucle infinie : un fichier tronqué ou brouillé ne doit jamais faire
-    # tourner ce parcours sans fin — aucun JPEG réel ne porte des milliers de segments.
+    # Borne contre un fichier brouillé : aucun JPEG réel n'a des milliers de segments.
     segments = 0
     while i + 4 <= n and segments < 4096:
         segments += 1
         if octets[i] != 0xFF:
-            return 0, 0  # désynchronisé : en-tête illisible, on abandonne plutôt que deviner
+            return 0, 0  # désynchronisé : en-tête illisible
         marqueur = octets[i + 1]
         if marqueur == 0xFF:
             i += 1  # bourrage : des 0xFF répétés avant le vrai marqueur, autorisés par la norme
@@ -559,9 +484,7 @@ def _dimensions_jpeg(octets):
         if marqueur in (0xD9, 0xDA):
             return 0, 0  # EOI ou SOS atteint sans avoir vu de SOF : image mal formée
         if 0xC0 <= marqueur <= 0xCF and marqueur not in _SOF_JPEG_EXCLUS:
-            # Pas de vérification `i + 9 > n` ici : un SOF trouvé juste avant la fin d'un
-            # fichier tronqué fait lever struct.unpack (buffer trop court), rattrapé par le
-            # seul filet de _dimensions_image() — même choix que les trois autres formats.
+            # Pas de contrôle `i + 9 > n` : voir _dimensions_png().
             hauteur, largeur = struct.unpack('>HH', octets[i + 5:i + 9])
             return largeur, hauteur
         taille_segment = struct.unpack('>H', octets[i + 2:i + 4])[0]
@@ -572,13 +495,10 @@ def _dimensions_jpeg(octets):
 
 
 def _dimensions_image(octets):
-    """Dispatch par signature d'octets vers l'un des quatre formats couverts ; (0, 0) pour
-    tout le reste (SVG, EMF, WMF, ou un fichier tronqué/illisible/de format inconnu). Ce
-    `try` est le SEUL filet de sécurité contre un fichier tronqué (voir les notes de
-    _dimensions_png/_gif/_bmp/_jpeg : aucune des quatre ne se protège elle-même) : un
-    struct.error ou un IndexError levé au milieu d'un des quatre lecteurs, sur un fichier
-    coupé net, est rattrapé ici et rendu (0, 0) — jamais laissé remonter faire échouer la
-    lecture du manuscrit entier pour une seule image abîmée."""
+    """(largeur, hauteur) selon la signature des octets, pour PNG, JPEG, GIF et BMP ; (0, 0)
+    pour tout le reste (SVG, EMF, WMF, fichier tronqué ou inconnu). Ce `try` est le seul
+    filet contre un fichier tronqué : l'erreur d'un des quatre lecteurs donne (0, 0) au lieu
+    de faire échouer la lecture du manuscrit."""
     try:
         if octets[:8] == b'\x89PNG\r\n\x1a\n':
             return _dimensions_png(octets)
@@ -594,7 +514,7 @@ def _dimensions_image(octets):
 
 
 # ---------------------------------------------------------------------------------
-# Images DrawingML — voir le point 2 de l'en-tête pour les ancrages sans image.
+# Images DrawingML (ancrages sans image : voir l'en-tête).
 
 def _image_depuis_drawing(dessin, rels, z, recensement):
     conteneur = dessin.find(WP + 'inline')
@@ -610,9 +530,8 @@ def _image_depuis_drawing(dessin, rels, z, recensement):
         return None
     rid = blip.get(R + 'embed') or ''
     cible = rels.get(rid, '')
-    # Même convention que pronto_docx.charger_rels_images : une relation qui ne contient pas
-    # 'media/' n'est pas une image reconnue — les deux lecteurs doivent s'accorder ici pour
-    # que projeter_pronto() reste fiable.
+    # Comme pronto_docx.charger_rels_images : une relation sans 'media/' n'est pas une image.
+    # Les deux lecteurs doivent s'accorder pour que projeter_pronto() reste exact.
     if 'media/' not in cible:
         recensement['image_sans_relation'] += 1
         return None
@@ -622,9 +541,8 @@ def _image_depuis_drawing(dessin, rels, z, recensement):
         octets = z.read(_chemin_media(cible))
     except KeyError:
         recensement['image_octets_introuvables'] += 1
-    # cx/cy conservés SÉPARÉMENT (§4 du contrat) : leur produit reste `surface`, pour ne rien
-    # casser chez qui lit déjà ce champ, mais le produit seul ne permet ni rapport largeur/
-    # hauteur ni résolution — d'où largeur_px/hauteur_px ci-dessous, la vraie mesure.
+    # cx et cy sont gardés à part ; `surface` (leur produit) reste pour ses lecteurs. La
+    # résolution se tire de largeur_px et hauteur_px.
     cx = cy = surface = 0
     extent = conteneur.find(WP + 'extent')
     if extent is not None:
@@ -640,23 +558,18 @@ def _image_depuis_drawing(dessin, rels, z, recensement):
     if octets:
         largeur_px, hauteur_px = _dimensions_image(octets)
         if largeur_px == 0 and hauteur_px == 0:
-            # Un fichier qu'on A LU (octets non vides) mais dont on n'a pas su tirer de
-            # dimensions : format vectoriel (SVG/EMF/WMF, jamais mesurable) ou fichier
-            # abîmé — les deux rendent (0, 0) sans lever (voir _dimensions_image), mais le
-            # recensement doit le dire (§10 du contrat : jamais en silence). Une image dont
-            # les OCTETS manquent est déjà comptée par 'image_octets_introuvables' plus haut ;
-            # ne pas la recompter ici, sous peine de double alerte pour la même cause.
+            # Fichier lu mais sans dimensions (vectoriel ou abîmé) : recensé. Une image sans
+            # octets est déjà comptée dans 'image_octets_introuvables'.
             recensement['image_dimensions_indisponibles'] += 1
     return mm.Image(nom=nom, octets=octets, surface=surface, alt=alt, flottante=flottante,
                      cx=cx, cy=cy, largeur_px=largeur_px, hauteur_px=hauteur_px)
 
 
 # ---------------------------------------------------------------------------------
-# Aplatissement d'un paragraphe en [(w:r, lien|None), ...] dans l'ordre du document — un
-# w:hyperlink donne son lien à TOUS les runs qu'il enveloppe ; les conteneurs de
-# _CONTENEURS_PASSE_PLAT n'apportent ni texte ni lien propres, on descend simplement dedans.
-# Les marqueurs sans run (w:bookmarkStart/End, w:proofErr, w:commentRangeStart/End,
-# w:commentReference…) ne produisent rien : ils ne portent aucun texte.
+# Aplatissement d'un paragraphe en [(w:r, lien ou None), ...], dans l'ordre du document. Un
+# w:hyperlink donne son lien à tous les runs qu'il contient ; les conteneurs de
+# _CONTENEURS_PASSE_PLAT sont traversés. Les marqueurs sans texte (signets, w:proofErr,
+# bornes de commentaire…) ne produisent rien.
 
 def _runs_de_paragraphe(p, rels):
     resultat = []
@@ -675,26 +588,16 @@ def _runs_de_paragraphe(p, rels):
 
 
 # ---------------------------------------------------------------------------------
-# Images VML héritées (w:pict / mc:Fallback) — comptage ET récupération, révisés le
-# 19.09.2026. Compter les OCCURRENCES de v:imagedata (comme avant cette révision) surcomptait
-# d'un facteur mesuré de 5 sur lot-A/4_La méthode Flip Flap.docx : un même r:id peut être
-# répété plusieurs fois dans un même groupe (redondance d'affichage héritée), 5 relations
-# média DISTINCTES y donnaient 24 occurrences comptées. On compte désormais les r:id
-# DISTINCTS, et on les récupère quand leur relation résout vers un média présent dans
-# l'archive — 5 des 21 médias de ce fichier réel n'existaient dans AUCUNE sortie avant cette
-# révision : ce sont ces images-là. Une image qui ne peut pas être récupérée (relation ou
-# octets introuvables) rejoint les mêmes compteurs qu'une image DrawingML dans le même cas
-# ('image_sans_relation' / 'image_octets_introuvables', déjà avertis plus bas dans lire()) —
-# le message reste vrai quelle que soit l'origine (moderne ou héritée) de la référence cassée.
+# Images VML (w:pict, mc:Fallback). Un même r:id peut se répéter dans un groupe : on compte
+# et on récupère chaque r:id distinct dont la relation mène à un média présent dans
+# l'archive. Une image irrécupérable rejoint les compteurs des images DrawingML
+# ('image_sans_relation', 'image_octets_introuvables'), signalés par lire().
 
 def _images_depuis_vml(conteneur, rels, z, recensement):
-    """Image(s) récupérées d'un conteneur VML (w:pict ou mc:Fallback), une par r:id DISTINCT
-    de v:imagedata — jamais par occurrence (voir la note ci-dessus). VML ne déclare ni cx/cy
-    en EMU ni texte alternatif au même endroit que DrawingML : ces deux champs restent à leur
-    valeur par défaut (0, ''). Un conteneur SANS AUCUN v:imagedata (pure forme vectorielle
-    héritée — rectangle, connecteur…) n'est pas une image à récupérer : compté une seule fois
-    dans 'image_vml_ignoree', jamais 0, pour ne rien faire disparaître du décompte (même
-    principe que l'ancien comptage, conservé)."""
+    """Images d'un conteneur VML (w:pict ou mc:Fallback), une par r:id distinct de
+    v:imagedata. cx, cy et le texte alternatif restent à leur valeur par défaut (0, ''). Un
+    conteneur sans v:imagedata (rectangle, connecteur…) compte une fois dans
+    'image_vml_ignoree'."""
     images = []
     vus = set()
     trouve_imagedata = False
@@ -702,7 +605,7 @@ def _images_depuis_vml(conteneur, rels, z, recensement):
         trouve_imagedata = True
         rid = d.get(R + 'id')
         if rid and rid in vus:
-            continue  # même image référencée deux fois dans ce groupe : pas une seconde
+            continue  # même image déjà vue dans ce groupe
         cible = rels.get(rid, '') if rid else ''
         if not rid or 'media/' not in cible:
             recensement['image_sans_relation'] += 1
@@ -723,17 +626,11 @@ def _images_depuis_vml(conteneur, rels, z, recensement):
 
 
 def _images_du_repli_fantome(r, rels, z, recensement):
-    """Correction du 18.09.2026 (revue adverse, sur lot-A/4_La méthode Flip Flap.docx),
-    récupération ajoutée le 19.09.2026 : _enfants_utiles() ne regarde QUE la branche
-    mc:Choice d'un mc:AlternateContent (voir sa note) pour ne pas compter deux fois le MÊME
-    dessin redit en VML dans mc:Fallback — mais cette hypothèse (« la même forme, redite »)
-    est fausse pour 4 des 10 ancrages flottants de ce fichier réel : leur branche Choice est
-    un pur groupe de formes SANS <a:blip> (recensé en 'forme_vectorielle_ignoree»,
-    correctement), mais leur branche Fallback, elle, porte un VRAI groupe de 5 images
-    embarquées (<v:imagedata>) chacune. On ne visite le Fallback QUE quand la branche Choice
-    n'a trouvé aucune image propre — sinon ce serait exactement le double comptage que
-    _enfants_utiles évite déjà pour les 6 autres ancrages, dont le Fallback ne fait que redire
-    la même forme vide."""
+    """Images portées par le seul mc:Fallback d'un mc:AlternateContent. _enfants_utiles() ne
+    lit que mc:Choice, qui d'ordinaire redit le même dessin. Mais une Choice peut n'être
+    qu'un groupe de formes sans <a:blip> alors que son Fallback porte de vraies images
+    (<v:imagedata>). On lit donc le Fallback seulement quand la Choice n'a aucune image, pour
+    ne rien compter deux fois."""
     images = []
     for alt in r.findall(MC + 'AlternateContent'):
         choix = alt.find(MC + 'Choice')
@@ -742,15 +639,14 @@ def _images_du_repli_fantome(r, rels, z, recensement):
             continue
         dessin = choix.find(W + 'drawing')
         if dessin is None or dessin.find('.//' + A + 'blip') is not None:
-            continue  # pas un dessin, ou déjà une vraie image côté Choice : rien à ajouter
+            continue  # pas un dessin, ou image déjà présente côté Choice
         images.extend(_images_depuis_vml(repli, rels, z, recensement))
     return images
 
 
 def _note_depuis_enfants(enfants, decalage_notes_fin):
-    """L'identifiant FINAL (déjà décalé pour une note de fin — voir Contexto) du premier appel
-    de note trouvé dans ce run, ou None. Word n'en pose jamais deux dans le même run ; un seul
-    suffit à respecter le contrat même sur un document malformé qui en porterait plus d'un."""
+    """L'identifiant du premier appel de note de ce run (décalé pour une note de fin, voir
+    Contexto), ou None. Word n'en pose jamais deux dans un run."""
     for e in enfants:
         if e.tag == W + 'footnoteReference':
             try:
@@ -766,11 +662,8 @@ def _note_depuis_enfants(enfants, decalage_notes_fin):
 
 
 def _fragments_de_run(r, lien, indice, indice_paragraphe, rels, z, recensement, ctx, pstyle_id):
-    """`indice` : position du w:r dans SON PARAGRAPHE (Fragment.source, §4 du contrat,
-    inchangé). `indice_paragraphe` : position du w:p PORTEUR dans le corps (Image.source —
-    corrigé le 19.09.2026 : avant cette date, Image.source recevait `indice`, l'indice du
-    RUN, jamais celui du paragraphe ; mesuré : 6 rapports d'images sur 7 valaient alors 0 pour
-    toutes leurs images)."""
+    """`indice` : position du w:r dans son paragraphe (Fragment.source).
+    `indice_paragraphe` : position du w:p dans le corps (Image.source)."""
     rpr = r.find(W + 'rPr')
     forme = _forme_directe(rpr)
     effectif = _forme_effective(forme, _lire_rstyle(rpr), pstyle_id, ctx.index_styles,
@@ -791,14 +684,11 @@ def _fragments_de_run(r, lien, indice, indice_paragraphe, rels, z, recensement, 
     fragments = [mm.Fragment(texte='', image=img, forme=forme, lien=lien, source=indice,
                               effectif=effectif) for img in images]
     if note_id is not None:
-        # Même convention qu'une image (§4 du contrat) : texte == '' quand le fragment porte
-        # une note.
+        # Comme pour une image, un fragment de note a un texte vide.
         fragments.append(mm.Fragment(texte='', image=None, forme=forme, lien=lien,
                                       source=indice, note=note_id, effectif=effectif))
-    # Un run porte normalement du texte OU une image/note, jamais les deux (mesuré sur le
-    # corpus réel) ; s'il porte quand même du texte en plus, ou ni l'un ni l'autre, on rend
-    # tout de même un Fragment texte pour ne rien perdre et ne jamais rendre une liste vide
-    # pour un run qui existe.
+    # Un run porte d'ordinaire du texte ou une image ou une note. S'il a du texte en plus, ou
+    # rien du tout, on rend un Fragment texte : rien ne se perd et la liste n'est jamais vide.
     if texte or not fragments:
         fragments.append(mm.Fragment(texte=texte, image=None, forme=forme, lien=lien,
                                       source=indice, effectif=effectif))
@@ -806,17 +696,12 @@ def _fragments_de_run(r, lien, indice, indice_paragraphe, rels, z, recensement, 
 
 
 # ---------------------------------------------------------------------------------
-# Numérotation des listes (word/numbering.xml) — résolution du FORMAT en trois sauts, ajoutée
-# le 18.09.2026 (§5.4 du contrat, décidé avec Robin) : `w:numPr` du paragraphe donne un numId ;
-# `word/numbering.xml` (`w:num`) donne l'abstractNumId correspondant ; `w:abstractNum` porte,
-# PAR NIVEAU (`w:lvl`), le `w:numFmt` qui décide puce ou numérotée. Ce lecteur ne DEVINE
-# jamais ce format : absent, introuvable ou inconnu, il rend '' — c'est l'ÉCRIVAIN
-# (manuscrit_gabarit.py) qui choisit alors un repli, et qui le dit dans sa trace. Ce n'est pas
-# une décision de lecture, donc pas une violation du §3 (« manuscrit_docx.py ne sait rien des
-# décisions ») : ce module rapporte ce que le document déclare, rien de plus.
+# Numérotation des listes (word/numbering.xml), résolue en trois sauts : le `w:numPr` du
+# paragraphe donne un numId, `w:num` donne l'abstractNumId, et `w:abstractNum` porte par
+# niveau (`w:lvl`) le `w:numFmt` qui dit puce ou numéro. Un format absent ou inconnu rend '' :
+# c'est l'écrivain (manuscrit_gabarit.py) qui choisit alors, et le dit dans sa trace.
 
-# Catalogue des w:numFmt numérotés reconnus par Word (au-delà, un format exotique ou 'none'
-# n'est PAS supposé numéroté par défaut : '' plutôt qu'un choix inventé ici).
+# Les w:numFmt numérotés de Word. Tout autre format, 'none' compris, rend ''.
 _FORMATS_NUMEROTES = ('decimal', 'decimalZero', 'lowerLetter', 'upperLetter', 'lowerRoman',
                        'upperRoman', 'ordinal', 'cardinalText', 'ordinalText', 'hex', 'chicago',
                        'decimalEnclosedCircle', 'decimalFullWidth', 'aiueo', 'iroha',
@@ -824,9 +709,8 @@ _FORMATS_NUMEROTES = ('decimal', 'decimalZero', 'lowerLetter', 'upperLetter', 'l
 
 
 def _numfmt_vers_type(numfmt):
-    """'puce' | 'numero' | '' à partir d'un w:numFmt brut — jamais un troisième choix
-    inventé : un format hors des deux catalogues (par exemple 'none', qui signifie
-    explicitement « pas de numérotation affichée ») rend '', comme un format absent."""
+    """'puce', 'numero' ou '' d'après un w:numFmt brut. 'none' (« pas de numérotation
+    affichée ») et tout format inconnu rendent ''."""
     if numfmt == 'bullet':
         return 'puce'
     if numfmt in _FORMATS_NUMEROTES:
@@ -835,17 +719,12 @@ def _numfmt_vers_type(numfmt):
 
 
 def _charger_numerotation(z):
-    """{ (numId_brut, ilvl_brut): 'puce'|'numero'|'' }, une fois par document — voir la note
-    ci-dessus. `word/numbering.xml` absent (mesuré : le cas de tout .docx fabriqué par script,
-    sans aucune liste) rend {} ; chaque paragraphe listé résout alors sur '' via le repli de
-    dict.get() dans _liste_depuis(), jamais une valeur choisie ici.
+    """{(numId brut, ilvl brut): 'puce'|'numero'|''}, une fois par document. Sans
+    `word/numbering.xml` (cas d'un .docx sans liste) : {}, et _liste_depuis() rend ''.
 
-    w:lvlOverride : un `w:num` peut redéfinir le format d'un niveau donné SANS toucher à son
-    abstractNum — Word s'en sert quand une autrice repart d'une liste existante en changeant la
-    puce d'un niveau. S'il porte lui-même un `w:lvl` (donc un `w:numFmt` propre), IL L'EMPORTE
-    pour ce niveau précis sur celui de l'abstractNum ; un simple `w:startOverride` (qui ne fait
-    que relancer la numérotation à une valeur donnée) ne change, lui, jamais le format — il est
-    ignoré ici à dessein, il ne porte pas de w:lvl."""
+    Un `w:lvlOverride` qui porte son propre `w:lvl` redéfinit le format de ce niveau et
+    l'emporte sur l'abstractNum (Word le pose quand on change la puce d'un niveau d'une liste
+    existante). Un `w:startOverride` seul ne change que le numéro de départ : ignoré."""
     try:
         racine = ET.fromstring(z.read('word/numbering.xml'))
     except Exception:
@@ -870,8 +749,8 @@ def _charger_numerotation(z):
             continue
         aid_el = num.find(W + 'abstractNumId')
         aid = aid_el.get(W + 'val') if aid_el is not None else None
-        # Copie : un w:lvlOverride ne doit JAMAIS muter la table de l'abstractNum, que
-        # d'autres w:num peuvent référencer sans le moindre override.
+        # Copie : un w:lvlOverride ne doit pas modifier la table de l'abstractNum, que
+        # d'autres w:num référencent.
         niveaux_num = dict(niveaux_abstraits.get(aid, {}))
         for override in num.findall(W + 'lvlOverride'):
             ilvl = override.get(W + 'ilvl')
@@ -890,13 +769,10 @@ def _charger_numerotation(z):
 # Paragraphe.
 
 def _liste_depuis(ppr, style_id, ctx):
-    """Résout `numPr` du paragraphe LUI-MÊME ; à défaut (corrigé le 19.09.2026, §5.4), celui
-    HÉRITÉ de son style (chaîne basedOn — voir _numpr_depuis_style) : un style de liste ne
-    repose pas forcément un numPr sur chaque paragraphe qui l'applique.
-
-    numId="0" (corrigé le 19.09.2026) : convention Word qui retire EXPLICITEMENT toute
-    numérotation héritée — ce n'est pas « une liste de format indéterminé », c'est « pas de
-    liste du tout », rendu ici par None comme l'absence pure et simple de numPr."""
+    """(numId, ilvl, type) de la liste du paragraphe, ou None. Le `numPr` vient du
+    paragraphe, sinon de son style (_numpr_depuis_style) : un style de liste ne pose pas
+    toujours un numPr sur chaque paragraphe. numId="0" retire toute numérotation héritée :
+    pas de liste, donc None."""
     numpr = ppr.find(W + 'numPr') if ppr is not None else None
     if numpr is None and style_id:
         numpr = _numpr_depuis_style(style_id, ctx.index_styles)
@@ -964,10 +840,9 @@ def _paragraphe_depuis(p, styles, rels, z, recensement, indice, ctx):
 
 
 # ---------------------------------------------------------------------------------
-# Tableaux — colspan (w:gridSpan, comme pronto_docx) ET rowspan (w:vMerge, que pronto_docx ne
-# gère PAS : voir le point 4 de l'en-tête). Une cellule masquée par une fusion VERTICALE
-# n'apparaît jamais dans `rangees` (§4 du contrat) ; le gridSpan, lui, ne masque jamais rien
-# côté Word — il n'insère aucune cellule pour les colonnes qu'il couvre.
+# Tableaux : colspan (w:gridSpan, comme pronto_docx) et rowspan (w:vMerge, que pronto_docx ne
+# gère pas). Une cellule masquée par une fusion verticale n'apparaît pas dans `rangees`. Le
+# gridSpan ne masque rien : Word n'écrit pas de cellule pour les colonnes couvertes.
 
 def _colspan(tc):
     tcpr = tc.find(W + 'tcPr')
@@ -983,9 +858,8 @@ def _colspan(tc):
 
 
 def _vmerge_continuation(tc):
-    """True si ce w:tc est la CONTINUATION d'une fusion verticale (masqué). w:vMerge sans
-    w:val, ou w:val="continue", marque une continuation ; w:val="restart" démarre une nouvelle
-    fusion — cette cellule-là n'est PAS masquée, c'est elle qui porte le rowspan."""
+    """True si ce w:tc continue une fusion verticale (cellule masquée) : w:vMerge sans w:val
+    ou à "continue". w:val="restart" ouvre une fusion ; cette cellule porte le rowspan."""
     tcpr = tc.find(W + 'tcPr')
     if tcpr is None:
         return False
@@ -1007,16 +881,11 @@ def _ligne_est_entete(tr):
 
 
 def _deplier_sdt_niveau_bloc(container):
-    """Remplace en place chaque w:sdt enfant DIRECT de `container` par les enfants de son
-    w:sdtContent (récursif : un sdt peut en envelopper un autre) — AJOUTÉ le 19.09.2026 (point
-    5 de l'en-tête). Un contrôle de contenu de niveau BLOC (formulaire Word, citation Zotero,
-    répertoire de style…) enveloppant un ou plusieurs w:p ENTIERS les rendait invisibles à
-    blocs_du_corps() de pronto_docx.py (repris tel quel, §3 : il ne reconnaît que w:p/w:tbl
-    comme enfants directs de son conteneur) — SANS AUCUN avertissement, à l'exact endroit où
-    le §10 du contrat interdit le silence. Le cas de niveau RUN (un sdt enveloppant des w:r à
-    l'intérieur d'un paragraphe) est distinct et déjà couvert par _CONTENEURS_PASSE_PLAT dans
-    _runs_de_paragraphe. Un sdt sans sdtContent (rare, contrôle vide) disparaît proprement,
-    rien à reporter."""
+    """Remplace en place chaque w:sdt enfant direct de `container` par les enfants de son
+    w:sdtContent, récursivement. Un contrôle de contenu de niveau bloc (formulaire Word,
+    citation Zotero…) qui enveloppe des w:p les cacherait à blocs_du_corps(), qui ne voit que
+    les w:p et w:tbl directs. Le niveau run est traité par _CONTENEURS_PASSE_PLAT. Un sdt
+    sans sdtContent disparaît."""
     nouveaux = []
     for enfant in list(container):
         if enfant.tag == W + 'sdt':
@@ -1031,9 +900,8 @@ def _deplier_sdt_niveau_bloc(container):
 
 
 def _blocs_enfants(container, styles, rels, z, recensement, ctx):
-    """Les Paragraphe|Tableau enfants DIRECTS de `container` (un w:tc, un w:footnote…) —
-    `source` = position locale dans CE conteneur, comme Cellule elle-même n'a pas de champ
-    `source` (§4 du contrat) : pas de chemin complet, seulement une position locale."""
+    """Les Paragraphe et Tableau enfants directs de `container` (un w:tc, un w:footnote…).
+    `source` est la position locale dans ce conteneur, pas un chemin complet."""
     _deplier_sdt_niveau_bloc(container)
     resultat = []
     i = 0
@@ -1053,9 +921,8 @@ def _cellule_depuis(tc, styles, rels, z, recensement, ctx):
 
 
 def _tableau_depuis(tbl, styles, rels, z, recensement, indice, ctx, page=None):
-    """`page` : None pour un tableau imbriqué (jamais transmis par l'appelant récursif via
-    _blocs_enfants) — seul l'appelant de premier niveau (lire()) le calcule, comme
-    pronto_docx.lire()."""
+    """`page` : calculée par lire() pour un tableau de premier niveau, comme
+    pronto_docx.lire() ; None pour un tableau imbriqué."""
     pending = {}          # colonne -> Cellule en cours de fusion verticale
     rangees = []
     for tr in tbl:
@@ -1074,8 +941,7 @@ def _tableau_depuis(tbl, styles, rels, z, recensement, indice, ctx, page=None):
                 if cible is not None:
                     cible.rowspan += 1
                     nouvelle_pending[col] = cible
-                # Continuation sans cellule de départ connue (fichier mal formé — jamais vu
-                # sur le corpus réel) : masquée sans faire planter la lecture pour autant.
+                # Continuation sans cellule de départ (fichier mal formé) : masquée.
                 col += largeur
                 continue
             cellule = _cellule_depuis(tc, styles, rels, z, recensement, ctx)
@@ -1093,11 +959,8 @@ def _tableau_depuis(tbl, styles, rels, z, recensement, indice, ctx, page=None):
 # Document — langue déclarée, révisions, commentaires, notes de bas de page.
 
 def _langue_declaree(z):
-    """Prise sur w:docDefaults/w:rPrDefault/w:rPr/w:lang de styles.xml — la langue de
-    correction par défaut de tout run qui n'en déclare pas une à lui, donc la meilleure
-    candidate à « la » langue du document ; repli sur w:themeFontLang de settings.xml
-    (mesuré identique sur le corpus, mais peut différer sur un document retouché). '' si
-    aucune des deux n'est présente."""
+    """Langue du document : w:docDefaults/w:rPrDefault/w:rPr/w:lang de styles.xml (langue de
+    correction par défaut des runs), sinon w:themeFontLang de settings.xml, sinon ''."""
     try:
         racine = ET.fromstring(z.read('word/styles.xml'))
     except Exception:
@@ -1124,9 +987,8 @@ def _langue_declaree(z):
 
 
 def _racine_ou_none(z, chemin):
-    """Element racine d'un fichier XML optionnel de l'archive, ou None s'il est absent ou
-    illisible — jamais une exception : footnotes.xml, endnotes.xml, comments.xml n'existent
-    pas dans un .docx qui n'en a pas besoin."""
+    """Racine d'un fichier XML facultatif de l'archive (footnotes.xml, endnotes.xml,
+    comments.xml…), ou None s'il est absent ou illisible."""
     try:
         return ET.fromstring(z.read(chemin))
     except Exception:
@@ -1145,12 +1007,10 @@ def _compter_commentaires(z):
 
 
 def _decalage_notes_fin(racine_footnotes):
-    """Le plus grand identifiant de note de bas de page RÉEL (hors séparateurs techniques),
-    0 si aucun — AJOUTÉ le 19.09.2026 (§4 du contrat) : une note de fin reçoit son identifiant
-    BRUT plus ce décalage, ce qui la place toujours au-delà de la plus grande note de bas de
-    page existante et lui garantit de ne jamais entrer en collision avec elle dans
-    Document.notes (les deux familles utilisent chacune leur propre numérotation dans le
-    document Word d'origine, et peuvent donc partager le même identifiant brut)."""
+    """Le plus grand identifiant de note de bas de page (hors notes techniques), ou 0. Une
+    note de fin reçoit son identifiant brut plus ce décalage : notes de bas de page et notes
+    de fin ont chacune leur numérotation dans Word, et ne doivent pas se rencontrer dans
+    Document.notes."""
     if racine_footnotes is None:
         return 0
     ids = []
@@ -1165,11 +1025,8 @@ def _decalage_notes_fin(racine_footnotes):
 
 
 def _notes_depuis_racine(racine, tag_note, styles, rels, z, recensement, ctx, decalage=0):
-    """{id_final: [Paragraphe|Tableau, ...]} — `tag_note` : W+'footnote' (decalage=0) ou
-    W+'endnote' (decalage=_decalage_notes_fin(...), voir lire()). AJOUTÉ/RÉÉCRIT le
-    19.09.2026 (§4 du contrat) : rendait auparavant une LISTE PLATE de tous les blocs de
-    toutes les notes de bas de page confondues (aucune façon de savoir laquelle appelle quoi),
-    et ne lisait jamais word/endnotes.xml du tout."""
+    """{id_final: [Paragraphe|Tableau, ...]}. `tag_note` : W+'footnote' (decalage=0) ou
+    W+'endnote' (decalage=_decalage_notes_fin(...), voir lire())."""
     if racine is None:
         return {}
     notes = {}
@@ -1185,16 +1042,10 @@ def _notes_depuis_racine(racine, tag_note, styles, rels, z, recensement, ctx, de
 
 
 def _ids_notes_appelees(blocs):
-    """{id, ...} des notes RÉELLEMENT appelées par un Fragment.note à l'intérieur de `blocs`
-    (paragraphes ET cellules de tableau, à toute profondeur). AJOUTÉ le 19.09.2026 (superviseur,
-    sur mesure de l'agent de l'écrivain) : une note présente dans footnotes.xml/endnotes.xml
-    mais qu'AUCUN w:footnoteReference/w:endnoteReference n'appelle dans document.xml est une
-    note FANTÔME — mesuré sur 1bis, 2-dense, 2-grappes et 5bis, où un type technique de plus
-    que _TYPES_NOTE_TECHNIQUES ne couvrait pas encore ('continuationNotice') apparaissait dans
-    les deux fichiers de notes SANS aucun renvoi correspondant : ces quatre fichiers n'ont, une
-    fois filtré, AUCUNE vraie note. Voir lire(), qui appelle cette fonction sur le corps ET,
-    par propagation, sur le contenu des notes retenues (une note peut, rarement, en appeler une
-    autre)."""
+    """{id, ...} des notes appelées par un Fragment.note dans `blocs`, cellules comprises.
+    Une note de footnotes.xml ou endnotes.xml que rien n'appelle n'est pas une note du
+    document. lire() l'applique au corps, puis aux notes retenues (une note peut en appeler
+    une autre)."""
     ids = set()
     for b in blocs:
         if isinstance(b, mm.Tableau):
@@ -1212,9 +1063,8 @@ def _ids_notes_appelees(blocs):
 # Point d'entrée n°1 : lire().
 
 def lire(chemin):
-    """Rend un manuscrit_modele.Document (§4 du contrat). Toute erreur de lecture (zip
-    invalide, document.xml absent ou mal formé) se propage — même contrat que
-    pronto_docx.lire()."""
+    """Rend un manuscrit_modele.Document. Une erreur de lecture (zip invalide, document.xml
+    absent ou mal formé) se propage, comme dans pronto_docx.lire()."""
     recensement = {'forme_vectorielle_ignoree': 0, 'image_sans_relation': 0,
                    'image_octets_introuvables': 0, 'image_vml_ignoree': 0,
                    'image_dimensions_indisponibles': 0, 'symboles_police_speciale': 0,
@@ -1246,9 +1096,8 @@ def lire(chemin):
                                       recensement, ctx)
         notes.update(_notes_depuis_racine(racine_endnotes, W + 'endnote', styles_id_nom, rels,
                                            z, recensement, ctx, decalage=decalage))
-        # Déplié AVANT blocs_du_corps() de pronto_docx.py (repris tel quel, §3) : un w:sdt de
-        # niveau bloc, enfant direct du corps, lui serait invisible (voir le point 5 de
-        # l'en-tête et _deplier_sdt_niveau_bloc).
+        # Déplié avant blocs_du_corps(), qui ne verrait pas un w:sdt de niveau bloc (voir
+        # _deplier_sdt_niveau_bloc).
         body = racine.find(W + 'body')
         if body is not None:
             _deplier_sdt_niveau_bloc(body)
@@ -1266,12 +1115,8 @@ def lire(chemin):
                                               page=page))
             cumul += ooxml_lecture.compter_marqueurs_page(e)
 
-        # Filtre des notes ORPHELINES (superviseur, 19.09.2026) : une note présente dans
-        # footnotes.xml/endnotes.xml qu'AUCUN fragment n'appelle n'est pas une vraie note de ce
-        # document — voir _ids_notes_appelees(). Propagation à point fixe : une note RETENUE
-        # peut elle-même en appeler une autre (rare, mais pas interdit par la norme), auquel
-        # cas cette autre doit être retenue aussi, même si le corps ne l'appelle pas
-        # directement.
+        # Retrait des notes que rien n'appelle (voir _ids_notes_appelees()). Propagation
+        # jusqu'à stabilité : une note retenue peut en appeler une autre, retenue aussi.
         ids_appelees = _ids_notes_appelees(blocs)
         changement = True
         while changement:
@@ -1290,8 +1135,7 @@ def lire(chemin):
         n_fld = (sum(1 for _ in racine.iter(W + 'fldSimple'))
                  + sum(1 for _ in racine.iter(W + 'fldChar')))
 
-    # §10 du contrat : « ce que tu ne sais pas lire, tu le déclares » — un avertissement par
-    # famille, jamais un par occurrence (même esprit que le §10 « volume d'alertes »).
+    # Ce qui n'a pas été lu est signalé : un avertissement par famille, pas par occurrence.
     if n_entetes_pieds:
         avertir('entetes-pieds-non-lus',
                 ['article', 'fichiers %d' % n_entetes_pieds],
@@ -1383,18 +1227,16 @@ def lire(chemin):
 
 
 # ---------------------------------------------------------------------------------
-# Point d'entrée n°2 : projeter_pronto(). Voir le point 4 de l'en-tête pour ce qui borne
-# l'égalité avec pronto_docx.lire().
+# Point d'entrée n°2 : projeter_pronto(). Les écarts avec pronto_docx.lire() sont décrits
+# dans l'en-tête.
 
 def projeter_pronto(document):
-    """Rend EXACTEMENT le modèle que rend pronto_docx.lire() sur le même fichier : une
-    list[pronto_modele.Par | pronto_modele.Tableau] (§3 du contrat)."""
+    """Rend le modèle que pronto_docx.lire() rend sur le même fichier : une
+    list[pronto_modele.Par | pronto_modele.Tableau]."""
 
     def texte_paragraphe(p):
-        # Concaténation brute des Fragment (tab/br/cr/tiret y sont RÉELS depuis le
-        # 19.09.2026), puis pm.normaliser_valeur(), le MÊME que pronto_docx.lire() : tabulation et
-        # saut de ligne y deviennent une espace, les insécables et les tirets restent. La projection
-        # reste donc l'exact miroir de pronto_docx.lire().
+        # Fragments concaténés, puis pm.normaliser_valeur() comme dans pronto_docx.lire() :
+        # tabulation et saut de ligne deviennent une espace ; insécables et tirets restent.
         brut = ''.join(f.texte for f in p.fragments if f.image is None and f.note is None)
         return pm.normaliser_valeur(brut)
 
@@ -1414,14 +1256,12 @@ def projeter_pronto(document):
 
 
 # ---------------------------------------------------------------------------------
-# CLI de diagnostic — sur le modèle de manuscrit_modele.py --diagnostic (mais sur un fichier
-# .docx réel, pas un JSON reçu sur stdin) : c'est elle que test/js/manuscrit-docx.test.js
-# pilote, faute de pouvoir importer ce module directement depuis Node.
+# CLI de diagnostic, comme manuscrit_modele.py --diagnostic mais sur un fichier .docx. C'est
+# par elle que test/js/manuscrit-docx.test.js teste ce module depuis Node.
 
 def _images_du_document(document):
-    """Toutes les Image du document, en profondeur (corps ET notes, tableaux imbriqués
-    compris) — pour --images, le seul mode qui vérifie les OCTETS (le JSON de --diagnostic,
-    via manuscrit_modele.document_vers_json, n'expose que leur longueur)."""
+    """Toutes les Image du document (corps, notes, tableaux imbriqués), pour --images, seul
+    mode qui expose les octets (--diagnostic n'en donne que la longueur)."""
     trouvees = []
 
     def creuser_blocs(blocs):
@@ -1436,15 +1276,14 @@ def _images_du_document(document):
                         trouvees.append(f.image)
 
     creuser_blocs(document.blocs)
-    for blocs_note in document.notes.values():   # dict{id: [bloc, ...]} depuis le 19.09.2026
+    for blocs_note in document.notes.values():   # dict{id: [bloc, ...]}
         creuser_blocs(blocs_note)
     return trouvees
 
 
 def _pm_bloc_vers_json(bloc):
-    """Sérialise un Par | Tableau de pronto_modele (aucun des deux _vers_json de
-    manuscrit_modele.py ne les couvre, ils sont d'un module différent) — utilisé pour
-    --projeter-pronto ET --pronto-brut, afin que le test compare deux JSON de MÊME forme."""
+    """Sérialise un Par ou un Tableau de pronto_modele, pour --projeter-pronto et
+    --pronto-brut : le test compare ainsi deux JSON de même forme."""
     if isinstance(bloc, pm.Tableau):
         return {'type': 'tableau', 'page': bloc.page,
                 'rangees': [[{'colspan': c.colspan,
@@ -1482,8 +1321,7 @@ def principal(argv):
     except Exception as e:
         print('[manuscrit_docx] lecture impossible (%s) : %s' % (chemin, e), file=sys.stderr)
         return 1
-    # ensure_ascii=True : même clause que manuscrit_modele.py --diagnostic, la console
-    # Windows n'est pas garantie en UTF-8.
+    # ensure_ascii=True : la console Windows n'est pas forcément en UTF-8.
     print(json.dumps(resultat, ensure_ascii=True))
     return 0
 

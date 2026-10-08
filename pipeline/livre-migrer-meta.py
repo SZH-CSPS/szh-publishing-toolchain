@@ -1,35 +1,32 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Range le titre et les auteur·e·s d'un chapitre dans sa fiche <slug>.meta.yaml.
+Déplace le titre et les auteurs d'un chapitre du .md vers sa fiche <slug>.meta.yaml.
 
-Avant, un chapitre portait « # Titre » puis « ::: {.szh-auteurs} … ::: » dans son .md.
-Désormais le titre (title.<lang>) et les auteur·e·s (author, schéma des articles) sont dans
-la fiche, et le gabarit les imprime (szh-livre-titre.lua, szh-livre-auteurs.lua). Ce script
-fait le passage, livre par livre ou chapitre par chapitre.
+Dans le .md : « # Titre » puis « ::: {.szh-auteurs} … ::: ». Dans la fiche : title.<lang>
+et author (même schéma que les articles), que le gabarit imprime (szh-livre-titre.lua,
+szh-livre-auteurs.lua).
 
 Appel : python3 livre-migrer-meta.py <dossier-livre> [--simuler] [--chapitre <slug>]
 
   --simuler   n'écrit rien, dit ce qui serait fait.
-  --chapitre  un seul chapitre (c'est ainsi que l'import Word et livre-scinder.py l'appellent).
+  --chapitre  un seul chapitre (appel de l'import Word et de livre-scinder.py).
 
-Règles, toutes volontaires :
-  * un livre `locked: true` est refusé (code 1), rien n'est touché ;
-  * une valeur déjà présente dans la fiche n'est JAMAIS écrasée. Si elle dit la même chose
-    que le .md, le .md est simplement allégé ; si elle diffère, le .md reste tel quel et le
-    conflit est signalé — c'est à la rédaction de trancher ;
-  * idempotent : un chapitre déjà migré ne change plus ;
-  * un .md qui porte plusieurs titres de niveau 1 est un manuscrit à scinder, pas un
-    chapitre : il est laissé tel quel (livre-scinder.py écrit les fiches de ses morceaux) ;
-  * un titre qui n'est pas la toute première ligne du .md, ou qui porte des attributs
-    pandoc, est laissé et signalé : le déplacer changerait l'ordre du texte.
+Règles :
+  * un livre `locked: true` est refusé (code 1), rien n'est modifié ;
+  * une valeur déjà présente dans la fiche n'est pas écrasée. Identique au .md, elle est
+    retirée du .md ; différente, le .md reste tel quel et le conflit est signalé ;
+  * idempotent ;
+  * un .md à plusieurs titres de niveau 1 est un manuscrit à scinder : laissé tel quel
+    (livre-scinder.py écrit les fiches des morceaux) ;
+  * un titre qui n'est pas la première ligne du .md, ou qui porte des attributs pandoc,
+    est laissé et signalé : le déplacer changerait l'ordre du texte.
 
-Le découpage « A & B », « A, B et C », « A und B » est celui de l'import Word des articles
-(docx-meta.py, auteurs_depuis_byline) : un seul découpeur de noms dans le dépôt. L'italien
-(« A e B ») n'y est pas connu ; il est traité ici, pour les livres en italien seulement.
+Les noms sont découpés (« A & B », « A, B et C », « A und B ») par auteurs_depuis_byline
+de docx-meta.py. L'italien « A e B » est traité ici.
 
-Sortie : un rapport sur stdout, une ligne par constat. Code de sortie 0, ou 1 si le livre
-est refusé ou illisible.
+Sortie : un rapport sur stdout, une ligne par message. Code 0, ou 1 si le livre est refusé
+ou illisible.
 """
 
 import importlib.util
@@ -121,14 +118,13 @@ def bloc_auteurs_apres(lignes, rang_titre):
 
 
 # --------------------------------------------------------------------------------------
-# Édition de la fiche, en texte : pas de PyYAML en production, et les commentaires de la
-# fiche sont à la rédaction.
+# Édition de la fiche comme texte : pas de PyYAML dans l'image, et les commentaires de la
+# fiche sont gardés.
 # --------------------------------------------------------------------------------------
 def _echappe(valeur):
-    """Valeur YAML entre guillemets. Doubles par défaut ; simples quand le texte porte des
-    guillemets droits sans apostrophe, pour que le lecteur plat de szh_commun (qui ne sait
-    pas défaire un échappement) relise le texte tel quel. Les deux à la fois : doubles
-    échappés, que pandoc lit correctement."""
+    """Valeur YAML entre guillemets doubles ; simples si le texte contient des guillemets
+    droits sans apostrophe, car le lecteur de szh_commun ne défait pas les échappements.
+    Avec les deux : doubles échappés, que pandoc lit."""
     if '"' not in valeur and '\\' not in valeur:
         return '"' + valeur + '"'
     if "'" not in valeur and '\\' not in valeur:
@@ -147,7 +143,7 @@ def _bloc_cle(lignes, cle):
                                        or lignes[j].strip() == '-'
                                        or not lignes[j].strip()):
                 if not lignes[j].strip():
-                    # une ligne vide ne ferme le bloc que si ce qui suit n'en fait pas partie
+                    # une ligne vide ne ferme le bloc que si la suite n'en fait pas partie
                     k = j
                     while k < len(lignes) and not lignes[k].strip():
                         k += 1
@@ -159,8 +155,8 @@ def _bloc_cle(lignes, cle):
 
 
 def ajouter_titre(lignes, lang, titre):
-    """Pose title.<lang> dans les lignes de la fiche. Rend False si la forme de `title`
-    n'est pas une que ce script sait compléter (l'appelant le signale)."""
+    """Pose title.<lang> dans les lignes de la fiche. Rend False si `title` a une forme que
+    ce script ne sait pas compléter."""
     ligne_lang = '  %s: %s' % (lang, _echappe(titre))
     bloc = _bloc_cle(lignes, 'title')
     if bloc is None:
@@ -186,8 +182,8 @@ def ajouter_titre(lignes, lang, titre):
 
 
 def ajouter_auteurs(lignes, personnes):
-    """Pose `author:` (liste de personnes). Une clé vide (`author:`, `author: []`) est
-    remplacée ; une clé remplie n'arrive jamais ici."""
+    """Pose `author:` (liste de personnes), en remplaçant une clé vide (`author:`,
+    `author: []`). N'est appelée que si la clé n'est pas remplie."""
     bloc = _bloc_cle(lignes, 'author')
     if bloc is not None:
         del lignes[bloc[0]:bloc[1]]
@@ -220,9 +216,9 @@ def ecrire_texte(chemin, lignes, eol):
 
 
 def ecrire_titre_fiche(chemin_fiche, lang, titre):
-    """Pose title.<lang> dans la fiche (créée si besoin). Rend False si la fiche a déjà un
-    `title` rempli dans cette langue, ou une forme que ce script ne complète pas : rien
-    n'est alors écrit. Sert à livre-scinder.py, qui écrit la fiche de chaque morceau."""
+    """Pose title.<lang> dans la fiche (créée si besoin). Rend False, sans rien écrire, si
+    la fiche a déjà un titre dans cette langue ou une forme non prise en charge. Utilisé
+    par livre-scinder.py."""
     lignes, eol, existe = lire_fiche(chemin_fiche)
     if existe and _titre_existant(szh_commun.lire_yaml(chemin_fiche), lang):
         return False
@@ -285,7 +281,7 @@ def migrer_chapitre(dossier_livre, slug, lang_livre='fr', simuler=False):
     if titres:
         rang, titre = titres[0]
         if any(md[k].strip() for k in range(rang)):
-            # Un titre qui n'ouvre pas le .md : le retirer le sortirait de son contexte.
+            # Titre qui n'ouvre pas le .md : le retirer changerait l'ordre du texte.
             rapport.append(_constat(
                 'titre-pas-en-tete', slug,
                 "Le titre « %s » n'est pas la première ligne du .md : laissé en place." % titre,
@@ -319,8 +315,8 @@ def migrer_chapitre(dossier_livre, slug, lang_livre='fr', simuler=False):
                     'Die Fiche enthält schon einen anderen Titel (« %s ») als die .md-Datei (« %s »): nichts wird überschrieben.'
                     % (existant, titre)))
 
-    # Le bloc auteurs ne se lit que juste sous le titre (ou en tête, si le titre a déjà
-    # quitté le .md).
+    # Le bloc auteurs n'est cherché que juste sous le titre (ou en tête si le .md n'a plus
+    # de titre).
     bloc = bloc_auteurs_apres(md, rang) if rang is not None else None
     if bloc is not None:
         debut, fin_b, ligne = bloc

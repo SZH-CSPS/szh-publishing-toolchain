@@ -1,19 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# conversion_odt.py — le passage .odt <-> .docx, par LibreOffice sans interface.
+# Conversion .odt <-> .docx par LibreOffice sans interface (paquet libreoffice-writer-nogui
+# de l'image). Toute la chaîne (nettoyeur, import) ne lit et n'écrit que du .docx : un .odt
+# est converti en .docx à l'entrée et en .odt à la sortie. Révisions et commentaires
+# passent dans les deux sens.
 #
-# Toute la chaîne (lecteur du nettoyeur, écrivain, annotation, import) ne parle que .docx.
-# Un .odt est donc converti à la frontière : en .docx à l'entrée, en .odt à la sortie. Un seul
-# moteur, et LibreOffice fait ce qu'il fait de mieux (décision de Robin, 29.09.2026 : paquet
-# libreoffice-writer-nogui dans l'image WSL, plutôt qu'un lecteur et un écrivain ODT natifs à
-# tenir en double). Révisions et commentaires traversent la conversion dans les deux sens.
-#
-# Utilisable en module (convertir()) et en ligne de commande, pour import-docx.sh :
+# En module (convertir()) ou en ligne de commande, pour import-docx.sh :
 #   python3 conversion_odt.py <source> <docx|odt> <dossier-sortie>   -> chemin écrit sur stdout
 #
 # $SZH_SOFFICE désigne un autre exécutable (soffice.exe de Windows pour un test hors WSL).
-#
-# stdlib seule.
 
 import os
 import shutil
@@ -54,9 +49,9 @@ def _url_fichier(chemin):
 
 def convertir(source, format_cible, dossier_sortie, nom_sortie=None):
     """Convertit `source` en `format_cible` ('docx' | 'odt') dans `dossier_sortie` et rend
-    le chemin écrit. `nom_sortie` (sans extension) remplace le nom de la source. Un profil
-    LibreOffice jetable par appel : deux conversions simultanées ne se bloquent pas, et un
-    profil corrompu du poste n'y entre jamais."""
+    le chemin écrit. `nom_sortie` (sans extension) remplace le nom de la source. Chaque
+    appel a son profil LibreOffice jetable : deux conversions simultanées ne se bloquent
+    pas, et le profil du poste n'intervient pas."""
     if format_cible not in FORMATS:
         raise ValueError('format inconnu : %r' % (format_cible,))
     exe = soffice()
@@ -69,8 +64,8 @@ def convertir(source, format_cible, dossier_sortie, nom_sortie=None):
     profil = tempfile.mkdtemp(prefix='szh-lo-')
     travail = tempfile.mkdtemp(prefix='szh-conv-')
     try:
-        # Travail dans un dossier à part : LibreOffice nomme la sortie d'après la source, et
-        # écraserait un fichier homonyme du dossier de sortie avant qu'on ait pu choisir.
+        # Dossier de travail à part : LibreOffice nomme la sortie d'après la source et
+        # écraserait un fichier homonyme du dossier de sortie.
         commande = [exe, '-env:UserInstallation=' + _url_fichier(profil), '--headless',
                     '--norestore', '--convert-to', FORMATS[format_cible],
                     '--outdir', travail, source]

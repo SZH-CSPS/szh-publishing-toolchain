@@ -1,46 +1,33 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# manuscrit_annoter.py — annote un .docx DÉJÀ au gabarit (la sortie de manuscrit_gabarit.ecrire())
-# avec les alertes du contrat §7/§7 bis : révisions Word (w:ins/w:del) pour les corrections
-# textuelles déterministes, commentaires Word ancrés pour ce qui demande un jugement, plafonnés.
-# Contrat : docs/ARCHITECTURE-nettoyeur-manuscrit.md, §7 ter.
+# Annote un .docx déjà au gabarit (la sortie de manuscrit_gabarit.ecrire()) avec les alertes
+# du nettoyeur : révisions Word (w:ins/w:del) pour les corrections sûres, commentaires Word
+# ancrés, en nombre plafonné, pour ce qui demande un jugement. Voir
+# docs/ARCHITECTURE-nettoyeur-manuscrit.md.
 #
-# stdlib seule (zipfile, re, json, itertools, datetime, os, tempfile) — pas de python-docx, pas
-# de lxml (§2 du contrat). Ce module ne prend AUCUNE décision éditoriale : les alertes arrivent
-# déjà tranchées (rule/severity/action/found/suggested) par manuscrit_regles.py/manuscrit_vale.py/
-# manuscrit_biblio.py ; il ne fait que les TRADUIRE en marques Word, comme manuscrit_gabarit.py
-# traduit les décisions de classement en styles Word.
+# Bibliothèque standard seule, sans python-docx ni lxml. Le module ne décide rien : les
+# alertes arrivent tranchées (rule, severity, action, found, suggested) de manuscrit_regles.py,
+# manuscrit_vale.py et manuscrit_biblio.py ; il les traduit en marques Word.
 #
-# ── Hypothèse qui simplifie tout, et qui est vraie pour son unique entrée réelle ────────────
-# Ce module suppose que le run w:rPr qu'il rencontre ne porte JAMAIS que le sous-ensemble
-# {w:b, w:i, w:u, w:vertAlign} — exactement ce que manuscrit_gabarit._rpr_xml() sait écrire
-# (§5.2 du contrat : tout le reste, taille/police/couleur/surlignage, est retiré avant d'écrire
-# le gabarit). Un run à l'italique/gras/exposant/indice se manipule donc par un jeu de DRAPEAUX
-# reconstruits (_banderas_desde_rpr/_rpr_desde_banderas), jamais par une manipulation XML
-# générique — plus court, plus sûr, et suffisant pour la seule entrée que ce module doit
-# jamais lire (la sortie de l'écrivain). Le w:rPr d'un run SUPPRIMÉ (w:del), lui, est recopié
-# VERBATIM (jamais reconstruit) : rien à perdre là, on ne fait que déplacer du texte existant.
+# ── Mise en forme des runs ─────────────────────────────────────────────────────────────────
+# Un w:rPr de l'entrée ne porte que {w:b, w:i, w:u, w:vertAlign}, seul sous-ensemble que
+# manuscrit_gabarit._rpr_xml() écrit. Le module le manipule donc par drapeaux
+# (_banderas_desde_rpr, _rpr_desde_banderas) plutôt que par XML générique. Le w:rPr d'un run
+# supprimé (w:del) est recopié tel quel.
 #
-# ── Ancrage : atomes de texte, pas des runs qu'on couperait en place ────────────────────────
-# Chaque paragraphe ciblé est lu UNE fois en une liste de « runs » figée (texte concaténé de
-# ses w:t, w:rPr brut, bornes en caractères ET en offsets XML). Toutes les alertes de CE
-# paragraphe sont ensuite localisées contre ce texte figé, jamais recalculées après une
-# première modification — un paragraphe qui reçoit une révision ET un commentaire ne doit
-# jamais voir le second se décaler à cause du premier. Les bornes de toutes les alertes
-# deviennent des points de coupe communs ; le paragraphe se découpe en « atomes » (un par
-# segment de texte entre deux points de coupe consécutifs, avec le w:rPr du run qui le
-# portait) — c'est l'équivalent, sans jamais toucher au XML avant la toute dernière passe, de
-# « fractionner les runs aux deux décalages » demandé par le contrat. Une révision FUSIONNE
-# les atomes qu'elle couvre en UN SEUL atome de remplacement (w:del+w:ins) ; un commentaire ne
-# consomme rien, il pose juste des marqueurs avant/après les atomes qu'il couvre.
+# ── Ancrage par atomes de texte ────────────────────────────────────────────────────────────
+# Chaque paragraphe visé est lu une fois en une liste de runs figée (texte de ses w:t, w:rPr
+# brut, bornes en caractères et en positions XML). Toutes ses alertes sont localisées contre ce
+# texte figé, pour qu'une révision ne décale pas un commentaire voisin. Les bornes des alertes
+# deviennent des points de coupe, et le paragraphe se découpe en « atomes » (le texte entre
+# deux points de coupe, avec le w:rPr de son run). Une révision fusionne les atomes qu'elle
+# couvre en un atome de remplacement (w:del + w:ins) ; un commentaire pose seulement ses
+# marqueurs avant et après.
 #
-# ── Le « collage » entre runs est préservé, jamais reconstruit ─────────────────────────────
-# Un paragraphe réel peut envelopper des runs dans un <w:hyperlink> (bibliographie, DOI) —
-# tout ce qui n'est PAS à l'intérieur d'un <w:r> (ouverture/fermeture de w:hyperlink, w:pPr...)
-# est copié tel quel depuis le XML d'origine, jamais régénéré : chaque atome garde l'indice du
-# run d'origine dont il vient, et le texte ENTRE deux atomes finaux se relit directement dans
-# le w:p d'origine, entre la fin du dernier run couvert par le premier et le début du premier
-# run couvert par le second.
+# ── Le XML entre les runs est recopié ──────────────────────────────────────────────────────
+# Tout ce qui est hors d'un <w:r> (ouverture et fermeture de <w:hyperlink>, w:pPr…) est
+# recopié depuis le XML d'origine : le texte entre deux atomes se relit dans le w:p d'origine,
+# entre la fin du run du premier et le début du run du second.
 
 import difflib
 import itertools
@@ -65,15 +52,13 @@ _COMMENTS_XML_DEBUT = (
 
 _ETIQUETA_SUGGESTION = {'fr': 'Suggestion', 'de': 'Vorschlag'}
 
-# Note de bas de page (§7 ter du contrat, ancrage sur une note) — le commentaire d'une alerte
-# qui porte sur le texte d'une note commence par « Note N : » puis cite le passage visé, pour
-# que la relectrice le retrouve DANS la note (Word n'accepte aucun commentaire ancré à
-# l'intérieur d'une note de bas de page : le seul ancrage possible dans le CORPS est le mot qui
-# précède l'appel, voir _mot_avant_position()).
+# Le commentaire d'une alerte sur le texte d'une note commence par « Note N : » et cite le
+# passage, pour qu'on le retrouve dans la note. Word n'accepte pas de commentaire dans une note
+# de bas de page : il est ancré sur le mot qui précède l'appel (_mot_avant_position()).
 _ETIQUETA_PASSAGE = {'fr': 'Passage', 'de': 'Textstelle'}
 
-# Les autres textes visibles d'un commentaire, par langue du produit (fr = Revue, de =
-# Zeitschrift) : l'allemand n'a pas d'espace avant « : » et cite entre «».
+# Textes visibles d'un commentaire, par langue du produit (fr = Revue, de = Zeitschrift).
+# L'allemand n'a pas d'espace avant « : » et cite entre «».
 _TEXTES = {
     'fr': {'synthese': '… et %d autres occurrences de cette règle, voir le rapport.',
            'note': 'Note %d', 'italique': ' (élément(s) en italique dans la révision)',
@@ -87,15 +72,12 @@ _TEXTES = {
 def _textes(langue):
     return _TEXTES.get(langue) or _TEXTES['fr']
 
-# Rang de sévérité partagé entre le classement des commentaires (point 4 du contrat) et la
-# résolution des chevauchements de révisions (point 3, révision du 21.09.2026 bis) — CORPS et
-# notes de bas de page (§7 ter, point 4) l'utilisent tous les deux, module-level pour ne pas le
-# redéfinir deux fois.
+# Rang de sévérité, pour classer les commentaires et départager des révisions qui se
+# chevauchent, dans le corps comme dans les notes.
 _RANGO_SEVERIDAD = {'error': 0, 'warning': 1, 'suggestion': 2}
 
-# Nom canonique anglais du style de caractère qui marque un renvoi de commentaire — même
-# convention que STYLE_TITRE/STYLE_CORPS de manuscrit_gabarit.py (« heading 1 »/« Body Text ») :
-# le w:name reste en anglais même dans un gabarit francophone.
+# Nom du style de caractère d'un renvoi de commentaire. Le w:name d'un style intégré reste
+# en anglais, même dans un gabarit francophone (comme dans manuscrit_gabarit.py).
 _NOMS_STYLE_MARQUE_COMMENTAIRE = ('annotation reference', 'comment reference')
 
 _RE_RUN = re.compile(r'<w:r(?:\s[^>]*)?>(.*?)</w:r>', re.S)
@@ -107,9 +89,8 @@ _RE_HYPERLINK = re.compile(r'<w:hyperlink\b[^>]*>.*?</w:hyperlink>', re.S)
 
 
 # ---------------------------------------------------------------------------------
-# Échappement — même convention que manuscrit_gabarit._echapper/_echapper_attribut (copié,
-# pas importé : ce module ne dépend d'aucun autre module du chantier, comme le contrat le
-# demande pour un module qui n'a que deux fichiers autorisés).
+# Échappement XML, comme manuscrit_gabarit._echapper et _echapper_attribut. Ce module
+# n'importe aucun autre module du nettoyeur.
 
 def _escapar(t):
     return (t or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
@@ -126,11 +107,8 @@ def _desescapar(t):
 
 
 # ---------------------------------------------------------------------------------
-# Lecture du corps — enfants directs de w:body (les w:tbl ne comptent pas, §7 ter du contrat),
-# porté du patron JS ENFANTS_CORPS_PY de test/js/manuscrit-gabarit.test.js : une regex non
-# gourmande sur `<w:tbl\b.*?</w:tbl>` s'arrêterait sur la fermeture d'un tableau IMBRIQUÉ (un
-# bloc tableau du gabarit enveloppe le tableau du manuscrit, §5.3) — un comptage d'imbrication
-# est la seule méthode sûre.
+# Lecture du corps : les enfants directs de w:body. On compte l'imbrication, car une regex
+# non gourmande `<w:tbl\b.*?</w:tbl>` s'arrêterait à la fermeture d'un tableau imbriqué.
 
 def _hijos_directos_cuerpo(interior):
     i, n = 0, len(interior)
@@ -166,19 +144,13 @@ def _hijos_directos_cuerpo(interior):
 
 
 def _leer_runs(p_xml):
-    """Liste des runs, DANS L'ORDRE où ils apparaissent dans p_xml — pas seulement les
-    enfants directs de w:p : un run enveloppé dans <w:hyperlink> est vu de la même façon,
-    parce que la préservation du « collage » (voir l'en-tête) ne dépend pas de cette
-    distinction. Chaque run porte son texte concaténé (les seuls w:t, jamais w:tab/w:br/une
-    image — §7 ter du contrat : « concatène ses w:t »), son w:rPr brut, ses offsets XML dans
-    p_xml, ses offsets dans le texte du paragraphe, et `en_lien` (dans un <w:hyperlink>).
+    """Les runs de p_xml dans l'ordre, y compris ceux d'un <w:hyperlink>. Chaque run porte
+    le texte de ses w:t (sans w:tab, w:br ni image), son w:rPr brut, ses positions dans p_xml
+    et dans le texte du paragraphe, et `en_lien`.
 
-    ⚠ `en_lien` existe pour un seul usage : EMPÊCHER une révision de fusionner ce run avec
-    ses voisins (§7 ter, révision du 21.09.2026, défaut n°3). Fusionner des atomes qui
-    chevauchent la frontière d'un <w:hyperlink> perd le XML « de collage » interne au groupe
-    (l'ouverture ou la fermeture du lien tombait ENTRE deux atomes désormais fondus en un
-    seul) — mesuré sur le corpus réel : un </w:hyperlink> orphelin, sans la moindre exception
-    à l'écriture."""
+    `en_lien` (run dans un <w:hyperlink>) interdit à une révision de fusionner ce run avec
+    ses voisins : la fusion perdrait l'ouverture ou la fermeture du lien et laisserait un
+    </w:hyperlink> orphelin."""
     enlaces = [(m.start(), m.end()) for m in _RE_HYPERLINK.finditer(p_xml)]
     runs = []
     pos_texto = 0
@@ -196,35 +168,23 @@ def _leer_runs(p_xml):
 
 
 def _span_toca_enlace(runs, s, e):
-    """Vrai si [s, e) touche le texte d'un run enveloppé dans <w:hyperlink> — une révision ne
-    doit alors JAMAIS s'appliquer (voir _leer_runs) : le repli est un commentaire au même
-    endroit, jamais un remplacement."""
+    """Vrai si [s, e) touche un run d'un <w:hyperlink> (voir _leer_runs). La révision devient
+    alors un commentaire au même endroit."""
     return any(r['en_lien'] and r['debut_texto'] < e and s < r['fin_texto'] for r in runs)
 
 
 # ---------------------------------------------------------------------------------
-# Localisation (§7 ter, point 1) — span exact si `found` s'y trouve ; sinon (span absent ou
-# faux) un repli PRUDENT, jamais « la première occurrence trouvée ».
-#
-# ⚠ Révision du 21.09.2026 (défaut n°2 mesuré sur le corpus réel par le lot de branchement) :
-# l'ancien repli prenait `texto.find(found)` sans aucune borne — un `found` court et banal
-# (« et », « & », raffineurs Vale comme CSPS.APA.EtDansParentheses) peut apparaître À
-# L'INTÉRIEUR d'un autre mot avant la vraie occurrence visée (« et » dans « **Cet**te ») et
-# corrompt alors du texte réel, sans le moindre signe visible dans le `.docx` produit. Sans
-# `span` fiable, le repli n'accepte donc désormais qu'un `found` d'au moins 4 caractères ET
-# présent EXACTEMENT une fois dans le paragraphe — ambigu (0 ou plusieurs) ou trop court,
-# c'est None : l'appelant ancre alors sur le paragraphe entier (un commentaire, jamais un
-# remplacement à l'aveugle).
+# Localisation : le span s'il contient bien `found`. Sinon, `found` doit faire au moins
+# 4 caractères et n'apparaître qu'une fois dans le paragraphe : un `found` court comme « et »
+# se retrouve à l'intérieur d'autres mots (« Cette »). Faute de quoi on rend None, et
+# l'appelant ancre un commentaire sur le paragraphe entier.
 
 _LONGUEUR_MIN_FOUND_SANS_SPAN = 4
 
-# Repli TOLÉRANT à la typographie (révision du 21.09.2026) : le pont typographique (§6 du
-# contrat) peut avoir posé une apostrophe typographique, une insécable ou un tiret différent
-# entre le moment où `found` a été capturé (texte de paragraphe déjà lu par un module
-# d'analyse) et celui où l'annotation le cherche dans le MÊME paragraphe. Chaque substitution
-# ci-dessous est UN caractère pour UN caractère : une position trouvée dans le texte
-# NORMALISÉ reste donc valide telle quelle dans le texte ORIGINAL, jamais besoin de remapper
-# des offsets. Ne sert JAMAIS à écrire, seulement à comparer.
+# Comparaison tolérante à la typographie : entre l'analyse et l'annotation, le pont
+# typographique a pu changer une apostrophe, une espace insécable ou un tiret. Chaque
+# substitution remplace un caractère par un seul, si bien qu'une position trouvée dans le
+# texte normalisé vaut dans le texte d'origine. Sert seulement à comparer.
 _TRANS_TOLERANTE_TYPO = str.maketrans({
     '’': "'", '‘': "'",
     ' ': ' ', ' ': ' ', ' ': ' ',
@@ -260,28 +220,18 @@ def _localizar(texto, span, found):
 
 
 # ---------------------------------------------------------------------------------
-# Ancrage d'une alerte de NOTE (§7 ter du contrat, révision du 21.09.2026 ter) — Word
-# n'accepte pas de commentaire posé à l'intérieur d'une note de bas de page : une alerte dont
-# le `found`/`span` visent le TEXTE DE LA NOTE ne peuvent donc jamais se localiser tels quels
-# contre le texte du paragraphe de CORPS qui porte l'appel (le mot cherché n'y est simplement
-# pas). Ce qui EST dans le corps, en revanche, c'est l'appel lui-même (w:footnoteReference) :
-# on ancre alors sur le dernier mot qui le précède immédiatement, jamais sur tout le
-# paragraphe — capture réelle qui a déclenché ce lot : un commentaire sur « reconnaître ->
-# reconnaitre » (texte de la note 1) surlignait tout le paragraphe du corps qui appelle cette
-# note, sans dire quel mot est concerné.
+# Ancrage d'une alerte de note. Word n'accepte pas de commentaire dans une note de bas de
+# page, et le texte visé n'est pas dans le paragraphe du corps. On ancre donc sur le mot qui
+# précède l'appel (w:footnoteReference) dans le corps.
 
-# Ponctuation qu'on ne garde jamais comme DERNIER caractère du mot retenu (une virgule ou un
-# point collé juste avant l'appel de note ne fait pas partie du mot) — jamais la barre oblique
-# ni le trait d'union, INTÉRIEURS à un mot comme « in/capacités » (§7 ter, décision : la barre
-# oblique comme le trait d'union restent dans le mot, seule la ponctuation FINALE est retirée).
+# Ponctuation retirée de la fin du mot retenu. La barre oblique et le trait d'union, internes
+# à un mot comme « in/capacités », n'en font pas partie.
 _PONCTUATION_FINALE_MOT_NOTE = '.,;:!?)]}»›»”’\'"'
 
 
 def _mot_avant_position(texto, pos):
-    """(debut, fin) du dernier mot qui précède immédiatement `pos` dans `texto` — la séquence
-    de caractères non blancs juste avant, ponctuation finale exclue (barre oblique et trait
-    d'union intérieurs conservés : « in/capacités » compte comme un seul mot). None si `pos`
-    est en tête de paragraphe (rien à ancrer avant)."""
+    """(debut, fin) du mot qui précède `pos` dans `texto`, sans sa ponctuation finale
+    (« in/capacités » compte pour un mot). None si rien ne précède `pos`."""
     fin = pos
     while fin > 0 and texto[fin - 1] in _PONCTUATION_FINALE_MOT_NOTE:
         fin -= 1
@@ -296,10 +246,9 @@ def _mot_avant_position(texto, pos):
 
 
 def _localizar_appel_nota(p_xml, runs, texto, note_numero):
-    """Position, dans le TEXTE du paragraphe de CORPS, du mot qui précède l'appel
-    (w:footnoteReference) de `note_numero` — None si cet appel n'est pas retrouvé dans CE
-    paragraphe, ou si rien ne le précède : l'appelant replie alors sur le paragraphe entier
-    (§7 ter du contrat : « si l'appel n'est pas retrouvé »), jamais une exception."""
+    """Position, dans le texte du paragraphe, du mot qui précède l'appel de `note_numero`.
+    None si l'appel n'est pas dans ce paragraphe ou si rien ne le précède : l'appelant ancre
+    alors sur le paragraphe entier."""
     m = re.search(r'<w:footnoteReference\s+w:id="%d"\s*/?>' % note_numero, p_xml)
     if not m:
         return None
@@ -310,10 +259,9 @@ def _localizar_appel_nota(p_xml, runs, texto, note_numero):
 
 
 def _footnote_match(footnotes_xml, note_numero):
-    """Le match (groupe 1 = XML intérieur) de `<w:footnote w:id="note_numero">...</w:footnote>`
-    dans `word/footnotes.xml` — None si la partie est absente ou ne porte pas cette note (filet
-    de sécurité : `note_numero` est recalculé indépendamment côté manuscrit-nettoyer.py, voir
-    son en-tête ; un désaccord ne doit jamais lever, seulement replier sur un commentaire)."""
+    """Le match (groupe 1 = XML intérieur) de `<w:footnote w:id="note_numero">` dans
+    `word/footnotes.xml`, ou None. `note_numero` est calculé à part par la CLI ; un désaccord
+    se replie sur un commentaire."""
     if not footnotes_xml:
         return None
     return re.search(r'<w:footnote\s+w:id="%d"[^>]*>(.*?)</w:footnote>' % note_numero,
@@ -321,8 +269,7 @@ def _footnote_match(footnotes_xml, note_numero):
 
 
 # ---------------------------------------------------------------------------------
-# Atomes — un paragraphe découpé aux bornes de tous les runs ET de toutes les alertes qui le
-# concernent, avant toute écriture (voir l'en-tête).
+# Atomes : le paragraphe découpé aux bornes de ses runs et de ses alertes (voir l'en-tête).
 
 def _atomos_parrafo(runs, total_len, puntos_extra):
     puntos = {0, total_len}
@@ -346,9 +293,9 @@ def _atomos_parrafo(runs, total_len, puntos_extra):
 
 
 def _rango_atomos_contiene(atomos, s, e):
-    """Indices [i1, i2] (inclus) de la plage d'atomes qui couvre [s, e) — par CONTENANCE, pas
-    par égalité stricte : robuste si un commentaire vise un passage déjà fusionné par une
-    révision voisine. None si `s` tombe à la toute fin du paragraphe (rien à sa droite)."""
+    """Indices [i1, i2] (inclus) des atomes qui couvrent [s, e). Cherche par contenance, ce
+    qui tient si une révision voisine a déjà fusionné le passage. None si `s` est à la fin
+    du paragraphe."""
     if not atomos:
         return None
     i1 = None
@@ -369,7 +316,7 @@ def _rango_atomos_contiene(atomos, s, e):
 
 
 # ---------------------------------------------------------------------------------
-# Runs plats, révisions, insertions avec italique segmentée (§7 ter, points 2-3).
+# Runs simples, révisions, insertions avec passages en italique.
 
 def _run_plano_xml(rpr, texto):
     if not texto:
@@ -405,9 +352,7 @@ def _rpr_desde_banderas(b):
 
 
 def _segmentos_italica(texto):
-    """[(texte, est_italique)] à partir des segments *…* de `texto` — les astérisques
-    eux-mêmes ne sont jamais écrits (§7 ter, point 2 : « suggested peut porter de l'italique
-    marquée *…* »)."""
+    """[(texte, est_italique)] d'après les segments *…* de `texto`, sans les astérisques."""
     resultado = []
     pos = 0
     for m in _RE_ITALICA.finditer(texto):
@@ -429,8 +374,8 @@ def _xml_del(id_, autor, fecha, grupo):
 
 
 def _xml_ins(id_, autor, fecha, rpr_origen, texto_sugerido):
-    """Le run inséré hérite du w:rPr du run d'origine, HORS italique (§7 ter, point 2) : la
-    segmentation *…* décide seule de l'italique de chaque morceau inséré."""
+    """Le run inséré hérite du w:rPr du run d'origine, sauf l'italique, que décident les
+    segments *…*."""
     banderas_base = dict(_banderas_desde_rpr(rpr_origen), italique=False)
     partes = []
     for fragmento, es_italica in _segmentos_italica(texto_sugerido):
@@ -444,15 +389,10 @@ def _xml_ins(id_, autor, fecha, rpr_origen, texto_sugerido):
 
 
 # ---------------------------------------------------------------------------------
-# Révision par JETON — révision du 21.09.2026, demande de Robin : une référence entière ne
-# doit plus être barrée puis réinsérée pour trois mots changés (« et » -> « & », un italique,
-# un espace). Diff au niveau du MOT/de l'espace/du signe (jamais du caractère, trop bavard ;
-# jamais de la phrase entière, ce que ce module faisait jusqu'ici) entre le texte d'ORIGINE
-# (les atomes déjà localisés, `grupo`) et `suggested` : seuls les jetons qui changent — texte
-# OU italique — deviennent w:del/w:ins, le reste reste des runs NORMAUX, mise en forme
-# d'origine intacte, jamais touchés. Un diff qui change plus de 60 % des jetons d'origine
-# retombe sur l'ancien comportement (un seul w:del/w:ins couvrant tout le span) : une
-# reformulation aussi profonde n'a plus rien à gagner à être éparpillée en petites révisions.
+# Révision par jeton, pour ne pas barrer une référence entière quand trois mots changent.
+# Diff par mot, espace ou signe entre le texte d'origine (`grupo`) et `suggested` : seuls les
+# jetons dont le texte ou l'italique change deviennent w:del/w:ins ; le reste garde sa mise
+# en forme. Au-delà de 60 % de jetons changés, un seul w:del/w:ins couvre tout le passage.
 
 _RE_JETON = re.compile(r'\w+|\s+|[^\w\s]')
 _UMBRAL_REEMPLAZO_TOTAL = 0.6
@@ -464,9 +404,8 @@ def _jetonizar(texto):
 
 
 def _jetones_origen(grupo):
-    """[(jeton, rpr_de_son_atome)] — un jeton ne franchit jamais la frontière entre deux
-    atomes : chaque atome (donc chaque run d'origine) est jetonné SÉPARÉMENT, jamais le texte
-    concaténé, pour que le w:rPr d'origine reste attaché au bon fragment."""
+    """[(jeton, rpr de son atome)]. Chaque atome est découpé à part, pour que chaque jeton
+    garde le w:rPr de son run."""
     jetones = []
     for a in grupo:
         for tok in _jetonizar(a['texto']):
@@ -475,8 +414,7 @@ def _jetones_origen(grupo):
 
 
 def _jetones_destino(suggested):
-    """[(jeton, est_italique)] — l'italique *…* d'abord segmentée (jamais les astérisques
-    eux-mêmes dans un jeton), puis chaque segment jetonné."""
+    """[(jeton, est_italique)] : segments *…* d'abord, puis jetons de chaque segment."""
     jetones = []
     for fragmento, es_italica in _segmentos_italica(suggested):
         for tok in _jetonizar(fragmento):
@@ -489,13 +427,11 @@ def _jeton_origen_es_italico(rpr):
 
 
 def _agrupar_para_revision(jetones_o, jetones_d):
-    """[{cambia, i1, i2, j1, j2}, ...] à partir d'un diff PAR JETON — seuls les groupes
-    `cambia` deviennent w:del/w:ins. Un groupe 'equal' (même texte) dont l'italique doit
-    changer est aussi `cambia` : le seul moyen de basculer l'italique est w:del + w:ins,
-    jamais w:rPrChange (trop fragile, §7 ter). Les îlots INCHANGÉS de moins de
-    `_MIN_JETONES_ISLOTE` jetons, coincés ENTRE deux groupes changés, sont absorbés dans le
-    changement voisin — sinon trois mots changés à deux mots d'écart produisent trois
-    révisions séparées par un îlot minuscule, la « mitraille » que ce lot doit éviter."""
+    """[{cambia, i1, i2, j1, j2}, ...] d'après un diff par jeton ; seuls les groupes
+    `cambia` deviennent w:del/w:ins. Un passage de même texte dont l'italique change est
+    aussi `cambia` : on bascule l'italique par w:del + w:ins, w:rPrChange étant trop fragile.
+    Un îlot inchangé de moins de `_MIN_JETONES_ISLOTE` jetons entre deux changements est
+    absorbé, pour éviter une rafale de petites révisions."""
     origenes = [t for t, _ in jetones_o]
     destinos = [t for t, _ in jetones_d]
     opcodes = difflib.SequenceMatcher(None, origenes, destinos, autojunk=False).get_opcodes()
@@ -504,12 +440,8 @@ def _agrupar_para_revision(jetones_o, jetones_d):
         if tag != 'equal':
             grupos.append({'cambia': True, 'i1': i1, 'i2': i2, 'j1': j1, 'j2': j2})
             continue
-        # Un opcode 'equal' (même TEXTE) peut rester très long — c'est justement le but du
-        # diff par jeton. Le resubdiviser jeton par jeton, là où l'italique bascule, est donc
-        # OBLIGATOIRE : marquer tout le groupe `cambia` dès qu'UN SEUL jeton doit changer
-        # d'italique ferait à nouveau barrer une référence entière pour un seul mot en
-        # italique perdu au milieu d'un long passage par ailleurs identique (défaut mesuré en
-        # écrivant ce lot).
+        # Un opcode 'equal' peut être long : on le redécoupe là où l'italique bascule, sinon
+        # un seul mot à remettre en italique ferait barrer tout le passage.
         debut, cambia_courant = i1, None
         for k in range(i1, i2):
             c = _jeton_origen_es_italico(jetones_o[k][1]) != bool(jetones_d[j1 + (k - i1)][1])
@@ -543,8 +475,7 @@ def _agrupar_para_revision(jetones_o, jetones_d):
 
 
 def _xml_del_jetones(id_, autor, fecha, jetones):
-    """Comme _xml_del, à partir d'une liste (jeton, rpr) — un w:r par changement de rpr
-    CONSÉCUTIF, jamais un w:r par jeton (XML inutilement bavard)."""
+    """Comme _xml_del, à partir de (jeton, rpr) : un w:r par suite de jetons de même rpr."""
     runs_xml = []
     rpr_actuel, tampon = None, []
     for tok, rpr in jetones:
@@ -564,8 +495,8 @@ def _xml_del_jetones(id_, autor, fecha, jetones):
 
 
 def _xml_ins_jetones(id_, autor, fecha, rpr_base, jetones):
-    """Comme _xml_ins, à partir d'une liste (jeton, est_italique) — un w:r par changement
-    d'italique CONSÉCUTIF."""
+    """Comme _xml_ins, à partir de (jeton, est_italique) : un w:r par suite de même
+    italique."""
     banderas_base = dict(_banderas_desde_rpr(rpr_base), italique=False)
     runs_xml = []
     italica_actuelle, tampon = None, []
@@ -588,8 +519,7 @@ def _xml_ins_jetones(id_, autor, fecha, rpr_base, jetones):
 
 
 def _run_plano_jetones(jetones):
-    """Jetons NON changés -> runs plats (un par changement de rpr CONSÉCUTIF) — la mise en
-    forme d'origine reste intacte, rien n'est marqué w:del/w:ins."""
+    """Jetons inchangés → runs simples (un par suite de même rpr), mise en forme d'origine."""
     piezas = []
     rpr_actuel, tampon = None, []
     for tok, rpr in jetones:
@@ -605,9 +535,8 @@ def _run_plano_jetones(jetones):
 
 
 def _construir_revision(grupo, suggested, contador, autor, fecha):
-    """XML d'une révision — diff PAR JETON entre le texte d'origine de `grupo` et `suggested`
-    (voir l'en-tête ci-dessus). Retombe sur l'ancien remplacement complet (un seul w:del/w:ins
-    couvrant tout le span) si `grupo` ne porte aucun texte ou si plus de 60 % de ses jetons
+    """XML d'une révision, par diff par jeton entre `grupo` et `suggested`. Un seul
+    w:del/w:ins couvre tout le passage si `grupo` est vide ou si plus de 60 % de ses jetons
     changent."""
     jetones_o = _jetones_origen(grupo)
     jetones_d = _jetones_destino(suggested)
@@ -658,9 +587,8 @@ def _comentario_xml(id_, autor, fecha, iniciales, lineas):
 
 
 # ---------------------------------------------------------------------------------
-# Style de la marque de commentaire, styleId résolu depuis les styles du document si le
-# gabarit en définit un — même patron que manuscrit_gabarit._styleid_par_nom (copié : ce
-# module n'importe aucun autre fichier du chantier, voir l'en-tête).
+# Style de la marque de commentaire : son styleId, si le gabarit en définit un (comme
+# manuscrit_gabarit._styleid_par_nom).
 
 def _styleid_por_nombre(styles_xml, nombres):
     if not styles_xml:
@@ -689,12 +617,9 @@ def _fecha_iso():
 
 
 def _proximo_contador(doc_xml, comments_xml, footnotes_xml=None):
-    """Premier identifiant libre pour w:id — au-delà du plus grand déjà présent dans le
-    document (révisions, commentaires, MAIS AUSSI signets : un surensemble ne peut jamais
-    provoquer de collision, voir §7 ter du contrat : « identifiants uniques croissants pour
-    tous les w:id de révision et de commentaire »). `footnotes_xml` (révision du 21.09.2026
-    ter) : une révision peut désormais aussi s'écrire DANS une note (point 4 du contrat) —
-    son compteur est le MÊME que celui du corps, jamais un second compteur séparé."""
+    """Premier w:id libre : au-delà du plus grand w:id du document, des commentaires et des
+    notes (signets compris, ce qui ne peut qu'éviter une collision). Corps et notes partagent
+    le même compteur, une révision pouvant s'écrire dans une note."""
     ids = [int(m) for m in re.findall(r'\bw:id="(\d+)"', doc_xml)]
     if comments_xml:
         ids += [int(m) for m in re.findall(r'\bw:id="(\d+)"', comments_xml)]
@@ -739,9 +664,8 @@ def _contar_regla(stats, alerta, campo):
 
 
 def _texto_sin_marcas_italica(suggested, langue='fr'):
-    """`suggested` sans le marquage *…* — pour un usage en TEXTE PLAT (un commentaire Word ne
-    rend jamais le Markdown, §7 ter, point 4) : des astérisques littéraux n'y disent rien à
-    une relectrice. Une note signale qu'un passage était en italique, sans jamais le marquer."""
+    """`suggested` sans les astérisques *…*, pour un commentaire Word (texte brut). Une
+    mention signale les passages en italique."""
     if not suggested or '*' not in suggested:
         return suggested
     segments = _segmentos_italica(suggested)
@@ -758,10 +682,8 @@ def _construir_texto_comentario(alerta, es_sintesis, total_por_regla, langue):
         extra = total_por_regla.get(alerta.get('rule'), 0) - 5
         frase = t['synthese'] % extra
         mensaje = ('%s %s' % (mensaje, frase)) if mensaje else frase
-    # Alerte de NOTE (§7 ter du contrat) : « Note N : » en tête, puis le passage cité de la
-    # note elle-même — le commentaire, lui, est ancré dans le CORPS (sur le mot qui précède
-    # l'appel, jamais dans la note), la relectrice a donc besoin de CE passage pour savoir de
-    # quoi il retourne dans la note.
+    # Alerte de note : « Note N : » en tête, puis le passage de la note, car le commentaire
+    # est ancré dans le corps, sur le mot qui précède l'appel.
     note_numero = alerta.get('note_numero')
     if note_numero is not None:
         entete_note = (t['note'] % note_numero) + t['deux_points'].rstrip(' ')
@@ -780,8 +702,8 @@ def _construir_texto_comentario(alerta, es_sintesis, total_por_regla, langue):
 
 
 # ---------------------------------------------------------------------------------
-# Un paragraphe entier : révisions puis commentaires, dans cet ordre (les commentaires
-# peuvent ancrer sur un passage déjà fusionné par une révision — §7 ter, point 3).
+# Un paragraphe entier : révisions puis commentaires, car un commentaire peut viser un
+# passage déjà fusionné par une révision.
 
 def _puntos_extra(revisiones, comentarios, total_len):
     pts = []
@@ -813,9 +735,8 @@ def _anotar_parrafo(p_xml, revisiones, comentarios, contador, autor, fecha, inic
             stats['commentaires_synthese'] += 1
         return id_
 
-    # Paragraphe sans le moindre atome de texte (aucun run, ou runs tous vides) : seuls des
-    # commentaires en paragraphe entier ont pu s'y ancrer (span=None -> s=e=0) ; les deux
-    # marqueurs se posent dos à dos juste avant la fermeture, rien à fractionner.
+    # Paragraphe sans texte : seuls des commentaires sur le paragraphe entier ont pu s'y
+    # ancrer. Leurs deux marqueurs se posent l'un après l'autre avant la fermeture.
     if not runs or not atomos:
         marcas = []
         for _span, alerta, es_sintesis in comentarios:
@@ -878,12 +799,11 @@ def _anotar_parrafo(p_xml, revisiones, comentarios, contador, autor, fecha, inic
 
 def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, langue='fr',
             auteur='Relecture automatique', plafond_commentaires=25):
-    """Ancre les `alertes` (schéma du contrat §7, huit champs) sur `chemin_docx_entree` (déjà
-    au gabarit — voir manuscrit_gabarit.ecrire()) via `correspondance` (liste de
-    {'source', 'sortie'}, voir sa docstring), et écrit le résultat dans `chemin_docx_sortie`
-    (qui peut être le même chemin que l'entrée : écriture dans un temporaire puis remplacement,
-    l'entrée n'est JAMAIS modifiée en place — voir l'en-tête). Rend les statistiques du
-    contrat §7 ter, point 7."""
+    """Ancre les `alertes` (huit champs) sur `chemin_docx_entree`, déjà au gabarit (voir
+    manuscrit_gabarit.ecrire()), grâce à `correspondance` (liste de {'source', 'sortie'}).
+    Écrit le résultat dans `chemin_docx_sortie`, qui peut être le chemin d'entrée : on écrit
+    dans un fichier temporaire puis on le met en place. Rend les statistiques
+    d'annotation."""
     with zipfile.ZipFile(chemin_docx_entree) as zin:
         contenidos = {nombre: zin.read(nombre) for nombre in zin.namelist()}
 
@@ -895,10 +815,8 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
                   if 'word/styles.xml' in contenidos else '')
     comments_previos_xml = (contenidos['word/comments.xml'].decode('utf-8')
                              if 'word/comments.xml' in contenidos else None)
-    # Notes de bas de page (§7 ter du contrat, point 4) — lu UNE fois ici, modifié en mémoire
-    # (jamais contenidos directement) le temps de la passe de révision, comme `interior` pour
-    # le corps ci-dessous ; réécrit dans contenidos seulement si une révision y a bien été
-    # posée (footnotes_modificado, voir plus bas).
+    # Notes de bas de page : lues une fois, modifiées en mémoire, réécrites seulement si une
+    # révision y a été posée (footnotes_modificado).
     footnotes_xml = (contenidos['word/footnotes.xml'].decode('utf-8')
                       if 'word/footnotes.xml' in contenidos else None)
     footnotes_modificado = False
@@ -911,14 +829,11 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
 
     indices_p = [(d, f) for (tag, d, f) in _hijos_directos_cuerpo(interior) if tag == 'w:p']
 
-    # `origen_a_bloc` (ajout du 22.09.2026, demande du coordinateur) : les entrées de
-    # `correspondance` marquées `'bloc'` (manuscrit_gabarit.py, _convertir_niveau_racine)
-    # visent le paragraphe-clé « Texte alternatif : » d'un bloc figure/tableau, jamais le
-    # texte de `source` lui-même (l'image/le tableau n'a pas de texte à comparer) — une table
-    # SÉPARÉE, jamais mélangée à `origen_a_salida` : une alerte dont le `para` a une entrée
-    # `bloc` doit toujours s'ancrer LÀ (c'est le seul endroit où la relectrice peut écrire un
-    # texte alternatif), même si CE MÊME `para` porte AUSSI une entrée normale (un paragraphe
-    # qui porte à la fois du texte et une image) — le bloc l'emporte, voir le point 1 plus bas.
+    # Les entrées `'bloc'` de `correspondance` (_convertir_niveau_racine de
+    # manuscrit_gabarit.py) visent le paragraphe « Texte alternatif : » d'un bloc figure ou
+    # tableau. Elles vont dans une table à part : une alerte dont le `para` a une entrée `bloc`
+    # s'ancre là, seul endroit où écrire un texte alternatif, même si le même `para` a aussi
+    # une entrée normale.
     origen_a_salida = {}
     origen_a_bloc = {}
     for c in (correspondance or []):
@@ -932,13 +847,9 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
     iniciales = _iniciales(auteur)
     style_comentario = _styleid_por_nombre(styles_xml, _NOMS_STYLE_MARQUE_COMMENTAIRE)
 
-    # `devenir[i]` dit ce qu'est VRAIMENT devenue `alertes[i]` — 'revision' | 'commentaire' |
-    # 'rapport' | 'non_ancree' — indexé comme `alertes`, jamais déduit après coup de `action`
-    # (défaut réel mesuré, révision du 21.09.2026 ter : `manuscrit-nettoyer.py` déduisait
-    # `dans_docx` de `action` pour toute alerte `fix`/`track`, sans savoir que le
-    # chevauchement, §7 ter point « 2 bis », avait pu la démoter en commentaire, ou que le
-    # plafond, point 3, l'avait renvoyée au rapport — `dans_docx: 'revision'` pouvait donc
-    # mentir. Ce module, qui SEUL sait ce qu'il a écrit, porte désormais la vérité).
+    # `devenir[i]` dit ce qu'est devenue `alertes[i]` : 'revision', 'commentaire', 'rapport'
+    # ou 'non_ancree'. On ne peut pas le déduire de `action` : un chevauchement change une
+    # révision en commentaire, le plafond renvoie un commentaire au rapport.
     devenir = [None] * len(alertes)
     stats = {'revisions': 0, 'commentaires': 0, 'commentaires_synthese': 0,
              'renvoyees_au_rapport': [], 'non_ancrees': [], 'par_regle': {}, 'devenir': devenir,
@@ -949,16 +860,12 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
              # référence, dont « deja_dans_la_forme » (rien à ajouter), et ceux qui restent
              # séparés faute d'ancrage commun.
              'fusion_doi': {'fusionnees': 0, 'deja_dans_la_forme': 0, 'separees': 0},
-             # Ventilation des alertes de NOTE (§7 ter du contrat) — pas dans le contrat lui-
-             # même, ajoutée pour que le rapport dise combien d'alertes de note ont fini en
-             # révision DANS la note, en commentaire ancré sur l'appel, ou en repli paragraphe
-             # entier (appel introuvable, filet de sécurité jamais mesuré sur le corpus réel).
+             # Alertes de note : révisions dans la note, commentaires ancrés sur l'appel,
+             # commentaires sur le paragraphe entier (appel introuvable).
              'notes': {'revisions': 0, 'commentaires': 0, 'repli_paragraphe_entier': 0}}
 
-    # 1. Ancrage — quel <w:p> de sortie, si aucun jamais perdu en silence (§7 ter, point 1).
-    # Une entrée `bloc` (voir origen_a_bloc ci-dessus) l'emporte TOUJOURS sur une entrée
-    # normale pour le même `para` : c'est le seul point d'ancrage réel qu'un bloc figure/
-    # tableau puisse offrir (ni l'image ni le tableau n'a de texte propre à comparer).
+    # 1. Ancrage : le <w:p> de sortie de chaque alerte. Une alerte sans ancrage va dans
+    # `non_ancrees`. Une entrée `bloc` l'emporte sur une entrée normale.
     por_salida = {}
     for idx, alerta in enumerate(alertes):
         para = alerta.get('para')
@@ -971,8 +878,8 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
             continue
         por_salida.setdefault(salida, []).append((idx, alerta, es_bloc))
 
-    # 2. Localisation + classement révision/commentaire, texte figé PAR PARAGRAPHE (voir
-    # l'en-tête : jamais recalculé après une première modification du même paragraphe).
+    # 2. Localisation et choix révision ou commentaire, contre le texte figé de chaque
+    # paragraphe (voir l'en-tête).
     candidatos_comentario = []
     revisiones_por_salida = {}
     notas_candidatas = []  # (idx, alerta, note_numero, salida, mot_appel) -- voir 2 ter, plus bas
@@ -985,29 +892,19 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
         texto_tmp = ''.join(r['texto'] for r in runs_tmp)
         for idx, alerta, es_bloc in lista:
             if es_bloc:
-                # Ancrage sur la clé « Texte alternatif : » d'un bloc figure/tableau (§22.09.2026,
-                # demande du coordinateur) : ce paragraphe-clé ne porte JAMAIS le texte de
-                # l'alerte (l'image/le tableau n'a pas de texte propre) — jamais de recherche de
-                # `found`, jamais une révision (rien à remplacer) : un commentaire sur le
-                # paragraphe ENTIER, directement, comme le repli existant, mais ici c'est
-                # l'ancrage VOULU, pas un échec de localisation.
+                # Clé « Texte alternatif : » d'un bloc figure ou tableau : rien à remplacer,
+                # un commentaire sur le paragraphe entier.
                 candidatos_comentario.append((idx, alerta, salida, None))
                 continue
             note_numero = alerta.get('note_numero')
             if note_numero is not None:
-                # Alerte de NOTE (§7 ter du contrat) : `found`/`span` visent le texte de la
-                # NOTE, jamais celui de CE paragraphe de corps — la localiser ici comme une
-                # alerte normale la manquerait TOUJOURS. On cherche plutôt l'appel lui-même
-                # (w:footnoteReference) et on ancre sur le mot qui le précède ; les révisions
-                # `fix`/`track` tentent d'abord une écriture DANS footnotes.xml (2 ter,
-                # ci-dessous) — ce repli-ci (mot avant l'appel) est posé MAINTENANT et retiré
-                # si cette tentative réussit.
+                # Alerte de note : `found` et `span` visent le texte de la note. On ancre sur
+                # le mot qui précède l'appel. Une révision `fix`/`track` est d'abord tentée
+                # dans footnotes.xml (étape 2 ter) ; le commentaire n'est qu'un repli.
                 mot_appel = _localizar_appel_nota(p_xml_tmp, runs_tmp, texto_tmp, note_numero)
                 accion = alerta.get('action')
                 if mot_appel is None:
-                    # Appel introuvable dans ce paragraphe (jamais mesuré sur le corpus réel,
-                    # filet de sécurité) : repli sur le paragraphe entier, comme une alerte non
-                    # localisée (§7 ter, point « note » : « si l'appel n'est pas retrouvé »).
+                    # Appel introuvable : commentaire sur le paragraphe entier.
                     candidatos_comentario.append((idx, alerta, salida, None))
                     stats['notes']['repli_paragraphe_entier'] += 1
                 elif accion in ('fix', 'track') and alerta.get('suggested'):
@@ -1015,11 +912,10 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
                 else:
                     candidatos_comentario.append((idx, alerta, salida, mot_appel))
                     stats['notes']['commentaires'] += 1
-                continue  # ne rejoint jamais le classement révision/commentaire standard
+                continue
             localizado = _localizar(texto_tmp, alerta.get('span'), alerta.get('found'))
             accion = alerta.get('action')
-            # Un span qui touche un run de lien ne devient JAMAIS une révision (défaut n°3,
-            # voir _span_toca_enlace) : il reste localisé, mais repart au fil des commentaires.
+            # Un span qui touche un lien devient un commentaire (voir _span_toca_enlace).
             peut_reviser = (accion in ('fix', 'track') and alerta.get('suggested')
                              and localizado is not None
                              and not _span_toca_enlace(runs_tmp, *localizado))
@@ -1029,30 +925,15 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
                 _contar_regla(stats, alerta, 'signalees')
                 devenir[idx] = 'rapport'
             else:
-                # action == 'comment', fix/track non localisable/sans suggestion, ou span
-                # touchant un lien (§7 ter, points 3 et défaut n°3) : repli commentaire,
-                # jamais perdu.
+                # 'comment', fix/track non localisé ou sans suggestion, ou span sur un lien.
                 candidatos_comentario.append((idx, alerta, salida, localizado))
 
-    # 2 bis. Chevauchements entre révisions d'un MÊME paragraphe (§7 ter, révision du
-    # 21.09.2026, défaut n°1) : fusionner deux atomes déjà fusionnés par une révision voisine
-    # fait perdre la clé 'texto' de l'atome de remplacement (KeyError, mesuré sur le corpus
-    # réel : deux règles distinctes — Vale et manuscrit_biblio.py — lèvent chacune leur propre
-    # alerte sur le MÊME DOI). La plus sévère reste une révision ; l'autre devient un
-    # commentaire sur le MÊME ancrage — jamais deux modifications imbriquées.
-    #
-    # ⚠ Révision du 21.09.2026 bis, mesurée sur le corpus réel (chaîne complète, manuscrit
-    # « coenseignement ») : à sévérité ÉGALE, l'ancien tri (index d'apparition croissant)
-    # faisait systématiquement perdre `APA.MiseEnForme` — dont le span couvre TOUJOURS la
-    # référence entière (§7 bis : `found` est tout le texte de l'entrée) — face à une règle
-    # Vale bien plus étroite qui corrige la MÊME chose en passant (ici,
-    # `CSPS-Biblio.APA.Esperluette`, « et » -> « & », sur 4 références du manuscrit réel).
-    # Résultat mesuré AVANT ce correctif : toute la mise en forme APA proposée (italique,
-    # séparateur anglais, DOI…) disparaissait en commentaire pour ne garder qu'un « et » -> « &
-    # » isolé — la règle la plus étroite gagnait alors qu'elle ne fait QU'UNE PARTIE de ce que
-    # fait la plus large. Le span le plus LARGE l'emporte désormais à sévérité égale (la
-    # révision la plus large a beaucoup plus de chances d'englober ce que fait la plus étroite
-    # que l'inverse) ; l'ordre d'apparition ne tranche plus qu'en tout dernier recours.
+    # 2 bis. Révisions qui se chevauchent dans un même paragraphe (par exemple Vale et
+    # manuscrit_biblio.py sur le même DOI). Deux révisions imbriquées casseraient les atomes :
+    # une seule reste révision, les autres deviennent des commentaires au même endroit.
+    # Ordre : la plus sévère, puis le span le plus large, puis l'ordre d'apparition. Le span
+    # large passe avant, car APA.MiseEnForme, qui couvre toute la référence, englobe en
+    # général la correction d'une règle étroite comme CSPS-Biblio.APA.Esperluette.
     for salida, lista_rev in list(revisiones_por_salida.items()):
         ordenada = sorted(
             lista_rev,
@@ -1071,10 +952,10 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
                 devenir[idx] = 'revision'
         revisiones_por_salida[salida] = conservadas
 
-    # Un repli (l'insertion du seul DOI, manuscrit_biblio.py) resté en commentaire n'en fait
-    # pas un second : si son principal (la mise en forme APA) est passé en révision, le DOI y
-    # est déjà ; sinon le commentaire du principal le nomme. Il ne s'écrit que s'il a gagné
-    # sa place de révision, là où le principal l'a perdue.
+    # Une alerte de repli (l'insertion du seul DOI, manuscrit_biblio.py) restée en commentaire
+    # ne s'écrit pas : si son principal (la mise en forme APA) est une révision, le DOI y est
+    # déjà ; sinon le commentaire du principal le nomme. Le repli ne s'écrit que comme
+    # révision.
     principaux = {alertes[i].get('groupe'): i for i in range(len(alertes))
                   if alertes[i].get('role_groupe') == 'principal'}
     restants = []
@@ -1086,16 +967,11 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
         restants.append(item)
     candidatos_comentario = restants
 
-    # 2 ter. Notes : révisions DANS footnotes.xml (§7 ter du contrat, point 4 — préférence de
-    # Robin : « reconnaître -> reconnaitre » dans une note doit s'accepter d'un clic, comme
-    # dans le corps). Tentée ICI, une fois par note (jamais par alerte) : `found` est cherché
-    # dans le texte RÉEL de CHAQUE paragraphe de la note écrite (dans l'ordre), le premier qui
-    # le contient gagne — `_localizar()` (span d'abord, puis found seul si le span ne colle
-    # plus) absorbe déjà le décalage introduit par le repère de note (« N  ») que l'écrivain
-    # pose en tête du premier paragraphe, jamais présent dans le texte que le lecteur a vu.
-    # Un `found` introuvable dans AUCUN paragraphe de la note retombe sur le commentaire de
-    # repli déjà préparé (mot avant l'appel, dans candidatos_comentario) : « trop de risque »
-    # pour une révision à l'aveugle, jamais un plantage.
+    # 2 ter. Révisions dans footnotes.xml, pour qu'une correction dans une note s'accepte d'un
+    # clic comme dans le corps. Pour chaque note, `found` est cherché dans chacun de ses
+    # paragraphes, dans l'ordre ; le premier qui le contient gagne. _localizar() absorbe le
+    # décalage dû au repère « N » que l'écrivain pose en tête de note. Introuvable, l'alerte
+    # devient un commentaire sur le mot qui précède l'appel.
     notas_por_numero = {}
     for idx, alerta, note_numero, salida, mot_appel in notas_candidatas:
         notas_por_numero.setdefault(note_numero, []).append((idx, alerta, salida, mot_appel))
@@ -1105,10 +981,8 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
     for note_numero, lista_nota in notas_por_numero.items():
         m_nota = _footnote_match(footnotes_xml, note_numero)
         if m_nota is None:
-            # Note introuvable dans footnotes.xml (désaccord entre le numéro recalculé côté
-            # manuscrit-nettoyer.py et ce qui a été réellement écrit — filet de sécurité jamais
-            # mesuré sur le corpus réel) : repli commentaire pour TOUTES les alertes de cette
-            # note, comme un appel introuvable.
+            # Note introuvable dans footnotes.xml (numéro calculé par la CLI différent de
+            # celui écrit) : commentaires pour toutes les alertes de cette note.
             for idx, alerta, salida, mot_appel in lista_nota:
                 candidatos_comentario.append((idx, alerta, salida, mot_appel))
                 stats['notes']['commentaires'] += 1
@@ -1139,9 +1013,7 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
             i_p, localizado_nota = hallado
             candidatas_localizadas.append((idx, alerta, salida, mot_appel, i_p, localizado_nota))
 
-        # Chevauchement — même principe qu'en 2 bis (span le plus large gagne à sévérité
-        # égale), groupé PAR PARAGRAPHE DE NOTE : deux alertes sur deux paragraphes distincts
-        # de la MÊME note ne se chevauchent jamais entre elles.
+        # Chevauchements : même règle qu'en 2 bis, par paragraphe de note.
         par_paragrafo_nota = {}
         for item in candidatas_localizadas:
             par_paragrafo_nota.setdefault(item[4], []).append(item)
@@ -1163,12 +1035,10 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
                     devenir[idx] = 'revision'
                     stats['notes']['revisions'] += 1
 
-    # 2 quater. Un commentaire de DOUBLON_DE_REVISION dit la même faute qu'une révision écrite
-    # qui le chevauche (même paragraphe, `suggested` du commentaire contenu dans celui de la
-    # révision) : il n'est pas posé dans Word et reste au rapport (devenir 'rapport', comme un
-    # commentaire que le plafond écarte). Toute autre règle reste en commentaire. Retrait fait
-    # AVANT le plafond : il ne consomme ni les 5 par règle ni les 25 globaux, et la synthèse
-    # « et N autres » ne compte pas les alertes retirées.
+    # 2 quater. Un commentaire de DOUBLON_DE_REVISION qui redit une révision voisine (même
+    # paragraphe, `suggested` contenu dans celui de la révision) reste au rapport. Fait avant
+    # le plafond, pour qu'il ne compte ni dans les 5 par règle, ni dans les 25 au total, ni
+    # dans la synthèse « et N autres ».
     restants = []
     for item in candidatos_comentario:
         idx, alerta, salida, localizado = item
@@ -1181,11 +1051,9 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
     candidatos_comentario = restants
 
     # 2 quinquies. Un commentaire DOI qui chevauche le commentaire APA.MiseEnForme de la même
-    # référence (même paragraphe de sortie, corps seulement) s'y fond : le commentaire de mise
-    # en forme garde son ancrage et reçoit « DOI : forme attendue <DOI> » (sauf si sa
-    # suggestion contient déjà le DOI), le commentaire DOI reste au rapport. Hors de ces
-    # conditions (ancrage absent, note, pas de chevauchement), les deux restent. Fait AVANT le
-    # plafond, comme le retrait des doublons.
+    # référence (même paragraphe, corps seulement) s'y fond : celui-ci reçoit « DOI : forme
+    # attendue <DOI> », sauf si sa suggestion contient déjà le DOI, et le commentaire DOI
+    # reste au rapport. Sinon les deux restent. Fait avant le plafond.
     t_fusion = _textes(langue)
     fusion = stats['fusion_doi']
     cand = list(candidatos_comentario)
@@ -1224,7 +1092,7 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
         absorbes.add(k)
     candidatos_comentario = [it for k, it in enumerate(cand) if k not in absorbes]
 
-    # 3. Plafond des commentaires (§7 ter, point 4) : tri error > warning > suggestion puis
+    # 3. Plafond des commentaires : tri error > warning > suggestion puis
     # ordre d'apparition, au plus 5 par règle (la 5e écrite porte la synthèse des suivantes),
     # puis le plafond global.
     candidatos_comentario.sort(key=lambda t: (_RANGO_SEVERIDAD.get(t[1].get('severity'), 3), t[0]))
@@ -1268,9 +1136,8 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
             (localizado, alerta, id(alerta) in sintesis_para))
         devenir[idx] = 'commentaire'
 
-    # 4. Écriture, paragraphe par paragraphe, dans l'ordre DÉCROISSANT de position dans
-    # `interior` — chaque remplacement ne touche que ce qui est à sa droite pour les
-    # remplacements déjà faits, jamais les offsets (encore valides) des paragraphes restants.
+    # 4. Écriture paragraphe par paragraphe, de la fin vers le début de `interior`, pour que
+    # chaque remplacement laisse valides les positions des paragraphes qui restent.
     comments_nuevos = []
     salidas_a_tratar = sorted(set(revisiones_por_salida) | set(comentarios_por_salida),
                                key=lambda s: indices_p[s][0], reverse=True)
@@ -1285,15 +1152,12 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
 
     contenidos['word/document.xml'] = (prefijo_doc + interior + sufijo_doc).encode('utf-8')
 
-    # 4 bis. Écriture des révisions DE NOTE, DANS footnotes.xml (§7 ter, point 4) — même
-    # mécanisme que le corps (_anotar_parrafo, ordre décroissant de position), mais SANS
-    # commentaire : Word n'en accepte aucun à l'intérieur d'une note (voir l'en-tête « 2 ter »
-    # plus haut). `contador` est le MÊME compteur que le corps (partagé, voir sa docstring).
+    # 4 bis. Révisions de note dans footnotes.xml : même mécanisme que le corps, sans
+    # commentaire (Word n'en accepte pas dans une note), avec le même compteur `contador`.
+    # Les notes se traitent de la dernière à la première, pour garder valides les positions
+    # `inicio` et `fin` des notes qui restent.
     for note_numero in sorted(revisiones_notas_por_numero,
                                key=lambda n: notas_info[n]['inicio'], reverse=True):
-        # Ordre décroissant de position dans footnotes.xml — même raison qu'au niveau du
-        # corps (§4 ci-dessus) : sans lui, réécrire la note N invaliderait les offsets déjà
-        # calculés (`info['inicio']`/`['fin']`) d'une note N' physiquement APRÈS elle.
         revisiones_nota = revisiones_notas_por_numero[note_numero]
         info = notas_info[note_numero]
         interior_nota = info['interior']
@@ -1339,12 +1203,9 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
                     'comments+xml"/></Types>')
                 contenidos['[Content_Types].xml'] = ct_xml.encode('utf-8')
 
-    # Contrôle systématique AVANT écriture (§7 ter, révision du 21.09.2026, défaut n°3) :
-    # aucune partie XML/rels de la sortie ne part sur disque sans avoir été reparsée — un
-    # module qui rendrait un XML mal formé doit lever une exception EXPLICITE ici, jamais
-    # laisser un .docx corrompu sortir avec un code de succès. Toutes les parties (pas
-    # seulement celles que ce module vient de modifier) : un défaut mesuré une fois ne suffit
-    # pas à garantir qu'il n'y en a pas d'autre.
+    # Avant d'écrire, chaque partie XML ou .rels est reparsée, y compris celles que ce module
+    # n'a pas touchées : un XML mal formé lève une exception plutôt que de sortir un .docx
+    # corrompu en apparence réussi.
     for nombre, datos in contenidos.items():
         if nombre.endswith('.xml') or nombre.endswith('.rels'):
             try:
@@ -1374,12 +1235,10 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
 
 
 # ---------------------------------------------------------------------------------
-# CLI d'essai (§7 ter, point 8) — analyse manuelle, comme tous les CLI de pipeline/ (aucun
-# n'utilise argparse). Un seul chemin .docx : annote EN PLACE (lecture puis remplacement
-# atomique, voir annoter()) le fichier déjà au gabarit qu'on lui donne — typiquement une
-# sortie de manuscrit-nettoyer.py. --alertes/--correspondance acceptent soit le tableau/la
-# liste bruts, soit le rapport JSON complet du nettoyeur (alertes.liste /
-# decisions.ecriture.correspondance), pour pouvoir passer le MÊME fichier aux deux options.
+# CLI d'essai. Annote sur place le .docx au gabarit donné (en général une sortie de
+# manuscrit-nettoyer.py). --alertes et --correspondance acceptent la liste seule ou le
+# rapport JSON complet du nettoyeur (alertes.liste, decisions.ecriture.correspondance), si
+# bien qu'on peut passer le même fichier aux deux options.
 
 USAGE = ('usage : manuscrit_annoter.py <sortie.docx> --alertes alertes.json '
          '--correspondance correspondance.json [--plafond 25] [--auteur "..."] '

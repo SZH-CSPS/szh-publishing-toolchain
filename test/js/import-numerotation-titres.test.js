@@ -1,24 +1,15 @@
-// La numérotation automatique des titres Word survit-elle à l'import ?
+// La numérotation automatique des titres Word ne survit pas à l'import : pandoc ne
+// restitue pas dans le texte la numérotation portée par le style (numPr).
 //
 //   node --test "test/js/*.test.js"
 //
-// Le suivi du chantier livres le donnait pour vrai sans qu'un vrai aller-retour l'ait
-// jamais mesuré : « il a été affirmé que pandoc retire cette numérotation à l'import [...]
-// mais personne ne l'a constaté sur un vrai aller-retour ».
+// Le modèle livre-template/Modele-chapitre-SZH.docx numérote ses titres (1., 1.1, 1.1.1)
+// par ses styles : Heading1/2/3 de word/styles.xml portent w:numId=1, défini dans
+// word/numbering.xml (w:lvlText « %1. », « %1.%2. », « %1.%2.%3. »). Le texte des titres,
+// dans word/document.xml, est nu.
 //
-// Le modèle livre-template/Modele-chapitre-SZH.docx numérote ses titres (1., 1.1, 1.1.1) :
-// vérifié sur ce .docx lui-même (un .docx est un zip), les styles Heading1/2/3 de
-// word/styles.xml portent chacun w:numId=1, et word/numbering.xml définit ce numId avec
-// w:numFmt=decimal et w:lvlText « %1. », « %1.%2. », « %1.%2.%3. ». C'est donc bien le
-// STYLE qui numérote (numPr), jamais le texte des runs — word/document.xml porte des
-// titres nus : « Introduction », « Première sous-section », etc.
-//
-// Ce contrôle fait le vrai aller-retour, par la chaîne réelle : import-docx.sh, le même
-// script pour un article ou un chapitre de livre (pipeline/profils/livre.mk : « un
-// chapitre se compile comme un article. Même `cd` dans son dossier, même suite de
-// filtres »). Constat, sur ce document : les numéros ne survivent pas — pandoc ne
-// restitue jamais dans le texte la numérotation portée par numPr. Ce test fige ce
-// constat pour qu'il n'ait plus à être refait au jugé.
+// Le contrôle passe par la chaîne réelle, import-docx.sh, la même pour un article et pour
+// un chapitre de livre.
 'use strict';
 
 const test = require('node:test');
@@ -50,9 +41,8 @@ function wsl(args) {
 // SZH_WSL_OBLIGATOIRE via gardes.js en fait un échec au chargement du module.
 
 test(".docx du modèle : les titres sont numérotés par le style, pas par le texte", (t) => {
-  // Prémisse à ne pas supposer : si le modèle ne numérotait plus ses titres, ce contrôle
-  // n'aurait plus d'objet. Un .docx est un zip ; on le lit avec le zipfile de Python, dans
-  // la distro WSL de la chaîne — aucune dépendance zip n'existe côté Node de ce dépôt.
+  // Prémisse : le modèle numérote bien ses titres. Le .docx (un zip) est lu par le zipfile
+  // de Python dans la WSL, le dépôt n'ayant pas de bibliothèque zip côté Node.
   if (sansPandocWsl) {
     console.warn("\n*** prémisse non vérifiée : " + sansPandocWsl + " ***\n");
     return sauter.wsl(t);

@@ -1,11 +1,11 @@
 /**
- * Audit de conformité : la table de référence des couleurs de maison
- * (pipeline/styles/couleurs-reference.json) DOIT correspondre exactement aux
- * définitions CSS et aux CMJN du graphiste.
+ * Vérifie que la table de référence des couleurs de maison
+ * (pipeline/styles/couleurs-reference.json) correspond exactement aux définitions
+ * CSS et aux CMJN du graphiste.
  *
- * C'est la seule table : cmjn.py (PDF imprimeur) et couverture.py (couverture)
- * la lisent, aucun des deux n'en garde de copie. Une couleur de charte qui change
- * se change dans le JSON, et ce test dit si le CSS a suivi.
+ * C'est la seule table : cmjn.py (PDF imprimeur) et couverture.py (couverture) la
+ * lisent sans en garder de copie. Une couleur de charte se change dans le JSON, et ce
+ * test dit si le CSS a suivi.
  *
  * Table des couleurs officielles (graphiste), et le sapin de la collection ProSpectrum :
  *   - Rouge SZH-CSPS (#D31932) → CMJN officiel 16 90 64 0
@@ -152,8 +152,7 @@ test('Valeurs officielles CMJN (graphiste)', () => {
     '#22352D': [0.90, 0.60, 0.65, 0.53], // Sapin (ProSpectrum, couverture seule)
   };
 
-  // Table du graphiste et table de référence doivent porter exactement les mêmes couleurs :
-  // ni une de plus (résidu), ni une de moins (couleur oubliée).
+  // Table du graphiste et table de référence portent exactement les mêmes couleurs.
   assert.strictEqual(Object.keys(cmykTable).length, Object.keys(expectedCMYK).length,
     `Table CMJN : attendu ${Object.keys(expectedCMYK).length} couleurs, trouvé ${Object.keys(cmykTable).length}`);
 
@@ -175,8 +174,8 @@ test('Valeurs officielles CMJN (graphiste)', () => {
   }
 });
 
-// Pas de seconde table : cmjn.py et couverture.py lisent le JSON, aucun n'écrit de hex
-// de maison en dur (une copie divergerait à la première retouche de charte).
+// Pas de seconde table : cmjn.py et couverture.py lisent le JSON, sans hex de maison en
+// dur (une copie divergerait à la première retouche de charte).
 test('cmjn.py et couverture.py lisent la table de référence, sans copie', () => {
   const pipeline = path.join(__dirname, '../../pipeline');
   const hexMaison = Object.keys(extractCMYKTable(REFERENCE));

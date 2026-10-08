@@ -3,24 +3,21 @@
 // du lanceur.
 //
 //   node --test test/js/checkin-postes.test.js
-//   node --test "test/js/*.test.js"
 //
 // Trois familles, du plus statique au plus complet :
 //
-//   1. la SOURCE réelle des .ps1 : le fichier est bien dot-sourcé, le nom du dossier de
-//      l'application n'y est pas recopié (un banc voisin l'interdit déjà pour szh-ancrage),
-//      le dossier d'inventaire n'est déclaré qu'une fois, et l'écriture porte le préfixe
-//      « ~$ » et son bloc de nettoyage ;
-//   2. les fonctions PURES extraites du vrai fichier et rejouées dans un pilote PowerShell
-//      (même technique que test/js/rapport-erreur-ps.test.js et
-//      test/js/orphelins-toolkit.test.js) : la fusion des lignes, la forme du CSV, le
-//      nettoyage du temporaire quand l'écriture échoue ;
-//   3. la VRAIE entrée « Pronto » (windows/open-revue.ps1) en simulation, sur une arborescence
+//   1. la source des .ps1 : le fichier est dot-sourcé, le nom du dossier de l'application
+//      n'y est pas recopié, le dossier d'inventaire n'est déclaré qu'une fois, et l'écriture
+//      passe par un fichier préfixé « ~$ » avec son bloc de nettoyage ;
+//   2. les fonctions pures, extraites du vrai fichier et rejouées dans un pilote PowerShell
+//      (comme test/js/rapport-erreur-ps.test.js) : fusion des lignes, forme du CSV, nettoyage
+//      du temporaire quand l'écriture échoue ;
+//   3. l'entrée « Pronto » (windows/open-revue.ps1) en simulation, sur une arborescence
 //      jetable : le fichier apparaît au bon endroit, sous le bon nom, et deux lancements de
-//      suite ne font toujours qu'une ligne.
+//      suite ne font qu'une ligne.
 //
-// ⚠ AUCUN test ici ne touche le vrai OneDrive du poste : SZH_BASE, SZH_RACINE_TEST,
-// SZH_RACINE_PROD, SZH_ANCRAGE, LOCALAPPDATA et USERPROFILE sont tous détournés vers des
+// Aucun test ne touche le vrai OneDrive du poste : SZH_BASE, SZH_RACINE_TEST,
+// SZH_RACINE_PROD, SZH_ANCRAGE, LOCALAPPDATA et USERPROFILE sont détournés vers des
 // dossiers jetables (fs.mkdtempSync), et le lanceur tourne en SZH_LANCEUR_SIMULE=1.
 'use strict';
 
@@ -49,8 +46,8 @@ const SOURCE_SHELL = fs.readFileSync(SHELL_PS1, 'utf8');
 const I_TACHES = SOURCE_SHELL.indexOf('function Invoke-SzhTachesDemarrage');
 const SOURCE_TACHES = SOURCE_SHELL.slice(I_TACHES, SOURCE_SHELL.indexOf('\n}', I_TACHES));
 
-// Lu plutôt que recopié, même motif que dans test/js/lanceur-ancrage.test.js : un futur
-// renommage du dossier de l'application ne doit pas casser ce banc.
+// Lu plutôt que recopié, comme dans test/js/lanceur-ancrage.test.js : un renommage du
+// dossier de l'application ne casse pas ce test.
 const mSegmentApplication = SOURCE_ANCRAGE.match(/\$script:SzhSegmentApplication\s*=\s*'([^']+)'/);
 assert.ok(mSegmentApplication, 'szh-ancrage.ps1 ne déclare plus $script:SzhSegmentApplication');
 const SEGMENT_APPLICATION = mSegmentApplication[1];
@@ -59,9 +56,7 @@ const SEGMENT_APPLICATION = mSegmentApplication[1];
 // « indisponible » au lieu d'appeler le vrai powershell.exe.
 const { POWERSHELL, sansPowerShell } = require('./gardes');
 
-// L'en-tête attendu, dans l'ordre. C'est la FORME décidée par le propriétaire : si une
-// colonne bouge ou disparaît, c'est ici que ça se voit, et pas dans un tableur six mois
-// plus tard.
+// L'en-tête attendu, dans l'ordre : une colonne déplacée ou retirée se voit ici.
 const COLONNES = [
   'Horodatage',
   'Mois',
@@ -91,8 +86,8 @@ test('le check-in est un fichier à lui, dot-sourcé par le socle commun', () =>
   assert.ok(fs.existsSync(CHECKIN_PS1), 'windows/szh-checkin.ps1 n’existe pas');
   assert.match(SOURCE_COMMUN, /\.\s+"\$PSScriptRoot\\szh-checkin\.ps1"/,
     'szh-common.ps1 ne dot-source pas szh-checkin.ps1');
-  // Après szh-produits.ps1, dont il tire la racine active : l'ordre de ce bloc porte les
-  // dépendances, il n'est pas décoratif.
+  // Après szh-produits.ps1, dont il tire la racine active : l'ordre de ce bloc suit les
+  // dépendances.
   const iProduits = SOURCE_COMMUN.indexOf('szh-produits.ps1"');
   const iCheckin = SOURCE_COMMUN.indexOf('szh-checkin.ps1"');
   assert.ok(iProduits !== -1 && iCheckin !== -1 && iProduits < iCheckin,
@@ -100,19 +95,17 @@ test('le check-in est un fichier à lui, dot-sourcé par le socle commun', () =>
 });
 
 test('le check-in est embarqué dans le toolkit déployé', () => {
-  // release.yml recopie le DOSSIER windows/ en entier (`cp -r … windows toolkit/`) et
-  // update.ps1 ne tient aucune liste de fichiers : un fichier neuf y monte tout seul. Ce
-  // test garde cette propriété — le jour où quelqu'un remplacerait le `cp -r` par une liste
-  // explicite, il faudra y ajouter szh-checkin.ps1, et c'est ici qu'on l'apprendra.
+  // release.yml copie le dossier windows/ en entier (`cp -r … windows toolkit/`) et
+  // update.ps1 ne tient aucune liste de fichiers : un nouveau fichier est livré sans rien
+  // ajouter. Si le `cp -r` devient une liste explicite, il faudra y mettre szh-checkin.ps1.
   const release = fs.readFileSync(path.join(RACINE, '.github', 'workflows', 'release.yml'), 'utf8');
   assert.match(release, /cp -r [^\n]*\bwindows\b[^\n]*toolkit\//,
     'release.yml ne recopie plus le dossier windows/ en entier : ajouter szh-checkin.ps1 à sa liste');
 });
 
 test('le nom du dossier de l’application n’est pas recopié dans le check-in', () => {
-  // Le littéral ne vit qu'à deux endroits du dépôt ($script:SzhSegmentApplication et
-  // SEGMENT_APPLICATION). Il est LU ici, jamais écrit, pour que ce banc survive à un
-  // renommage du dossier.
+  // Le littéral n'est écrit qu'à deux endroits du dépôt ($script:SzhSegmentApplication et
+  // SEGMENT_APPLICATION). Il est lu ici, pour que ce test survive à un renommage.
   const m = SOURCE_ANCRAGE.match(/\$script:SzhSegmentApplication\s*=\s*'([^']+)'/);
   assert.ok(m, 'szh-ancrage.ps1 ne déclare plus $script:SzhSegmentApplication');
   assert.ok(SOURCE_CHECKIN.indexOf(m[1]) === -1,
@@ -123,16 +116,15 @@ test('le nom du dossier de l’application n’est pas recopié dans le check-in
 });
 
 test('le dossier d’inventaire vient de Get-SzhDossierSysteme, jamais de la racine active', () => {
-  // Depuis le 23.09.2026 : _Systeme\ (rapports, journaux, suggestions, inventaire) vit
-  // TOUJOURS sur SharePoint, ancré via Resolve-SzhAncrage — jamais sous la racine active, où
-  // un poste en mode test l'aurait posé jusqu'ici (deux postes sur des emplacements
-  // différents auraient alors écrit deux CSV différents, jamais lus par la même personne).
+  // _Systeme\ (rapports, journaux, suggestions, inventaire) vit toujours sur SharePoint,
+  // trouvé par Resolve-SzhAncrage, et pas sous la racine active : sinon un poste en mode
+  // test écrirait son CSV ailleurs que les autres.
   assert.ok(SOURCE_PRODUITS.indexOf('function Get-SzhDossierSysteme(') !== -1,
     'szh-produits.ps1 ne déclare plus Get-SzhDossierSysteme');
   assert.ok(SOURCE_CHECKIN.indexOf("Get-SzhDossierSysteme 'inventaire'") !== -1,
     'szh-checkin.ps1 ne dérive plus son dossier de Get-SzhDossierSysteme');
-  // $SzhDossiersCommuns (créé sous la racine ACTIVE par Initialize-SzhEmplacementsTest) ne
-  // doit plus contenir _Systeme : sinon un poste en mode test verrait l'inventaire sous
+  // $SzhDossiersCommuns (créé sous la racine active par Initialize-SzhEmplacementsTest) ne
+  // contient pas _Systeme : sinon un poste en mode test mettrait l'inventaire sous
   // Revues-TESTING au lieu de SharePoint.
   const m = SOURCE_PRODUITS.match(/\$script:SzhDossiersCommuns = @\([\s\S]*?\n\)/);
   assert.ok(m, '$SzhDossiersCommuns introuvable');
@@ -148,14 +140,14 @@ test('l’écriture du CSV est atomique, préfixée « ~$ », et nettoie son tem
     'le temporaire du check-in ne porte pas le préfixe « ~$ », que OneDrive ignore');
   assert.ok(corps.indexOf('Move-Item') !== -1, 'le CSV n’est plus écrit puis renommé');
   assert.match(corps, /\}\s*finally\s*\{/, 'le temporaire n’est pas nettoyé par un finally');
-  // Jamais Set-SzhJson : il n'est pas atomique (et n'écrit pas du CSV).
+  // Pas Set-SzhJson : il n'est pas atomique (et n'écrit pas du CSV).
   assert.ok(SOURCE_CHECKIN.indexOf('Set-SzhJson') === -1,
     'le check-in passe par Set-SzhJson, qui n’est pas atomique');
 });
 
 test('le lanceur appelle le check-in une fois, après la résolution de l’ancrage', () => {
-  // Les lignes de CODE seulement : le commentaire au-dessus de l'appel nomme la fonction
-  // lui aussi, et il n'appelle rien.
+  // Les lignes de code seulement : le commentaire au-dessus de l'appel nomme aussi la
+  // fonction.
   assert.ok(I_TACHES !== -1, 'Invoke-SzhTachesDemarrage a disparu de szh-shell.ps1');
   const appels = SOURCE_TACHES.match(/^\s*try \{ \[void\]\(Invoke-SzhCheckin/gm) || [];
   assert.strictEqual(appels.length, 1, 'les tâches de démarrage appellent le check-in ' + appels.length + ' fois');
@@ -170,7 +162,7 @@ test('le lanceur appelle le check-in une fois, après la résolution de l’ancr
   const iOuvrirLien = SOURCE_LANCEUR.indexOf('Open-SzhLien $Lien', iLien);
   assert.ok(iLien !== -1 && iTachesLien !== -1 && iTachesLien < iOuvrirLien,
     'les tâches de démarrage (check-in compris) doivent passer AVANT le lien');
-  // Sous garde : le démarrage ne doit jamais échouer à cause de l'inventaire.
+  // Sous garde : le démarrage n'échoue pas à cause de l'inventaire.
   assert.match(SOURCE_TACHES, /try \{ \[void\]\(Invoke-SzhCheckin[^\n]*\} catch \{ \}/,
     'l’appel au check-in n’est pas sous garde');
 });
@@ -196,9 +188,8 @@ test('l’adresse de connexion est cherchée dans l’ordre prévu, et ne lève 
 // ---- 2. Les fonctions pures, extraites du vrai fichier et rejouées ------------------
 // =====================================================================================
 
-// Le corps d'une fonction PowerShell, du vrai fichier : de sa déclaration jusqu'à la
-// première ligne qui n'est QU'UN « } » en colonne 0. Même technique que
-// test/js/rapport-erreur-ps.test.js.
+// Le corps d'une fonction PowerShell du vrai fichier : de sa déclaration jusqu'à la première
+// ligne réduite à « } » en colonne 0.
 function corpsFonction(nom) {
   const lignes = SOURCE_CHECKIN.split(/\r\n|\n/);
   let debut = -1;
@@ -289,14 +280,14 @@ test('CSV : une ligne par mois ET par compte, la ligne du mois étant rafraîchi
       const cible = path.join(travail, 'RMO-DESK.csv').replace(/\\/g, '\\\\');
       const appel = [
         "  $colonnes = @('Horodatage', 'Mois', 'Poste', 'Compte Windows', 'Adresse de connexion')",
-        // Le fichier tel qu'il existe déjà : deux mois, et DEUX comptes pour le mois courant.
+        // Le fichier existant : deux mois, et deux comptes pour le mois courant.
         "  $anciennes = @(",
         "    [pscustomobject]@{ 'Horodatage' = '2026-08-03 08:00:00'; 'Mois' = '2026-08'; 'Poste' = 'RMO-DESK'; 'Compte Windows' = 'RMO-DESK\\robin'; 'Adresse de connexion' = 'a@b.ch' },",
         "    [pscustomobject]@{ 'Horodatage' = '2026-09-01 08:00:00'; 'Mois' = '2026-09'; 'Poste' = 'RMO-DESK'; 'Compte Windows' = 'RMO-DESK\\robin'; 'Adresse de connexion' = 'a@b.ch' },",
         "    [pscustomobject]@{ 'Horodatage' = '2026-09-02 09:00:00'; 'Mois' = '2026-09'; 'Poste' = 'RMO-DESK'; 'Compte Windows' = 'RMO-DESK\\claire'; 'Adresse de connexion' = 'c@b.ch' }",
         "  )",
-        // La ligne du jour : même mois, même compte que la deuxième -- et SANS adresse, ce
-        // qu'un poste hors domaine et sans OneDrive professionnel produit.
+        // La ligne du jour : même mois, même compte que la deuxième, et sans adresse, comme
+        // sur un poste hors domaine et sans OneDrive professionnel.
         "  $neuve = [ordered]@{ 'Horodatage' = '2026-09-15 17:30:00'; 'Mois' = '2026-09'; 'Poste' = 'RMO-DESK'; 'Compte Windows' = 'rmo-desk\\ROBIN'; 'Adresse de connexion' = '' }",
         "  $lignes = Merge-SzhCheckinLignes $anciennes $neuve $colonnes 'Mois' 'Compte Windows'",
         "  Write-SzhCheckinCsv -Fichier '" + cible + "' -Lignes $lignes",
@@ -313,10 +304,10 @@ test('CSV : une ligne par mois ET par compte, la ligne du mois étant rafraîchi
         'l’en-tête n’est pas en première ligne, ou n’est pas séparé par des points-virgules');
       assert.strictEqual(csv.corps.length, 3, 'mauvais nombre de lignes de données');
 
-      // Le mois d'août n'a pas bougé, et garde son rang.
+      // Le mois d'août est intact, à son rang.
       assert.deepStrictEqual(csv.corps[0].slice(0, 2), ['2026-08-03 08:00:00', '2026-08']);
-      // La ligne du même mois ET du même compte a été REMPLACÉE, sur place — la casse du
-      // compte ne crée pas une deuxième ligne pour la même personne.
+      // La ligne du même mois et du même compte est remplacée sur place ; la casse du
+      // compte ne crée pas de deuxième ligne pour la même personne.
       assert.strictEqual(csv.corps[1][0], '2026-09-15 17:30:00', 'la ligne du mois n’a pas été rafraîchie');
       assert.strictEqual(csv.corps[1][3], 'rmo-desk\\ROBIN');
       assert.strictEqual(csv.corps[1][4], '', 'une adresse absente doit laisser une case vide, pas casser la ligne');
@@ -334,18 +325,18 @@ test('CSV : un fichier neuf se relit tel quel, et une colonne ajoutée ne le tro
     try {
       const cible = path.join(travail, 'POSTE.csv').replace(/\\/g, '\\\\');
       const appel = [
-        // Un fichier écrit par une version ANTÉRIEURE : trois colonnes seulement.
+        // Un fichier écrit par une version antérieure : trois colonnes seulement.
         "  $vieilles = @('\"Mois\";\"Compte Windows\";\"Poste\"', '\"2026-08\";\"D\\a\";\"POSTE\"')",
         "  Set-Content -LiteralPath '" + cible + "' -Value $vieilles -Encoding UTF8",
         "  $relues = Read-SzhCheckinCsv '" + cible + "'",
         "  $sortie['relues'] = @($relues).Count",
-        // La version d'aujourd'hui en connaît quatre : la ligne ancienne doit ressortir
-        // complétée, sinon Export-Csv tronquerait TOUT le fichier sur son premier objet.
+        // La version actuelle en connaît quatre : la ligne ancienne ressort complétée, sinon
+        // Export-Csv calquerait les colonnes de tout le fichier sur son premier objet.
         "  $colonnes = @('Mois', 'Compte Windows', 'Poste', 'Adresse de connexion')",
         "  $neuve = [ordered]@{ 'Mois' = '2026-09'; 'Compte Windows' = 'D\\b'; 'Poste' = 'POSTE'; 'Adresse de connexion' = 'x@y.ch' }",
         "  $lignes = Merge-SzhCheckinLignes $relues $neuve $colonnes 'Mois' 'Compte Windows'",
         "  Write-SzhCheckinCsv -Fichier '" + cible + "' -Lignes $lignes",
-        // Un fichier ABSENT rend un tableau vide, jamais $null : c'est ce qui distingue
+        // Un fichier absent rend un tableau vide, pas $null : c'est ce qui distingue
         // « premier check-in » de « fichier illisible ».
         "  $absent = Read-SzhCheckinCsv (Join-Path '" + travail.replace(/\\/g, '\\\\') + "' 'jamais-ecrit.csv')",
         "  $sortie['absentEstNul'] = ($null -eq $absent)",
@@ -378,9 +369,9 @@ test('CSV : une écriture qui échoue n’abandonne aucun temporaire dans le dos
       const cible = path.join(dossier, 'POSTE.csv');
       fs.writeFileSync(cible, 'deja la', 'utf8');
       const appel = [
-        // La cible est tenue ouverte SANS partage : le renommage final échoue, exactement
-        // comme lorsqu'un synchroniseur tient le fichier. Le temporaire, lui, a bien été
-        // écrit -- c'est le seul montage qui prouve que le finally fait son travail.
+        // La cible est tenue ouverte sans partage : le renommage final échoue, comme quand
+        // un synchroniseur tient le fichier. Le temporaire a été écrit : ce montage prouve
+        // que le finally le nettoie.
         "  $flux = [System.IO.File]::Open('" + cible.replace(/\\/g, '\\\\') + "', 'Open', 'ReadWrite', 'None')",
         "  try {",
         "    $echec = $false",
@@ -407,22 +398,21 @@ test('CSV : une écriture qui échoue n’abandonne aucun temporaire dans le dos
 // =====================================================================================
 
 // Toutes les racines détournées : SZH_BASE (C:\ProgramData\SZH), les deux racines de revues,
-// l'ancrage, et les deux variables de profil dont dépendent la découverte du cockpit et le
-// balayage automatique de l'ancrage. Rien de ce qui suit n'atteint le vrai OneDrive.
+// l'ancrage, et les deux variables de profil dont dépendent la découverte du cockpit et la
+// détection automatique de l'ancrage.
 function monterPoste(nom) {
   const travail = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-checkin-' + nom + '-'));
   const programData = path.join(travail, 'ProgramData');
   const base = path.join(travail, 'Base');
   const profil = path.join(travail, 'Profil');
-  // Un ancrage jetable, reconnaissable : le lanceur le résout par la surcharge d'essai
-  // (origine « essai »), sans jamais balayer le disque du poste qui fait tourner ce banc.
+  // Un ancrage jetable : le lanceur le résout par la surcharge d'essai (origine « essai »),
+  // sans balayer le disque du poste.
   const ancrage = path.join(travail, 'Ancrage', 'Daten_Allgemein - General');
   fs.mkdirSync(path.join(ancrage, '2_Produkte'), { recursive: true });
   fs.mkdirSync(programData, { recursive: true });
   fs.mkdirSync(profil, { recursive: true });
-  // Un numéro EN COURS, donc directement sous son dossier produit (arborescence arrêtée
-  // le 15.09.2026) : le check-in compte les numéros de la racine active, il doit les
-  // trouver là et non sous un niveau de rédaction qui n'existe plus.
+  // Un numéro en cours, donc directement sous son dossier produit : le check-in compte les
+  // numéros de la racine active.
   fs.mkdirSync(path.join(base, 'Revue', '2026-01'), { recursive: true });
   fs.writeFileSync(path.join(base, 'Revue', '2026-01', 'ausgabe.yaml'),
     'title: "Numero"\nrevue: "revue"\n', 'utf8');
@@ -467,14 +457,13 @@ test('le lanceur dépose un CSV nommé du seul nom du poste, et le rafraîchit',
       const un = lancer(poste);
       assert.strictEqual(un.status, 0, 'le lanceur a échoué : ' + un.stderr);
 
-      // TOUJOURS sur SharePoint (l'ancrage), jamais sous poste.base (la racine active) :
-      // c'est tout l'objet du correctif du 23.09.2026.
+      // Sur SharePoint (l'ancrage), pas sous poste.base (la racine active).
       const inventaire = path.join(poste.ancrage, '2_Produkte', SEGMENT_APPLICATION,
         '_Systeme', 'inventaire');
       const fichiers = fs.readdirSync(inventaire);
       assert.strictEqual(fichiers.length, 1, 'le dossier d’inventaire contient ' + fichiers.join(', '));
       const nom = fichiers[0];
-      // Le nom ne porte QUE le nom de la machine : pas de compte, pas d'adresse, pas de date.
+      // Le nom ne porte que le nom de la machine : ni compte, ni adresse, ni date.
       assert.strictEqual(nom, process.env.COMPUTERNAME + '.csv',
         'le nom du fichier ne devrait porter que le nom du poste : ' + nom);
 
@@ -499,12 +488,12 @@ test('le lanceur dépose un CSV nommé du seul nom du poste, et le rafraîchit',
       assert.ok(ligne['Système'], 'la version du système manque');
       assert.ok(['enregistree', 'absente', ''].indexOf(ligne['Machine virtuelle']) !== -1,
         'état de machine virtuelle inattendu : ' + ligne['Machine virtuelle']);
-      // L'adresse peut être vide — c'est tout l'objet du repli silencieux — mais la ligne,
-      // elle, doit être complète dans tous les cas.
+      // L'adresse peut être vide (repli silencieux), mais la ligne est complète dans tous
+      // les cas.
       assert.strictEqual(csv.corps[0].length, COLONNES.length,
         'une ligne incomplète a été écrite');
 
-      // Deuxième lancement, même mois, même compte : la ligne est RÉÉCRITE, pas ajoutée.
+      // Deuxième lancement, même mois, même compte : la ligne est réécrite, pas ajoutée.
       const deux = lancer(poste);
       assert.strictEqual(deux.status, 0, 'le deuxième lancement a échoué : ' + deux.stderr);
       const csv2 = lireCsv(path.join(inventaire, nom));
@@ -513,7 +502,7 @@ test('le lanceur dépose un CSV nommé du seul nom du poste, et le rafraîchit',
       assert.deepStrictEqual(csv2.entete, COLONNES);
       assert.ok(csv2.corps[0][0] >= csv.corps[0][0],
         'l’horodatage n’a pas été rafraîchi : ' + csv2.corps[0][0] + ' < ' + csv.corps[0][0]);
-      // Et aucun temporaire n'est resté derrière, deux écritures plus tard.
+      // Aucun temporaire ne reste après deux écritures.
       assert.deepStrictEqual(fs.readdirSync(inventaire).filter((n) => n.startsWith('~$')), []);
     } finally {
       fs.rmSync(poste.travail, { recursive: true, force: true });
@@ -524,10 +513,9 @@ test('un ancrage SharePoint introuvable ne fait pas échouer le lanceur',
   { skip: sansPowerShell }, () => {
     const poste = monterPoste('injoignable');
     try {
-      // L'inventaire vient TOUJOURS de l'ancrage (Get-SzhDossierSysteme), jamais de la
-      // racine active : c'est donc l'ancrage qu'il faut rendre introuvable ici, pas la
-      // racine de test (qui, elle, reste valide — OneDrive non synchronisé côté SharePoint
-      // seulement, portable hors réseau, ancrage jamais rattaché).
+      // L'inventaire vient de l'ancrage (Get-SzhDossierSysteme), pas de la racine active :
+      // c'est l'ancrage qu'on rend introuvable, la racine de test restant valide (bibliothèque
+      // SharePoint non synchronisée, portable hors réseau, ancrage jamais rattaché).
       const ancrageAbsent = path.join(poste.travail, 'Ancrage-Absente', 'encore-plus-loin');
       const run = lancer(poste, undefined, ancrageAbsent);
       assert.strictEqual(run.status, 0,
@@ -536,8 +524,8 @@ test('un ancrage SharePoint introuvable ne fait pas échouer le lanceur',
       assert.ok(json && json.entree === 'accueil', 'l’Accueil n’a pas produit son plan : ' + run.stdout);
       assert.match(journal(poste), /check-in : dossier partage introuvable/,
         'le journal ne dit pas que le check-in a été sauté');
-      // Et surtout : rien n'a été fabriqué ailleurs pour compenser, ni sous le véritable
-      // ancrage du poste (jamais visé par SZH_ANCRAGE ici) ni sous la racine de test.
+      // Rien n'a été créé ailleurs pour compenser, ni sous le véritable ancrage du poste ni
+      // sous la racine de test.
       assert.ok(!fs.existsSync(path.join(poste.ancrage, '2_Produkte', SEGMENT_APPLICATION, '_Systeme')),
         'un faux arbre a été créé sous l’ancrage');
       assert.ok(!fs.existsSync(path.join(poste.base, '_Systeme')),

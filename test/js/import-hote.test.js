@@ -1,10 +1,7 @@
-// L'import guidé par la commande, vu de l'hôte : import-ordre.test.js éprouve déjà le
-// calcul de l'ordre (ordre-articles) une fois l'import fait, mais aucun test ne suivait le
-// CIRCUIT complet — le dépôt d'un .docx (bouton ou glisser-déposer), la tâche d'import
-// lancée par la commande, et ce que sa fin déclenche : le rafraîchissement de l'arbre et
-// l'ouverture de la vérification d'import. Écrit AVANT tout déplacement de code vers
-// lib/import-hote.js : ce fichier doit rester vert, sans y toucher, une fois le
-// découpage fait.
+// L'import guidé par la commande, vu de l'hôte, sur tout son circuit : le dépôt d'un .docx
+// (bouton ou glisser-déposer), la tâche d'import lancée par la commande, puis le
+// rafraîchissement de l'arbre et l'ouverture de la vérification d'import. Le calcul de
+// l'ordre est vérifié par import-ordre.test.js.
 //
 //   node --test test/js/import-hote.test.js
 'use strict';
@@ -27,16 +24,13 @@ const MOTS = path.join(REVUE, 'articles-word');
 
 test('mise en route : le démarrage se tait', async () => {
   await demarrageSeTait(HOTE);
-  // Le fixture de revueDEssai() dépose déjà un Word en attente (9_Essai.docx, pour les
-  // contrôles de l'arbre) : on le retire pour garder la main sur le dépôt de ce fichier.
+  // revueDEssai() dépose déjà un Word en attente (9_Essai.docx) : on le retire.
   fs.rmSync(path.join(MOTS, '9_Essai.docx'), { force: true });
 });
 
 // Ce que « make import » aurait produit pour un .docx donné : un article minimal, sans
-// passer par la vraie chaîne pandoc — hors de portée d'un contrôle Node. lancerConversion()
-// ne regarde que la liste des slugs avant/après (voir son commentaire dans extension.js) :
-// un dossier avec un .md suffit à le faire apparaître comme « nouveau ». Même fixture que
-// import-ordre.test.js.
+// pandoc. lancerConversion() ne compare que les slugs avant et après : un dossier avec un
+// .md suffit à faire un article « nouveau ». Même fixture que import-ordre.test.js.
 function simulerArticleImporte(slug, titre) {
   const dossier = path.join(REVUE, 'articles', slug);
   fs.mkdirSync(path.join(dossier, 'media'), { recursive: true });
@@ -75,10 +69,9 @@ test('lancer l’import : la commande démarre bien LA tâche d’import nommée
     await HOTE.finirTache(NOM_BUILD, 0);
     await promesse;
 
-    // Rafraîchi : le nouvel article est maintenant listé par l'arbre — sous « 02-nouveau »,
-    // pas « nouveau » : deux articles le précèdent dans l'ordre (01-essai, 02-sans-fiche),
-    // et le dossier créé par l'import reçoit le préfixe de ce rang (lib/import-hote.js,
-    // prefixerNouveauxArticles).
+    // L'arbre liste le nouvel article sous « 02-nouveau » : le dossier reçoit le préfixe de
+    // son rang dans l'ordre, après 01-essai et 02-sans-fiche (prefixerNouveauxArticles,
+    // lib/import-hote.js).
     assert.ok(HOTE.arbre().listerArticles().indexOf('02-nouveau') !== -1,
       'l’arbre n’a pas été rafraîchi après l’import : le nouvel article est invisible');
 
@@ -97,8 +90,7 @@ test('la vérification d’import montre le nouvel article, avec son titre', asy
   await panneau._recepteur({ type: 'pret' });
   const valeurs = panneau.messages.slice().reverse().find((m) => m.type === 'valeurs');
   assert.ok(valeurs, 'aucun message « valeurs » envoyé à la vérification d’import');
-  // Le slug porte désormais le préfixe pris à l'import (voir le contrôle précédent) : la
-  // vérification doit parler du même dossier que celui qui existe réellement sur le disque.
+  // Le slug porte le préfixe pris à l'import : la vérification parle du dossier réel.
   const article = valeurs.articles.find((a) => a.slug === '02-nouveau');
   assert.ok(article, 'l’article importé n’apparaît pas dans la vérification d’import');
   assert.strictEqual(article.valeurs.title && article.valeurs.title.fr, 'Article nouveau');
@@ -107,8 +99,8 @@ test('la vérification d’import montre le nouvel article, avec son titre', asy
 // ---- Un import qui ne ramène rien n’ouvre pas la vérification, mais rafraîchit quand même ----
 
 test('un import qui ne ramène aucun article ne rouvre pas la vérification d’import', async () => {
-  // Fermer celle du contrôle précédent : sinon sa seule présence (singleton, jamais
-  // recréé) ne prouverait rien sur CE geste-ci.
+  // Ferme celle du contrôle précédent : le panneau est un singleton, sa présence ne
+  // prouverait rien sur ce geste-ci.
   const avant = HOTE.panneauDeType('szhImportVerif');
   let ferme = false;
   const disposeOrigine = avant.dispose.bind(avant);
@@ -167,7 +159,7 @@ test('glisser un .docx sur l’arbre le copie dans le dépôt Word puis lance l�
 
 test('glisser un .odt sur l’arbre le copie dans le dépôt Word puis lance l’import', async () => {
   // Un .odt suit le même circuit qu'un .docx (import-docx.sh le convertit à la volée,
-  // voir pipeline/conversion_odt.py) : le dépôt par glisser-déposer ne doit pas le trier.
+  // voir pipeline/conversion_odt.py).
   const controleur = HOTE.controleurDepot();
   const source = path.join(REVUE, 'Depose_a_la_main.odt');
   fs.writeFileSync(source, Buffer.alloc(16));
@@ -189,8 +181,7 @@ test('glisser un .odt sur l’arbre le copie dans le dépôt Word puis lance l�
 });
 
 test('un .odt en attente apparaît dans la liste « Word » de l’arbre', async () => {
-  // extension.js:_docxEnAttente() balaie articles-word/ : un .odt doit s'y voir comme un
-  // .docx, pas seulement passer par le glisser-déposer.
+  // _docxEnAttente() (extension.js) voit aussi les .odt d'articles-word/.
   const source = path.join(MOTS, 'Depose-arbre.odt');
   fs.writeFileSync(source, Buffer.alloc(16));
   try {

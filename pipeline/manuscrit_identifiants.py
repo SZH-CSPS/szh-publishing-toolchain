@@ -1,24 +1,21 @@
 # -*- coding: utf-8 -*-
-# pipeline/manuscrit_identifiants.py — ROR et ORCID des autrices et auteurs de l'en-tête
-# (nettoyeur de manuscrit, contrat §5.5 sexies). Module PUR : des dicts `auteur` (forme de
-# manuscrit_entete._nouvel_auteur) en entrée, les mêmes dicts complétés en sortie, plus des
-# alertes de rapport. Jamais de .docx ici.
+# ROR et ORCID des autrices et auteurs de l'en-tête, pour le nettoyeur de manuscrit (voir
+# docs/ARCHITECTURE-nettoyeur-manuscrit.md). Reçoit des dicts `auteur` (forme de
+# manuscrit_entete._nouvel_auteur), les complète et rend des alertes de rapport.
 #
-# Ce que le module fait :
-#  - ROR : pour chaque auteur qui porte une institution et pas de ROR, requête « affiliation »
-#    de l'API ROR ; seul l'item `chosen` est retenu (les autres sont souvent faux, mesuré).
-#  - ORCID absent du manuscrit : recherche par nom, retenue SEULEMENT si le nom concorde ET si
-#    une institution publique du candidat concorde avec celle de l'auteur. Un nom seul ne
-#    suffit pas (homonymes) : un candidat unique mais d'une autre institution ne remplit rien,
-#    il est signalé comme « candidat possible ».
-#  - ORCID donné par l'auteur : jamais remplacé ; clé ISO 7064 mod 11-2 contrôlée sans réseau,
-#    nom contrôlé contre l'enregistrement public en réseau.
-# Toute valeur TROUVÉE (pas lue dans le manuscrit) est inscrite dans `auteur['a_verifier']`
-# (liste de champs) : le gabarit l'écrit en révision Word suivie.
+#  - ROR : pour un auteur qui a une institution et pas de ROR, requête « affiliation » de
+#    l'API ROR. Seul l'item `chosen` est retenu, les autres étant souvent faux.
+#  - ORCID absent du manuscrit : recherche par nom, retenue seulement si le nom et une
+#    institution publique du candidat concordent. Un nom seul ne suffit pas (homonymes) : un
+#    candidat unique d'une autre institution est signalé comme « candidat possible ».
+#  - ORCID donné par l'auteur : conservé. Sa clé ISO 7064 mod 11-2 est contrôlée hors ligne,
+#    son nom contre l'enregistrement public.
+# Toute valeur trouvée sur le réseau est inscrite dans `auteur['a_verifier']` (liste de
+# champs) : le gabarit l'écrit en révision Word suivie.
 #
-# Réseau facultatif : `reseau=False` ne tente rien ; une panne ne remplit rien et ne lève
-# jamais. Seuls nom, prénom et institution partent sur le réseau. `_requete()` est le seul
-# endroit qui touche le réseau, les tests le remplacent.
+# `reseau=False` ne fait aucune requête ; une panne ne remplit rien et ne lève pas. Seuls nom,
+# prénom et institution partent sur le réseau. `_requete()` est le seul point d'accès au
+# réseau, et les tests le remplacent.
 
 import difflib
 import json
@@ -45,7 +42,7 @@ RE_ROR = re.compile(r'^(?:https?://)?(?:ror\.org/)?(0[0-9a-hj-km-np-tv-z]{6}[0-9
 
 
 # ---------------------------------------------------------------------------------
-# Réseau — le seul endroit qui le touche.
+# Accès au réseau.
 
 def _requete(url, delai):
     return szh_commun.requete_http(url, delai, USER_AGENT)
@@ -267,8 +264,8 @@ def _alerte_nom_divergent(auteur, identifiant, prenoms, famille, langue):
 
 def enrichir_auteurs(auteurs, langue='fr', reseau=True, delai=DELAI_RESEAU_DEFAUT):
     """Complète les dicts `auteurs` sur place (`ror`, `orcid`, `a_verifier`) et rend
-    (alertes, stats). Ne remplace JAMAIS un champ déjà rempli. `reseau=False` : seul le
-    contrôle de clé des ORCID du manuscrit a lieu."""
+    (alertes, stats). Un champ déjà rempli est conservé. Avec `reseau=False`, seule la clé
+    des ORCID du manuscrit est contrôlée."""
     alertes = []
     stats = {'reseau': bool(reseau), 'auteurs': len(auteurs), 'requetes': 0,
              'ror_trouves': 0, 'orcid_trouves': 0, 'orcid_candidats': 0,
@@ -353,6 +350,6 @@ def enrichir_auteurs(auteurs, langue='fr', reseau=True, delai=DELAI_RESEAU_DEFAU
 
         if a_verifier:
             auteur['a_verifier'] = a_verifier
-    # Les services qui n'ont pas répondu (noms de service seulement), pour les compteurs d'usage.
+    # Noms des services qui n'ont pas répondu, pour les compteurs d'usage.
     stats['en_panne'] = sorted(en_panne)
     return alertes, stats

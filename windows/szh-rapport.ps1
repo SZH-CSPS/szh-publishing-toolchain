@@ -1,36 +1,26 @@
-﻿# Ecrivain PowerShell des rapports d'erreur automatiques (docs/RAPPORTS-ERREUR.md, jalon J3 ;
-# docs/RAPPORTS-ERREUR.md). Construit un rapport conforme au schema v1 et l'ecrit -- ou
-# n'ecrit rien, mais ne leve JAMAIS (D5, la regle absolue). Dot-source par szh-common.ps1,
-# juste apres szh-ancrage.ps1 dont il reutilise Resolve-SzhAncrage (passive, memoisee,
-# n'ouvre jamais de fenetre) et Get-SzhDossierRapportsDepuisAncrage : ce fichier-ci ne
-# refait ni l'un ni l'autre.
+﻿# Ecrivain PowerShell des rapports d'erreur automatiques (docs/RAPPORTS-ERREUR.md).
+# Construit un rapport conforme au schema v1 et l'ecrit, ou n'ecrit rien, sans jamais
+# lever. Dot-source par szh-common.ps1, apres szh-ancrage.ps1 (Resolve-SzhAncrage,
+# Get-SzhDossierRapportsDepuisAncrage).
 #
-# Compatibilite : Windows PowerShell 5.1 (proscrire ?. ?? ?: && ||).
+# Compatibilite : Windows PowerShell 5.1.
 #
-# Contrepartie exacte, cote JS, de vscodium-extension/szh-cockpit/lib/rapport-erreur.js et
-# lib/codes-erreur.js : meme schema, meme masquage, meme calcul de signature, meme format
-# d'id, memes plafonds -- au signe pres, sans quoi l'anti-inondation partagee
-# (etat-utilisateur.json, cle "rapports") diverge en silence entre les deux ecrivains
-# (D6). Chaque fonction ci-dessous porte, en commentaire, le nom de son equivalent JS.
+# Equivalent JavaScript : vscodium-extension/szh-cockpit/lib/rapport-erreur.js et
+# lib/codes-erreur.js. Schema, masquage, signature, format d'id et plafonds doivent etre
+# identiques : les deux ecrivains partagent l'anti-inondation (etat-utilisateur.json, cle
+# "rapports"). Chaque fonction nomme son equivalent JS.
 #
-# Auto-protection (pas dans la spec, necessaire pour ne jamais ecrire ailleurs que dans un
-# dossier jetable pendant les tests) : Write-SzhRapport et Clear-SzhRapportsEnAttente sont
-# des NO-OP silencieux des que $env:SZH_LANCEUR_SIMULE ou $env:SZH_OPENMD_SIMULE valent '1'
-# -- exactement les deux drapeaux que open-revue.ps1 et open-md.ps1 posent deja pour leurs
-# propres tests (aucune fenetre WinForms ne doit s'ouvrir en simulation ; un rapport ecrit
-# pour de vrai serait le meme genre d'effet de bord). archive-revue.ps1 n'a pas ce drapeau :
-# il n'a jamais ete concu pour tourner dans un banc de test automatise (fenetre visible
-# assumee), donc rien ne l'y gate ici.
+# En simulation ($env:SZH_LANCEUR_SIMULE ou $env:SZH_OPENMD_SIMULE a '1', poses par les
+# tests de open-revue.ps1 et open-md.ps1), Write-SzhRapport et Clear-SzhRapportsEnAttente
+# ne font rien.
 
 # =========================================================================================
-# 1. Masquage (docs/RAPPORTS-ERREUR.md §3, regle 5 amendee -- equivalent JS : codesErreur.masquer)
+# 1. Masquage (docs/RAPPORTS-ERREUR.md ; equivalent JS : codesErreur.masquer)
 # =========================================================================================
 #
 # Sept regles, dans cet ordre : 1 ancrage -> 2 %USERPROFILE% -> 3 ProgramData ->
-# 4 mot-cle+valeur -> 5b JWT complet -> 5a secret nu resserre -> 6 courriel. Fonction
-# entierement autonome (aucune dependance a une constante de script) pour rester testable
-# isolement par extraction de son corps depuis ce fichier (meme technique que
-# test/js/courriel-support.test.js).
+# 4 mot-cle+valeur -> 5b JWT complet -> 5a secret nu -> 6 courriel. La fonction ne depend
+# d'aucune variable de script : le test l'extrait seule.
 function Protect-SzhRapportTexte {
   param([string]$Texte, $Racines)
 
@@ -67,8 +57,7 @@ function Protect-SzhRapportTexte {
     return $true
   }
 
-  # 1-2-3 : racines connues, la plus specifique d'abord (voir codes-erreur.js pour la
-  # justification complete de l'ordre).
+  # 1-2-3 : racines connues, la plus specifique d'abord (voir codes-erreur.js).
   $s = Remove-SzhRapportRacineLocale $s $ancrage ''
   $s = Remove-SzhRapportRacineLocale $s $userProfile '~\'
   $s = Remove-SzhRapportRacineLocale $s $programData ''
@@ -79,13 +68,13 @@ function Protect-SzhRapportTexte {
     { param($m) $m.Groups[1].Value + $m.Groups[2].Value + '***' },
     [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
 
-  # 5b : un JWT complet (en-tete.charge-utile.signature), avant 5a -- sans quoi 5a ne
-  # masquerait qu'un segment individuellement assez long, laissant les autres lisibles.
+  # 5b : un JWT complet (en-tete.charge-utile.signature), avant 5a, qui ne masquerait que
+  # les segments assez longs.
   $motif5b = 'eyJ[A-Za-z0-9_-]{8,}(?:\.[A-Za-z0-9_.-]+)+'
   $s = [regex]::Replace($s, $motif5b, '***')
 
-  # 5a : secret nu resserre -- jamais un chemin (« / » retire de la classe), jamais une
-  # empreinte hexadecimale ni un GUID.
+  # 5a : secret nu de 32 caracteres ou plus, melant majuscules, minuscules et chiffres. Ni
+  # chemin (« / » exclu), ni empreinte hexadecimale, ni GUID.
   $motif5a = '[A-Za-z0-9+=_-]{32,}'
   $s = [regex]::Replace($s, $motif5a,
     { param($m) if (Test-SzhRapportSecretHauteEntropieLocal $m.Value) { '***' } else { $m.Value } })
@@ -103,9 +92,9 @@ function Protect-SzhRapportTexte {
 # 2. Chemin relatif a une racine donnee (equivalent JS : codesErreur.versCheminRelatif)
 # =========================================================================================
 #
-# Rend { chemin; relatifA }, jamais une chaine masquee -- pour un chemin absolu qui ne
-# tombe sous aucune racine connue, l'appelant (Write-SzhRapport) applique Protect-SzhRapportTexte
-# lui-meme ensuite, comme cote JS (cheminRelatifAvecRepli).
+# Rend { chemin; relatifA }, sans masquer : pour un chemin hors de toute racine connue,
+# Write-SzhRapport applique ensuite Protect-SzhRapportTexte, comme cote JS
+# (cheminRelatifAvecRepli).
 function ConvertTo-SzhRapportCheminRelatif {
   param([string]$Chemin, [string]$Racine, [string]$Etiquette)
 
@@ -135,9 +124,8 @@ function ConvertTo-SzhRapportCheminRelatif {
 # =========================================================================================
 #
 # 12 premiers caracteres hexadecimaux de SHA-256(source | code | etape |
-# 200 premiers caracteres du message DEJA masque | produit.numero), champ manquant = ''.
-# Le separateur ' | ' est fixe -- c'est ce texte-la, caractere pour caractere, que les deux
-# ecrivains doivent produire pour qu'un meme incident se regroupe pareil des deux cotes.
+# 200 premiers caracteres du message deja masque | produit.numero), champ manquant = ''.
+# Les deux ecrivains doivent produire ce texte au caractere pres, separateur ' | ' compris.
 function Get-SzhRapportSignature {
   param([string]$Source, [string]$Code, [string]$Etape, [string]$MessageMasque, [string]$ProduitNumero)
 
@@ -175,9 +163,8 @@ function Get-SzhRapportSignature {
 # =========================================================================================
 #
 # <AAAAMMJJ-HHmmss>-<poste>-<6 hex>, ASCII, <= 120 caracteres, aussi le nom du fichier.
-# L'horodatage de l'id est fonde sur l'UTC de l'instant recu (D9) -- jamais l'heure locale,
-# qui reculerait d'une heure au changement d'heure et casserait le tri alphabetique une fois
-# par an.
+# L'horodatage est en UTC : l'heure locale reculerait au changement d'heure et casserait le
+# tri alphabetique.
 function New-SzhRapportAleatoireHex {
   $octets = New-Object byte[] 3
   $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
@@ -216,7 +203,7 @@ function Get-SzhRapportId {
 }
 
 # horodatageLocal (equivalent JS : formaterHorodatageLocal) : le meme instant, a l'heure du
-# poste, decalage inclus -- pour la personne qui relit, jamais pour le tri.
+# poste, decalage inclus. Pour la lecture, pas pour le tri.
 function Get-SzhRapportHorodatageLocal {
   param([datetime]$DateLocale)
 
@@ -232,21 +219,15 @@ function Get-SzhRapportHorodatageLocal {
 }
 
 # =========================================================================================
-# 5. Table des codes et resumes FR/DE (equivalent JS : codesErreur.CODES) -- transcrite
-#    depuis le fichier JS gele par un script Node (pas a la main), pour eviter toute
-#    divergence de ponctuation ou de typographie entre les deux ecrivains.
+# 5. Table des codes et resumes FR/DE (equivalent JS : codesErreur.CODES). Les textes
+#    doivent rester identiques a ceux du JS (test/js/codes-erreur.test.js le verifie).
 # =========================================================================================
 function Get-SzhRapportResume {
   param([string]$Code)
 
-  # ATTENTION lecture : chaque apostrophe typographique ' est DOUBLEE ci-dessous ('') --
-  # verifie empiriquement (pas suppose) que PowerShell 5.1 traite ' (U+2019) comme un
-  # delimiteur de chaine simple-quote au meme titre que ' (U+0027) : un ' isolement place
-  # a l'interieur d'une chaine '...' termine la chaine et casse le fichier (message
-  # "Le terminateur ' est manquant"). La doubler ('') est exactement le meme mecanisme
-  # d'echappement qu'une apostrophe droite doublee (''), et rend bien UNE SEULE apostrophe
-  # typographique une fois la chaine evaluee -- verifie aussi. C'est la meme convention,
-  # deja en place, que les 35 occurrences preexistantes de windows/szh-textes.ps1.
+  # Chaque apostrophe typographique ’ est doublee (’’) : PowerShell 5.1 la traite comme un
+  # delimiteur de chaine, au meme titre que '. Doublee, elle donne une seule apostrophe,
+  # comme dans szh-textes.ps1.
   $table = @{
     'LANCEUR-TRAP' = @{ fr = 'Une erreur inattendue est survenue à l’’ouverture du lanceur ; ce rapport en garde la trace pour le diagnostic.'; de = 'Beim Öffnen des Starters ist ein unerwarteter Fehler aufgetreten; dieser Bericht hält ihn zur Diagnose fest.' }
     'LANCEUR-CODIUM-ABSENT' = @{ fr = 'VSCodium est introuvable au démarrage du lanceur ; l’’éditeur ne peut pas s’’ouvrir tant qu’’il n’’est pas réinstallé.'; de = 'VSCodium wurde beim Start des Starters nicht gefunden; der Editor kann erst nach einer Neuinstallation geöffnet werden.' }
@@ -282,15 +263,10 @@ function Get-SzhRapportCodesConnus {
 #    JSON.stringify(rapport, null, 2))
 # =========================================================================================
 #
-# ECRIT A LA MAIN, ConvertTo-Json volontairement ECARTE ici -- verifie A L'EXECUTION, sous le
-# vrai Windows PowerShell 5.1 (pas seulement pwsh 7, dont le comportement diverge) : son
-# indentation est fixe a 4 espaces avec deux espaces avant chaque valeur
-# (« "cle":  "valeur" »), non conforme au schema qui exige 2 espaces -- aucun parametre ne le
-# change. Un serialiseur recursif minimal, calque sur le format exact de
-# JSON.stringify(valeur, null, 2) de Node (memes deux espaces par niveau, memes deux-points
-# suivis d'un seul espace, memes accolades/crochets vides "{}"/"[]", AUCUN caractere non-ASCII
-# echappe -- Node ne le fait pas par defaut, et PowerShell n'a donc pas a le faire non plus)
-# est plus sur qu'un contournement des sorties changeantes d'un outil qu'on ne maitrise pas.
+# Serialiseur ecrit a la main : sous Windows PowerShell 5.1, ConvertTo-Json indente de 4
+# espaces et ecrit « "cle":  "valeur" », sans parametre pour changer cela. Celui-ci
+# reproduit JSON.stringify(valeur, null, 2) de Node : deux espaces par niveau, « : » suivi
+# d'un espace, "{}" et "[]" pour les vides, caracteres non ASCII ecrits tels quels.
 function ConvertTo-SzhRapportJsonChaine {
   param([string]$Texte)
 
@@ -307,8 +283,7 @@ function ConvertTo-SzhRapportJsonChaine {
     else {
       $code = [int][char]$caractere
       if ($code -lt 0x20) { [void]$sb.Append('\u' + $code.ToString('x4')) }
-      # Non-ASCII (>= 0x80) : jamais echappe, ecrit tel quel -- Node ne le fait pas non
-      # plus par defaut, et c'est exactement ce que le schema veut sur le disque.
+      # Non ASCII : ecrit tel quel, comme Node.
       else { [void]$sb.Append($caractere) }
     }
   }
@@ -330,9 +305,8 @@ function ConvertTo-SzhRapportJsonValeur {
     return $Valeur.ToString([System.Globalization.CultureInfo]::InvariantCulture)
   }
 
-  # Objet : Hashtable/OrderedDictionary (IDictionary) ou PSCustomObject -- deux
-  # representations differentes d'un "objet" selon qu'il vient d'un littéral @{}/[ordered]@{}
-  # ou d'un aller-retour ConvertTo-Json/ConvertFrom-Json (utilise par Add-SzhRapportPlafonds).
+  # Objet : IDictionary (litteral @{} ou [ordered]@{}) ou PSCustomObject (issu de
+  # ConvertFrom-Json, comme dans Add-SzhRapportPlafonds).
   if ($Valeur -is [System.Collections.IDictionary]) {
     $cles = @($Valeur.Keys)
     if ($cles.Count -eq 0) { return '{}' }
@@ -360,8 +334,7 @@ function ConvertTo-SzhRapportJsonValeur {
     return "[`n" + ($lignes -join ",`n") + "`n" + $indentCourant + ']'
   }
 
-  # Repli : tout le reste (rare -- un type non prevu ci-dessus) rendu comme chaine plutot que
-  # de lever, D5 oblige.
+  # Tout autre type est rendu comme chaine, sans lever.
   return (ConvertTo-SzhRapportJsonChaine ([string]$Valeur))
 }
 
@@ -372,8 +345,8 @@ function ConvertTo-SzhRapportJsonTexte {
 }
 
 # =========================================================================================
-# 7. Plafonds (equivalent JS : codesErreur.appliquerPlafonds) -- rend un NOUVEAU rapport,
-#    ne modifie jamais celui qu'on lui passe.
+# 7. Plafonds (equivalent JS : codesErreur.appliquerPlafonds). Rend un nouveau rapport,
+#    sans modifier celui qu'on lui passe.
 # =========================================================================================
 function Add-SzhRapportPlafonds {
   param($Rapport)
@@ -386,8 +359,7 @@ function Add-SzhRapportPlafonds {
   $plafondJournalCaracteres = 40000
   $plafondFichierOctets = 256 * 1024
 
-  # Clone en profondeur par aller-retour JSON (comme le JSON.parse(JSON.stringify(...)) de
-  # codesErreur.appliquerPlafonds) : l'objet recu n'est jamais modifie en place.
+  # Copie profonde par aller-retour JSON, comme cote JS.
   $r = ($Rapport | ConvertTo-Json -Depth 20) | ConvertFrom-Json
 
   if (($null -ne $r.message) -and ($r.message.Length -gt $plafondMessage)) {
@@ -397,7 +369,7 @@ function Add-SzhRapportPlafonds {
     $r.pile = $r.pile.Substring(0, $plafondPile)
   }
 
-  # Fichiers/constats : les PREMIERES entrees gardees (comme cote JS), pas les dernieres.
+  # Fichiers et constats : on garde les premieres entrees, comme cote JS.
   if ($r.fichiers -and (@($r.fichiers).Count -gt $plafondFichiers)) {
     $r.fichiers = @(@($r.fichiers) | Select-Object -First $plafondFichiers)
   }
@@ -425,9 +397,8 @@ function Add-SzhRapportPlafonds {
     $r.journal.tronque = $tronque
   }
 
-  # Plafond du fichier entier : mesure sur les octets REELS qui seront ecrits (apres
-  # decodage des \uXXXX), pas sur la sortie brute de ConvertTo-Json -- sans quoi ce controle
-  # se declencherait plus tot que cote JS des qu'un rapport contient des caracteres accentues.
+  # Plafond du fichier entier, mesure sur les octets qui seront ecrits (comme cote JS), pas
+  # sur la sortie de ConvertTo-Json qui echappe les accents.
   $tailleActuelle = [System.Text.Encoding]::UTF8.GetByteCount((ConvertTo-SzhRapportJsonTexte -Objet $r))
   if (($tailleActuelle -gt $plafondFichierOctets) -and $r.journal) {
     $r.journal.extrait = @()
@@ -438,18 +409,15 @@ function Add-SzhRapportPlafonds {
 }
 
 # =========================================================================================
-# 8. Validation legere contre le schema v1 (equivalent JS : codesErreur.validerRapport) --
-#    ne leve jamais, rend la liste des ecarts (vide = conforme). Ne bloque l'ecriture que sur
-#    des defauts structurels grossiers : mieux vaut un rapport imparfait qu'un rapport
-#    silencieusement avale par une validation trop stricte.
+# 8. Validation legere contre le schema v1 (equivalent JS : codesErreur.validerRapport).
+#    Rend la liste des ecarts (vide : conforme), sans lever. Elle ne controle que la
+#    structure : mieux vaut un rapport imparfait qu'aucun rapport.
 # =========================================================================================
 function Test-SzhRapportValide {
   param($Rapport)
 
-  # ArrayList, jamais Generic.List[T] : verifie a l'execution qu'envelopper un
-  # Generic.List[object]/[string] dans "@(...)" a l'interieur (ou en vue) d'un litteral de
-  # hashtable declenche la meme exception .NET interne que le "$(if...)" documente plus haut
-  # -- ArrayList (et un tableau PowerShell natif) n'a pas ce defaut.
+  # ArrayList plutot que Generic.List[T] : sous PowerShell 5.1, un Generic.List enveloppe
+  # dans « @(...) » pres d'un litteral de hashtable leve une exception .NET interne.
   $ecarts = New-Object System.Collections.ArrayList
   if ($null -eq $Rapport) { [void]$ecarts.Add('le rapport doit etre un objet'); return @($ecarts) }
 
@@ -457,8 +425,7 @@ function Test-SzhRapportValide {
     'signature', 'resume', 'etape', 'message', 'pile', 'poste', 'versions', 'produit', 'ancrage',
     'fichiers', 'journal', 'constats', 'environnement')
   $presentes = @($Rapport.PSObject.Properties.Name)
-  # Separateur improbable dans un nom de champ (pas de ``u{} en PowerShell 5.1) plutot qu'un
-  # simple ',' : suffisant pour comparer un ordre exact sans risque de collision.
+  # Separateur [char]1, absent de tout nom de champ, pour comparer l'ordre exact des cles.
   $separateurCompare = [string][char]1
   if (($presentes -join $separateurCompare) -ne ($ordreAttendu -join $separateurCompare)) {
     foreach ($cle in $ordreAttendu) {
@@ -482,14 +449,13 @@ function Test-SzhRapportValide {
 }
 
 # =========================================================================================
-# 9. Anti-inondation (docs/RAPPORTS-ERREUR.md §5, D6 : jour calendaire LOCAL) -- equivalent JS :
-#    purgerCompteursRapports + decisionAntiInondation. Compteurs partages avec l'ecrivain JS
-#    dans etat-utilisateur.json, cle "rapports" : reproduits ICI au signe pres.
+# 9. Anti-inondation (docs/RAPPORTS-ERREUR.md ; jour calendaire local). Equivalent JS :
+#    purgerCompteursRapports + decisionAntiInondation. Les compteurs, partages avec
+#    l'ecrivain JS dans etat-utilisateur.json (cle "rapports"), suivent les memes regles.
 # =========================================================================================
 
-# etat-utilisateur.json est lu par Get-SzhEtatUtilisateur (szh-common.ps1) comme un
-# PSCustomObject imbrique ; ce module manipule les compteurs comme une Hashtable (cles
-# arbitraires = signatures) pour rester simple -- conversion aller-retour ici.
+# Convertit un PSCustomObject (lu par Get-SzhEtatUtilisateur) en Hashtable : les compteurs
+# ont pour cles des signatures arbitraires.
 function ConvertTo-SzhRapportHashtable {
   param($Objet)
 
@@ -505,9 +471,9 @@ function ConvertTo-SzhRapportHashtable {
   return $h
 }
 
-# Rend { autorise; motif; rapports } -- "rapports" est TOUJOURS la valeur a reecrire dans
-# etat-utilisateur.json (purge appliquee, compteur du jour a jour), que la decision
-# autorise ou non l'ecriture (meme contrat que decisionAntiInondation cote JS).
+# Rend { autorise; motif; rapports }. "rapports" est la valeur a reecrire dans
+# etat-utilisateur.json (purge faite, compteur du jour a jour), que l'ecriture soit
+# autorisee ou non, comme decisionAntiInondation cote JS.
 function Get-SzhRapportDecisionAntiInondation {
   param($Rapports, [string]$Signature, [datetime]$MaintenantLocal, [datetime]$MaintenantUtc)
 
@@ -591,9 +557,8 @@ function Get-SzhRapportExtraitJournal {
 }
 
 # =========================================================================================
-# 11. Champ generique d'un objet -- Hashtable OU PSCustomObject, pour laisser les accroches
-#     (update.ps1, archive-revue.ps1, szh-shell.ps1, open-md.ps1) passer -Produit et les
-#     entrees de -Fichiers sous la forme la plus commode pour elles.
+# 11. Champ d'un objet, Hashtable ou PSCustomObject : les appelants passent -Produit et les
+#     entrees de -Fichiers sous l'une ou l'autre forme.
 # =========================================================================================
 function Get-SzhRapportChampObjet {
   param($Objet, [string]$Nom)
@@ -607,8 +572,8 @@ function Get-SzhRapportChampObjet {
   return $null
 }
 
-# Chemin ABSOLU -> { chemin; relatifA } avec repli ancrage puis programData puis absolu
-# masque (equivalent JS : cheminRelatifAvecRepli).
+# Chemin absolu -> { chemin; relatifA } : relatif a l'ancrage, sinon a programData, sinon
+# absolu masque (equivalent JS : cheminRelatifAvecRepli).
 function ConvertTo-SzhRapportCheminAvecRepli {
   param([string]$CheminAbsolu, $Racines)
 
@@ -631,25 +596,16 @@ function ConvertTo-SzhRapportCheminAvecRepli {
 }
 
 # =========================================================================================
-# 12. Ecriture sur disque -- UTF-8 SANS BOM, indentee 2 espaces, nom <id>.json
+# 12. Ecriture sur disque : UTF-8 sans BOM, indentee 2 espaces, nom <id>.json
 # =========================================================================================
 #
-# Fichier temporaire puis renommage : une lecture concurrente (tableau de bord SharePoint,
-# script de tri) ne voit jamais un fichier a moitie ecrit. Rend $true/$false, ne leve jamais
-# -- c'est l'appelant (Write-SzhRapport) qui decide quoi faire d'un echec (repli sur la file
+# Fichier temporaire puis renommage : un lecteur concurrent ne voit jamais un fichier a
+# moitie ecrit. Rend $true ou $false sans lever ; Write-SzhRapport decide de la suite (file
 # d'attente, puis abandon silencieux).
 #
-# DEUX corrections du 15.09.2026, sur le meme temporaire :
-#   * il s'appelait "<cible>.tmp-..." -- SANS le prefixe "~$" que tout le reste du depot
-#     emploie precisement parce que OneDrive l'IGNORE (ecrireAtomique de lib/yaml.js,
-#     Write-SzhCheckinCsv de szh-checkin.ps1). Ce dossier-ci est le dossier PARTAGE : un
-#     fichier de plus n'y coute pas une ecriture locale, il coute une replication vers
-#     tous les postes ;
-#   * l'exception etait avalee SANS supprimer le temporaire, qui restait donc sur place
-#     pour toujours. D'ou le bloc finally ci-dessous ; sa suppression est silencieuse,
-#     puisque apres un renommage reussi le temporaire n'existe plus -- le cas normal.
-# Le nom compose ne finit jamais par ".json", ce qui le tient hors de
-# Get-SzhRapportsEnAttenteListe (-Filter '*.json') comme de son homologue JavaScript.
+# Le temporaire porte le prefixe "~$", que OneDrive ne synchronise pas (comme ecrireAtomique
+# de lib/yaml.js et Write-SzhCheckinCsv), et le finally le supprime en cas d'echec. Son nom
+# ne finit pas par ".json" : Get-SzhRapportsEnAttenteListe et son equivalent JS l'ignorent.
 function Write-SzhRapportSurDisque {
   param([string]$Dossier, [string]$Id, $Rapport)
 
@@ -673,23 +629,22 @@ function Write-SzhRapportSurDisque {
 }
 
 # =========================================================================================
-# 13. File d'attente hors ligne (docs/RAPPORTS-ERREUR.md §6) -- equivalent JS : listerFileAttente +
-#     purgerFileAttente + viderFileAttente.
+# 13. File d'attente hors ligne (docs/RAPPORTS-ERREUR.md). Equivalent JS : listerFileAttente
+#     + purgerFileAttente + viderFileAttente.
 # =========================================================================================
 
-# Dossier de la file d'attente : par compte, comme etat-utilisateur.json -- reutilise
-# $script:SzhBaseUtilisateur (szh-common.ps1), deja teste et deja au bon endroit
-# (%LOCALAPPDATA%\SZH, ou le repli par SID si LOCALAPPDATA manque).
+# Dossier de la file d'attente, propre au compte : sous $script:SzhBaseUtilisateur
+# (szh-common.ps1), comme etat-utilisateur.json.
 function Get-SzhRapportDossierAttente {
   return (Join-Path $script:SzhBaseUtilisateur 'rapports-en-attente')
 }
 
-# Les fichiers .json de la file, du plus ancien au plus recent (mtime) -- dossier absent ou
-# illisible : liste vide, jamais une exception (D5).
+# Les fichiers .json de la file, du plus ancien au plus recent. Dossier absent ou illisible :
+# liste vide, sans lever.
 function Get-SzhRapportsEnAttenteListe {
   param([string]$Dossier)
 
-  # ArrayList, jamais Generic.List[T] (voir la note de Test-SzhRapportValide plus haut).
+  # ArrayList plutot que Generic.List[T] (voir Test-SzhRapportValide).
   $fichiers = New-Object System.Collections.ArrayList
   try {
     foreach ($f in @(Get-ChildItem -LiteralPath $Dossier -Filter '*.json' -File -ErrorAction Stop)) {
@@ -699,9 +654,8 @@ function Get-SzhRapportsEnAttenteListe {
   return @($fichiers | Sort-Object ecrit)
 }
 
-# Applique les deux plafonds de la file (50 fichiers, 30 jours) : les fichiers de plus de 30
-# jours sont effaces SANS etre transmis, puis, au-dela de 50 fichiers restants, les plus
-# anciens sont effaces. Rend la liste (deja purgee) qui subsiste.
+# Applique les plafonds de la file : les fichiers de plus de 30 jours sont effaces sans
+# etre transmis, puis, au-dela de 50, les plus anciens. Rend la liste restante.
 function Limit-SzhRapportsEnAttente {
   param([string]$Dossier, [datetime]$Maintenant = (Get-Date))
 
@@ -727,10 +681,10 @@ function Limit-SzhRapportsEnAttente {
   return @($fichiers)
 }
 
-# Videe au demarrage (Invoke-SzhTachesDemarrage), apres resolution de l'ancrage : chaque
-# fichier restant apres les plafonds est deplace vers le vrai dossier de rapports ; un echec
-# le laisse en place pour la prochaine tentative. D10 : $env:SZH_RAPPORTS, quand pose,
-# l'emporte sur toute derivation depuis l'ancrage -- exactement comme pour Write-SzhRapport.
+# Vide la file au demarrage (Invoke-SzhTachesDemarrage), apres la resolution de l'ancrage :
+# chaque fichier part vers le dossier de rapports ; un echec le laisse pour la prochaine
+# fois. $env:SZH_RAPPORTS, s'il est pose, remplace le dossier tire de l'ancrage, comme dans
+# Write-SzhRapport.
 function Clear-SzhRapportsEnAttente {
   try {
     if ($env:SZH_LANCEUR_SIMULE -eq '1') { return }
@@ -763,16 +717,14 @@ function Clear-SzhRapportsEnAttente {
 }
 
 # =========================================================================================
-# 14. L'orchestrateur -- la seule fonction que les accroches appellent.
+# 14. Write-SzhRapport, seule fonction que les autres scripts appellent.
 # =========================================================================================
 #
-# Ne leve JAMAIS (D5) : toute exception interne est avalee et journalisee localement.
-# NO-OP silencieux en simulation (voir l'en-tete du fichier).
+# Ne leve jamais : toute exception interne est journalisee localement. Ne fait rien en
+# simulation (voir l'en-tete).
 #
-# D10 : $env:SZH_RAPPORTS, quand pose, nomme DIRECTEMENT le dossier de rapports -- il
-# l'emporte sur toute derivation depuis l'ancrage. L'ancrage continue d'etre resolu pour le
-# champ "ancrage" du JSON et pour la mise en chemin relatif / le masquage : lui seul ne
-# decide plus OU le fichier atterrit quand SZH_RAPPORTS est present.
+# $env:SZH_RAPPORTS, s'il est pose, nomme directement le dossier de rapports. L'ancrage
+# reste resolu pour le champ "ancrage" du JSON, les chemins relatifs et le masquage.
 function Write-SzhRapport {
   param(
     [string]$Code = '',
@@ -799,12 +751,9 @@ function Write-SzhRapport {
     $instant = [DateTime]::UtcNow
     $instantLocal = $instant.ToLocalTime()
 
-    # ---- Ancrage : resolution PASSIVE deja posee et memoisee par szh-ancrage.ps1 ---------
-    # Resolve-SzhAncrage (szh-ancrage.ps1, contrat fige) rend { chemin; origine } -- PAS de
-    # propriete .trouve (a la difference de la forme JS { trouve, origine, chemin }) : lire
-    # une propriete absente sur un pscustomobject rend $null SANS lever, et "$ancrage.trouve"
-    # aurait donc toujours ete $false, meme ancrage trouve -- verifie a l'execution (D10,
-    # scenario SZH_ANCRAGE seul). "trouve" se derive donc ici de $ancrage.chemin.
+    # ---- Ancrage : resolution passive, memorisee par szh-ancrage.ps1 ----------------------
+    # Resolve-SzhAncrage rend { chemin; origine }, sans propriete .trouve (contrairement a
+    # la forme JS) : "trouve" se deduit de $ancrage.chemin.
     $ancrage = Resolve-SzhAncrage
     $ancrageTrouve = [bool]$ancrage.chemin
     $racines = @{
@@ -814,13 +763,9 @@ function Write-SzhRapport {
     }
 
     # ---- Poste et versions ---------------------------------------------------------------
-    # Champs calcules en variables A PART, jamais en "$(if (...) { ... } else { $null })"
-    # inline a l'interieur d'un littéral de hashtable : verifie a l'execution que cette forme
-    # inline y declenche une vraie exception .NET interne au lieur dynamique de PowerShell 5.1
-    # ("Argument types do not match" / PSToObjectArrayBinder) des que les deux branches n'ont
-    # pas le même type apparent (chaine contre $null) -- defaut qui aurait fait echouer TOUT
-    # rapport en silence (rattrape par le garde D5, mais aucun rapport n'aurait jamais ete
-    # ecrit). Toujours affecter d'abord une variable simple, puis l'assigner telle quelle.
+    # Chaque champ passe par une variable simple avant le litteral de hashtable : sous
+    # PowerShell 5.1, un "$(if (...) { ... } else { $null })" place dans le litteral leve
+    # « Argument types do not match » quand les branches n'ont pas le meme type.
     $nomPoste = [string]$env:COMPUTERNAME
     if (-not $nomPoste) { $nomPoste = 'POSTE' }
     $utilisateurPoste = $null
@@ -850,7 +795,7 @@ function Write-SzhRapport {
       vscodium = $versionVscodium
     }
 
-    # ---- id (D9 : fonde sur l'UTC) ---------------------------------------------------------
+    # ---- id (en UTC) -------------------------------------------------------------------------
     $id = $null
     try { $id = Get-SzhRapportId -Horodatage $instant -Poste $nomPoste -AleatoireHex (New-SzhRapportAleatoireHex) }
     catch { $id = $null }
@@ -873,10 +818,8 @@ function Write-SzhRapport {
       -MessageMasque $messagePourSignature -ProduitNumero $produitNumero
 
     # ---- fichiers ---------------------------------------------------------------------------
-    # ArrayList, jamais Generic.List[T] (voir la note de Test-SzhRapportValide plus haut) :
-    # ici en particulier, envelopper un Generic.List[object] contenant des [ordered]@{...}
-    # dans "@(...)" a l'interieur d'un litteral de hashtable plus bas fait lever une vraie
-    # exception .NET interne au lieur dynamique de PowerShell 5.1 -- verifie a l'execution.
+    # ArrayList plutot que Generic.List[T] (voir Test-SzhRapportValide) : la liste est
+    # enveloppee dans « @(...) » dans le litteral de hashtable plus bas.
     $fichiersRapport = New-Object System.Collections.ArrayList
     foreach ($f in $Fichiers) {
       if ($null -eq $f) { continue }
@@ -955,9 +898,8 @@ function Write-SzhRapport {
       return
     }
 
-    # ---- anti-inondation (§4.3, D6 : jour calendaire LOCAL) --------------------------------
-    # Les compteurs sont reecrits que la decision autorise ou non, pour que le prochain appel
-    # voie l'etat a jour -- meme contrat que decisionAntiInondation cote JS.
+    # ---- anti-inondation (jour calendaire local) ---------------------------------------------
+    # Les compteurs sont reecrits dans tous les cas, comme cote JS.
     $etatAvant = Get-SzhEtatUtilisateur
     $rapportsAvant = @{}
     if ($etatAvant -and $etatAvant.PSObject.Properties['rapports']) {
@@ -978,7 +920,7 @@ function Write-SzhRapport {
       return
     }
 
-    # ---- ecriture : SZH_RAPPORTS (D10) d'abord, puis l'ancrage, puis la file d'attente -----
+    # ---- ecriture : SZH_RAPPORTS, sinon l'ancrage, sinon la file d'attente ------------------
     $dossierRapportsDirect = ''
     if ($env:SZH_RAPPORTS) { $dossierRapportsDirect = [string]$env:SZH_RAPPORTS }
 
@@ -1004,12 +946,11 @@ function Write-SzhRapport {
       try { Write-SzhLog ('Write-SzhRapport : ' + $id + ' mis en attente') } catch { }
       try { Limit-SzhRapportsEnAttente -Dossier $dossierAttente | Out-Null } catch { }
     } else {
-      # D5, la regle absolue : un echec d'ecriture ne produit PAS un second rapport (pas de
-      # boucle sur RAPPORT-ECHEC-ECRITURE, jamais ecrit en JSON) -- seule cette ligne locale le dit.
+      # Un echec d'ecriture ne produit pas de second rapport : seul le journal local le note.
       try { Write-SzhLog ('Write-SzhRapport : ' + $Code + ' abandonne, ecriture impossible meme en attente') } catch { }
     }
   } catch {
-    # Garde absolue (D5) : quoi qu'il arrive, cette fonction ne leve jamais.
+    # Cette fonction ne leve jamais.
     try { Write-SzhLog ('Write-SzhRapport : echec interne inattendu -> ' + $_.Exception.Message) } catch { }
   }
 }

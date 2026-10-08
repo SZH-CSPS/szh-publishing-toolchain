@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# livre-assembler.py — assemble les fragments HTML des chapitres, les liminaires et le
-# sommaire en un document, celui que WeasyPrint paginera.
+# Assemble les fragments HTML des chapitres, les liminaires et le sommaire en un seul
+# document, que WeasyPrint pagine.
 #
 #   python3 livre-assembler.py --meta buch.yaml --gabarit <g.html> --sortie <out.html>
 #                              [--css <feuille>]... [--css-embed <feuille>]... <fragment>...
@@ -11,38 +11,31 @@
 #
 #   python3 livre-assembler.py --meta buch.yaml --numeros-chapitres <slug>...
 #
-# --numeros-chapitres : écrit « slug=1.1 » pour chaque chapitre numéroté par sa partie
-# (numeros-chapitres: partie), que livre.mk passe au chapitre ; rien d'autre.
+# --numeros-chapitres : écrit « slug=1.1 » pour chaque chapitre numéroté dans sa partie
+# (numeros-chapitres: partie), valeur que livre.mk passe au chapitre.
 #
 #   python3 livre-assembler.py --meta buch.yaml --fichiers-images
 #
 # --fichiers-images : les images que l'assemblage incorpore, une par ligne, dont livre.mk
-# fait des prérequis ; rien d'autre.
+# fait des prérequis.
 #
-# --css lie la feuille (<link>) : la voie du PDF, où un chemin absolu ne pose pas de
-# problème. --css-embed l'incorpore (<style>) : la voie du HTML web, qui doit rester un
-# seul fichier ouvrable par file:// sans rien à côté — voir main() pour le détail.
+# --css lie la feuille (<link>), pour le PDF. --css-embed l'incorpore (<style>), pour le
+# HTML web, qui doit rester un seul fichier lisible par file:// (voir main()).
 #
-# Pourquoi un assembleur, et pas une seule invocation de pandoc sur tous les chapitres.
-# La règle de compilation fait `cd chapitres/<slug>` avant pandoc, pour que `media/` tombe
-# juste — c'est ce qui permet à un chapitre d'être compilé exactement comme un article de
-# revue, avec la même suite de filtres et le même gestionnaire de médias. Douze chapitres,
-# ce sont douze dossiers courants différents : une seule invocation ne peut pas les avoir
-# tous. On compile donc chapitre par chapitre, avec --embed-resources, et l'assemblage
-# devient une opération de texte : chaque fragment est déjà autonome, images comprises en
-# data: URI. Mesuré sur le banc : zéro chemin relatif survivant dans un fragment.
+# Chaque chapitre est compilé par son propre appel de pandoc, dans son dossier
+# (`cd chapitres/<slug>`), pour que media/ soit juste : un chapitre se compile comme un
+# article. Avec --embed-resources, chaque fragment est autonome (images en data: URI), et
+# l'assemblage n'est qu'une opération sur du texte.
 #
-# Ce que ce script fait, et rien d'autre :
-#   1. lit buch.yaml (analyseur plat maison — l'image WSL n'a pas PyYAML) ;
-#   2. compose les liminaires que la machine sait écrire : demi-titre, impressum,
-#      page de titre, sommaire ;
-#   3. relève les titres des fragments pour bâtir le sommaire, avec des liens internes —
-#      les numéros de page sont posés par WeasyPrint (target-counter), jamais ici ;
-#   4. remplit le gabarit et écrit la sortie.
+# Étapes :
+#   1. lire buch.yaml (sans PyYAML) ;
+#   2. composer les liminaires générés : demi-titre, impressum, page de titre, sommaire ;
+#   3. relever les titres des fragments pour le sommaire, en liens internes (les numéros
+#      de page sont posés par WeasyPrint, target-counter) ;
+#   4. remplir le gabarit et écrire la sortie.
 #
-# ⚠ Ce script n'invente aucune métadonnée. Une clé absente de buch.yaml laisse le bloc
-#   correspondant vide plutôt que d'écrire une valeur plausible : un ISBN inventé
-#   s'imprimerait.
+# Aucune métadonnée n'est inventée : une clé absente de buch.yaml laisse son bloc vide (un
+# ISBN inventé s'imprimerait).
 
 import html
 import json
@@ -53,9 +46,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import szh_commun
 
-# Analyseur YAML plat (une clé par ligne, listes en tirets, sous-blocs indentés d'un
-# niveau) : voir szh_commun.lire_yaml(), dont couverture.py se sert aussi — une divergence
-# entre les deux lecteurs serait un livre dont la couverture et l'intérieur se contredisent.
+# Lecteur YAML simple (une clé par ligne, listes en tirets, sous-blocs d'un niveau),
+# partagé avec couverture.py pour que couverture et intérieur lisent buch.yaml pareil.
 lire_yaml = szh_commun.lire_yaml
 
 
@@ -63,14 +55,13 @@ lire_yaml = szh_commun.lire_yaml
 # Le bloc `mise-en-page:` de buch.yaml, maquette normal seulement.
 #
 # Une clé à valeurs nommées devient data-<clé>="<valeur>" sur <html>, un nombre en mm une
-# propriété personnalisée dans le style="" de <html> ; les règles vivent dans
-# styles/livre/normal.css. Les filtres de chapitre (szh-sections, szh-numerotation,
-# szh-livre-auteurs, szh-legende-avant) relisent le même bloc, par szh-commun.lua.
-# Une maquette falc ignore le bloc entier.
+# variable CSS dans le style="" de <html> ; les règles sont dans styles/livre/normal.css.
+# Les filtres de chapitre (szh-sections, szh-numerotation, szh-livre-auteurs,
+# szh-legende-avant) lisent le même bloc par szh-commun.lua. La maquette falc l'ignore.
 # --------------------------------------------------------------------------------------
 
-# Les clés, leurs valeurs, leurs défauts et les refus : pipeline/livre/mise-en-page.json,
-# que szh-commun.lua lit aussi. Rien n'est recopié ici.
+# Clés, valeurs, défauts et messages de refus : pipeline/livre/mise-en-page.json, lu aussi
+# par szh-commun.lua.
 CHEMIN_MISE_EN_PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                    'livre', 'mise-en-page.json')
 with open(CHEMIN_MISE_EN_PAGE, encoding='utf-8') as _f:
@@ -89,9 +80,9 @@ def _erreur_mise_en_page(code, champ, **valeurs):
 
 
 def lire_mise_en_page(meta):
-    """Rend (réglages, erreurs). Réglages : chaque clé de MISE_EN_PAGE avec sa valeur,
-    défaut compris ; None pour une maquette falc. Erreurs : lignes au format maison, une
-    par clé inconnue ou valeur refusée."""
+    """Rend (réglages, erreurs). Réglages : chaque clé de MISE_EN_PAGE avec sa valeur ou
+    son défaut ; None pour une maquette falc. Erreurs : une ligne [livre-blocage] par clé
+    inconnue ou valeur refusée."""
     if str(meta.get('maquette') or 'normal') == 'falc':
         return None, []
     bloc = meta.get('mise-en-page')
@@ -108,8 +99,7 @@ def lire_mise_en_page(meta):
             erreurs.append(_erreur_mise_en_page('mise-en-page-cle-inconnue', champ, cle=cle,
                                                 permises=', '.join(MISE_EN_PAGE)))
             continue
-        # Un commentaire en fin de ligne n'appartient pas à la valeur : pandoc l'ignore, le
-        # lecteur plat de szh_commun le garderait.
+        # Commentaire de fin de ligne retiré : pandoc l'ignore, szh_commun le garderait.
         valeur = re.sub(r'\s+#.*$', '', str(brut).strip()).strip().strip('"\'')
         definition = MISE_EN_PAGE[cle]
         if 'valeurs' not in definition:
@@ -130,8 +120,8 @@ def lire_mise_en_page(meta):
 
 
 def attributs_mise_en_page(reglages):
-    """Les attributs de <html> : data-<clé> pour chaque valeur nommée, puis un style=""
-    pour les nombres. Chaîne vide sans réglages (maquette falc)."""
+    """Attributs de <html> : data-<clé> pour chaque valeur nommée, puis un style="" pour
+    les nombres. '' sans réglages (maquette falc)."""
     if not reglages:
         return ''
     attrs, style = [], []
@@ -157,71 +147,60 @@ RE_BALISE = re.compile(r'<[^>]+>')
 RE_BR = re.compile(r'<br\s*/?>', re.I)
 RE_NUM_SECTION = re.compile(r'<span class="szh-num-section">.*?</span>', re.S)
 
-# La couleur d'un chapitre est déjà dans son fragment : livre.mk (PALETTE_CHAPITRE) l'a
-# posée en --c-chapitre sur la <section class="szh-chapitre"> qui l'enveloppe (voir
-# templates/szh-livre-chapitre.html) — c'est ce qui peint la pastille et l'onglet de
-# tranche sur la page d'ouverture. On la lit ici, on ne la recalcule pas : un chapitre, un
-# seul calcul de sa couleur. Une liminaire ou la 4e de couverture n'a pas cette section et
-# ne matche donc jamais — ses entrées de sommaire, s'il y en avait, resteraient sans
-# couleur, ce qui est la bonne réponse : elles n'appartiennent à aucun chapitre.
+# La couleur d'un chapitre est dans son fragment : livre.mk (PALETTE_CHAPITRE) la pose en
+# --c-chapitre sur la <section class="szh-chapitre"> (templates/szh-livre-chapitre.html).
+# On la relit sans la recalculer. Une liminaire n'a pas cette section, donc pas de couleur.
 RE_COULEUR_CHAPITRE = re.compile(
     r'<section\b[^>]*\bclass="[^"]*\bszh-chapitre\b[^"]*"[^>]*\bstyle="[^"]*--c-chapitre:\s*'
     r'([^;"]+)', re.S | re.I)
 
-# Même lecture que la couleur, mais pour --onglet-hauteur : la hauteur de case de l'index
-# à pouce, calculée une seule fois par livre.mk (ONGLET_Y0/ONGLET_Y1, voir sa note de
-# tête) et posée en métadonnée sur CHAQUE chapitre du sommaire — identique pour tous, donc
-# n'importe lequel suffit à la retrouver ici, une seule fois, pour tout le livre.
+# De même pour --onglet-hauteur, la hauteur de case de l'index à pouce, calculée par
+# livre.mk (ONGLET_Y0/ONGLET_Y1) et identique sur chaque chapitre du sommaire.
 RE_ONGLET_HAUTEUR = re.compile(r'--onglet-hauteur:\s*([^;"]+)')
 
 # Un chapitre retiré du sommaire (`sommaire: non` dans son <slug>.meta.yaml) porte
-# `data-sommaire="non"` sur sa section — posé par livre.mk/szh-livre-chapitre.html, jamais
-# recalculé ici. Ses titres (h1 d'ouverture comme ses h2/h3 internes) n'entrent dans
-# AUCUNE entrée de sommaire : le chapitre entier est invisible à la table des matières.
+# `data-sommaire="non"` sur sa section. Aucun de ses titres n'entre au sommaire.
 RE_HORS_SOMMAIRE = re.compile(
     r'<section\b[^>]*\bclass="[^"]*\bszh-chapitre\b[^"]*"[^>]*\bdata-sommaire="non"',
     re.S | re.I)
 
-# Le numéro DU SOMMAIRE (rang parmi les chapitres du sommaire, voir livre.mk § Index à
-# pouce) : le même texte que celui écrit en dur dans la pastille (templates/szh-livre-
-# chapitre.html, <div class="szh-pastille">). On le relit ici pour la même raison que la
-# couleur et --onglet-hauteur : une seule fois calculé, jamais recalculé.
+# Numéro de sommaire (rang parmi les chapitres du sommaire, voir livre.mk), relu dans la
+# pastille (<div class="szh-pastille">) plutôt que recalculé.
 RE_NUMERO_CHAPITRE = re.compile(r'<div class="szh-pastille" aria-hidden="true">(\d+)</div>')
 
 
 def couleur_du_fragment(fragment):
-    """Rend la couleur du chapitre (« #RRGGBB ») si le fragment en porte une, sinon None."""
+    """Couleur du chapitre (« #RRGGBB »), ou None."""
     m = RE_COULEUR_CHAPITRE.search(fragment)
     return m.group(1).strip() if m else None
 
 
 def onglet_hauteur_du_fragment(fragment):
-    """Rend la hauteur de case de l'index à pouce (« 22.857mm ») si le fragment en porte
-    une, sinon None — absente pour un chapitre hors sommaire, ou hors maquette FALC."""
+    """Hauteur de case de l'index à pouce (« 22.857mm »), ou None (chapitre hors sommaire,
+    ou maquette autre que FALC)."""
     m = RE_ONGLET_HAUTEUR.search(fragment)
     return m.group(1).strip() if m else None
 
 
 def numero_chapitre_du_fragment(fragment):
-    """Rend le numéro DU SOMMAIRE (« 3 »), tel qu'écrit dans la pastille, si le fragment
-    en porte un — absent pour un chapitre hors sommaire (sa pastille est vide)."""
+    """Numéro de sommaire (« 3 ») lu dans la pastille, ou None (chapitre hors sommaire)."""
     m = RE_NUMERO_CHAPITRE.search(fragment)
     return m.group(1) if m else None
 
 
 def hors_sommaire(fragment):
-    """Vrai si CE fragment est un chapitre retiré de la table des matières."""
+    """Vrai si le fragment est un chapitre retiré du sommaire."""
     return RE_HORS_SOMMAIRE.search(fragment) is not None
 
 
-# La ligne des auteur·e·s d'un chapitre collectif : celle de szh-livre-auteurs.lua, ou le
-# bloc venu de l'import Word.
+# Ligne d'auteurs d'un chapitre : celle de szh-livre-auteurs.lua, ou le bloc venu de
+# l'import Word.
 RE_AUTEURS_CHAPITRE = re.compile(
     r'<(p|div)\b[^>]*\bclass="szh-auteurs"[^>]*>(?P<txt>.*?)</(?:p|div)>', re.S | re.I)
 
 
 def auteurs_du_fragment(fragment):
-    """Rend la ligne d'auteur·e·s du chapitre, en texte, ou None."""
+    """Ligne d'auteurs du chapitre, en texte, ou None."""
     m = RE_AUTEURS_CHAPITRE.search(fragment)
     if not m:
         return None
@@ -230,33 +209,20 @@ def auteurs_du_fragment(fragment):
 
 
 def titres_du_fragment(fragment, numeroter=True, separateur=" "):
-    """Rend [(niveau, ancre, texte, couleur, onglet_hauteur)] pour h1..h3. Le texte est
-    dépouillé de ses balises : « <span class="szh-num-section">2</span> Teilhabe » donne
-    « 2 Teilhabe » — SAUF pour le h1 d'un chapitre QUI A UN NUMÉRO DE SOMMAIRE (voir
-    ci-dessous), où ce numéro-là remplace celui de la balise. `couleur` et
-    `onglet_hauteur` sont ceux du CHAPITRE ENTIER : un fragment est un seul chapitre, donc
-    tous ses titres — le h1 d'ouverture comme ses h2/h3 internes — les partagent,
-    exactement comme l'onglet de tranche les accompagne du premier au dernier paragraphe
-    du chapitre.
+    """[(niveau, ancre, texte, couleur, onglet_hauteur)] pour h1..h3, texte sans balises :
+    « <span class="szh-num-section">2</span> Teilhabe » donne « 2 Teilhabe ». `couleur` et
+    `onglet_hauteur` sont ceux du chapitre, communs à tous ses titres.
 
-    ⚠ Le h1 d'un chapitre porte un `<span class="szh-num-section">` posé par
-    szh-sections.lua à partir de SZH_CHAPITRE — le RANG dans $(CHAPITRES), pas le numéro
-    du sommaire (voir livre.mk, § Index à pouce : les deux divergent dès qu'un chapitre
-    est hors sommaire). Un chapitre 4 devenu 1er du sommaire y gardait donc écrit « 4 » —
-    la pastille disait 1, le sommaire disait 4, en contradiction avec la charte FALC (le
-    numéro imprimé sur la page ouvrante), et FALC masque de toute façon cette balise par
-    CSS (`.szh-num-section { display: none }`), donc son contenu n'a de sens QUE relu ici.
-    Pour un h1 qui porte --numero-chapitre (voir numero_chapitre_du_fragment), on retire
-    donc CETTE balise avec son contenu (pas seulement la balise) et on préfixe le numéro
-    du sommaire à sa place — pastille et sommaire disent alors, toujours, le même nombre.
-    Les h2/h3 (numérotation de section, pas de chapitre) ne sont pas concernés : leur
-    balise `szh-num-section` reste lue comme avant.
+    Le h1 porte un `<span class="szh-num-section">` posé par szh-sections.lua d'après
+    SZH_CHAPITRE, le rang dans $(CHAPITRES), qui diffère du numéro de sommaire dès qu'un
+    chapitre est hors sommaire. Si le chapitre a un numéro de sommaire (pastille), ce
+    span est retiré avec son contenu et remplacé par ce numéro : pastille et sommaire
+    disent le même nombre. Les h2/h3 gardent leur numéro de section.
 
-    Un chapitre hors sommaire (`sommaire: non`) ne rend AUCUNE entrée : il est absent de
-    la table des matières dans son entier, pas seulement de son propre h1.
+    Un chapitre hors sommaire (`sommaire: non`) ne rend aucune entrée.
 
-    `numeroter` faux (maquette normal, `numeros-chapitres: aucun`) : le h1 ne reçoit aucun
-    numéro, pastille ou non. `separateur` : ce qui sépare le numéro du titre."""
+    `numeroter` faux (maquette normal, `numeros-chapitres: aucun`) : le h1 n'a pas de
+    numéro. `separateur` : ce qui sépare le numéro du titre."""
     if hors_sommaire(fragment):
         return []
     couleur = couleur_du_fragment(fragment)
@@ -270,13 +236,13 @@ def titres_du_fragment(fragment, numeroter=True, separateur=" "):
         if niveau == 1 and numero:
             brut = RE_NUM_SECTION.sub('', brut)
         elif niveau == 1:
-            # Sans numéro de sommaire (numeros-chapitres: partie), celui que szh-sections.lua
-            # a écrit dans le titre, suivi du séparateur du sommaire.
+            # Sans numéro de sommaire (numeros-chapitres: partie) : celui écrit par
+            # szh-sections.lua dans le titre, suivi du séparateur du sommaire.
             m_num = RE_NUM_SECTION.search(brut)
             if m_num:
                 prefixe = re.sub(r'\s+', ' ', html.unescape(RE_BALISE.sub('', m_num.group(0)))).strip()
                 brut = RE_NUM_SECTION.sub('', brut)
-        # Un <br> du titre (« // ») vaut une espace : sans cela, deux mots se colleraient.
+        # Un <br> du titre (« // ») devient une espace, pour ne pas coller deux mots.
         txt = RE_BALISE.sub('', RE_BR.sub(' ', brut))
         txt = re.sub(r'\s+', ' ', html.unescape(txt).strip())
         if prefixe and txt:
@@ -289,27 +255,21 @@ def titres_du_fragment(fragment, numeroter=True, separateur=" "):
 # --------------------------------------------------------------------------------------
 # Avertissement : une case de l'index à pouce trop basse pour son titre.
 #
-# Estimation grossière, pas une mesure de glyphes (fontTools serait le bon outil, mais un
-# avertissement de mise en page n'a pas besoin de cette précision) : à 13 pt Light sur la
-# colonne FALC standard (125 mm de texte utile), une ligne tient environ 52 caractères —
-# ~0,52 em par caractère, moyenne d'usage pour un sans-serif proportionnel. Une entrée qui
-# dépasse 85 % de cette capacité (⁓44 caractères) risque de passer sur deux lignes : le
-# dernier mot, s'il est long, ne trouve pas sa place et bascule en entier (aucune césure
-# en FALC — voir --cesure ci-dessus), ce qui déclenche le repli avant d'atteindre 100 %.
+# Estimation par nombre de caractères, pas mesure des glyphes : à 13 pt Light sur la
+# colonne FALC (125 mm utiles), une ligne tient environ 52 caractères. Au-delà de 85 %
+# (environ 44 caractères), le titre risque de passer sur deux lignes : sans césure en
+# FALC, un long dernier mot bascule en entier.
 CAR_PAR_LIGNE = 52
 SEUIL_RISQUE_DEUX_LIGNES = int(CAR_PAR_LIGNE * 0.85)
-# Hauteur de case minimale pour UNE ligne de titre (padding 4+4 mm, filet ~0,3 mm, une
-# ligne à 13 pt / interligne 1,64 ≈ 7,5 mm) et pour DEUX (la même plus une ligne) — les
-# deux mesures qui bornent l'avertissement ci-dessous.
+# Hauteur de case minimale pour une ligne de titre (marges 4 + 4 mm, filet ~0,3 mm, une
+# ligne à 13 pt, interligne 1,64, ≈ 7,5 mm) et pour deux lignes.
 ONGLET_H_MIN_1_LIGNE = 16.0
 ONGLET_H_MIN_2_LIGNES = 24.0
 
 
 def verifier_hauteur_sommaire(entrees):
-    """Émet un [livre-avertissement] pour chaque entrée de CHAPITRE (niveau 1) dont la
-    case de l'index à pouce risque d'être trop basse pour son titre. N'arrête rien : c'est
-    un avertissement, pas une porte — le sommaire se compose quand même, au pire un peu
-    à l'étroit, et c'est cette étroitesse que le message signale."""
+    """Écrit un [livre-avertissement] pour chaque chapitre (niveau 1) dont la case de
+    l'index à pouce risque d'être trop basse pour son titre. Non bloquant."""
     for niveau, ancre, txt, couleur, onglet_h in (e[:5] for e in entrees):
         if niveau != 1 or not onglet_h:
             continue
@@ -342,25 +302,19 @@ def verifier_hauteur_sommaire(entrees):
 
 
 def sommaire_html(entrees, titre, hierarchique=False, auteurs=None, cases=True):
-    """Le sommaire est une <ol> de liens internes. Le numéro de page est posé par
-    target-counter() dans base.css : rien ici ne connaît la pagination, et c'est bien —
-    un numéro écrit ici serait faux au premier paragraphe ajouté.
+    """Le sommaire : une <ol> de liens internes. Les numéros de page sont posés par
+    target-counter() dans base.css.
 
-    Chaque entrée reçoit la couleur DE SON CHAPITRE en --c-chapitre, posée en style inline
-    sur le <li> — la même variable, au même format, que celle que livre.mk pose sur la
-    <section> du chapitre. C'est ce qui permet à livre/falc.css de peindre le repère de
-    sommaire avec la règle qu'il porte déjà (`.szh-sommaire li::after { background:
-    var(--c-chapitre, …) }`) : elle attendait cette variable, jamais posée avant ce
-    correctif — d'où des repères tous à la couleur de repli, --c-falc-accent-defaut.
+    Chaque <li> reçoit la couleur de son chapitre en --c-chapitre (style inline), comme la
+    <section> du chapitre : livre/falc.css en peint le repère
+    (`.szh-sommaire li::after { background: var(--c-chapitre, …) }`).
 
-    --onglet-hauteur (la hauteur de case de l'index à pouce, IDENTIQUE pour tout le livre)
-    est posée UNE FOIS, en style inline sur la <section> elle-même — elle est héritée par
-    chaque <li>, comme toute propriété personnalisée CSS non redéfinie. C'est la même
-    valeur que celle que livre.mk a posée sur chaque chapitre (voir onglet_hauteur_du_
-    fragment ci-dessus) : le sommaire ne la recalcule jamais, il la relit.
+    --onglet-hauteur, identique pour tout le livre, est posée une fois sur la <section> et
+    héritée par chaque <li>.
 
-    `hierarchique` (maquette normal, `sommaire: hierarchique`) : parties et chapitres seuls,
-    chaque chapitre suivi de ses auteur·e·s quand `auteurs` (ancre du h1 -> ligne) en donne.
+    `hierarchique` (maquette normal, `sommaire: hierarchique`) : parties et chapitres
+    seuls, chaque chapitre suivi de ses auteurs si `auteurs` (ancre du h1 -> ligne) en
+    donne.
 
     Une entrée est (niveau, ancre, texte, couleur, hauteur de case[, extra]) ; niveau 0 pour
     une partie. `extra` : classes du <li> et numéro de partie, imprimé dans son <span>.
@@ -381,8 +335,8 @@ def sommaire_html(entrees, titre, hierarchique=False, auteurs=None, cases=True):
         extra = entree[5] if len(entree) > 5 else {}
         style = (' style="--c-chapitre: %s"' % html.escape(couleur, quote=True)
                  if couleur else '')
-        # Un <span> entre le <li> et le <a> : le <li> FALC est un flex, et un <a> enfant
-        # direct d'un flex n'a pas d'annotation /Link dans le PDF (WeasyPrint 70).
+        # Un <span> entre le <li> et le <a> : le <li> FALC est un flex, et WeasyPrint 70 ne
+        # pose pas d'annotation /Link sur un <a> enfant direct d'un flex.
         ligne_auteurs = auteurs.get(ancre) if hierarchique else None
         suite = ('<span class="szh-sommaire-auteurs">%s</span>' % html.escape(ligne_auteurs)
                  if ligne_auteurs else '')
@@ -397,7 +351,7 @@ def sommaire_html(entrees, titre, hierarchique=False, auteurs=None, cases=True):
 
 
 # --------------------------------------------------------------------------------------
-# Liminaires composés par la machine.
+# Liminaires générés.
 # --------------------------------------------------------------------------------------
 
 # Même table que CONJONCTION dans szh-livre-auteurs.lua : la conjonction avant le dernier nom.
@@ -405,8 +359,8 @@ CONJONCTION_AUTEURS = {'fr': ' et ', 'de': ' und ', 'it': ' e ', 'en': ' and '}
 
 
 def _auteurs_ligne(meta, lang='fr'):
-    """« Prénom Nom, Prénom Nom et Prénom Nom ». Rien de plus : le bloc auteurs détaillé
-    (fonction, affiliation, ORCID) est l'affaire des chapitres."""
+    """« Prénom Nom, Prénom Nom et Prénom Nom ». Le détail (fonction, affiliation, ORCID)
+    est dans les chapitres."""
     noms = []
     for a in (meta.get('auteurs') or []):
         if isinstance(a, dict):
@@ -442,9 +396,8 @@ def _editeurs_ligne(meta, lang='fr'):
 
 
 def metadonnees_html(meta, lang='fr'):
-    """Génère les balises <meta> du <head> pour le gabarit HTML du livre."""
+    """Balises <meta> du <head> du livre."""
     lignes = []
-    # Auteurs et éditeurs pour meta name="author"
     auteurs = _auteurs_ligne(meta, lang)
     editeurs = _editeurs_ligne(meta, lang)
     auteurs_et_editeurs = auteurs
@@ -452,13 +405,10 @@ def metadonnees_html(meta, lang='fr'):
         auteurs_et_editeurs = auteurs + (', ' + editeurs if auteurs else editeurs)
     if auteurs_et_editeurs:
         lignes.append('  <meta name="author" content="%s" />' % html.escape(auteurs_et_editeurs, quote=True))
-    # Résumé pour meta name="description"
     if meta.get('resume'):
         lignes.append('  <meta name="description" content="%s" />' % html.escape(str(meta['resume']), quote=True))
-    # Mots-clés
     if meta.get('mots-cles'):
         lignes.append('  <meta name="keywords" content="%s" />' % html.escape(str(meta['mots-cles']), quote=True))
-    # Année pour dcterms.created
     if meta.get('annee'):
         lignes.append('  <meta name="dcterms.created" content="%s" />' % html.escape(str(meta['annee']), quote=True))
     return '\n'.join(lignes) + ('\n' if lignes else '')
@@ -470,10 +420,10 @@ def _titre_en_lignes(titre):
 
 
 def _responsables_page_titre(meta, lang, normal):
-    """La ligne du haut du demi-titre et de la page de titre. Maquette normal : celle de la
-    couverture (couverture.responsables : les auteur·e·s, à défaut les éditeur·rice·s suivi·e·s
-    de « (Hrsg.) », « (éd.) », « (a cura di) » ou de `mention-editeurs`), une seule règle pour
-    les deux. Le FALC garde ses seuls auteur·e·s."""
+    """Ligne du haut du demi-titre et de la page de titre. Maquette normal : la même que la
+    couverture (couverture.responsables : les auteurs, sinon les éditeurs suivis de
+    « (Hrsg.) », « (éd.) », « (a cura di) » ou de `mention-editeurs`). FALC : les auteurs
+    seuls."""
     if not normal:
         return _auteurs_ligne(meta, lang)
     import importlib.util
@@ -485,8 +435,8 @@ def _responsables_page_titre(meta, lang, normal):
 
 
 def demi_titre(meta, lang='fr', normal=False):
-    """En maquette normal, le titre y court d'un trait : ses « // » sont ceux de la page de
-    titre, où il est composé en grand. Le sous-titre garde les siens sur les deux pages."""
+    """Demi-titre. En maquette normal, le titre y tient sur une ligne : ses « // » ne
+    servent qu'à la page de titre. Le sous-titre garde les siens."""
     titre = (html.escape(szh_commun.titre_plat(meta.get('titre'))) if normal
              else _titre_en_lignes(meta.get('titre')))
     return ('<section class="szh-liminaire szh-demi-titre">'
@@ -497,8 +447,8 @@ def demi_titre(meta, lang='fr', normal=False):
                _titre_en_lignes(meta.get('sous-titre'))))
 
 
-# Le logo de l'éditeur, en bas à droite de la page de titre (`logo-page-titre`). Son alt
-# est vide, à dessein : le nom de l'éditeur est déjà écrit en toutes lettres à l'impressum.
+# Logo de l'éditeur, en bas à droite de la page de titre (`logo-page-titre`). Alt vide : le
+# nom de l'éditeur est écrit à l'impressum.
 LOGO_PAGE_TITRE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'media', 'logos',
                                'edition-szh-csps.svg')
 
@@ -517,16 +467,15 @@ def page_titre(meta, lang='fr', normal=False, logo=False):
 
 
 def dedicace(meta):
-    """La dédicace de buch.yaml, « // » pour un saut de ligne. Un liminaire comme le
-    demi-titre : avant le sommaire, sans folio ; après lui, avec."""
+    """Dédicace de buch.yaml, « // » pour un saut de ligne. Sans folio avant le sommaire,
+    avec folio après."""
     return ('<section class="szh-liminaire szh-dedicace"><p>%s</p></section>'
             % _titre_en_lignes(meta.get('dedicace')))
 
 
 # --------------------------------------------------------------------------------------
-# Images posées par l'assembleur (logos de l'impressum, illustration de partie, logo de la
-# page de titre) : incorporées en data: URI, comme celles des chapitres, pour que le HTML
-# web reste un seul fichier.
+# Images ajoutées par l'assembleur (logos de l'impressum, illustration de partie, logo de
+# la page de titre), incorporées en data: URI pour que le HTML web reste un seul fichier.
 # --------------------------------------------------------------------------------------
 TYPES_IMAGE = {'.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg',
                '.jpeg': 'image/jpeg'}
@@ -575,10 +524,10 @@ def dimensions_image(chemin):
 
 
 def _img(chemin, alt, classe):
-    """Une image posée par l'assembleur. Avec un texte alternatif, un <img>. Décorative
-    (alt vide), un fond CSS dans deux <span>, comme les décors de szh-numerotation.lua :
+    """Image ajoutée par l'assembleur : un <img> avec texte alternatif ; décorative (alt
+    vide), un fond CSS dans deux <span>, comme les décors de szh-numerotation.lua, car
     WeasyPrint balise tout <img> en /Figure, et une /Figure sans /Alt n'est pas conforme
-    PDF/UA. --ratio (hauteur sur largeur) donne la géométrie à la feuille de style."""
+    PDF/UA. --ratio (hauteur sur largeur) sert à la feuille de style."""
     if str(alt or '').strip():
         return '<img class="%s" src="%s" alt="%s" />' % (
             classe, uri_image(chemin), html.escape(str(alt), quote=True))
@@ -589,7 +538,7 @@ def _img(chemin, alt, classe):
 
 
 def _liste(v):
-    """Une valeur de buch.yaml qui peut être un nom seul ou une liste de noms."""
+    """Liste de noms, à partir d'une valeur de buch.yaml (nom seul ou liste)."""
     if v in (None, ''):
         return []
     return [str(x) for x in v] if isinstance(v, list) else [str(v)]
@@ -600,8 +549,8 @@ def _erreur(code, champ, fr, de):
 
 
 def _fichier_livre(racine, nom, champ, erreurs):
-    """Le chemin d'un fichier nommé dans buch.yaml (relatif au dossier du livre), ou None
-    après un refus s'il n'existe pas ou n'est pas une image connue."""
+    """Chemin d'un fichier nommé dans buch.yaml (relatif au dossier du livre). None, avec
+    une erreur ajoutée, s'il n'existe pas ou n'est pas une image connue."""
     chemin = os.path.join(racine, nom)
     if not os.path.isfile(chemin):
         erreurs.append(_erreur('fichier-introuvable', champ,
@@ -624,8 +573,8 @@ PHRASE_RESPONSABILITE = {
 }
 
 
-# Les quatre raisons sociales de la fondation, dans l'ordre des livres publiés. Elles ne
-# sont pas une métadonnée du livre : elles ne changent pas d'un ouvrage à l'autre.
+# Les quatre raisons sociales de la fondation, dans l'ordre des livres publiés ; les mêmes
+# pour tous les livres.
 FONDATION = [
     'Stiftung Schweizer Zentrum für Heil- und Sonderpädagogik (SZH) Bern',
     'Fondation Centre suisse de pédagogie spécialisée (CSPS) Berne',
@@ -640,9 +589,9 @@ LICENCES = {
     'cc-by-nc-4.0':    'Creative Commons CC BY-NC 4.0 International',
 }
 
-# L'acte (Commons deed) de chaque licence, sans « https:// » ni barre finale : la phrase de
-# licence l'imprime ainsi, le badge y mène. Les mêmes adresses que la licence d'article de
-# szh-maquette.lua (test/js/livre-structure.test.js).
+# Résumé (Commons deed) de chaque licence, sans « https:// » ni barre finale : la phrase de
+# licence l'imprime ainsi, le badge y mène. Mêmes adresses que szh-maquette.lua (vérifié
+# par test/js/livre-structure.test.js).
 ACTES_LICENCE = {
     'cc-by-nc-nd-4.0': 'creativecommons.org/licenses/by-nc-nd/4.0',
     'cc-by-4.0':       'creativecommons.org/licenses/by/4.0',
@@ -650,8 +599,8 @@ ACTES_LICENCE = {
     'cc-by-nc-4.0':    'creativecommons.org/licenses/by-nc/4.0',
 }
 
-# Le bouton de chaque licence, sous la phrase de licence en maquette normal : un fichier
-# officiel de Creative Commons, versé sans retouche (media/logos/README.md).
+# Badge de chaque licence, sous la phrase de licence en maquette normal : fichier officiel
+# de Creative Commons, non retouché (media/logos/README.md).
 LOGOS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'media', 'logos')
 
 
@@ -665,7 +614,7 @@ PHRASE_LICENCE = {
     'it': "Quest'opera è distribuita con licenza %s (%s).",
 }
 
-# Le nom accessible du badge, un lien vide.
+# Nom accessible du badge (un lien vide).
 LIEN_ACTE_LICENCE = {
     'de': 'Zusammenfassung der Lizenz %s',
     'fr': 'Résumé de la licence %s',
@@ -677,9 +626,9 @@ ETIQUETTES_ISBN = (('isbn-print', 'ISBN Print on demand'), ('isbn-ebook', 'ISBN 
 TITRES_SOMMAIRE = {'de': 'Inhaltsverzeichnis', 'fr': 'Sommaire', 'it': 'Indice'}
 
 
-# Les sous-clés du bloc `impressum:` de buch.yaml, toutes facultatives. Une image a son
-# texte alternatif dans `<clé>-alt` ; sans lui, elle est décorative (alt="") : un logo
-# répète le plus souvent un nom déjà écrit à côté (docs/ACCESSIBILITE.md).
+# Sous-clés du bloc `impressum:` de buch.yaml, toutes facultatives. Le texte alternatif
+# d'une image est dans `<clé>-alt` ; sans lui, elle est décorative (alt="") : un logo
+# répète le plus souvent un nom écrit à côté (docs/ACCESSIBILITE.md).
 CLES_IMPRESSUM = ('logo-soutien', 'logo-soutien-alt', 'logo-soutien-hauteur-mm', 'soutien',
                   'credits', 'responsabilite', 'reserve', 'imprimeur', 'logos-imprimeur',
                   'logos-imprimeur-alt')
@@ -694,8 +643,8 @@ def _bloc_impressum(meta):
 
 
 def verifier_impressum(meta, racine):
-    """Rend les refus du bloc impressum : clé inconnue, image absente, licence connue dont le
-    badge n'est pas livré. Une licence inconnue de LICENCES n'est pas refusée ici."""
+    """Erreurs du bloc impressum : clé inconnue, image absente, licence connue sans son
+    badge. Une licence absente de LICENCES n'est pas refusée ici."""
     erreurs = []
     cle_licence = str(meta.get('licence') or '')
     if cle_licence in LICENCES and not os.path.isfile(badge_licence(cle_licence)):
@@ -727,7 +676,7 @@ def verifier_impressum(meta, racine):
 
 
 def _hauteur_logo(bloc):
-    """La hauteur du logo de soutien en mm (nombre), ou None si absente ou refusée."""
+    """Hauteur du logo de soutien en mm, ou None si absente ou refusée."""
     valeur = str(bloc.get('logo-soutien-hauteur-mm') or '').strip().strip('"\'')
     if not RE_NOMBRE_MM.match(valeur):
         return None
@@ -737,9 +686,9 @@ def _hauteur_logo(bloc):
 
 
 def _lien_badge(cle, nom, lang):
-    """Le badge de la licence, lien vers son acte : un <a> vide à aria-label, le bouton en
-    fond CSS. Un élément dans le <a> donnerait une annotation par boîte (partage-filtres.css,
-    a.szh-orcid) ; --ratio donne sa géométrie à normal.css."""
+    """Badge de la licence, lien vers son résumé : un <a> vide avec aria-label, l'image en
+    fond CSS. Un élément dans le <a> donnerait une annotation par boîte (comme
+    a.szh-orcid de partage-filtres.css) ; --ratio sert à normal.css."""
     chemin = badge_licence(cle)
     largeur, hauteur = dimensions_image(chemin) or (1, 1)
     label = LIEN_ACTE_LICENCE.get(lang, LIEN_ACTE_LICENCE['fr']) % nom
@@ -754,12 +703,11 @@ def _oui(v):
 
 
 def impressum(meta, racine='.', normal=False):
-    """L'ordre est celui des livres publiés : année et éditeur, la fondation, le logo et la
-    phrase de soutien, les crédits, les ISBN, le DOI, la responsabilité des auteur·e·s, la
-    licence, la réserve, l'imprimeur et la rangée de ses logos. Chaque ligne absente de
-    buch.yaml disparaît : on n'imprime pas un ISBN qu'on n'a pas. Les images ont été
-    vérifiées par verifier_impressum(). En maquette normal, l'année et l'éditeur forment un
-    seul bloc, comme dans les livres de l'Edition SZH ; le FALC garde ses deux blocs."""
+    """Impressum, dans l'ordre des livres publiés : année et éditeur, fondation, logo et
+    phrase de soutien, crédits, ISBN, DOI, responsabilité des auteurs, licence, réserve,
+    imprimeur et ses logos. Une ligne absente de buch.yaml est omise. Les images ont été
+    vérifiées par verifier_impressum(). En maquette normal, année et éditeur forment un
+    seul bloc ; en FALC, deux."""
     bloc = _bloc_impressum(meta)
     lang = str(meta.get('lang') or 'fr')
 
@@ -788,7 +736,7 @@ def impressum(meta, racine='.', normal=False):
     for cle in ('soutien', 'credits'):
         if texte(cle):
             blocs.append(('', texte(cle)))
-    # Les ISBN et le DOI : un seul bloc en maquette normal (Hofer p2), un bloc chacun en FALC.
+    # ISBN et DOI : un seul bloc en maquette normal, un bloc chacun en FALC.
     identifiants = ['%s: %s' % (etiquette, html.escape(str(meta[cle])))
                     for cle, etiquette in ETIQUETTES_ISBN if meta.get(cle)]
     if meta.get('doi'):
@@ -828,8 +776,9 @@ def impressum(meta, racine='.', normal=False):
 #     numeroter: oui             avec numeros-chapitres: partie, « 1.1 », « 1.2 »…
 #     illustration: parties/x.jpg   page-seule seulement ; illustration-alt facultatif
 #
-# La partie est une <section class="szh-partie"> sœur des chapitres, son titre un <h1> ;
-# ses chapitres portent data-partie, qui leur donne le niveau 2 des signets (base.css).
+# La partie est une <section class="szh-partie"> au même niveau que les chapitres, son
+# titre un <h1> ; ses chapitres portent data-partie, qui les place au niveau 2 des signets
+# (base.css).
 # --------------------------------------------------------------------------------------
 CLES_PARTIE = ('titre', 'numero', 'chapitres', 'page-seule', 'numeroter', 'illustration',
                'illustration-alt')
@@ -853,9 +802,9 @@ def _oui_non(v, defaut):
 
 
 def lire_parties(meta, slugs):
-    """Rend (parties, erreurs). `slugs` : l'ordre des chapitres du livre. Chaque partie :
-    dict titre, numero, chapitres, page_seule, numeroter, illustration, illustration_alt,
-    rang (1, 2…)."""
+    """Rend (parties, erreurs). `slugs` : l'ordre des chapitres du livre. Chaque partie
+    est un dict : titre, numero, chapitres, page_seule, numeroter, illustration,
+    illustration_alt, rang (1, 2…)."""
     brut = meta.get('parties')
     if brut in (None, '', []):
         return [], []
@@ -947,10 +896,10 @@ def _a_un_titre(racine, slug):
 
 
 def numeros_chapitres(reglages, parties, racine):
-    """Le numéro de chaque chapitre d'une partie `numeroter: oui`, sous
+    """Numéro de chaque chapitre d'une partie `numeroter: oui`, avec
     numeros-chapitres: partie : « <numéro de partie>.<rang parmi ses chapitres titrés> ».
-    Un chapitre sans titre n'est ni numéroté ni compté. Calculé ici seulement : livre.mk le
-    passe au chapitre (SZH_NUMERO_CHAPITRE), szh-sections.lua l'écrit."""
+    Un chapitre sans titre n'est ni numéroté ni compté. Seul calcul de ce numéro :
+    livre.mk le passe au chapitre (SZH_NUMERO_CHAPITRE), szh-sections.lua l'écrit."""
     if not reglages or reglages['numeros-chapitres'] != 'partie':
         return {}
     numeros = {}
@@ -966,8 +915,8 @@ def numeros_chapitres(reglages, parties, racine):
 
 
 def partie_html(partie, reglages, racine):
-    """La section d'une partie. Le numéro s'imprime avec `titre-partie: titre` ; un
-    intercalaire n'en montre pas. Le signet porte le titre à plat."""
+    """Section d'une partie. Le numéro s'imprime avec `titre-partie: titre`, pas sur un
+    intercalaire. Le signet porte le titre sur une ligne."""
     avec_numero = bool(partie['numero']) and reglages['titre-partie'] == 'titre'
     numero = ('<span class="szh-num-partie">%s </span>' % html.escape(partie['numero'])
               if avec_numero else '')
@@ -987,10 +936,10 @@ def partie_html(partie, reglages, racine):
 
 
 def fichiers_images(meta, racine):
-    """Les images que l'assemblage incorpore : celles que buch.yaml nomme (impressum,
+    """Images que l'assemblage incorpore : celles nommées dans buch.yaml (impressum,
     illustrations de partie) et celles du toolkit (badge de licence, logo de la page de
-    titre). Les mêmes lectures que l'assemblage ; un nom absent n'est pas refusé ici, il
-    l'est à l'assemblage. Un fichier du livre est rendu relatif à son dossier."""
+    titre), lues comme à l'assemblage. Un nom absent n'est refusé qu'à l'assemblage. Les
+    fichiers du livre sont rendus relatifs à son dossier."""
     reglages, _ = lire_mise_en_page(meta)
     bloc = _bloc_impressum(meta)
     chemins = [os.path.join(racine, nom) for cle in IMAGES_IMPRESSUM for nom in _liste(bloc.get(cle))]
@@ -1015,30 +964,22 @@ def dans_partie(fragment, rang):
 
 
 # --------------------------------------------------------------------------------------
-# Incorporation d'une feuille de style (--css-embed) : voir main() pour le pourquoi.
+# Incorporation d'une feuille de style (--css-embed), voir main().
 # --------------------------------------------------------------------------------------
 
 RE_URL_CSS = re.compile(r'url\(\s*([\'"]?)([^\'")]+)\1\s*\)')
 
 
 def _url_absolues(css_texte, css_chemin):
-    """Réécrit les `url(...)` relatives d'une feuille (@font-face, url() d'image) en
-    chemins absolus file://, résolus depuis le DOSSIER DE LA FEUILLE — pas depuis le
-    document final. Indispensable ici et nulle part ailleurs : une feuille LIÉE (--css)
-    garde ses url() relatives à SA PROPRE position, le navigateur les résout depuis elle ;
-    une feuille INCORPORÉE dans un <style> voit ses url() résolues depuis le document qui
-    la contient — socle.css écrit `url("../fonts/…")`, juste depuis styles/, faux depuis
-    out/ une fois collé dans le HTML web. Une url() déjà absolue (http, https, data, file)
-    traverse sans changement.
+    """Réécrit les `url(...)` relatives d'une feuille (@font-face, images) en chemins
+    absolus file://, résolus depuis le dossier de la feuille. Une feuille liée (--css)
+    résout ses url() depuis sa propre position ; incorporée dans un <style>, depuis le
+    document : `url("../fonts/…")` de socle.css serait faux depuis out/. Une url() déjà
+    absolue (http, https, data, file) est laissée telle quelle.
 
-    ⚠ Le toolkit compile tantôt sous Windows, tantôt dans l'image WSL (voir Makefile,
-    `wsl.exe -d SZH-Publishing`) : la MÊME feuille, sur le MÊME disque, y a deux visages
-    (`C:\…` et `/mnt/c/…`). Le HTML web, lui, est ouvert depuis Windows (ce sont ses
-    polices que file:// doit retrouver) : un chemin `/mnt/<lettre>/…` — celui que rendrait
-    `os.path.abspath` lancé depuis WSL — est donc reconverti en `<LETTRE>:/…` avant de
-    devenir une URI, sans quoi la police resterait introuvable une fois le HTML ouvert par
-    un navigateur Windows natif (repli silencieux sur la police système : rien de cassé à
-    l'écran, mais plus la police de la maison)."""
+    Le HTML web est ouvert sous Windows, mais la compilation tourne dans la WSL : un
+    chemin `/mnt/<lettre>/…` est converti en `<LETTRE>:/…`, sinon le navigateur ne
+    trouverait pas les polices (et prendrait sans le dire une police système)."""
     dossier = os.path.dirname(os.path.abspath(css_chemin))
     m_wsl = re.match(r'^/mnt/([a-zA-Z])(/.*)$', dossier)
     if m_wsl:
