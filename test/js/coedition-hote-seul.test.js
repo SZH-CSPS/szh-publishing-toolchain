@@ -1,6 +1,6 @@
 // lib/coedition-hote.js chargé seul, sans extension.js : la main sur un fichier se prend,
 // se refuse et se rend sans aucun rappel vers l'hôte. Les formulaires le requièrent
-// directement ; un module qui aurait encore besoin de l'hôte échouerait ici.
+// directement ; un module qui aurait besoin de l'hôte échouerait ici.
 //
 //   node --test test/js/coedition-hote-seul.test.js
 'use strict';

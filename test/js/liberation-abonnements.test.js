@@ -2,7 +2,6 @@
 // doit lever, sans quoi les suivants restent vivants (le contrôle de source des conflits
 // compris).
 //
-// Exécution : depuis la racine du dépôt,
 //   node --test test/js/liberation-abonnements.test.js
 'use strict';
 

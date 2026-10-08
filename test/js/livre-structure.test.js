@@ -134,7 +134,7 @@ test('parties : l’illustration est incorporée, son alt vient de illustration-
   const p = PARTIES + '  illustration: parties/bild.png\n';
   const sans = livre(buch(p), { fichiers: { 'parties/bild.png': PNG } });
   assert.strictEqual(sans.status, 0, sans.stderr);
-  // Décorative : un fond CSS dans deux <span>, jamais un <img> sans alt (PDF/UA).
+  // Décorative : un fond CSS dans deux <span>, plutôt qu'un <img> sans alt (PDF/UA).
   assert.match(sans.html, /<p class="szh-partie-illustration"><span class="szh-decor-livre szh-partie-image" role="presentation" style="--ratio: 1\.0000"><span style="background-image: url\(&quot;data:image\/png;base64,[^&]+&quot;\)"><\/span><\/span><\/p>/);
   assert.doesNotMatch(sans.html, /<img[^>]*alt=""/);
   const avec = livre(buch(p + '  illustration-alt: "Ein Kind mit Ball"\n'), { fichiers: { 'parties/bild.png': PNG } });
@@ -369,7 +369,7 @@ test('impressum : le badge de la licence suit sa phrase, en lien vers l’acte, 
     assert.ok(s.indexOf('lizenziert unter einer Creative Commons CC ' + chemin.toUpperCase() + ' 4.0 International'
       + ' (creativecommons.org/licenses/' + chemin + '/4.0).</p>\n<p class="szh-impressum-licence">') !== -1, cle + '\n' + s);
     assert.doesNotMatch(s, /<img|<svg/, cle);
-    // Un seul <a>, et jamais enfant direct de la section (un flex).
+    // Un seul <a>, hors des enfants directs de la section (un flex).
     assert.strictEqual((s.match(/<a\b/g) || []).length, 1, cle);
     assert.doesNotMatch(s, /(<section[^>]*>|<\/p>\n?)<a\b/, cle);
   }

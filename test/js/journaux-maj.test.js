@@ -42,8 +42,8 @@ journal('update-20260904-080000.log', ['✓ ancien succès'].concat(remplissage(
 journal('update-20260905-080000.log', ['✓ Tout est à jour.', '**********************', 'windows powershell TRANSCRIPT END',
   'END TIME: 20260905080017', '**********************']);
 journal('update-20260906-080000.log', ['✓'].concat(FIN));
-// Le pied de page traduit d'un Windows français (texte mesuré dans les ressources de PowerShell
-// 5.1) et d'un Windows allemand (seule la forme compte : le texte allemand n'a pas été relevé).
+// Le pied de page traduit d'un Windows français (texte des ressources de PowerShell 5.1) et
+// d'un Windows allemand (texte supposé : seule la forme compte).
 const FIN_FR = ['**********************', 'Fin de la transcription Windows PowerShell',
   'Heure de fin : 20260901080017', '**********************'];
 const FIN_DE = ['**********************', 'Ende der Windows PowerShell-Transkription',

@@ -40,8 +40,8 @@ const PARAMETRES_ACCUEIL = /^(rg|regl_|auteurs|ojs|biblio|art)/;
 
 // Les seules valeurs admises malgré le mot, par page et par clé.
 const LISTE_BLANCHE = [
-  // Paramètres de l'Accueil : blocs OJS, bibliographie, tâches et auteur·e·s publié·e·s, jamais
-  // montrés pour un livre (l'hôte n'envoie pas leurs données, media/accueil.js les laisse masqués).
+  // Paramètres de l'Accueil : blocs OJS, bibliographie, tâches et auteur·e·s publié·e·s, masqués
+  // pour un livre (l'hôte n'envoie pas leurs données, media/accueil.js ne les affiche pas).
   'accueil:ojsIntro', 'accueil:ojsRubriquesAide', 'accueil:ojsTypes', 'accueil:ojsTypesAide',
   'accueil:rgOjsResume', 'accueil:biblioIntro', 'accueil:biblioColLangue', 'accueil:artTachesTitre',
   'accueil:artTachesAide', 'accueil:auteursCorpus', 'accueil:auteursCorpusJamais',
