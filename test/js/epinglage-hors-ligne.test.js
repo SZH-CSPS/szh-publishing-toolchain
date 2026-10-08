@@ -1,27 +1,20 @@
-// L'épinglage hors ligne (OneDrive Files On-Demand) — windows/szh-epinglage.ps1,
-// Get-SzhDossiersAEpingler / Invoke-SzhEpinglageHorsLigne —, appelé par les tâches de
-// démarrage (Invoke-SzhTachesDemarrage) juste après le check-in (demande de Robin, 24.09.2026).
+// L'épinglage hors ligne (OneDrive Files On-Demand) : windows/szh-epinglage.ps1,
+// Get-SzhDossiersAEpingler et Invoke-SzhEpinglageHorsLigne, appelés par les tâches de
+// démarrage (Invoke-SzhTachesDemarrage) juste après le check-in.
 //
-//   node --test test/js/epinglage-hors-ligne.test.js
-//   node --test "test/js/*.test.js"
-//
-// Ce que ce banc prouve, sur des arborescences jetables (jamais le vrai OneDrive, jamais le
-// vrai C:\ProgramData) :
-//   1. le plan (Get-SzhDossiersAEpingler) retient chaque numéro EN COURS des deux revues
-//      (reconnus à leur ausgabe.yaml ou buch.yaml), jamais _Archive, et la bibliothèque
-//      _NewsUndActu\Fiches + _NewsUndActu\_Statuts PAR NOM — jamais _Import-*, même présent
-//      à côté ;
-//   2. racine de production et racine active distinctes (mode test) : la bibliothèque des
-//      DEUX apparaît dans le plan, mais les numéros en cours ne viennent QUE de la racine
+// Sur des arborescences jetables, hors de OneDrive et de C:\ProgramData :
+//   1. le plan retient chaque numéro en cours des deux revues (reconnu à son ausgabe.yaml
+//      ou buch.yaml), sans _Archive, et la bibliothèque _NewsUndActu\Fiches et
+//      _NewsUndActu\_Statuts, désignée par nom, sans _Import-* ;
+//   2. en mode test (racines de production et active distinctes), la bibliothèque des deux
+//      racines entre dans le plan, mais les numéros en cours viennent de la seule racine
 //      active ;
 //   3. `"epinglageHorsLigne": false` dans config.json : rien n'est examiné ;
-//   4. en simulation (SZH_LANCEUR_SIMULE=1), le plan est bien calculé mais aucun lancement
-//      réel n'a lieu ;
-//   5. un dossier « à épingler » lance le processus (compté « lances »), un dossier « déjà
-//      épingle » ne lance rien (compté « deja ») — vérification d'attribut et lancement de
-//      processus tous deux injectés, jamais un vrai attrib.exe ;
-//   6. le journal ne porte une ligne récapitulative que lorsque quelque chose a vraiment été
-//      lancé.
+//   4. en simulation (SZH_LANCEUR_SIMULE=1), le plan est calculé mais rien n'est lancé ;
+//   5. un dossier « à épingler » lance le processus (compté « lances »), un dossier déjà
+//      épinglé non (compté « deja ») ; la lecture d'attribut et le lancement sont injectés,
+//      sans vrai attrib.exe ;
+//   6. le journal ne porte une ligne récapitulative que si quelque chose a été lancé.
 'use strict';
 
 const test = require('node:test');
@@ -51,7 +44,7 @@ function ecrireAusgabe(dossier, contenu) {
 
 // Lance un script PowerShell qui dot-source windows/szh-common.ps1 (donc szh-epinglage.ps1)
 // sur l'arborescence jetable, exécute `corps`, et rend le JSON que `corps` a écrit dans
-// $sortie (déjà préparé pour lui). `corps` doit assigner sa réponse à $reponse.
+// $sortie. `corps` assigne sa réponse à $reponse.
 function executerPs(f, corps, envSupp) {
   const sonde = path.join(f.travail, 'sonde-' + Date.now() + '-' + Math.random().toString(36).slice(2) + '.ps1');
   const sortie = sonde.replace(/\.ps1$/, '.json');
@@ -89,12 +82,12 @@ test('le plan retient les numéros et les livres en cours, jamais _Archive, et l
     try {
       const racine = path.join(f.travail, 'racine');
       ecrireAusgabe(path.join(racine, 'Revue', '2027-01'), 'titre: "En cours"\n');
-      // Sans ausgabe.yaml : pas un numéro, jamais retenu.
+      // Sans ausgabe.yaml : pas un numéro, non retenu.
       fs.mkdirSync(path.join(racine, 'Revue', '2027-99'), { recursive: true });
       ecrireAusgabe(path.join(racine, '_Archive', 'Revue', '2020-01'), 'titre: "Archive"\n');
       ecrireAusgabe(path.join(racine, 'Zeitschrift', '2027-05'), 'titre: "Zeitschrift"\n');
       // Un livre en cours (buch.yaml) : retenu. Un dossier de Books sans buch.yaml, ou un
-      // livre archivé : jamais.
+      // livre archivé : non.
       fs.mkdirSync(path.join(racine, 'Books', '2025-B1-Test'), { recursive: true });
       fs.writeFileSync(path.join(racine, 'Books', '2025-B1-Test', 'buch.yaml'), 'titre: "Livre"\n', 'utf8');
       fs.mkdirSync(path.join(racine, 'Books', 'pas-un-livre'), { recursive: true });
@@ -102,7 +95,7 @@ test('le plan retient les numéros et les livres en cours, jamais _Archive, et l
       fs.writeFileSync(path.join(racine, '_Archive', 'Books', '2020-B1-Ancien', 'buch.yaml'), 'titre: "Ancien"\n', 'utf8');
       fs.mkdirSync(path.join(racine, '_NewsUndActu', 'Fiches'), { recursive: true });
       fs.mkdirSync(path.join(racine, '_NewsUndActu', '_Statuts'), { recursive: true });
-      // Jamais épinglé, même présent juste à côté de Fiches/_Statuts.
+      // Non épinglé, bien que voisin de Fiches et _Statuts.
       fs.mkdirSync(path.join(racine, '_NewsUndActu', '_Import-fr'), { recursive: true });
 
       const corps = [
@@ -138,8 +131,8 @@ test('racine active et racine de production distinctes : la bibliothèque des DE
       fs.mkdirSync(path.join(racineActive, '_NewsUndActu', 'Fiches'), { recursive: true });
       fs.mkdirSync(path.join(racineActive, '_NewsUndActu', '_Statuts'), { recursive: true });
 
-      // Un numéro côté PRODUCTION : ne doit JAMAIS apparaître dans le plan, seule la racine
-      // active est balayée pour les numéros en cours.
+      // Un numéro côté production : absent du plan, car seule la racine active est balayée
+      // pour les numéros en cours.
       ecrireAusgabe(path.join(racineProd, 'Revue', '2099-01'), 'titre: "Prod"\n');
       fs.mkdirSync(path.join(racineProd, '_NewsUndActu', 'Fiches'), { recursive: true });
       fs.mkdirSync(path.join(racineProd, '_NewsUndActu', '_Statuts'), { recursive: true });

@@ -1,7 +1,5 @@
 // Un textarea à la hauteur de son texte : SZH.ajusterHauteur et SZH.suivreHauteur
 // (media/_commun.js), seul moteur pour la Documentation et le détail d'une proposition.
-//
-//   node --test test/js/hauteur-texte.test.js
 'use strict';
 
 const test = require('node:test');

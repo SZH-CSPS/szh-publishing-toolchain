@@ -1,6 +1,6 @@
-// Contrat de outils-dev/pronto-dev.ps1 (n'existe pas encore) - une instance de developpement
-// qui lit le depot en place, sans jamais toucher a l'installation de production sous
-// C:\ProgramData\SZH ni aux reglages VSCodium du compte.
+// outils-dev/pronto-dev.ps1 : une instance de développement qui lit le dépôt en place et
+// laisse intacts l'installation de production (C:\ProgramData\SZH) et les réglages
+// VSCodium du compte.
 'use strict';
 
 const test = require('node:test');
@@ -14,8 +14,7 @@ const { POWERSHELL, sansPowerShell } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const SCRIPT = path.join(RACINE, 'outils-dev', 'pronto-dev.ps1');
-// Nom du .lnk pose par Set-SzhRaccourciDev (pronto-dev.ps1) - partage par le groupe 4
-// (mesure sur le vrai menu Demarrer) et le groupe 6 (pose reelle sous un menu jetable).
+// Nom du .lnk posé par Set-SzhRaccourciDev (pronto-dev.ps1), utilisé par les groupes 4 et 6.
 const NOM_RACCOURCI_DEV = 'Pronto (dev)';
 
 function assertScriptExiste() {
@@ -24,9 +23,8 @@ function assertScriptExiste() {
 
 function echapperRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
-// Comparaison segment par segment, jamais un simple startsWith sur la chaine - sans quoi
-// "C:\ProgramData\SZH-dev" (l'instance de developpement) passerait pour "sous"
-// "C:\ProgramData\SZH" (la production), les deux partageant le meme prefixe de caracteres.
+// Comparaison segment par segment : avec startsWith, « C:\ProgramData\SZH-dev » passerait
+// pour un sous-dossier de « C:\ProgramData\SZH ».
 function segments(p) {
   return path.resolve(p).toLowerCase().split(path.sep).filter(Boolean);
 }
@@ -45,7 +43,7 @@ function versWsl(cheminWindows) {
   return '/mnt/' + correspondance[1].toLowerCase() + '/' + correspondance[2];
 }
 
-// ---- Groupe 1 : le mode simulation - un seul appel, partage par tous les controles ----
+// ---- Groupe 1 : le mode simulation, un seul appel partagé par tous les contrôles ----
 
 function executerSimulation(baseDev) {
   if (!POWERSHELL) { return null; }
@@ -108,9 +106,9 @@ test('jonctions - exactement trois entrees, chacune nommee', { skip: sansPowerSh
     'la jonction szh-apercu ne vise pas vscodium-extension\\szh-apercu - ' + apercu.cible);
 });
 
-// Le controle central de tout ce fichier - l'instance de developpement ne doit desiger, nulle
-// part, un chemin de la production reelle (C:\ProgramData\SZH, %APPDATA%\VSCodium,
-// %USERPROFILE%\.vscode-oss). Chaque valeur fautive est nommee dans le message d'echec.
+// L'instance de développement ne désigne aucun chemin de la production (C:\ProgramData\SZH,
+// %APPDATA%\VSCodium, %USERPROFILE%\.vscode-oss). Le message d'échec nomme chaque valeur
+// fautive.
 test('aucun chemin de fichiers, jonctions.lien, variables ou raccourci ne vise la production', { skip: sansPowerShell }, () => {
   assertScriptExiste();
   const s = SIMULATION.sortie;
@@ -126,8 +124,8 @@ test('aucun chemin de fichiers, jonctions.lien, variables ou raccourci ne vise l
     .concat([['raccourci', s.raccourci]]);
 
   for (const [origine, valeur] of candidats) {
-    // Seule exception, en lecture : les journaux de mise a jour du poste, a ce chemin exact
-    // (le test suivant prouve que rien n'ecrit par cette variable).
+    // Seule exception, en lecture : les journaux de mise à jour du poste, à ce chemin exact
+    // (le test suivant vérifie que rien n'écrit par cette variable).
     if (origine === 'variables.SZH_JOURNAUX_MAJ'
       && path.resolve(valeur) === path.resolve('C:\\ProgramData\\SZH', 'logs')) { continue; }
     for (const base of basesInterdites) {
@@ -137,8 +135,8 @@ test('aucun chemin de fichiers, jonctions.lien, variables ou raccourci ne vise l
   }
 });
 
-// SZH_JOURNAUX_MAJ vise la production : seuls pronto-dev.ps1, qui la pose, et son lecteur ont
-// le droit de la nommer, et le lecteur n'ecrit pas dans le dossier qu'elle designe.
+// SZH_JOURNAUX_MAJ vise la production : seuls pronto-dev.ps1, qui la pose, et son lecteur la
+// nomment, et le lecteur n'écrit pas dans le dossier qu'elle désigne.
 test('SZH_JOURNAUX_MAJ n\'est lue que par le lecteur des journaux, qui n\'ecrit pas', () => {
   const racine = path.resolve(__dirname, '..', '..');
   const autorises = [path.join('vscodium-extension', 'szh-cockpit', 'lib', 'journaux-maj.js'),
@@ -148,7 +146,7 @@ test('SZH_JOURNAUX_MAJ n\'est lue que par le lecteur des journaux, qui n\'ecrit 
     for (const e of fs.readdirSync(path.join(racine, d), { withFileTypes: true })) {
       const rel = path.join(d, e.name);
       if (e.isDirectory()) { if (e.name !== 'node_modules') { parcourir(rel); } continue; }
-      // Le code seulement : un commentaire qui la nomme pour dire qu'on ne la lit pas ne compte pas.
+      // Le code seulement : un commentaire qui la nomme ne compte pas.
       const code = /\.(js|ps1)$/.test(e.name) ? fs.readFileSync(path.join(racine, rel), 'utf8').split(/\r?\n/)
         .filter((l) => !/^\s*(#|\/\/)/.test(l)).join('\n') : '';
       if (code.includes('SZH_JOURNAUX_MAJ')) {
@@ -210,13 +208,12 @@ test('makefileWsl commence par /mnt/ et ne designe plus le toolkit de production
     'makefileWsl designe encore ProgramData/SZH/toolkit - ' + s.makefileWsl);
 });
 
-// ---- Groupe 2 : la reecriture des taches de compilation ----
+// ---- Groupe 2 : la réécriture des tâches de compilation ----
 
 const TASKS_SOURCE = path.join(RACINE, 'vscodium-user', 'tasks.json');
 const CONTENU_TASKS_SOURCE = fs.readFileSync(TASKS_SOURCE, 'utf8');
 const MOTIF_MAKEFILE_PROD = '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile';
-// Compte lu dans la source, jamais ecrit en dur - huit aujourd'hui, mais une neuvieme tache
-// ajoutee un jour doit continuer d'etre suivie plutot que de passer a cote du controle.
+// Nombre de tâches lu dans la source, pour qu'une tâche ajoutée soit aussi contrôlée.
 const NB_MAKEFILE_SOURCE =
   (CONTENU_TASKS_SOURCE.match(new RegExp(echapperRegex(MOTIF_MAKEFILE_PROD), 'g')) || []).length;
 assert.ok(NB_MAKEFILE_SOURCE > 0,
@@ -225,7 +222,7 @@ assert.ok(NB_MAKEFILE_SOURCE > 0,
 const MAKEFILE_DEPOT_WSL = versWsl(path.join(RACINE, 'pipeline', 'Makefile'));
 
 // Les tâches de démarrage de l'Accueil (ancrage, check-in, rapports, arbre d'essai) visent
-// des dossiers jetables, à côté de la base de dev : jamais le vrai dossier partagé.
+// des dossiers jetables à côté de la base de dev, et non le dossier partagé.
 function posteDemarrage(dossier) {
   const d = (n) => { const p = path.join(dossier, 'poste', n); fs.mkdirSync(p, { recursive: true }); return p; };
   return { SZH_ANCRAGE: d(path.join('sp', 'Daten_Allgemein - General')), SZH_RAPPORTS: d('rapports'),
@@ -234,15 +231,11 @@ function posteDemarrage(dossier) {
 
 function executerReel(baseDev, args) {
   if (!POWERSHELL) { return null; }
-  // SZH_LANCEUR_SIMULE=1 : le script delegue en bout de course a windows/open-revue.ps1
-  // (contrat, point 5) - sans ce filet, une vraie fenetre WinForms s'ouvrirait pendant la
-  // suite de tests plutot que de rendre la main.
-  // -Menu vers un dossier jetable : depuis que pronto-dev.ps1 pose son raccourci de menu
-  // Demarrer a chaque lancement reel (Set-SzhRaccourciDev), un lancement reel sans ce filet
-  // ecrirait Pronto (dev).lnk dans le vrai menu Demarrer du poste qui fait tourner la suite -
-  // a chaque appel de cette fonction, donc a chaque execution de ce fichier. APPDATA reste
-  // celui du poste : c'est ce qui permet au groupe 4 de mesurer que le script ne le touche
-  // pas de lui-meme.
+  // SZH_LANCEUR_SIMULE=1 : le script finit par appeler windows/open-revue.ps1, qui ouvrirait
+  // sinon une vraie fenêtre pendant les tests.
+  // -Menu vers un dossier jetable : chaque lancement pose Pronto (dev).lnk au menu Démarrer
+  // (Set-SzhRaccourciDev). APPDATA reste celui du poste, pour que le groupe 4 vérifie que le
+  // script n'y écrit pas de lui-même.
   const menuJetable = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-dev-menu-'));
   const env = Object.assign({}, process.env, { SZH_LANCEUR_SIMULE: '1' }, posteDemarrage(path.dirname(baseDev)));
   const run = spawnSync(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', SCRIPT,
@@ -302,7 +295,7 @@ test('vscodium-user/tasks.json du depot n\'a pas bouge, meme empreinte avant et 
       'vscodium-user/tasks.json du depot a change pendant l\'execution du script dev');
   });
 
-// ---- Groupe 3 : le refus si toolkit est deja un vrai dossier ----
+// ---- Groupe 3 : le refus si toolkit est déjà un vrai dossier ----
 
 const REFUS = (function () {
   if (!POWERSHELL) { return null; }
@@ -332,13 +325,13 @@ test('toolkit deja present comme un vrai dossier - refus bruyant, le contenu sur
     assert.strictEqual(REFUS.contenuTemoin, 'ne doit pas disparaitre', 'le fichier temoin n\'a pas survecu');
   });
 
-// ---- Groupe 4 : l'isolement mesure sur le disque, contre la vraie installation ----
+// ---- Groupe 4 : l'isolement mesuré sur le disque du poste ----
 
 const PROD_CONFIG = 'C:\\ProgramData\\SZH\\config.json';
 const PROD_TASKS = path.join(process.env.APPDATA || 'C:\\Users\\Default\\AppData\\Roaming',
   'VSCodium', 'User', 'tasks.json');
-// Le vrai menu Demarrer de ce poste - ce .lnk a le droit d'exister (un poste de dev l'a
-// normalement), mais un lancement dirige vers un menu jetable ne doit ni le creer ni le toucher.
+// Le menu Démarrer du poste. Ce .lnk peut exister (un poste de dev l'a en principe), mais un
+// lancement dirigé vers un menu jetable ne le crée ni ne le modifie.
 const PROD_MENU_LNK_DEV = path.join(process.env.APPDATA || 'C:\\Users\\Default\\AppData\\Roaming',
   'Microsoft', 'Windows', 'Start Menu', 'Programs', NOM_RACCOURCI_DEV + '.lnk');
 
@@ -373,9 +366,9 @@ test('isolement mesure sur le disque - la production n\'est jamais touchee', { s
   }
 });
 
-// ---- Groupe 5 : SZH_CODIUM_PROFIL - le pont qui manque entre pronto-dev.ps1 et l'editeur ----
-// Sans lui, Start-SzhCodium (windows/szh-shell.ps1) ouvrirait le profil de PRODUCTION : tout
-// ce que pronto-dev.ps1 seme sous <baseDev>\codium ne servirait jamais a rien.
+// ---- Groupe 5 : SZH_CODIUM_PROFIL, de pronto-dev.ps1 à l'éditeur ----
+// Sans cette variable, Start-SzhCodium (windows/szh-shell.ps1) ouvrirait le profil de
+// production au lieu de <baseDev>\codium.
 
 const SHELL_PS1 = path.join(RACINE, 'windows', 'szh-shell.ps1');
 const COMMON_PS1 = path.join(RACINE, 'windows', 'szh-common.ps1');
@@ -385,23 +378,22 @@ function moisCourant() {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
 }
 
-// Write-SzhLog (szh-common.ps1) ecrit sous $SzhLogs\szh-<annee-mois>.log, et $SzhBase (donc
-// $SzhLogs) suit $env:SZH_BASE - verifie sur le disque avant d'ecrire ce controle.
+// Write-SzhLog (szh-common.ps1) écrit dans $SzhLogs\szh-<année-mois>.log, et $SzhLogs suit
+// $env:SZH_BASE.
 function lireJournal(base) {
   const fichier = path.join(base, 'logs', 'szh-' + moisCourant() + '.log');
   if (!fs.existsSync(fichier)) { return ''; }
   return fs.readFileSync(fichier, 'utf8');
 }
 
-// Une option suivie de sa valeur, guillemets optionnels - insensible a la maniere exacte
-// dont Start-SzhCodium ecrit sa ligne de commande.
+// Une option suivie de sa valeur, avec ou sans guillemets.
 function contientOption(journal, option, valeur) {
   const motif = new RegExp(echapperRegex(option) + '\\s+"?' + echapperRegex(valeur) + '"?');
   return motif.test(journal);
 }
 
-// process.env recopie sans les trois variables sensibles, puis les surcharges demandees -
-// jamais un heritage accidentel de SZH_CODIUM_PROFIL depuis le poste qui fait tourner la suite.
+// process.env sans les trois variables sensibles (dont SZH_CODIUM_PROFIL du poste), puis
+// les surcharges demandées.
 function envIsole(surcharges) {
   const env = Object.assign({}, process.env);
   delete env.SZH_CODIUM_PROFIL;
@@ -410,8 +402,8 @@ function envIsole(surcharges) {
   return Object.assign(env, surcharges || {});
 }
 
-// Dot-source szh-common.ps1 puis szh-shell.ps1 dans un enfant, puis appelle Start-SzhCodium -
-// un script jetable plutot qu'un -Command a echapper.
+// Charge szh-common.ps1 puis szh-shell.ps1 dans un processus enfant et appelle
+// Start-SzhCodium, par un script jetable plutôt qu'un -Command à échapper.
 function executerStartSzhCodium(env, dossierCible) {
   if (!POWERSHELL) { return null; }
   const script = path.join(os.tmpdir(), 'szh-start-codium-' + process.pid + '-' + Date.now() + '.ps1');
@@ -443,14 +435,12 @@ test('le plan porte le profil - variables contient SZH_CODIUM_PROFIL sur <baseDe
       'SZH_CODIUM_PROFIL ne vaut pas <baseDev>\\codium - ' + s.variables.SZH_CODIUM_PROFIL);
   });
 
-// Start-SzhCodium (szh-shell.ps1) sort AVANT de composer sa ligne de commande quand
-// Get-VSCodiumExe ne trouve rien : il trace « codium : introuvable » et rend $false. Les deux
-// tests qui suivent lisent cette ligne de commande dans le journal ; sans VSCodium sur le
-// poste, l'un échoue et l'autre passe pour la mauvaise raison — il vérifie une ABSENCE, que
-// le journal vide satisfait sans rien prouver. Le runner windows-latest n'a pas VSCodium, et
-// c'est ce qui a fait échouer la release v1.0.0. Mêmes deux chemins que Get-VSCodiumExe, et
-// même motif de saut que courriel-support.test.js — « VSCodium introuvable » est admis sur ce
-// runner (test/js/verifier-tap.js, famille vscodium).
+// Sans VSCodium, Start-SzhCodium (szh-shell.ps1) s'arrête avant de composer sa ligne de
+// commande (« codium : introuvable »). Les deux tests suivants lisent cette ligne dans le
+// journal : l'un échouerait, l'autre, qui vérifie une absence, passerait sans rien prouver.
+// Ils sont donc sautés, avec le motif « VSCodium introuvable » admis sur le runner
+// windows-latest (test/js/verifier-tap.js, famille vscodium). Mêmes chemins que
+// Get-VSCodiumExe.
 const sansVSCodiumExe = (function () {
   if (process.platform !== 'win32') { return 'pas Windows'; }
   const candidats = [
@@ -491,7 +481,7 @@ test('sans SZH_CODIUM_PROFIL, la ligne de commande ne change pas',
       'la trace porte --extensions-dir sans profil pose - ' + journal);
   });
 
-// ---- les extensions du depot, vues depuis le profil dev apres un lancement reel ----
+// ---- Les extensions du dépôt, vues depuis le profil dev après un lancement réel ----
 
 function trouverCodiumCli() {
   const candidats = [
@@ -508,9 +498,8 @@ function motifSautCodium() {
 }
 const SAUT_CODIUM = motifSautCodium();
 
-// Tout se joue ici, une seule fois, avant les deux tests qui suivent - meme discipline que
-// SIMULATION/REECRITURE plus haut : le dossier jetable est efface a la fin de cette IIFE,
-// donc codium --list-extensions est lance ici, pas dans un test separe qui le retrouverait vide.
+// Un seul lancement pour les deux tests suivants. Le dossier jetable est effacé à la fin de
+// cette IIFE : codium --list-extensions doit donc être lancé ici.
 const EXTENSIONS_REEL = (function () {
   if (!POWERSHELL) { return null; }
   const jetable = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-dev-extensions-'));
@@ -526,9 +515,9 @@ const EXTENSIONS_REEL = (function () {
   if (CODIUM_CLI && r && r.status === 0) {
     const extDir = path.join(baseDev, 'codium', 'extensions');
     const dataDir = path.join(baseDev, 'codium', 'data');
-    // shell: true - codium.cmd est un script cmd, spawnSync ne l'execute pas tout seul sur Windows.
-    // Guillemets poses a la main : sous shell:true, Node concatene les arguments sans les
-    // proteger lui-meme.
+    // shell: true : codium.cmd est un script cmd, que spawnSync n'exécute pas seul sous
+    // Windows. Les guillemets sont posés à la main, car Node concatène alors les arguments
+    // sans les protéger.
     const liste = spawnSync(CODIUM_CLI, ['--extensions-dir', '"' + extDir + '"', '--user-data-dir', '"' + dataDir + '"',
       '--list-extensions', '--show-versions'], { encoding: 'utf8', windowsHide: true, timeout: 60000, shell: true });
     listeExtensions = { stdout: liste.stdout || '', stderr: liste.stderr || '', error: liste.error || null };
@@ -567,9 +556,8 @@ test('codium --list-extensions, depuis le profil dev, voit bien szh-cockpit et s
       'szh-apercu absent de la liste - ' + sortie + EXTENSIONS_REEL.listeExtensions.stderr);
   });
 
-// ---- Groupe 6 : le raccourci "Pronto (dev)" au menu Demarrer ----
-// -Menu vise un dossier jetable pour chaque lancement reel de ce groupe - le vrai menu
-// Demarrer du poste n'est donc jamais touche par cette suite.
+// ---- Groupe 6 : le raccourci « Pronto (dev) » au menu Démarrer ----
+// -Menu vise un dossier jetable pour chaque lancement de ce groupe.
 
 function executerReelAvecMenu(baseDev, menu) {
   if (!POWERSHELL) { return null; }
@@ -597,8 +585,8 @@ function lireProprietesLnk(lnk, dossierTravail) {
   return fs.existsSync(sortie) ? JSON.parse(fs.readFileSync(sortie, 'utf8')) : null;
 }
 
-// Un seul aller-retour pour tout le groupe : deux lancements reels sur la meme base et le
-// meme dossier de menu jetables, partages par les trois controles qui suivent.
+// Deux lancements sur la même base et le même menu jetables, partagés par les trois
+// contrôles qui suivent.
 const RACCOURCI_DEV = (function () {
   if (!POWERSHELL) { return null; }
   const jetable = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-dev-raccourci-'));
@@ -611,7 +599,7 @@ const RACCOURCI_DEV = (function () {
   const mtime1 = existeApres1 ? fs.statSync(lnk).mtimeMs : null;
   const proprietes = lireProprietesLnk(lnk, jetable);
 
-  // Deuxieme lancement, meme base et meme menu : ne doit rien reecrire.
+  // Deuxième lancement, même base et même menu : rien n'est réécrit.
   const second = executerReelAvecMenu(baseDev, menu);
   const mtime2 = fs.existsSync(lnk) ? fs.statSync(lnk).mtimeMs : null;
 
@@ -650,8 +638,7 @@ test('un second lancement ne recree pas le .lnk (meme date d\'ecriture)', { skip
     'le .lnk a ete reecrit alors qu\'il visait deja le bon script');
 });
 
-// ---- Groupe 7 : la desinstallation doit savoir retirer ce raccourci, sans que la ----
-// ---- production (Get-SzhRaccourcisMenu) ne le pose jamais elle-meme ----
+// ---- Groupe 7 : la désinstallation retire ce raccourci, que la production ne pose pas ----
 
 function executerFonctionShell(lignesCorps) {
   if (!POWERSHELL) { return null; }
@@ -679,9 +666,8 @@ test('Get-SzhRaccourcisObsoletes nomme bien Pronto (dev)', { skip: sansPowerShel
     'Get-SzhRaccourcisObsoletes ne nomme pas ' + NOM_RACCOURCI_DEV + ' - ' + JSON.stringify(res.r));
 });
 
-// Le controle qui compte le plus : aucune mise a jour de production ne doit jamais poser
-// ce raccourci pour une redactrice - Get-SzhRaccourcisMenu doit rester a exactement DEUX
-// entrees, celles de la production, et aucune ne doit nommer Pronto (dev).
+// Une mise à jour de production ne pose pas ce raccourci : Get-SzhRaccourcisMenu rend
+// exactement les deux entrées de la production, sans Pronto (dev).
 test('Get-SzhRaccourcisMenu rend exactement deux entrees, et aucune ne nomme Pronto (dev)',
   { skip: sansPowerShell }, () => {
     const res = executerFonctionShell(['$r = @(Get-SzhRaccourcisMenu) | ForEach-Object { $_.nom }']);
@@ -693,18 +679,18 @@ test('Get-SzhRaccourcisMenu rend exactement deux entrees, et aucune ne nomme Pro
       ' : une redactrice le recevrait a la prochaine mise a jour');
   });
 
-// ---- Groupe 7 : l'entree DEV ouvre VSCodium sur le lanceur du cockpit ----
-// Sans argument, pronto-dev.ps1 appelle Start-SzhAccueil (szh-shell.ps1) : les taches de
-// demarrage, puis VSCodium sans dossier. En simulation, la fonction ecrit son plan en JSON ;
-// l'ancien lanceur WinForms ecrivait le sien, reconnaissable a son champ produit.
+// ---- Groupe 8 : l'entrée de dev ouvre VSCodium sur le lanceur du cockpit ----
+// Sans argument, pronto-dev.ps1 appelle Start-SzhAccueil (szh-shell.ps1) : les tâches de
+// démarrage, puis VSCodium sans dossier. En simulation, la fonction écrit son plan en JSON ;
+// le plan du lanceur WinForms se reconnaît à son champ produit.
 
 function executerEntree(args) {
   if (!POWERSHELL) { return null; }
   const jetable = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-dev-entree-'));
   const baseDev = path.join(jetable, 'SZH-dev');
   const menuJetable = path.join(jetable, 'menu');
-  // Ancrage, rapports, racines et LOCALAPPDATA jetables : sans eux, le check-in du demarrage
-  // ecrirait dans le vrai dossier partage du poste.
+  // Ancrage, rapports, racines et LOCALAPPDATA jetables : sinon le check-in du démarrage
+  // écrirait dans le dossier partagé du poste.
   const d = (n) => { const p = path.join(jetable, n); fs.mkdirSync(p, { recursive: true }); return p; };
   const env = Object.assign({}, process.env, { SZH_LANCEUR_SIMULE: '1',
     SZH_ANCRAGE: d(path.join('sp', 'Daten_Allgemein - General')), SZH_RAPPORTS: d('rapports'),
@@ -730,8 +716,8 @@ test('sans argument - Start-SzhAccueil sur le profil dev, en -n, sans dossier ni
     assert.ok(r.sortie, 'sortie JSON illisible - ' + r.stdout.slice(0, 300));
     assert.ok(!Object.prototype.hasOwnProperty.call(r.sortie, 'produit'),
       'le lanceur WinForms a repondu alors qu\'aucun argument n\'etait passe');
-    // La fonction de production, et plus aucune variable pour ouvrir l'Accueil : la fenetre
-    // vide suffit au cockpit.
+    // La fonction de production, sans variable pour ouvrir l'Accueil : la fenêtre vide
+    // suffit au cockpit.
     assert.strictEqual(r.sortie.entree, 'accueil');
     assert.ok(!Object.prototype.hasOwnProperty.call(r.sortie, 'environnement'), 'une variable est encore passee a VSCodium');
     const args = r.sortie.arguments;
@@ -753,7 +739,8 @@ test('sans argument - les taches de demarrage de l\'Accueil et les secrets sont 
       'Set-SzhEnvironnementSecrets']);
   });
 
-// open-revue.ps1 le dit au journal, puis ouvre l'Accueil, qui suit le reglage du compte.
+// open-revue.ps1 note l'argument au journal, puis ouvre l'Accueil, qui suit le réglage du
+// compte.
 test('un argument (-Produit zeitschrift) passe toujours a open-revue.ps1', { skip: sansPowerShell }, () => {
   const r = ENTREE_PRODUIT;
   assert.ok(r && r.status === 0, 'pronto-dev.ps1 -Produit a echoue - ' + (r ? r.stderr : ''));

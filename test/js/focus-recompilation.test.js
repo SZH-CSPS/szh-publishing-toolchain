@@ -1,24 +1,15 @@
-// Lot G2 : deux gestes du cockpit — A1 (le focus suit le clic sur l'édition des
-// métadonnées ou des médias d'un article, aperçu fermé) et A3 (leur enregistrement relance
-// la compilation de l'article, en tâche de fond, sans rouvrir l'aperçu qu'A1 vient de
-// fermer). Le pendant livre (chapitres) est dans focus-recompilation-livre.test.js —
-// activerHote() n'admet qu'un appel par processus.
+// Deux comportements du cockpit :
+//   - A1 : un clic sur l'édition des métadonnées ou des médias d'un article focalise
+//     l'arbre sur lui (focaliserUnite, extension.js) et ferme l'aperçu, sans ouvrir le .md ;
+//   - A3 : l'enregistrement de ces formulaires relance la compilation de l'article en tâche
+//     de fond, sans rouvrir l'aperçu.
+// Le pendant livre est dans focus-recompilation-livre.test.js : activerHote() n'admet qu'un
+// appel par processus.
 //
-//   node --test test/js/focus-recompilation.test.js
-//
-// Les trois acquis du projet que ce lot réutilise, plutôt que réinvente, et que ces
-// contrôles vérifient :
-//   - ouvrirArticle(fournisseur, slug, opts) et son opts.sansApercu existaient déjà ; A1
-//     ajoute le focus de l'arbre à DEUX formulaires pleine page qui n'en avaient pas
-//     besoin jusqu'ici (focaliserUnite, extension.js) — sans jamais ouvrir leur .md ni
-//     leur aperçu, à la différence de ouvrirArticle.
-//   - un seul chemin de compilation (compilerPuisAfficher / relancerCompilation), sous la
-//     garde buildEnCours : A3 s'y raccroche au lieu d'en ouvrir un second — deux fiches
-//     enregistrées d'un coup ne doivent relancer qu'UNE compilation.
-//   - la garde d'interaction (lib/interaction.js) protège la fin d'une compilation contre
-//     le vol de focus. A3 multiplie les déclenchements ; le contrôle décisif ici est que
-//     compilerPuisAfficher(opts.sansAffichage) ne touche AUCUN panneau — il n'y a donc
-//     rien à protéger sur ce chemin, ce que les deux derniers contrôles opposent.
+// A3 passe par le chemin de compilation unique (compilerPuisAfficher / relancerCompilation),
+// sous la garde buildEnCours : deux fiches enregistrées d'un coup ne relancent qu'une
+// compilation. compilerPuisAfficher(opts.sansAffichage) ne touche aucun panneau, ce
+// qu'opposent les deux contrôles du milieu.
 'use strict';
 
 const test = require('node:test');
@@ -35,10 +26,9 @@ const HOTE = activerHote(REVUE);
 const COCKPIT = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit');
 const ext = require(path.join(COCKPIT, 'extension.js'));
 
-// L'hôte factice n'attend pas le démarrage asynchrone qui pose la racine (majContexte,
-// dans demarrageInitial, non attendu par activate() — voir lier-reference.test.js) : on la
-// pose nous-mêmes, puis on laisse les micro-tâches de ce démarrage s'épuiser avant d'agir.
-// Aucun éditeur actif n'est posé : cette chaîne se termine sans rien tenter.
+// activate() n'attend pas le démarrage asynchrone qui pose la racine (majContexte, dans
+// demarrageInitial) : on la pose nous-mêmes, puis on laisse ses micro-tâches s'épuiser.
+// Sans éditeur actif, ce démarrage se termine sans rien tenter.
 HOTE.arbre().definirRacine(REVUE);
 
 test('mise en route : le démarrage se tait', async () => {
@@ -54,8 +44,7 @@ test('A1 : « Métadonnées » d’un article focalise l’arbre, aperçu fermé
   const revele = HOTE.revelations.slice(avant).pop();
   assert.ok(revele, 'aucun reveal() de l’arbre : le clic n’a pas focalisé l’article');
   assert.strictEqual(revele.element.slug, '01-essai');
-  // Sans focus clavier : le formulaire qui vient de s’ouvrir garde la main (A1, comme le
-  // suivi de ouvrirArticle).
+  // Sans focus clavier : le formulaire qui vient de s’ouvrir le garde.
   assert.deepStrictEqual(revele.options, { select: true, focus: false });
 
   assert.ok(HOTE.panneauDeType('szhApercuMetadonnees'),
@@ -86,8 +75,8 @@ test('A3 : enregistrer une fiche relance la compilation, sans rouvrir l’aperç
   let appels = 0;
   HOTE.stub.tasks.executeTask = (t) => { appels++; return origExecute(t); };
   try {
-    // Rouvre le panneau (singleton) déjà créé par le contrôle précédent : son canal de
-    // messages est ce que la webview utiliserait pour un vrai « Enregistrer ».
+    // Rouvre le panneau (unique) créé par le contrôle précédent : la webview passe par son
+    // canal de messages pour « Enregistrer ».
     await HOTE.executer('szh.metadonneesArticle', { slug: '01-essai' });
     const panneau = HOTE.panneauDeType('szhApercuMetadonnees');
     assert.ok(panneau && panneau._recepteur,
@@ -148,10 +137,9 @@ test('A3 : deux fiches écrites d’un coup ne relancent qu’UNE compilation (g
 
 // ---- Le chemin unique de compilation : sansAffichage ne touche à aucun panneau ------
 //
-// A1 ferme l'aperçu avant d'ouvrir les formulaires ; s'il en restait un ouvert (bascule
-// faite entre-temps, ou tout futur appelant qui oublierait de fermer), A3 ne doit RIEN lui
-// faire : ni webview.html réassigné, ni panneau recréé. Les deux contrôles qui suivent
-// prouvent le comportement dans les deux sens — avec, puis sans, sansAffichage.
+// A1 ferme l'aperçu avant d'ouvrir les formulaires. Si un aperçu restait ouvert, A3 n'y
+// touche pas : ni webview.html réassigné, ni panneau recréé. Les deux contrôles suivants
+// comparent avec et sans sansAffichage.
 
 test('compilerPuisAfficher(sansAffichage) : compile mais ne réassigne pas l’aperçu ouvert',
   async () => {
@@ -160,9 +148,8 @@ test('compilerPuisAfficher(sansAffichage) : compile mais ne réassigne pas l’a
     fs.mkdirSync(outDir, { recursive: true });
     const apercu = path.join(outDir, '01-essai.apercu.html');
     fs.writeFileSync(apercu, '<html><body>ancien</body></html>');
-    // Plus récent que le .md et la fiche : ouvrirArticle n’a alors rien à compiler, et
-    // ouvre l’aperçu directement — le bruit d’une compilation ratée (fetchTasks vide par
-    // défaut) ne pollue pas ce contrôle.
+    // Plus récent que le .md et la fiche : ouvrirArticle n’a rien à compiler et ouvre
+    // l’aperçu directement (fetchTasks est vide par défaut).
     const futur = (Date.now() + 60000) / 1000;
     fs.utimesSync(apercu, futur, futur);
 
@@ -213,13 +200,10 @@ test('témoin : sans sansAffichage, la même compilation réassigne l’aperçu 
   }
 });
 
-// ---- A1 bis : focaliser, c'est aussi DÉSIGNER -----------------------------------------
+// ---- A1 bis : focaliser, c'est aussi désigner ------------------------------------------
 //
-// Le cockpit n'a qu'une notion d'« article courant », et elle vivait dans le seul .md
-// ouvert. Or ces deux formulaires n'en ouvrent aucun : après un clic sur « Éditer les
-// métadonnées », Ctrl+Alt+P, la barre d'état et la compilation parlaient encore de
-// l'article précédent — ou de rien du tout sur un poste qui vient de démarrer. C'est
-// exactement ce que le geste avait l'air de faire, et ne faisait pas.
+// Ces deux formulaires n'ouvrent pas de .md, mais ils font de l'article l'« article
+// courant » : Ctrl+Alt+P, la barre d'état et la compilation le visent ensuite.
 
 const session = require(path.join(COCKPIT, 'lib', 'session.js'));
 
@@ -229,8 +213,8 @@ test('A1 bis : « Métadonnées » désigne l’article, sans rien afficher', as
   await HOTE.executer('szh.metadonneesArticle', { slug: '01-essai' });
   assert.strictEqual(session.apercuCourantSlug(), '01-essai',
     'l’aperçu parlerait encore de l’article précédent');
-  // Désigner n'est pas montrer : aucun aperçu n'est né de ce geste. On compte les panneaux
-  // CRÉÉS pendant l'appel — panneauDeType() rend aussi ceux des contrôles précédents.
+  // Aucun aperçu n'est créé. On compte les panneaux créés pendant l'appel : panneauDeType()
+  // rend aussi ceux des contrôles précédents.
   const nes = HOTE.panneaux.slice(panneauxAvant).map((x) => x.type);
   assert.deepStrictEqual(nes.filter((t) => t === 'szhApercuHtml'), [],
     'un aperçu s’est ouvert : la désignation doit rester muette');
@@ -244,9 +228,8 @@ test('A1 bis : « Médias » désigne l’article de la même façon', async () 
 
 // ---- « Markdown » : le texte de l'article à droite de sa fiche -------------------------
 //
-// Un interrupteur dont l'état n'est pas tenu en mémoire mais RELU dans les onglets : un
-// onglet se ferme aussi à la croix, et un bouton qui ne connaîtrait que ses propres clics
-// finirait par montrer l'inverse de l'écran. La page ne décide donc de rien.
+// L'état de l'interrupteur se relit dans les onglets plutôt qu'en mémoire, car un onglet se
+// ferme aussi à la croix. La page ne décide de rien.
 
 test('Markdown : le texte s’ouvre en colonne 2, la fiche garde la main', async () => {
   await HOTE.executer('szh.metadonneesArticle', { slug: '01-essai' });
@@ -271,7 +254,7 @@ test('Markdown : le texte s’ouvre en colonne 2, la fiche garde la main', async
 
 test('Markdown : le second appui referme, et l’état vient des onglets', async () => {
   const p = HOTE.panneauDeType('szhApercuMetadonnees');
-  // L'onglet existe maintenant pour de bon : c'est LUI que l'hôte relit, et non un drapeau.
+  // L'onglet existe : c'est lui que l'hôte relit, et non un drapeau.
   HOTE.poserOnglets([{ uri: { fsPath: path.join(REVUE, 'articles', '01-essai', '01-essai.md') } }]);
   HOTE.oublierFermetures();
   HOTE.oublierCommandes();
@@ -289,8 +272,8 @@ test('Markdown : le second appui referme, et l’état vient des onglets', async
 
 test('Markdown : hors article, rien ne s’ouvre et le bouton reste éteint', async () => {
   const p = HOTE.panneauDeType('szhApercuMetadonnees');
-  // Tant que la fiche est filtrée sur UN article, un slug inconnu retombe sur lui : c'est
-  // voulu, et c'est le cas ordinaire. Le refus ne se voit donc qu'en vue complète.
+  // Quand la fiche est filtrée sur un article, un slug inconnu retombe sur lui : le refus
+  // ne se voit qu'en vue complète.
   await p._recepteur({ type: 'tous' });
   HOTE.poserOnglets([]);
   HOTE.oublierCommandes();

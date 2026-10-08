@@ -1,28 +1,19 @@
-// Flèche retour : la bibliographie renvoie vers la PREMIÈRE occurrence de l'appel de
-// chaque référence — jamais plus d'une par référence, et jamais vers une ancre qui
-// n'existe pas.
+// Flèche retour de pipeline/filters/szh-citations.lua : chaque entrée de bibliographie
+// renvoie vers la première occurrence de son appel, une fois au plus, et jamais vers une
+// ancre absente. wsl.js et portraits.js ne servent ici qu'à construire des chemins.
 //
-//   node --test test/js
+// Le filtre pose l'ancre de chaque entrée (ref-nom-annee, visée par les appels), l'ancre
+// inverse (appel-ref-nom-annee, sur la première occurrence de l'appel) et, dans l'entrée,
+// un lien de retour vers elle. Ce lien a un aria-label explicite en fr et en de, et pas de
+// flèche de lien sortant (il est interne, « #… »). La conformité PDF/UA-1 se vérifie par
+// compilation et veraPDF, hors de ce fichier.
 //
-// Ce fichier TESTE le filtre pipeline/filters/szh-citations.lua : sa fonction
-// de gestion des ancres et des liens de retour. wsl.js et portraits.js n'y servent que de
-// plomberie de chemins — ils ont leurs tests ailleurs.
+// szh.desactiverLiensReferences (config.json du poste) supprime les liens d'appel, donc les
+// liens de retour, sauf pour un appel posé à la main
+// (« [(Dupont, 2024)](#ref-dupont-2024) »), qui garde sa flèche.
 //
-// szh-citations.lua pose l'ancre de chaque entrée (ref-nom-annee, sur laquelle pointent
-// les appels) ; il pose aussi l'ancre inverse (appel-ref-nom-annee, sur la première
-// occurrence de l'appel dans le corps) et, dans l'entrée de bibliographie, un lien de
-// retour vers elle. Trois exigences d'accessibilité non négociables encadrent ce lien :
-// un texte accessible EXPLICITE (aria-label, FR/DE — jamais une flèche nue), aucune
-// flèche décorative de lien sortant (c'est un lien interne, « #… »), et la conformité
-// PDF/UA-1 doit tenir (vérifiée par compilation réelle + veraPDF, hors de ce fichier).
-//
-// szh.desactiverLiensReferences (config.json du poste) saute la pose de l'appel : sans
-// ancre à viser, aucun lien de retour ne doit apparaître — sauf pour une référence dont
-// l'appel a été posé À LA MAIN (« [(Dupont, 2024)](#ref-dupont-2024) »), qui reste actif
-// quel que soit ce réglage et doit donc garder sa flèche retour.
-//
-// Le Lua tourne dans la WSL. S'il est introuvable, les contrôles sont sautés en le disant —
-// jamais verts par défaut. SZH_WSL_OBLIGATOIRE en fait des échecs.
+// Le Lua tourne dans la WSL. Sans elle, les contrôles sont sautés avec un motif ;
+// SZH_WSL_OBLIGATOIRE en fait des échecs.
 'use strict';
 
 const test = require('node:test');
@@ -46,8 +37,7 @@ function wsl(args) {
     { encoding: 'utf8', windowsHide: true, timeout: 120000 });
 }
 
-// Saut bruyant : le contrôle n’est pas vert, il est déclaré non fait.
-// SZH_WSL_OBLIGATOIRE via gardes.js en fait un échec au chargement du module.
+// Saut avec motif. SZH_WSL_OBLIGATOIRE (gardes.js) en fait un échec au chargement.
 function sauterSansLua(t, raison) {
   console.warn("\n*** Lua non vérifié : " + raison + " — la flèche retour n’est PAS "
     + "vérifiée ***\n");
@@ -55,19 +45,16 @@ function sauterSansLua(t, raison) {
 }
 
 // Compile un .md autonome avec szh-citations.lua seul (bibliographie en repli, « #
-// Références » dans le corps — pas besoin d'un fichier détaché pour ce contrôle).
-// `config`, s'il est fourni, écrit un config.json de poste et l'expose par SZH_CONFIG :
-// c'est le seul canal que le filtre lit pour szh.desactiverLiensReferences (voir
-// CONFIG_POSTE dans szh-citations.lua), et cela évite de toucher au vrai
-// C:\ProgramData\SZH.
+// Références » dans le corps). `config`, s'il est fourni, écrit un config.json de poste
+// exposé par SZH_CONFIG, que le filtre lit pour szh.desactiverLiensReferences (voir
+// CONFIG_POSTE dans szh-citations.lua).
 function compiler(nom, corps, config) {
   const dossier = path.join(TRAVAIL, nom);
   fs.rmSync(dossier, { recursive: true, force: true });
   fs.mkdirSync(dossier, { recursive: true });
   fs.writeFileSync(path.join(dossier, 'essai.md'), corps, 'utf8');
-  // ⚠ `export …;`, et non `VAR=val cd … && pandoc …` : un préfixe VAR=val ne porte que
-  // sur la commande qui le suit immédiatement (ici `cd`), jamais sur celle d'après un
-  // « && » — pandoc recevrait alors un SZH_CONFIG vide, et le réglage ne serait jamais lu.
+  // `export …;`, et non `VAR=val cd … && pandoc …` : un préfixe VAR=val ne vaut que pour la
+  // commande qui le suit (ici `cd`), et pandoc ne recevrait pas SZH_CONFIG.
   let prefixe = '';
   if (config) {
     const cfg = path.join(dossier, 'config.json');
@@ -79,15 +66,14 @@ function compiler(nom, corps, config) {
     + JSON.stringify(cheminVersWsl(FILTRE))]);
   assert.ok(!r.error, 'pandoc injoignable : ' + (r.error && r.error.message));
   assert.strictEqual(r.status, 0, 'pandoc sorti en ' + r.status + ' : ' + r.stderr);
-  // pandoc replie les lignes vers 72 colonnes (--wrap=auto, le défaut) et coupe donc au
-  // beau milieu d'une balise, y compris entre deux attributs. Sans intérêt ici — seule la
-  // structure compte — un espace unique remplace chaque coupure, pour que les motifs
-  // ci-dessous cherchent un texte sur une seule ligne comme le ferait un vrai navigateur.
+  // pandoc replie les lignes vers 72 colonnes (--wrap=auto) et coupe parfois une balise
+  // entre deux attributs : chaque coupure devient une espace, pour que les motifs
+  // cherchent sur une seule ligne.
   return String(r.stdout).replace(/\s+/g, ' ');
 }
 
-// Deux références, l'une appelée deux fois (Dupont), l'autre une fois (Muller) — de vrais
-// liens sortants dans les entrées (DOI + URL ordinaire), comme une bibliographie réelle.
+// Deux références, l'une appelée deux fois (Dupont), l'autre une fois (Muller), avec des
+// liens sortants dans les entrées (DOI et URL ordinaire).
 const CORPS_FR = [
   'Un premier constat s’appuie sur (Dupont, 2024) et sur (Muller, 2023). On y revient : '
     + '(Dupont, 2024) une seconde fois.',
@@ -106,7 +92,7 @@ test("flèche retour : seule la première occurrence de l’appel reçoit une an
   t.diagnostic('ancres d’appel posées : ' + ids.join(' '));
   assert.deepStrictEqual(ids, ['appel-ref-dupont-2024', 'appel-ref-muller-2023'],
     'une ancre par référence, à sa première occurrence seulement');
-  // Les deux appels vers Dupont restent bien liés (szh-appel) ; un seul porte l’ancre.
+  // Les deux appels vers Dupont restent liés (szh-appel) ; un seul porte l’ancre.
   const versDupont = [...html.matchAll(/<a href="#ref-dupont-2024"[^>]*>\(Dupont, 2024\)<\/a>/g)];
   assert.strictEqual(versDupont.length, 2, 'les deux appels vers Dupont devraient rester liés');
   assert.strictEqual(versDupont.filter((m) => /id="appel-/.test(m[0])).length, 1,
@@ -117,8 +103,8 @@ test("flèche retour : le lien de la bibliographie a un texte accessible explici
   (t) => {
     if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
     const html = compiler('aria-fr', CORPS_FR);
-    // Cible interne (« #appel-… »), classe dédiée, contenu VIDE (l’icône est un fond CSS,
-    // print.css) et aria-label explicite — jamais une flèche nue pour le lecteur d’écran.
+    // Cible interne (« #appel-… »), classe dédiée, contenu vide (l’icône est un fond CSS,
+    // print.css) et aria-label explicite pour le lecteur d’écran.
     assert.match(html,
       /<a href="#appel-ref-dupont-2024" class="szh-retour-appel" aria-label="Retour à l.appel de \(Dupont, 2024\)"><\/a>/,
       'lien de retour absent, mal ciblé, ou sans aria-label explicite : ' + html);
@@ -142,8 +128,7 @@ test("flèche retour : absente quand szh.desactiverLiensReferences est actif, sa
   (t) => {
     if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
     const html = compiler('desactive', CORPS_FR, { desactiverLiensReferences: true });
-    // Aucun appel n’est plus un lien : rien ne pointe donc « #appel-… », et un lien de
-    // retour vers une ancre qui n’existe pas serait un défaut — il ne doit pas apparaître.
+    // Aucun appel n’est un lien : aucune ancre « #appel-… », donc aucun lien de retour.
     assert.ok(!/class="szh-appel"/.test(html), 'un appel est resté un lien malgré le réglage');
     assert.ok(!/id="appel-/.test(html), 'une ancre d’appel est restée malgré le réglage');
     assert.ok(!/szh-retour-appel/.test(html),
@@ -153,9 +138,8 @@ test("flèche retour : absente quand szh.desactiverLiensReferences est actif, sa
 test("flèche retour : un lien posé à la main garde son ancre et son retour, même réglage désactivé",
   (t) => {
     if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
-    // Un appel écrit à la main (l’action « Lier une référence » du cockpit) fonctionne
-    // « quel que soit le réglage » — voir la note de tête de szh-citations.lua : la flèche
-    // retour doit donc s’y poser tout autant, ce même réglage actif.
+    // Un appel écrit à la main (action « Lier une référence » du cockpit) reste un lien
+    // quel que soit le réglage (voir la tête de szh-citations.lua) : il garde sa flèche.
     const corps = [
       'Un lien posé à la main : [(Dupont, 2024)](#ref-dupont-2024).',
       '',

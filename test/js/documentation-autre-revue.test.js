@@ -1,8 +1,6 @@
 // La fiche « D'une revue à l'autre » se préremplit depuis un article de l'autre revue : la
 // page demande la liste à l'hôte une fois (MSG.DOC_AUTREREVUE_CHARGER), le choix remplit la
 // carte sans rien écrire sur le disque.
-//
-//   node --test test/js/documentation-autre-revue.test.js
 'use strict';
 
 const test = require('node:test');

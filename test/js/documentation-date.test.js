@@ -1,7 +1,5 @@
 // L'aperçu de la date imprimée sous un champ de date de la Documentation : la page demande
 // la forme à l'hôte (MSG.DOC_DATE_FORMER), qui la calcule par lib/date-apercu.js.
-//
-//   node --test test/js/documentation-date.test.js
 'use strict';
 
 const test = require('node:test');
@@ -49,8 +47,8 @@ test('hôte : la plage de l’agenda est transmise à la page', () => {
 
 // ---- Côté page ----------------------------------------------------------------------
 
-// Les minuteurs du DOM minimal ne se déclenchent jamais : une frappe seule ne doit donc
-// produire aucun message, c'est ce qui prouve qu'elle attend.
+// Les minuteurs du DOM minimal ne se déclenchent pas : une frappe seule ne produit aucun
+// message, ce qui montre qu'elle attend.
 function pageAvecFiches(ressources) {
   const txt = libellesHote(RACINE, ['textesDocumentation']);
   const page = ouvrir({

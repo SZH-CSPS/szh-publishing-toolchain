@@ -1,13 +1,9 @@
-// La couleur annuelle d'un numéro : elle avance d'un cran chaque année, dans l'ordre
-// alphabétique de COULEURS_NUMERO, et boucle sur les six teintes.
+// La couleur annuelle d'un numéro avance d'un cran chaque année, dans l'ordre alphabétique
+// de COULEURS_NUMERO, et boucle sur les six teintes.
 //
-//   node --test "test/js/*.test.js"
-//
-// couleurAnnuelle() (lib/yaml.js) est la seule source de vérité côté cockpit ; elle a un
-// miroir en PowerShell (Get-SzhCouleurPour, windows/szh-produits.ps1) que new-revue.ps1
-// utilise à la création d'un numéro. Les deux tables d'ancres doivent dire la même chose —
-// le dernier contrôle ci-dessous les compare en lisant le fichier PowerShell en texte, sans
-// recopier ses valeurs à la main : une copie qui ne se vérifie pas finit par dormir.
+// couleurAnnuelle() (lib/yaml.js) a un miroir PowerShell, Get-SzhCouleurPour
+// (windows/szh-produits.ps1), qu'utilise new-revue.ps1. Le dernier test compare les deux
+// tables d'ancres en lisant le fichier PowerShell.
 'use strict';
 
 const test = require('node:test');
@@ -50,7 +46,7 @@ test('2032 = 2026 + six ans : retour à la couleur de l’ancre, pour les deux r
     'six ans plus tard, la Revue ne revient pas à sa couleur de départ');
 });
 
-// ---- Avant l'ancre : le piège du modulo négatif ----
+// ---- Avant l'ancre : modulo négatif ----
 
 test('2025 : la couleur précédente, pas un modulo négatif qui sort de la palette', () => {
   assert.strictEqual(yaml.couleurAnnuelle('zeitschrift', 2025), HEX.rouge,
@@ -68,7 +64,7 @@ test('revue inconnue ou année illisible : jamais une couleur au hasard', () => 
   assert.strictEqual(yaml.couleurAnnuelle('revue', 'abc'), '', 'une année illisible devrait rendre une chaîne vide');
 });
 
-// ---- L'ordre de la palette, prouvé par le tri lui-même ----
+// ---- L'ordre de la palette ----
 
 test('COULEURS_NUMERO est trié par ordre alphabétique de sa clé', () => {
   const cles = yaml.COULEURS_NUMERO.map((c) => c.cle);
@@ -77,7 +73,7 @@ test('COULEURS_NUMERO est trié par ordre alphabétique de sa clé', () => {
     'l’ordre de COULEURS_NUMERO ne suit plus l’ordre alphabétique de ses clés');
 });
 
-// ---- Plus de bouton « (aucune) » ----
+// ---- Pas de bouton « (aucune) » ----
 
 test('lib/i18n.js ne porte plus aucune clé meta.couleur.aucune', () => {
   const texte = lire('vscodium-extension', 'szh-cockpit', 'lib', 'i18n.js');
@@ -90,7 +86,7 @@ test('lib/i18n.js ne porte plus aucune clé meta.couleur.aucune', () => {
 test('les six meta.couleur.<cle> valent la même chose en français et en allemand', () => {
   const texte = lire('vscodium-extension', 'szh-cockpit', 'lib', 'i18n.js');
   const blocs = texte.split(/^\s*(fr|de):\s*\{/m);
-  // blocs[0] = avant « fr: { » ; blocs[1] = 'fr' ; blocs[2] = contenu jusqu'à 'de: {' ; etc.
+  // split avec groupe capturant : [avant, 'fr', contenu fr, 'de', contenu de, …].
   const trouverBloc = (langue) => {
     const i = blocs.indexOf(langue);
     assert.ok(i !== -1, 'bloc « ' + langue + ': { » introuvable dans lib/i18n.js');

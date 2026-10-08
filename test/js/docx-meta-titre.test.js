@@ -1,18 +1,14 @@
-// Le titre à deux-points de pipeline/docx-meta.py : « Inclusion scolaire : le rôle de
-// l'enseignant » écrit sur une seule ligne, sans style Untertitel derrière. Les auteurs le
-// font tout le temps, et la ligne entière partait en titre — la maquette, qui compose
-// titre et sous-titre différemment, n'avait plus rien à composer, et l'export vers la
-// plateforme sortait un champ subtitle vide.
+// Le titre à deux-points dans pipeline/docx-meta.py : « Inclusion scolaire : le rôle de
+// l'enseignant », écrit sur une ligne sans paragraphe Untertitel, est coupé en titre et
+// sous-titre, que la maquette compose différemment et que l'export envoie séparément.
 //
-//   node --test "test/js/*.test.js"
-//
-// Trois contrôles, du plus petit au plus grand :
-//   1. scinder_titre(), la fonction seule, sur ce qui doit et ne doit PAS se scinder —
-//      c'est là que vivent les heures, les URL et les titres numérotés ;
-//   2. l'import réel : trois .docx fabriqués ici, docx-meta.py lancé dessus, et la fiche
-//      relue. Un titre déjà pourvu d'un sous-titre stylé ne doit RIEN changer ;
-//   3. le constat qui en sort arrive à l'écran, dans les deux langues, avec le bouton qui
-//      ouvre le champ « titre » du formulaire — c'est le geste qui défait la coupe.
+// Trois contrôles :
+//   1. scinder_titre() seule, sur ce qui se coupe et ce qui ne se coupe pas (heures, URL,
+//      titres numérotés) ;
+//   2. l'import : trois .docx fabriqués ici, docx-meta.py lancé dessus, la fiche relue. Un
+//      titre qui a déjà un sous-titre stylé reste tel quel ;
+//   3. le constat à l'écran, en fr et en de, avec le bouton qui ouvre le champ « titre »
+//      pour défaire la coupe.
 'use strict';
 
 const test = require('node:test');
@@ -34,10 +30,9 @@ function dossierJetable() {
 
 // ---- 1. La fonction seule --------------------------------------------------------
 //
-// Chargée par CHEMIN, comme szh-commun.test.js charge avertir() : docx-meta.py n'est pas un
-// module importable par son nom. Le texte passe par normaliser() d'abord, parce que c'est ce
-// que fait l'import — l'espace insécable devant le deux-points français y devient une espace
-// ordinaire, et la scission ne doit pas en dépendre.
+// Chargée par son chemin : docx-meta.py n'est pas un module importable par son nom. Le texte
+// passe d'abord par normaliser(), comme à l'import : l'insécable devant le deux-points y
+// devient une espace ordinaire.
 
 const CAS_SCISSION = [
   // [titre lu dans le Word, titre attendu, sous-titre attendu]
@@ -78,8 +73,7 @@ test('docx-meta.py : scinder_titre coupe au deux-points, et seulement là', { sk
 // ---- 2. L'import réel ------------------------------------------------------------
 //
 // Un .docx minimal suffit : docx-meta.py ne lit que word/document.xml et word/styles.xml.
-// Le fabriquer ici plutôt que de figer un binaire dans le dépôt garde le cas lisible — on
-// voit dans le test le style de chaque paragraphe.
+// Fabriqué ici, il montre dans le test le style de chaque paragraphe.
 
 function fabriquerDocx(chemin, paragraphes) {
   const programme = [
@@ -137,8 +131,8 @@ test('docx-meta.py : un titre à deux-points sans sous-titre remplit les deux ch
   assert.strictEqual(vu.stats.sous_titre_source, 'deux-points',
     'la provenance du sous-titre n’est pas dite dans les stats');
 
-  // La coupe est une décision de l'outil, pas une lecture du document : elle se dit au
-  // rédacteur, avec les deux morceaux, pour qu'il puisse la défaire.
+  // La coupe est déduite par l'outil : elle est signalée avec les deux morceaux, pour
+  // pouvoir la défaire.
   const ligne = vu.avertissements.find((l) => l.indexOf('sous-titre-deduit') !== -1);
   assert.ok(ligne, 'la coupe est muette : ' + vu.avertissements.join(' / '));
   assert.ok(ligne.indexOf('soustitre « le rôle de l’enseignant »') !== -1,
@@ -153,9 +147,8 @@ test('docx-meta.py : un sous-titre stylé interdit la coupe du titre', { skip: s
     ['Subtitle', 'Une enquête romande'],
     ['Normal', CORPS]
   ]);
-  // Le document a tranché : le titre reste entier, deux-points compris — et son insécable
-  // tapée (U+00A0) avec lui, depuis que les valeurs ne passent plus par la forme de
-  // comparaison (30.09.2026).
+  // Le document a un sous-titre stylé : le titre reste entier, deux-points et insécable
+  // (U+00A0) compris, car les valeurs ne passent pas par la forme de comparaison.
   assert.match(vu.fiche, /title:\n  fr: "Inclusion scolaire : le rôle de l’enseignant"\n/,
     'le titre a été coupé alors que le Word portait déjà un sous-titre : ' + vu.fiche);
   assert.match(vu.fiche, /subtitle:\n  fr: "Une enquête romande"\n/);
@@ -181,8 +174,7 @@ test('docx-meta.py : un titre sans deux-points passe inchangé', { skip: sansPyt
 const journal = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'journal.js'));
 const constats = require(path.join(COCKPIT, 'lib', 'constats.js'));
 
-// La ligne RÉELLE du pipeline, telle que le contrôle ci-dessus la voit sortir sur stderr :
-// prouver la lecture d'une ligne inventée ne prouverait rien.
+// La ligne du pipeline telle que le contrôle précédent la reçoit sur stderr.
 const LIGNE_REELLE = '[import-avertissement] sous-titre-deduit | article « 01-inclusion » | '
   + 'titre « Inclusion scolaire » | soustitre « le rôle de l’enseignant » | '
   + 'Prose française du pipeline, oubliable. | [de] Vergessliche deutsche Prosa.';
@@ -193,7 +185,7 @@ test('codes : la coupe du titre arrive à l’écran, et son bouton ouvre le tit
     assert.ok(c, 'la ligne n’est pas reconnue du tout (' + langue + ')');
     assert.strictEqual(c.slug, '01-inclusion', 'le constat a perdu son article');
 
-    // Ce n'est pas un défaut : rien n'est cassé, l'outil a pris une décision lisible.
+    // Une information, et non un défaut : l'outil a pris une décision lisible.
     assert.strictEqual(constats.gravite(c, {}), 'info',
       'la coupe se donne pour une erreur (' + langue + ')');
 

@@ -1,23 +1,12 @@
-// Garde-fou anti-régression : une fixture de numéro/livre (hote-factice.js) ne doit JAMAIS
-// poser son dossier directement dans os.tmpdir(). kirby-contenu.js#racineArbre ne reconnaît
-// la racine de l'arbre (celle qui porte _NewsUndActu\, la bibliothèque partagée de fiches)
-// qu'à la forme <racine>\Revue|Zeitschrift|Books\<numero> ; un numéro posé à plat s'y voit
-// dégradé, et racineArbre() rend le PARENT du numéro -- ici os.tmpdir() lui-même. Toute la
-// suite écrit alors sa bibliothèque _NewsUndActu dans le dossier temporaire commun à tout
-// le poste ET à tous les tests : fuite entre tests, des milliers d'entrées au fil des
-// exécutions (304 dossiers relevés sous _NewsUndActu\Fiches lors de l'audit qui a motivé
-// ce fichier).
+// Les fixtures de numéro et de livre (hote-factice.js) ne posent pas leur dossier
+// directement dans os.tmpdir(). kirby-contenu.js#racineArbre ne reconnaît la racine de
+// l'arbre (celle qui porte _NewsUndActu\) qu'à la forme <racine>\Revue|Zeitschrift|Books\
+// <numero> ; pour un numéro posé à plat, elle rend le parent du numéro, ici os.tmpdir(), et
+// les tests écriraient leur bibliothèque _NewsUndActu dans le dossier temporaire commun.
 //
-// Pourquoi pas un contrôle « %TEMP%\_NewsUndActu n'existe pas après la suite » : ce poste
-// partage un seul dossier temporaire entre TOUTES les sessions concurrentes (voir la note
-// « Agent concurrent dans le même arbre ») -- une autre session, sur du code non corrigé ou
-// simplement en cours d'exécution en parallèle, peut légitimement écrire là pendant que ce
-// fichier tourne. Un tel contrôle serait donc intrinsèquement instable ici. À la place, ce
-// fichier éprouve directement le COMPORTEMENT qui a causé la fuite : que racineArbre() ne
-// se rabatte jamais sur os.tmpdir() pour les fixtures partagées par la quarantaine de
-// fichiers qui les emploient.
-//
-//   node --test test/js/fixtures-racine-jetable.test.js
+// Le test vérifie racineArbre() sur les fixtures plutôt que l'absence de
+// %TEMP%\_NewsUndActu après la suite : d'autres sessions qui tournent en parallèle peuvent
+// écrire dans ce dossier temporaire.
 'use strict';
 
 const test = require('node:test');

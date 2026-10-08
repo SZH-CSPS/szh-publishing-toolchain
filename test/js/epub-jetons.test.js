@@ -1,8 +1,6 @@
 // Les jetons CSS de l'EPUB du livre : chaque var(--x) des feuilles embarquées a sa définition,
 // dans une feuille de l'archive ou dans un attribut style= de ses XHTML.
 //
-//   node --test test/js/epub-jetons.test.js
-//
 // epub.css consomme les jetons du socle (--c-ink, --font-sans…) et l'accent annuel ; si
 // l'archive n'embarque pas leurs feuilles, une liseuse les ignore sans un mot. L'EPUB est
 // compilé par la vraie recette `livre-epub`, dans une copie jetable du livre du banc.

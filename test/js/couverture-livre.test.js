@@ -1,7 +1,5 @@
-// Les tests Python de la couverture des livres (test/couverture-*.test.py) : dos, décalage
-// de l'illustration, modèles. Chacun tourne dans son processus python3, comme à la main.
-//
-//   node --test test/js/couverture-livre.test.js
+// Lance les tests Python de la couverture des livres (test/couverture-*.test.py), chacun
+// dans son propre processus.
 'use strict';
 
 const test = require('node:test');

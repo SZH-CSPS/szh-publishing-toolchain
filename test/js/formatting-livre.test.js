@@ -1,10 +1,8 @@
 // Le groupe « Livre » du panneau d'édition et du clic droit — szh.fmt.falcHeader (en-tête
 // FALC) et szh.fmt.qrLink (code QR) — réservé au profil livre. Trois niveaux :
 //
-//   node --test test/js/formatting-livre.test.js
-//
 //   * PUR (lib/formatting-pur.js, sans vscode) : le texte des deux snippets, par langue du
-//     LIVRE (fr/de/it/en), et langueLivre() qui le lit dans buch.yaml.
+//     livre (fr/de/it/en), et langueLivre() qui le lit dans buch.yaml.
 //   * CONTRAT (package.json, package.nls*.json, lib/i18n.js) : les commandes sont
 //     déclarées, `when: szh.estLivre` là où elles apparaissent, les libellés existent dans
 //     les deux langues.
@@ -12,9 +10,8 @@
 //     présence dans les deux menus, contenu réel du snippet inséré (langue du livre, alt
 //     dans la langue de l'interface), et la sélection jamais détruite.
 //
-// L'absence de ces deux entrées pour une revue (et donc une Zeitschrift, même profil) est
-// éprouvée dans formatting-hote.test.js, sur l'hôte déjà activé là-bas — activerHote() ne
-// se rappelle qu'une fois par processus (voir son commentaire).
+// L'absence de ces deux entrées pour une revue se teste dans formatting-hote.test.js :
+// activerHote() n'admet qu'un appel par processus.
 'use strict';
 
 const test = require('node:test');
@@ -59,7 +56,7 @@ test('texteFalcHeader : le texte par défaut suit la langue du LIVRE, fr/de/it/e
       '::::'
     ].join('\n'), 'corps inattendu pour ' + langue);
   }
-  // Langue inconnue : repli français, jamais une chaîne vide ou une exception.
+  // Langue inconnue : repli en français, sans chaîne vide ni exception.
   assert.match(pur.texteFalcHeader('zz', 'ALT'), /Cette histoire existe aussi en audio\./);
 });
 
@@ -73,9 +70,8 @@ test('langueLivre : lit buch.yaml (lang:), fr/de/it/en, repli fr si absent/incon
     fs.writeFileSync(path.join(dossier, 'buch.yaml'), 'titre: "Essai"\nlang: ' + langue + '\n');
     assert.strictEqual(pur.langueLivre(dossier), langue, 'langue non reconnue : ' + langue);
   }
-  // 'en' : buch.yaml l'accepte (CHAMPS_LIVRE, media/_numero.js) mais yaml.langueRevue() le
-  // bornerait à fr/de/it (LANGUES_META) — langueLivre() le lit donc en direct, sans passer
-  // par ce plafond, ce qui est tout l'intérêt de ne pas réutiliser langueRevue() ici.
+  // 'en' : buch.yaml l'accepte (CHAMPS_LIVRE, media/_numero.js), mais yaml.langueRevue() se
+  // limite à fr/de/it (LANGUES_META). langueLivre() lit donc buch.yaml directement.
   fs.writeFileSync(path.join(dossier, 'buch.yaml'), 'titre: "Essai"\nlang: en\n');
   const yaml = require(path.join(COCKPIT, 'lib', 'yaml.js'));
   assert.strictEqual(yaml.langueRevue(dossier), 'fr', 'langueRevue ne borne plus à fr/de/it : ce test est caduc');
@@ -95,9 +91,7 @@ test('PALETTE_MEF_LIVRE : le groupe « Livre », falc-header puis qr-link, qrLin
   assert.strictEqual(pur.PALETTE_MEF_LIVRE[2][1], 'szh.fmt.qrLink');
   assert.strictEqual(pur.PALETTE_MEF_LIVRE[2][4], 'palette.qrLink.detail',
     'qrLink ne pointe plus vers son texte d’options (tracked/size posés, les autres à la main)');
-  // Ni l'une ni l'autre n'a de raccourci propre (demande de Robin : aucun de libre et
-  // évident n'a été réservé — ctrl+alt+e serait libre pour falcHeader, mais rien ne le dit
-  // ailleurs dans le dépôt, donc pas inventé ici).
+  // Aucune des deux n'a de raccourci clavier.
   assert.strictEqual(pur.PALETTE_MEF_LIVRE[1][2], '');
   assert.strictEqual(pur.PALETTE_MEF_LIVRE[2][2], '');
 });
@@ -143,8 +137,7 @@ test('lib/i18n.js : les clés du groupe « Livre » existent en français ET en 
 
 // ---- HÔTE -------------------------------------------------------------------------------
 //
-// L'extension activée pour de vrai (hote-factice.js) sur un livre d'essai — lang: fr
-// (voir livreDEssai(), test/js/hote-factice.js).
+// L'extension activée (hote-factice.js) sur un livre d'essai en français (livreDEssai()).
 
 const archivage = require(path.join(COCKPIT, 'lib', 'archivage.js'));
 archivage.lancerArchivage = () => null;   // neutralise avant activerHote, comme hote-livre.test.js
@@ -156,9 +149,8 @@ const HOTE = activerHote(LIVRE);
 const i18n = require(path.join(COCKPIT, 'lib', 'i18n.js'));
 const T = i18n.T;
 
-// Éditeur factice pour ces deux commandes : insertSnippet remplace edit() comme moyen
-// d'écriture — c'est justement ce que le contrôle « sélection préservée » ci-dessous
-// vérifie (aucun edit() n'est jamais appelé).
+// Éditeur factice pour ces deux commandes, qui écrivent par insertSnippet et non par
+// edit() : le contrôle « sélection préservée » le vérifie.
 function fauxEditeurSnippet(fsPath, lignes) {
   const info = { snippets: [], edits: 0 };
   const ed = {
@@ -195,8 +187,8 @@ test('szh.panneauEdition : le groupe « Livre » apparaît, falc-header puis qr-
     assert.strictEqual(propose[iGroupe + 2].commande, 'szh.fmt.qrLink');
     assert.strictEqual(propose[iGroupe + 2].detail, T('palette.qrLink.detail'),
       'le détail des options qr-link non posées dans le snippet a disparu');
-    // Groupe en dernier, comme les deux entrées PALETTE_MEF_LIVRE sont concaténées après
-    // toute la palette de mise en forme.
+    // Groupe en dernier : les deux entrées PALETTE_MEF_LIVRE sont ajoutées après toute la
+    // palette de mise en forme.
     assert.strictEqual(iGroupe + 2, propose.length - 1);
   });
 
@@ -240,8 +232,8 @@ test('szh.fmt.falcHeader : une sélection non vide n’est jamais détruite, le 
     await HOTE.executer('szh.fmt.falcHeader');
 
     assert.strictEqual(ed._info.edits, 0, 'la sélection a été touchée par un edit()');
-    // La ligne est réécrite en entier (poserBlocIsole) : le texte sélectionné doit y revenir
-    // tel quel, en tête, puis une ligne vide, puis le bloc.
+    // La ligne est réécrite en entier (poserBlocIsole) : le texte sélectionné revient tel
+    // quel, en tête, puis une ligne vide, puis le bloc.
     assert.ok(ed._info.snippets[0].valeur.startsWith('Un paragraphe sélectionné.\n\n::::'),
       'le texte sélectionné n’est pas repris tel quel avant le bloc, séparé par une ligne vide : '
       + JSON.stringify(ed._info.snippets[0].valeur.slice(0, 60)));

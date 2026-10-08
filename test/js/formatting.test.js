@@ -1,16 +1,13 @@
 // Les blocs ::: posés par le panneau d'édition (Ctrl+Alt+W/H/Q) : sauts de ligne et
 // remplacement.
 //
-//   node --test "test/js/*.test.js"
-//
-// Le défaut gardé ici est double. D'abord, enroberBloc collait le bloc à ses voisins :
-// un « fenced div » pandoc doit commencer en colonne 0 et être séparé du paragraphe
-// voisin par une ligne vide, sinon pandoc le lit comme du texte courant et le PDF
-// affiche trois-points-deux-points en clair. Ensuite, réappliquer la commande dans un
-// bloc existant IMBRIQUAIT un second bloc dans le premier — deux cadres l'un dans
-// l'autre au rendu — au lieu de mettre à jour la classe et le titre. poserBloc porte
-// maintenant les deux règles ; ces tests la prennent comme l'éditeur le ferait, en
-// rejouant son remplacement de lignes entières sur un document en mémoire.
+// poserBloc tient deux règles :
+// - un « fenced div » pandoc commence en colonne 0 et est séparé des paragraphes voisins
+//   par une ligne vide, sinon pandoc le lit comme du texte courant et le PDF affiche les
+//   « ::: » ;
+// - réappliquer la commande dans un bloc existant met à jour sa classe et son titre, sans
+//   imbriquer un second bloc.
+// Ces tests rejouent son remplacement de lignes entières sur un document en mémoire.
 'use strict';
 
 const test = require('node:test');
@@ -40,8 +37,7 @@ function curseur(ligne, col) {
   return { debutLigne: ligne, debutCol: col, finLigne: ligne, finCol: col };
 }
 
-// Compte les lignes ::: du document : deux par bloc, jamais plus — c'est l'imbrication
-// qui en mettrait quatre.
+// Compte les lignes ::: du document : deux par bloc ; une imbrication en mettrait quatre.
 function lignesDiv(texte) {
   return texte.split('\n').filter((l) => /^\s*:::/.test(l)).length;
 }
@@ -97,16 +93,16 @@ test('une sélection multiligne devient le contenu du bloc, d’un seul tenant',
     'Avant.\n\n::: {.question}\nDeux lignes\nà encadrer.\n:::\n\nAprès.');
 });
 
-// Un guillemet dans le titre n'est plus perdu : il est échappé (antislash avant le
-// guillemet, comme citerValeur() de references.js), pas retiré. Pandoc lit lui-même cette
-// forme d'attribut cité — voir lib/formatting-pur.js#attrBloc.
+// Un guillemet dans le titre est échappé par un antislash (comme citerValeur() de
+// references.js), et non retiré. Pandoc lit cette forme d'attribut cité (voir
+// lib/formatting-pur.js#attrBloc).
 test('le titre du bloc important part dans data-titre, guillemets échappés', () => {
   const { texte } = appliquer('cible',
     { debutLigne: 0, debutCol: 0, finLigne: 0, finCol: 5 }, 'important', 'Dire "non"');
   assert.strictEqual(texte, '::: {.important data-titre="Dire \\"non\\""}\ncible\n:::');
 });
 
-// ---- Réapplication : mise à jour du markup, jamais d'imbrication ----
+// ---- Réapplication : mise à jour du markup, sans imbrication ----
 
 test('réappliquer la même classe dans le bloc ne change rien (idempotent)', () => {
   const doc = 'Para\n\n::: {.highlight}\ncible\n:::\n\nSuite';
@@ -116,9 +112,8 @@ test('réappliquer la même classe dans le bloc ne change rien (idempotent)', ()
 });
 
 test('deux frappes de suite via le curseur rendu ne font qu’un bloc', () => {
-  // Le scénario d'acceptation : Ctrl+Alt+W deux fois sur le même texte. La première
-  // frappe pose le bloc et met le curseur DANS le bloc ; la seconde retombe donc dans
-  // le remplacement, pas dans une insertion sous le bloc.
+  // Ctrl+Alt+W deux fois sur le même texte. La première frappe pose le bloc et met le
+  // curseur dedans ; la seconde passe donc par le remplacement, et non par une insertion.
   const un = appliquer('Para\n\ncible\n\nSuite',
     { debutLigne: 2, debutCol: 0, finLigne: 2, finCol: 5 }, 'important', 'Note');
   const deux = appliquer(un.texte, curseur(un.curseur.ligne, un.curseur.colonne), 'important', 'Note');
@@ -147,8 +142,8 @@ test('le curseur sur l’ouverture ou la fermeture compte comme « dans le bloc 
 });
 
 test('le remplacement normalise aussi les lignes vides autour du bloc', () => {
-  // Un bloc collé à ses voisins — hérité d'une insertion d'avant la correction, ou d'un
-  // collage — ressort séparé ; des vides accumulées ressortent réduites.
+  // Un bloc collé à ses voisins (par un collage, par exemple) ressort séparé ; des lignes
+  // vides accumulées ressortent réduites.
   const colle = 'Para\n::: {.important}\nx\n:::\nSuite';
   assert.strictEqual(appliquer(colle, curseur(2, 0), 'highlight', '').texte,
     'Para\n\n::: {.highlight}\nx\n:::\n\nSuite');
@@ -166,9 +161,8 @@ test('sous un bloc clos, on insère : le bloc du dessus n’est pas réécrit', 
 });
 
 test('dans un div étranger (.szh-tabelle), le bloc se pose après, la référence survit', () => {
-  // Réécrire l'ouverture d'une référence de tableau perdrait son src= et le tableau
-  // disparaîtrait du rendu sans un mot ; imbriquer casserait la résolution du filtre.
-  // Ni l'un ni l'autre : le nouveau bloc, vide, se pose sous la fermeture.
+  // Réécrire l'ouverture d'une référence de tableau perdrait son src=, et imbriquer
+  // casserait la résolution du filtre : le nouveau bloc, vide, se pose sous la fermeture.
   const doc = 'Para\n\n::: {.szh-tabelle src="tables/table-01.html"}\n:::\n\nSuite';
   const { texte } = appliquer(doc, curseur(2, 5), 'highlight', '');
   assert.strictEqual(texte,
@@ -197,8 +191,8 @@ test('blocReferenceTable et blocSautPage gardent leur contrat de lignes vides', 
 });
 
 test('retirerTable retire toujours son bloc : la factorisation des regex n’a rien changé', () => {
-  // Les regex d'ouverture et de fermeture vivent maintenant dans references.js et sont
-  // partagées avec formatting.js : ce test garde le comportement du côté « retrait ».
+  // Les regex d'ouverture et de fermeture vivent dans references.js, partagées avec
+  // formatting.js : ce test vérifie le côté « retrait ».
   const doc = 'Para\n\n::: {.szh-tabelle src="tables/table-01.html"}\n:::\n\nSuite';
   const r = refs.retirerTable(doc, 'table-01.html');
   assert.strictEqual(r.n, 1);

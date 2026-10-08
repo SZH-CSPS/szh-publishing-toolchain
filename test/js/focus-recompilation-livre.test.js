@@ -1,10 +1,7 @@
-// Lot G2, A1, sur un LIVRE : Robin est explicite — « revues ou livres » — donc le focus de
-// l'arbre sur l'édition des métadonnées ou des médias doit marcher aussi pour un chapitre.
-// Le reste (A3, la garde buildEnCours) est indifférent au profil et déjà éprouvé côté revue
-// dans focus-recompilation.test.js ; activerHote() n'admet qu'un appel par processus, d'où
-// ce fichier séparé (même convention que hote-livre.test.js).
-//
-//   node --test test/js/focus-recompilation-livre.test.js
+// A1 sur un livre : le focus de l'arbre sur l'édition des métadonnées ou des médias vaut
+// aussi pour un chapitre. A3 ne dépend pas du profil et se teste côté revue
+// (focus-recompilation.test.js). activerHote() n'admet qu'un appel par processus, d'où ce
+// fichier séparé.
 'use strict';
 
 const fs = require('fs');
@@ -19,10 +16,9 @@ const tick = () => new Promise((r) => setImmediate(r));
 const LIVRE = livreDEssai();
 const HOTE = activerHote(LIVRE);
 
-// Un aperçu déjà ouvert, comme hote-livre.test.js : sans lui, « l'aperçu est fermé »
-// serait vrai par construction — aucun aperçu n'ayant jamais existé avant l'appel.
-// L'aperçu d'un chapitre est son PDF (out/chapitres/<slug>.pdf, composé seul) : il s'ouvre
-// dans un onglet, et c'est la fermeture de cet onglet (tabGroups.close) qu'on observe.
+// Un aperçu déjà ouvert : sans lui, « l'aperçu est fermé » serait vrai d'avance.
+// L'aperçu d'un chapitre est son PDF (out/chapitres/<slug>.pdf), ouvert dans un onglet :
+// on observe la fermeture de cet onglet (tabGroups.close).
 async function ouvrirApercuChapitre(slug) {
   const dossierOut = path.join(LIVRE, 'out', 'chapitres');
   fs.mkdirSync(dossierOut, { recursive: true });

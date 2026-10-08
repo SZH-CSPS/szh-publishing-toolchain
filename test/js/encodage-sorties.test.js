@@ -1,17 +1,13 @@
-// test/js/encodage-sorties.test.js — le contrôle qui empêche la rechute du défaut mesuré le
-// 18.09.2026 : un script pipeline/*.py qui écrit du non-ASCII (ensure_ascii=False, ou un
-// littéral accentué passé à print) SANS avoir reconfiguré le flux visé (stdout/stderr) en
-// UTF-8 crashe sur Windows dès qu'un accent combinant (nom de fichier venu d'un partage
-// macOS/SharePoint, forme décomposée) atteint une console en cp1252 :
+// Un script pipeline/*.py qui écrit du non-ASCII (ensure_ascii=False, ou un littéral
+// accentué passé à print) sans avoir reconfiguré le flux visé en UTF-8 plante sous Windows
+// dès qu'un accent combinant (nom de fichier en forme décomposée) atteint une console en
+// cp1252 :
 //
 //   UnicodeEncodeError: 'charmap' codec can't encode character '́'
 //
-// Sur Linux (WSL, production) l'encodage par défaut est l'UTF-8 : rien n'explose, donc le
-// défaut ne se voit JAMAIS depuis la WSL — seulement à chaque exécution locale sous Windows
-// (harnais de tests, débogage). Reproduit à la main deux fois le 18.09.2026 sur
-// tmp/corpus-relecture/lot-A/4_La méthode Flip Flap.docx, une fois par accident.
+// Dans la WSL, l'encodage par défaut est l'UTF-8 : le défaut n'y apparaît pas.
 //
-// La garde qui répare ça (patron : pipeline/apca.py, pipeline/manuscrit_modele.py,
+// La garde attendue (voir pipeline/apca.py, pipeline/manuscrit_modele.py,
 // pipeline/manuscrit_regles.py) :
 //
 //   try:
@@ -20,24 +16,16 @@
 //   except Exception:
 //       pass
 //
-// posée dans le point d'entrée (principal()/main(), jamais au chargement du module — un
-// module IMPORTÉ ne doit pas muter sys.stdout/stderr du processus appelant, voir
-// pronto_modele.py importé par pronto-lire.py) et enveloppée (reconfigure() peut lever si
-// l'appelant a détaché le flux — la garde ne doit jamais devenir une nouvelle panne).
+// Elle se pose dans le point d'entrée (principal() ou main()), et non au chargement : un
+// module importé ne doit pas modifier les flux du processus appelant. Le try la protège
+// quand l'appelant a détaché le flux.
 //
-// Analyse par ast (Python, stdlib), pas par regex sur le texte : un littéral accentué peut
-// vivre dans un ast.BinOp ('%s' % …) ou une concaténation, pas seulement en tête d'argument
-// de print(), et seul un vrai arbre syntaxique distingue « ce print vise stderr » de
-// « ce print vise stdout » (file=sys.stderr) — la garde n'est exigée que sur le(s) flux
-// réellement visés par un appel à risque, jamais les deux en aveugle (sans quoi
-// pipeline/apca.py, qui n'écrit de littéral accentué que sur stdout et ne reconfigure que
-// stdout, ressortirait à tort comme fautif).
+// L'analyse passe par ast, et non par des regex : un littéral accentué peut se trouver dans
+// un ast.BinOp ('%s' % …) ou une concaténation, et seul l'arbre dit quel flux vise un print
+// (file=sys.stderr). La garde n'est exigée que sur les flux visés : pipeline/apca.py, qui
+// n'écrit d'accents que sur stdout, ne reconfigure que stdout.
 //
-//   node --test test/js/encodage-sorties.test.js
-//
-// Patron pour le contrôle qui balaye tout le dépôt : test/js/contrats.test.js. Patron pour
-// un petit programme Python écrit au vol par un test JS : test/js/manuscrit-docx.test.js
-// (FABRIQUE). Python passe par python() de test/js/gardes.js (la WSL sous Windows).
+// Python passe par python() de test/js/gardes.js (la WSL sous Windows).
 'use strict';
 
 const test = require('node:test');
@@ -50,29 +38,21 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const PIPELINE = path.join(RACINE, 'pipeline');
 
 // ---------------------------------------------------------------------------------------
-// Exemption nommée et commentée — UNIQUEMENT des modules purement importables, qui n'ont
-// aucun `if __name__ == '__main__':` et ne sont donc JAMAIS un point d'entrée. Pour ceux-là
-// la garde n'a nulle part où vivre : la poser au chargement du module muterait sys.stdout/
-// stderr d'un processus qui ne fait qu'IMPORTER le module (pronto_modele.py est importé par
-// pronto-lire.py — un effet de bord à distance de cette sorte est très pénible à
-// diagnostiquer, voir le § correspondant de outils-dev/). La garde vit chez l'appelant :
-// pronto-lire.py, docx-meta.py, etc. la posent déjà dans leur propre principal().
+// Modules exemptés : des bibliothèques sans `if __name__ == '__main__':`, donc sans point
+// d'entrée où poser la garde. La poser au chargement modifierait les flux de tout
+// processus qui les importe. La garde est chez l'appelant (pronto-lire.py, docx-meta.py…).
 //
-//   szh_commun.py       — bibliothèque commune (avertir, lire_yaml…), importée par sept
-//                          scripts ; son propre docstring dit « Rien ici n'a d'effet de
-//                          bord au chargement. »
-//   pronto_modele.py    — règles du gabarit Pronto ; principal() y est une fonction de
-//                          BIBLIOTHÈQUE (appelée par pronto-lire.py), pas une CLI — voir le
-//                          commentaire de manuscrit_modele.py qui le dit explicitement.
+//   szh_commun.py       — bibliothèque commune (avertir, lire_yaml…), sans effet de bord
+//                          au chargement.
+//   pronto_modele.py    — règles du gabarit Pronto ; son principal() est une fonction de
+//                          bibliothèque, appelée par pronto-lire.py.
 //   pronto_docx.py      — lecteur .docx du gabarit Pronto, importé par pronto-lire.py.
 //   manuscrit_gabarit.py — écrivain du gabarit manuscrit (.ecrire), importé par les tests
 //                          et par le nettoyeur ; aucune CLI.
 //   manuscrit_typo.py   — règles typographiques maison, importées par manuscrit_regles.py
 //                          et manuscrit_docx.py ; aucune CLI.
 //
-// Une exemption qui ne tiendrait plus (un __main__ ajouté un jour à l'un de ces modules)
-// doit faire ÉCHOUER ce fichier plutôt que de continuer à couvrir un vrai point d'entrée en
-// silence — voir le premier test ci-dessous.
+// Si l'un de ces modules gagne un __main__, le premier test échoue.
 const EXEMPTS = new Set([
   'szh_commun.py',
   'pronto_modele.py',
@@ -82,16 +62,14 @@ const EXEMPTS = new Set([
 ]);
 
 // ---------------------------------------------------------------------------------------
-// Petit analyseur Python (stdlib ast, pas de regex) écrit au vol — patron FABRIQUE de
-// manuscrit-docx.test.js. Pour chaque fichier passé en argument, rend :
+// Petit analyseur Python (module ast), passé par -c. Pour chaque fichier en argument, rend :
 //   risques : [[ligne, motif, flux]...]   flux = 'stdout' | 'stderr' (celui visé par le
 //             print() à risque — file=sys.stderr, sinon stdout, défaut du print builtin) ;
 //             motif = 'print-litteral-non-ascii' | 'json.dumps-ensure_ascii-False'.
 //   gardes  : les flux (sys.stdout/stdin/stderr) sur lesquels un .reconfigure(encoding=
 //             'utf-8') a été repéré n'importe où dans le fichier.
-// Un littéral non-ASCII peut vivre dans un ast.BinOp ('%s' % …) ou une concaténation
-// implicite : on parcourt tout le sous-arbre de chaque argument positionnel de print(),
-// pas seulement l'argument lui-même.
+// Un littéral non-ASCII peut se trouver dans un ast.BinOp ('%s' % …) ou une concaténation
+// implicite : on parcourt tout le sous-arbre de chaque argument positionnel de print().
 const ANALYSEUR = [
   'import ast, json, sys',
   '',
@@ -164,9 +142,7 @@ function analyserTous(fichiers) {
 }
 
 // ---------------------------------------------------------------------------------------
-// 1. L'exemption elle-même ne doit jamais couvrir un vrai point d'entrée : si l'un de ces
-// six modules gagne un jour un `if __name__ == '__main__':`, ce test rougit plutôt que de
-// laisser un script sans garde se cacher derrière la liste.
+// 1. Aucun module exempté n'a de `if __name__ == '__main__':`.
 test('encodage-sorties : les modules exemptés n\'ont aucun point d\'entrée (__main__)',
   { skip: sansPython }, () => {
     for (const nom of EXEMPTS) {
@@ -180,9 +156,8 @@ test('encodage-sorties : les modules exemptés n\'ont aucun point d\'entrée (__
   });
 
 // ---------------------------------------------------------------------------------------
-// 2. Chaque script pipeline/*.py non exempté : tout flux (stdout/stderr) sur lequel il
-// écrit du non-ASCII doit avoir été reconfiguré en UTF-8 quelque part dans le fichier.
-// Un test par fichier, pour qu'un sabotage nomme exactement le fichier fautif.
+// 2. Chaque script pipeline/*.py non exempté reconfigure en UTF-8 tout flux (stdout,
+// stderr) sur lequel il écrit du non-ASCII. Le message d'échec nomme le fichier fautif.
 test('encodage-sorties : chaque script pipeline/*.py qui écrit du non-ASCII déclare sa garde',
   { skip: sansPython }, () => {
     const fichiers = fichiersPipeline().filter((f) => !EXEMPTS.has(f));
@@ -202,10 +177,8 @@ test('encodage-sorties : chaque script pipeline/*.py qui écrit du non-ASCII dé
   });
 
 // ---------------------------------------------------------------------------------------
-// 3. Contre-épreuve du contrôle lui-même (pas un test qui tourne en CI — un aide-mémoire
-// exécutable) : sans AUCUNE garde déclarée, un fichier qui écrit un littéral accentué à
-// print() est bien vu comme « à risque ». Si ce test rougissait, l'analyseur serait devenu
-// aveugle à la forme la plus simple du défaut.
+// 3. Témoin : un fichier sans garde qui passe un littéral accentué à print() est vu comme
+// « à risque ». S'il ne l'est plus, l'analyseur est devenu aveugle au cas le plus simple.
 test('encodage-sorties : l\'analyseur détecte un script sans aucune garde (témoin)',
   { skip: sansPython }, () => {
     const dossier = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-encodage-'));

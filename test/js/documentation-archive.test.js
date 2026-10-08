@@ -1,21 +1,14 @@
-// L'onglet Archive de la Documentation : TOUTE la bibliothèque de PRODUCTION
-// (_NewsUndActu\Fiches\), des deux langues, tous numéros — même quand le poste travaille en
-// mode test (docs/EMPLACEMENTS.md, §1 : la racine active suit `emplacementRevues`, mais
-// l'Archive lit TOUJOURS la production, dérivée de l'ancrage SharePoint résolu par
-// lib/rapport-erreur.js#resoudreAncrage). Lecture seule ; le geste « Reprendre dans ce
-// numéro » (lib/kirby-contenu.js#reprendreDansNumero) crée une fiche NEUVE dans la
-// bibliothèque ACTIVE, jamais ne modifie l'archivée.
+// L'onglet Archive de la Documentation montre toute la bibliothèque de production
+// (_NewsUndActu\Fiches\), des deux langues et de tous les numéros, même en mode test : elle
+// se déduit de l'ancrage SharePoint (lib/rapport-erreur.js#resoudreAncrage), et non de la
+// racine active (voir docs/EMPLACEMENTS.md). Elle est en lecture seule ; « Reprendre dans ce
+// numéro » (lib/kirby-contenu.js#reprendreDansNumero) crée une fiche neuve dans la
+// bibliothèque active.
 //
-// Isolation : deux racines jetables et DISTINCTES par test — la racine « active » (celle du
-// numéro ouvert dans le panneau, via hote-factice#revueDEssai) et une racine « ancrage
-// SharePoint » séparée, posée via SZH_ANCRAGE (le niveau « essai » de resoudreAncrage, qui
-// court-circuite toute lecture de C:\ProgramData\SZH\config.json). SZH_BASE et LOCALAPPDATA
-// sont eux aussi détournés vers un poste jetable dès le chargement de ce fichier : sans quoi
-// le test « ancrage absent » lirait le VRAI config.json du poste qui exécute le test, qui
-// peut très bien porter un ancrage réel (docs/EMPLACEMENTS.md le documente sur le poste de
-// Robin) — un contrôle qui dépendrait ainsi de la machine ne prouverait rien.
-//
-//   node --test test/js/documentation-archive.test.js
+// Chaque test a deux racines jetables distinctes : la racine active (hote-factice#revueDEssai)
+// et une racine d'ancrage posée par SZH_ANCRAGE, qui évite la lecture de
+// C:\ProgramData\SZH\config.json. SZH_BASE et LOCALAPPDATA visent aussi un poste jetable,
+// pour que le test « ancrage absent » ne lise pas l'ancrage réel du poste.
 'use strict';
 
 const test = require('node:test');
@@ -28,7 +21,7 @@ const path = require('path');
 const LF = '\n';
 const COCKPIT = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit');
 
-// ---- Poste jetable : isole ce fichier de C:\ProgramData\SZH et de %LOCALAPPDATA% réels ---
+// ---- Poste jetable, à la place de C:\ProgramData\SZH et de %LOCALAPPDATA% ---------------
 const POSTE_JETABLE = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-archive-poste-'));
 process.env.SZH_BASE = path.join(POSTE_JETABLE, 'ProgramData');
 process.env.LOCALAPPDATA = path.join(POSTE_JETABLE, 'Local');
@@ -43,23 +36,19 @@ const { MSG } = require(path.join(COCKPIT, 'lib', 'messages.js'));
 
 const REVUE = revueDEssai();
 const HOTE = activerHote(REVUE);
-// documentation-hote.js require('vscode') à son sommet : ne le charger directement
-// qu'APRÈS activerHote(), qui pose le crochet Module._load vers le faux « vscode » — même
-// détour que actualite.test.js#libellesActualite pour la même raison.
+// documentation-hote.js requiert « vscode » dès son chargement : il se charge après
+// activerHote(), qui fournit le faux « vscode ».
 const documentationHote = require(path.join(COCKPIT, 'lib', 'documentation-hote.js'));
-// La bibliothèque ACTIVE (celle du numéro ouvert) — un dossier jetable qui n'a RIEN à voir
-// avec la racine « production » posée ci-dessous : c'est précisément ce que « lecture de la
-// production en mode test » doit prouver.
+// La bibliothèque active (celle du numéro ouvert), distincte de la racine de production
+// posée plus bas.
 const RACINE_ACTIVE = kirby.racineArbre(REVUE);
 function ausgabeId() { return yaml.idNumero(REVUE); }
 
-// Le formulaire ne se crée qu'au premier clic sur l'en-tête ACTUALITÉ (comme dans le vrai
-// cockpit) : ouvert une seule fois, ici, avant tous les tests de ce fichier — même motif que
-// test/js/actualite.test.js, où c'est un test dédié qui le fait naître au passage.
+// Le formulaire ne se crée qu'au premier clic sur l'en-tête ACTUALITÉ : il est ouvert une
+// fois, ici, avant tous les tests.
 before(async () => {
-  // Le premier appel à getChildren() est ce qui amorce le contexte du numéro (majContexte,
-  // extension.js) — sans lui, l'en-tête ACTUALITÉ n'existe pas encore et szh.ouvrirSection
-  // n'ouvre rien (même détour que test/js/actualite.test.js, où c'est entete() qui le fait).
+  // Le premier getChildren() amorce le contexte du numéro (majContexte, extension.js) ; sans
+  // lui, l'en-tête ACTUALITÉ n'existe pas et szh.ouvrirSection n'ouvre rien.
   await HOTE.arbre().getChildren();
   await HOTE.executer('szh.ouvrirSection', 'actualite');
 });
@@ -76,12 +65,10 @@ function dernierMessage(p, type) {
   return m;
 }
 
-// ---- Une racine « ancrage SharePoint » jetable et DISTINCTE, par test ------------------
+// ---- Une racine d'ancrage SharePoint jetable et distincte, par test --------------------
 //
-// racineProduction() (lib/documentation-hote.js) = <ancrage>\2_Produkte\54_Pronto — les deux
-// segments fixes que rapport-erreur.js#SEGMENT_APPLICATION et ce module partagent. On ne les
-// recopie pas en dur ici : on les LIT depuis rapport-erreur.js, pour que ce test continue de
-// prouver quelque chose si l'un des deux changeait.
+// racineProduction() (lib/documentation-hote.js) vaut <ancrage>\2_Produkte\54_Pronto. Ces
+// segments sont lus dans rapport-erreur.js#SEGMENT_APPLICATION, et non recopiés.
 const rapportErreur = require(path.join(COCKPIT, 'lib', 'rapport-erreur.js'));
 function nouvelleRacineProduction() {
   const ancrage = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-archive-ancrage-'));
@@ -97,7 +84,7 @@ function livre(titre, extra) {
 test('lecture de la production en mode test : une fiche écrite hors de la racine active apparaît quand même', async () => {
   const racineProd = nouvelleRacineProduction();
   const { uuid, slug } = kirby.creerFiche(racineProd, 'fr', 'livre', livre('Archivé au loin'), '');
-  // Rien dans la racine ACTIVE : la preuve que l'onglet ne lit jamais celle-ci.
+  // Racine active vide : l'onglet ne la lit pas.
   assert.strictEqual(kirby.listerSlugsBibliotheque(RACINE_ACTIVE).length, 0);
 
   const p = await panneau();
@@ -113,12 +100,11 @@ test('lecture de la production en mode test : une fiche écrite hors de la racin
   void uuid;
 });
 
-// ---- Le compte de l'Archive dans l'arbre (23.09.2026) ----------------------------------
+// ---- Le compte de l'Archive dans l'arbre -------------------------------------------------
 //
-// L'arbre (extension.js#_itemsActualite) n'a pas le droit de lire la bibliothèque de
-// production lui-même — il reprend le dernier compte que documentation-hote.js a obtenu
-// pour n'IMPORTE QUEL panneau (compteArchiveConnu). Avant tout ARCHIVE_CHARGER/ACTUALISER,
-// aucun badge.
+// L'arbre (extension.js#_itemsActualite) ne lit pas la bibliothèque de production : il
+// reprend le dernier compte obtenu par documentation-hote.js pour un panneau quelconque
+// (compteArchiveConnu). Avant tout ARCHIVE_CHARGER ou ARCHIVE_ACTUALISER, pas de badge.
 test('le compte connu de l’Archive alimente le badge de l’arbre, jamais une lecture à part', async () => {
   const racineProd = nouvelleRacineProduction();
   kirby.creerFiche(racineProd, 'fr', 'livre', livre('Un premier'), '');
@@ -134,8 +120,8 @@ test('le compte connu de l’Archive alimente le badge de l’arbre, jamais une 
   assert.ok(archive, 'entrée Archive introuvable dans l’arbre');
   assert.strictEqual(archive.description, '(2)');
 
-  // Une fiche ajoutée après coup : le badge de l'arbre ne bouge PAS tant qu'aucun panneau ne
-  // redemande la lecture — c'est bien le dernier compte CONNU, pas une lecture à la volée.
+  // Une fiche ajoutée après coup : le badge ne change pas tant qu'aucun panneau ne relit
+  // l'Archive.
   kirby.creerFiche(racineProd, 'fr', 'livre', livre('Ajoutée après'), '');
   const actualiteAvantRelecture = await HOTE.arbre().getChildren(
     (await HOTE.arbre().getChildren()).find((it) => it.contextValue === 'section-actualite'));
@@ -174,8 +160,8 @@ test('résolution des numéros : le libellé lisible vient des ausgabe.yaml de l
     ['title: "Dossier"', 'revue: revue', 'lang: fr', 'numero: "1"', 'date: "2025-03-01"', ''].join(LF));
   const id = yaml.assurerIdNumero(numero);
   const { slug } = kirby.creerFiche(racineProd, 'fr', 'livre', livre('Rattaché'), id);
-  // Une fiche à un id qu'AUCUN numéro ne porte (dossier copié, renommé…) : affichée par son
-  // id tel quel, jamais masquée.
+  // Une fiche dont l'id ne correspond à aucun numéro (dossier copié, renommé…) s'affiche
+  // sous cet id.
   kirby.creerFiche(racineProd, 'fr', 'livre', livre('Id inconnu'), 'ID-FANTOME');
 
   const p = await panneau();
@@ -205,7 +191,7 @@ test('reprise : « Reprendre dans ce numéro » crée une fiche neuve, avec orig
   const reprise = dernierMessage(p, MSG.ARCHIVE_REPRISE);
   assert.strictEqual(reprise.ok, true);
 
-  // La fiche neuve vit dans la bibliothèque ACTIVE, rattachée à CE numéro.
+  // La fiche neuve est dans la bibliothèque active, rattachée à ce numéro.
   const fiches = kirby.listerFichesNumero(RACINE_ACTIVE, 'fr', ausgabeId());
   const neuve = fiches.find((f) => f.valeurs.title === 'À reprendre');
   assert.ok(neuve, 'la fiche reprise doit apparaître dans le numéro actif');
@@ -218,8 +204,8 @@ test('reprise : « Reprendre dans ce numéro » crée une fiche neuve, avec orig
   assert.strictEqual(archiveeEncore.uuid, uuidArchive);
   assert.strictEqual(archiveeEncore.ausgabe, 'AUTRE-NUMERO');
 
-  // Un « charger » a suivi la reprise, pour que « Documentation du numéro » montre la
-  // fiche neuve sans que l'utilisateur ait à changer d'onglet à la main.
+  // Un « charger » suit la reprise, pour que « Documentation du numéro » montre la fiche
+  // neuve.
   const charge = p.messages.filter((m) => m.type === 'charger').pop();
   assert.ok(charge, 'la reprise doit déclencher un rechargement de la Documentation du numéro');
   assert.ok(charge.ressources.some((r) => r.valeurs.title === 'À reprendre'));

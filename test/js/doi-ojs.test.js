@@ -1,19 +1,13 @@
-// Le DOI qui part vers OJS : il est CALCULÉ, et c'est le même calcul que celui que la carte
-// d'article affiche.
+// Le DOI envoyé à OJS est calculé, par le même calcul que celui qu'affiche la carte
+// d'article.
 //
-//   node --test "test/js/*.test.js"
-//
-// Pourquoi ce fichier. Le DOI se déduit du rang de l'article parmi les porteurs du numéro,
-// et ce rang vient de l'ordre du numéro — un ordre qui se change d'un clic, sans renommer
-// aucun dossier. Deux endroits le lisent : la carte, qui le montre à la rédaction, et
-// l'export, qui l'expédie. S'ils divergeaient, le DOI affiché ne serait pas le DOI publié,
-// et rien ne le dirait avant le dépôt chez Crossref — d'où le contrôle central de ce
-// fichier, qui fait tourner l'HÔTE RÉEL et l'export sur le MÊME numéro et compare les deux
+// Le DOI se déduit du rang de l'article parmi ceux qui portent un DOI, et ce rang suit
+// l'ordre du numéro, qui change d'un clic. La carte et l'export le lisent tous deux : le
+// contrôle central fait tourner l'hôte et l'export sur le même numéro et compare les deux
 // listes, article par article, avant et après un déplacement.
 //
-// Le numéro d'essai est monté à l'image de R2026-03 de la Revue, tel que l'instance le
-// porte : un éditorial en « 00 », sept articles du dossier, un varia, une tribune libre et
-// une page de documentation, qui n'en reçoit aucun.
+// Le numéro d'essai reprend R2026-03 de la Revue : un éditorial en « 00 », sept articles du
+// dossier, un varia, une tribune libre et une page de documentation, qui n'a pas de DOI.
 'use strict';
 
 const test = require('node:test');
@@ -23,9 +17,8 @@ const os = require('os');
 const path = require('path');
 
 process.env.SZH_LANGUE = 'fr';
-// Aucune configuration de poste : la carte et l'export lisent tous deux la table par défaut,
-// et non celle de la machine où le contrôle tourne. Posé avant le premier require, la valeur
-// étant relue à chaque appel mais le module chargé une fois.
+// Aucune configuration de poste : la carte et l'export lisent la table par défaut. Posé
+// avant le premier require.
 process.env.SZH_CONFIG_OJS = path.join(
   fs.mkdtempSync(path.join(os.tmpdir(), 'szh-doi-cfg-')), 'config.json');
 
@@ -42,7 +35,7 @@ const MAINTENANT = new Date(2026, 7, 21, 9, 30, 0);   // 21 août 2026, 09:30:00
 // ---- Le numéro d'essai --------------------------------------------------------------
 
 // Les onze articles de R2026-03, dans l'ordre du sommaire paru. Aucune fiche ne porte de
-// DOI : il n'y en a plus à saisir.
+// DOI : il est calculé.
 const ARTICLES = [
   { slug: '00-editorial', type: 'editorial', titre: 'Éditorial' },
   { slug: '01-gremion', type: 'article', titre: 'Les transitions scolaires' },
@@ -66,8 +59,8 @@ function fiche(a) {
     .join(LF);
 }
 
-// Un article complet sur le disque : son texte, sa fiche, et les trois galleys que l'export
-// exige. Sert aussi à en ajouter un À LA MAIN, après coup, hors de l'ordre du numéro.
+// Un article complet sur le disque : son texte, sa fiche et les trois galleys que l'export
+// exige. Sert aussi à en ajouter un après coup, hors de l'ordre du numéro.
 function poserArticle(revue, a) {
   const dossier = path.join(revue, 'articles', a.slug);
   fs.mkdirSync(dossier, { recursive: true });
@@ -103,9 +96,9 @@ function poserCles(revue, cles) {
 
 // ---- Lire les DOI, des deux côtés ---------------------------------------------------
 
-// Les DOI EXPÉDIÉS, dans l'ordre où l'XML porte les articles : [slug, doi] par article, et
-// un DOI vide pour celui qui n'en reçoit aucun. Le slug se lit sur le nom du fichier joint,
-// le seul endroit où l'XML le nomme.
+// Les DOI envoyés, dans l'ordre des articles de l'XML : [slug, doi] par article, doi vide
+// s'il n'y en a pas. Le slug se lit sur le nom du fichier joint, seul endroit où l'XML le
+// nomme.
 function doisExpedies(xml) {
   return xml.split('    <article ').slice(1).map((bloc) => {
     const slug = (bloc.match(/<name locale="[a-z]{2}">(.+)\.docx<\/name>/) || ['', '?'])[1];
@@ -171,7 +164,7 @@ test('DOI expédié : un article sans DOI passe en fin de numéro et resserre le
   // Les huit premiers n'ont pas bougé : le compteur ne compte que les porteurs.
   assert.deepStrictEqual(sortie.dois.slice(0, 8).map(([, doi]) => doi.slice(-2)),
     ['00', '01', '02', '03', '04', '05', '06', '07']);
-  // L'absence est VOULUE : elle se dit, et autrement que celle d'une rubrique.
+  // Une absence voulue se signale, autrement que celle d'une rubrique.
   const dits = sortie.avertissements.filter((a) => a.indexOf('08-dentz') !== -1);
   assert.ok(dits.some((a) => /décidé pour cet article/.test(a)),
     'l’absence voulue n’est pas dite : ' + dits.join(' | '));
@@ -227,7 +220,7 @@ test('DOI expédié : un DOI manuel sur la fiche part à la place du calculé, e
     'le DOI manuel n’est pas parti :' + LF + sommaire(sortie.dois));
   assert.deepStrictEqual(sortie.dois[3], ['03-guilley', '10.57161/r2026-03-03'],
     'le rang des autres a bougé :' + LF + sommaire(sortie.dois));
-  // Et jamais en silence : la divergence nomme les deux DOI.
+  // La divergence est signalée et nomme les deux DOI.
   const dits = sortie.avertissements.filter((a) => a.indexOf('10.57161/r2024-01-05') !== -1);
   assert.strictEqual(dits.length, 1,
     'divergence non signalée : ' + sortie.avertissements.join(' | '));
@@ -237,8 +230,8 @@ test('DOI expédié : un DOI manuel sur la fiche part à la place du calculé, e
 
 // ---- Le contrôle central : le DOI expédié est celui que la carte affiche -------------
 //
-// Un seul activerHote() par processus, et il vient avec sa propre revue : c'est donc CE
-// numéro-là que l'hôte et l'export regardent tous les deux.
+// Un seul activerHote() par processus, qui fournit sa propre revue : l'hôte et l'export
+// regardent tous deux ce numéro-là.
 
 const REVUE = monterNumero({});
 const HOTE = activerHote(REVUE);
@@ -253,7 +246,7 @@ async function vue() {
   return p;
 }
 
-// Le DOI que la CARTE affiche : la dernière ligne de son aperçu.
+// Le DOI qu'affiche la carte : la dernière ligne de son aperçu.
 function doiCarte(ligne) {
   const lignes = ligne.apercu.lignes;
   return lignes[lignes.length - 1].valeurs[0].texte;
@@ -273,19 +266,18 @@ test('DOI : celui qui part est celui que la carte affiche, article par article',
   const p = await vue();
   const cartes = attenduDepuisCartes(p);
   assert.strictEqual(cartes.length, ARTICLES.length, 'toutes les cartes ne sont pas chargées');
-  // Onze articles comparés d'un coup, et non un seul : c'est la divergence entre les deux
-  // lectures qu'on cherche, et elle peut ne toucher qu'un rang.
+  // Les onze articles sont comparés : une divergence peut ne toucher qu'un rang.
   const sortie = exporter(REVUE);
   assert.deepStrictEqual(sortie.dois, cartes,
     'la carte et l’export ne disent pas le même DOI :' + LF + sommaire(sortie.dois));
-  // Et ce ne sont pas deux listes vides qui se ressemblent.
+  // Les deux listes ne sont pas vides.
   assert.strictEqual(cartes.filter(([, doi]) => doi !== '').length, 10);
   assert.strictEqual(cartes[0][1], '10.57161/r2026-03-00');
 });
 
 test('DOI : après un déplacement fait à l’écran, les deux suivent ensemble', async () => {
   const p = await vue();
-  // Le geste réel de la rédaction : « Monter » sur la carte du troisième article.
+  // « Monter » sur la carte du troisième article.
   await p._recepteur({ type: 'action', cle: '02-chanier', id: 'monter' });
   const cartes = attenduDepuisCartes(p);
   assert.deepStrictEqual(cartes.slice(1, 3), [

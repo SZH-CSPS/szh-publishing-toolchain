@@ -1,21 +1,16 @@
-// Les commandes szh.fmt.* (lib/formatting.js) — figure, tableau, sautPage, noteBasPage,
-// collerTableau, et la palette szh.miseEnForme — n'étaient exercées par aucun test :
-// formatting.test.js et formatting-pur.test.js n'éprouvent que la part sans `vscode`
-// (basculerEnrobage, poserBloc…), jamais la commande elle-même. Ici, l'hôte factice
-// (test/js/hote-factice.js) active l'extension pour de vrai et joue ces commandes sur un
-// éditeur factice — même patron que test/js/lier-reference.test.js pour szh.lierReference :
-// hote.stub.window.activeTextEditor posé à la main, hote.stub.window.showQuickPick
-// remplacé quand une réponse pilotée est nécessaire.
+// Les commandes szh.fmt.* (lib/formatting.js) : figure, tableau, sautPage, noteBasPage,
+// collerTableau, et la palette szh.miseEnForme. formatting.test.js et
+// formatting-pur.test.js couvrent la part sans `vscode` ; ici, l'hôte factice
+// (test/js/hote-factice.js) active l'extension et joue les commandes sur un éditeur
+// factice : hote.stub.window.activeTextEditor posé à la main, hote.stub.window.showQuickPick
+// remplacé quand il faut piloter une réponse.
 //
-// lireHtmlPressePapiers (le seul accès PowerShell de ce module, presse-papiers HTML
-// d'Excel/Word) est éprouvé à part, avec spawn injecté — même ruse que
-// test/js/portraits-traitement.test.js : patch de require('child_process').spawn posé AVANT
-// le premier require de hote-factice.js, qui charge ce module transitivement
-// (extension.js -> lib/formatting.js). Le repli sur le TSV, lui, se vérifie en conditions
-// réelles via szh.fmt.collerTableau : presse-papiers HTML absent (spawn qui échoue), lecture
-// du TSV depuis vscode.env.clipboard.readText — que hote-factice.js ne pilote pas encore
-// (seul writeText y existe) : on pose la réponse directement sur hote.stub.env.clipboard,
-// à la façon dont lier-reference.test.js pose hote.stub.window.showQuickPick.
+// lireHtmlPressePapiers (seul accès PowerShell du module, presse-papiers HTML d'Excel et
+// de Word) se teste à part, avec un spawn injecté : require('child_process').spawn est
+// remplacé avant le premier require de hote-factice.js, qui charge ce module par
+// extension.js. Le repli sur le TSV se vérifie par szh.fmt.collerTableau : spawn échoue,
+// et le TSV se lit par vscode.env.clipboard.readText, posé directement sur
+// hote.stub.env.clipboard.
 'use strict';
 
 const test = require('node:test');
@@ -109,10 +104,9 @@ test('szh.fmt.figure : copie l’image choisie dans media/, insère le lien, ouv
     assert.deepStrictEqual(HOTE.erreurs, []);
   });
 
-// Un nom avec espaces et accents cassait le Makefile : les prérequis du PDF listent media/
-// par $(wildcard …), make coupe aux espaces, « No rule to make target » (mesuré le
-// 29.09.2026 dans la WSL). La copie prend donc le nom assaini de nomImageAssaini, puis le
-// suffixe de nom libre si ce nom est déjà pris.
+// Un nom avec espaces casse le Makefile : les prérequis du PDF listent media/ par
+// $(wildcard …), et make coupe aux espaces (« No rule to make target »). La copie prend
+// donc le nom assaini de nomImageAssaini, puis un suffixe si ce nom est déjà pris.
 test('szh.fmt.figure : un nom avec espaces et accents est copié sous un nom assaini, sans écraser',
   async () => {
     HOTE.erreurs.length = 0;
@@ -175,17 +169,17 @@ test('szh.fmt.sautPage : pose le marqueur ::: {.szh-saut} ::: à la coupure', as
     'Un paragraphe avant la coupure\n\n::: {.szh-saut}\n:::\n\net sa suite.');
 });
 
-// Constaté par Robin (30.09.2026) : sur une ligne vide collée à un paragraphe, le bloc se
-// posait sans ligne vide, et pandoc le lisait comme la suite du paragraphe. Ce sont les
-// lignes VOISINES qui décident désormais, plus seulement celle du curseur.
+// Sur une ligne vide collée à un paragraphe, le bloc doit être séparé par une ligne vide,
+// sinon pandoc le lit comme la suite du paragraphe : les lignes voisines décident, et pas
+// seulement celle du curseur.
 for (const [nom, commande, attendu] of [
   ['saut de page', 'szh.fmt.sautPage', '::: {.szh-saut}\n:::'],
   ['tableau', 'szh.fmt.tableau', '::: {.szh-tabelle src="tables/table-'],
 ]) {
   test('szh.fmt (' + nom + ') : entre deux paragraphes sans ligne vide, une ligne vide de chaque côté',
     async () => {
-      // Le curseur sur la ligne vide qui sépare deux paragraphes : l'ancienne pose n'y
-      // voyait qu'une ligne vide, et collait le bloc au-dessus comme au-dessous.
+      // Le curseur sur la ligne vide qui sépare deux paragraphes : le bloc doit être
+      // séparé de chacun.
       const ed = fauxEditeur(path.join(REVUE, 'articles', '01-essai', '01-essai.md'));
       ed._lignes = ['Paragraphe du dessus.', '', 'Paragraphe du dessous.'];
       const p = { line: 1, character: 0 };
@@ -218,7 +212,7 @@ test('szh.fmt.noteBasPage : pose [^1] au curseur, sa définition en fin de docum
 });
 
 // Le clic droit « Mise en forme » propose « Lier un appel à une référence », avec son
-// raccourci ; le panneau Édition, qui l'avait déjà, ne le reçoit pas une seconde fois.
+// raccourci ; le panneau Édition, qui l'a déjà, ne le reçoit pas une seconde fois.
 test('szh.miseEnForme : « Lier une référence » au clic droit, une seule fois au panneau Édition', async () => {
   const ed = fauxEditeur(path.join(REVUE, 'articles', '01-essai', '01-essai.md'));
   ed._lignes = ['mot'];
@@ -306,10 +300,9 @@ test('szh.miseEnForme : la palette pilotée par QuickPick choisit et applique sz
 
 // ---- Groupe « Livre » (falc-header, qr-link) : absent d'une revue -------------------
 //
-// REVUE est une Revue (lang: fr) au sens de lib/yaml.js#REVUES, mais la condition qui
-// filtre ces deux styles est hote.profil()/revue.profil() === 'livre' — indifférente à la
-// langue. Une Zeitschrift (même profil 'revue', lang: de) est donc couverte par ce même
-// contrôle ; voir test/js/hote-livre.test.js pour la présence côté livre.
+// La condition qui filtre ces deux styles est profil() === 'livre', quelle que soit la
+// langue : ce contrôle sur une Revue (lang: fr) vaut aussi pour une Zeitschrift. La
+// présence côté livre se teste dans test/js/hote-livre.test.js.
 test('szh.miseEnForme : le groupe « Livre » n’apparaît jamais pour une revue', async () => {
   const ed = fauxEditeur(path.join(REVUE, 'articles', '01-essai', '01-essai.md'));
   ed._lignes = ['mot'];

@@ -1,23 +1,12 @@
-// Le désinstalleur administrateur de la chaîne SZH (windows/uninstall.ps1,
-// windows/szh-desinstallation.ps1, windows/Désinstaller le poste SZH.cmd) : ce qu'il ne doit
-// JAMAIS faire, et ce qu'il fait réellement sur une arborescence jetable.
+// Le désinstalleur administrateur du poste (windows/uninstall.ps1,
+// windows/szh-desinstallation.ps1, windows/Désinstaller le poste SZH.cmd).
 //
-//   node --test "test/js/*.test.js"
-//
-// Trois contrats de source, vérifiés partout (pas seulement sous Windows) :
-//   * ni uninstall.ps1 ni szh-desinstallation.ps1 n'appellent jamais `wsl --unregister` ;
-//   * szh-desinstallation.ps1 porte la garde (Assert-SzhCibleMachineAutorisee) qui refuse
-//     toute cible « fichier-machine » sous WSL\ ou égale à la racine SZH, réappliquée à
-//     l'exécution (Invoke-SzhPlanDesinstallation), pas seulement à la construction du plan ;
-//   * le .cmd s'élève puis appelle uninstall.ps1 du même dossier.
-//
-// Le reste (Windows seulement, comme test/js/toolkit-remplacement.test.js) rejoue
-// Get-SzhPlanDesinstallation / Invoke-SzhPlanDesinstallation sur une arborescence $SZH_BASE
-// jetable, JAMAIS C:\ProgramData\SZH -- et jamais sur le vrai compte Windows qui exécute les
-// tests : les scénarios qui appellent Invoke- réellement (b, c, d) ne portent que sur des
-// entrées « fichier-machine », toutes sous l'arborescence jetable. Aucune tâche planifiée
-// réelle n'est créée, aucune clé de registre réelle n'est touchée : ces deux familles restent
-// au niveau du plan (lecture seule), dans le scénario (e) via uninstall.ps1 -Simuler -Json.
+// Les contrats lus dans le source tournent partout. Le reste, Windows seulement, rejoue
+// Get-SzhPlanDesinstallation et Invoke-SzhPlanDesinstallation sur une arborescence
+// $SZH_BASE jetable, et non sur C:\ProgramData\SZH. Les scénarios qui exécutent le plan
+// (b, c, d) ne portent que sur des entrées « fichier-machine » de cette arborescence. Les
+// tâches planifiées et le registre du compte qui lance les tests ne sont que listés, par
+// uninstall.ps1 -Simuler -Json (scénario e).
 'use strict';
 
 const test = require('node:test');
@@ -37,9 +26,7 @@ const DESINSTALLATION = lire('windows', 'szh-desinstallation.ps1');
 const CMD = lire('windows', 'Désinstaller le poste SZH.cmd');
 const SHELL = lire('windows', 'szh-shell.ps1');
 
-// Les deux noms actuels, lus dans szh-shell.ps1 plutôt que recopiés en dur : son
-// commentaire dit que le nom définitif n'est pas arrêté (voir test/js/raccourcis.test.js,
-// qui fait de même).
+// Les deux noms de raccourci, lus dans szh-shell.ps1 : le nom définitif n'est pas arrêté.
 function litLitteral(source, nomVar) {
   const m = source.match(new RegExp('\\$script:' + nomVar + "\\s*=\\s*'([^']+)'"));
   assert.ok(m, nomVar + ' introuvable dans szh-shell.ps1');
@@ -48,7 +35,7 @@ function litLitteral(source, nomVar) {
 const NOM_APPLICATION = litLitteral(SHELL, 'SzhNomApplication');
 const NOM_MISE_A_JOUR = litLitteral(SHELL, 'SzhNomMiseAJour');
 
-// ---- Contrats de source : partout, pas seulement sous Windows ----
+// ---- Contrats lus dans le source, toutes plateformes ----
 
 test('ni uninstall.ps1 ni szh-desinstallation.ps1 n’appellent jamais `wsl --unregister`', () => {
   assert.ok(UNINSTALL.toLowerCase().indexOf('--unregister') === -1,
@@ -64,8 +51,8 @@ test('szh-desinstallation.ps1 porte la garde qui refuse toute cible sous WSL\\ o
     'la garde ne compare plus la cible à la racine elle-même');
   assert.ok(DESINSTALLATION.indexOf("($wslNorm + '\\*')") !== -1,
     'la garde ne compare plus la cible à ce qui est sous WSL\\');
-  // Réappliquée à CHAQUE suppression d'un « fichier-machine », dans Invoke-, pas seulement
-  // une fois à la construction du plan dans Get-SzhPlanDesinstallation.
+  // La garde s'applique à la construction du plan, puis de nouveau avant chaque
+  // suppression d'un « fichier-machine ».
   const iGet = DESINSTALLATION.indexOf('function Get-SzhPlanDesinstallation');
   const iInvoke = DESINSTALLATION.indexOf('function Invoke-SzhPlanDesinstallation');
   assert.ok(iGet !== -1 && iInvoke !== -1 && iGet < iInvoke);
@@ -81,7 +68,7 @@ test('le .cmd « Désinstaller le poste SZH » s’élève puis appelle uninstal
   assert.match(CMD, /-Verb RunAs/);
   assert.match(CMD, /SZH_UNINSTALL=%~dp0uninstall\.ps1/);
   assert.match(CMD, /-File "%SZH_UNINSTALL%"/);
-  // Deux lignes d'en-tête : ce qu'il fait, et d'où le lancer -- jamais depuis le toolkit.
+  // Deux lignes d'en-tête : ce qu'il fait, et d'où le lancer (hors du toolkit).
   assert.match(CMD, /rem  Desinstallation d'un poste SZH/i);
   assert.match(CMD, /jamais depuis C:\\ProgramData\\SZH\\toolkit/i);
 });
@@ -90,17 +77,15 @@ test('le .cmd « Désinstaller le poste SZH » s’élève puis appelle uninstal
 
 const { POWERSHELL, sansPowerShell } = require('./gardes');
 
-// Même remarque, et même geste, que test/js/orphelins-toolkit.test.js et
-// test/js/toolkit-remplacement.test.js : Windows PowerShell 5.1 lit un .ps1 SANS BOM avec la
-// page de code ANSI du poste, jamais en UTF-8 -- sans ce préfixe, les accents des pilotes
-// ci-dessous ressortiraient mojibake une fois relus.
+// Sans BOM, PowerShell 5.1 lit un .ps1 dans la page de code ANSI du poste, et les accents
+// des pilotes seraient corrompus.
 function ecrirePs1(chemin, contenu) {
   fs.writeFileSync(chemin, '\uFEFF' + contenu, 'utf8');
 }
 
-// L'arborescence exacte demandée par la consigne : toolkit (avec un sous-dossier windows),
-// toolkit.neuf vide, staging avec une archive, logs avec un journal, config.json, state.json,
-// le disque d'une distro sous WSL\<SID>\SZH-Publishing, et un dossier « autre » inconnu.
+// toolkit (avec un sous-dossier windows), toolkit.neuf vide, staging avec une archive, logs
+// avec un journal, config.json, state.json, le disque d'une distro sous
+// WSL\<SID>\SZH-Publishing, et un dossier « autre » inconnu.
 function poserArborescence(base) {
   fs.mkdirSync(path.join(base, 'toolkit', 'windows'), { recursive: true });
   fs.writeFileSync(path.join(base, 'toolkit', 'VERSION'), '2026.09.01', 'utf8');
@@ -244,10 +229,9 @@ test('Invoke- sur les entrées fichier-machine : tout est retiré, sans échec',
   { skip: sansPowerShell }, () => {
     assert.strictEqual(scenarioB.status, 0, 'le pilote PowerShell a échoué : ' + scenarioB.stderr);
     assert.strictEqual(scenarioB.r.echecs, 0, 'des suppressions ont échoué alors que rien ne les en empêchait');
-    // toolkit, staging, logs, config.json, state.json : cinq entrées présentes sur cette
-    // arborescence (toolkit.vieux, comptes, auteurs.json, mots-cles.json, maj-auto.json ne le
-    // sont pas -- ignorées, pas comptées comme « faits »). toolkit.neuf est vide mais EXISTE
-    // (Test-Path d'un dossier vide rend $true), donc lui aussi retiré : six au total.
+    // toolkit, staging, logs, config.json, state.json, plus toolkit.neuf, vide mais existant
+    // (Test-Path rend $true) : six. Les entrées absentes du disque (toolkit.vieux, comptes,
+    // auteurs.json, mots-cles.json, maj-auto.json) ne comptent pas.
     assert.strictEqual(scenarioB.r.faits, 6, 'nombre de suppressions inattendu : ' + JSON.stringify(scenarioB.r));
   });
 
@@ -270,13 +254,11 @@ test('Invoke- sur les entrées fichier-machine : le toolkit et le reste ont bien
     assert.strictEqual(r.stateExiste, false);
   });
 
-// ---- Scénario (c) : un plan forgé visant WSL\ -- refusé, rien ne disparaît ----
+// ---- Scénario (c) : un plan forgé visant WSL\ est refusé, rien ne disparaît ----
 //
-// Invoke-SzhPlanDesinstallation choisit de journaliser un échec plutôt que de laisser
-// l'exception traverser tout le pilote : chaque suppression a son propre try/catch (comme
-// toutes les autres), pour qu'une seule entrée fautive n'empêche jamais le reste du plan de
-// s'appliquer. Le fichier visé doit survivre dans les deux cas -- c'est lui que ce test
-// vérifie, plus que la forme exacte de l'échec.
+// Chaque suppression a son propre try/catch, pour qu'une entrée fautive n'empêche pas le
+// reste du plan : le refus peut donc lever ou se journaliser en échec. Le test vérifie
+// surtout que le fichier visé survit.
 
 const scenarioC = (function () {
   if (!POWERSHELL) { return null; }
@@ -285,7 +267,7 @@ const scenarioC = (function () {
   const sortie = path.join(travail, 'bilan.json');
   const pilote = path.join(travail, 'eprouver.ps1');
   poserArborescence(base);
-  // La cible forgée : un fichier directement sous WSL\, distinct du disque de la distro.
+  // Cible forgée : un fichier directement sous WSL\, distinct du disque de la distro.
   fs.writeFileSync(path.join(base, 'WSL', 'x'), 'ne doit jamais partir', 'utf8');
 
   const script = [
@@ -323,8 +305,8 @@ test('un plan forgé visant WSL\\x : la garde refuse, le fichier survit',
     assert.strictEqual(scenarioC.status, 0, 'le pilote PowerShell a échoué : ' + scenarioC.stderr);
     const r = scenarioC.r;
     assert.strictEqual(r.fichierExiste, true, 'le fichier sous WSL\\ a disparu -- la garde n’a pas tenu');
-    // Refusé d'une façon ou d'une autre : soit Invoke- lève, soit elle journalise un échec
-    // sans rien avoir fait (faits = 0). Jamais les deux à la fois « rien ne s’est passé ».
+    // Refus : soit Invoke- lève, soit elle journalise un échec sans rien avoir fait
+    // (faits = 0).
     const refuseParEchec = (!r.leve) && (r.faits === 0) && (r.echecs >= 1);
     const refuseParException = r.leve;
     assert.ok(refuseParEchec || refuseParException,
@@ -337,7 +319,7 @@ test('un plan forgé visant WSL\\x : la garde refuse, le fichier survit',
     }
   });
 
-// ---- Scénario (d) : -Simuler sur l'arborescence pleine -- rien ne bouge ----
+// ---- Scénario (d) : -Simuler sur l'arborescence pleine, rien ne bouge ----
 
 const scenarioD = (function () {
   if (!POWERSHELL) { return null; }
@@ -380,11 +362,10 @@ test('-Simuler sur l’arborescence pleine : rien ne bouge (mêmes fichiers avan
 
 // ---- Scénario (e) : uninstall.ps1 -Simuler -Json, en sous-processus réel ----
 //
-// $env:SZH_BASE redirige $SzhToolkit et consorts vers l'arborescence jetable ; les entrées
-// « raccourci », « registre » et « extension » du plan, elles, portent forcément sur le VRAI
-// compte Windows qui exécute le test (Get-SzhRaccourcisMenu, HKCU, le CLI VSCodium) --
-// -Simuler -Json ne fait qu'afficher ce plan, jamais un Invoke-, donc rien n'est modifié nulle
-// part, ni dans l'arborescence jetable ni sur le vrai compte.
+// $env:SZH_BASE redirige $SzhToolkit et les autres chemins vers l'arborescence jetable. Les
+// entrées « raccourci », « registre » et « extension » portent sur le compte Windows qui
+// lance le test (Get-SzhRaccourcisMenu, HKCU, CLI VSCodium) : -Simuler -Json ne fait
+// qu'afficher le plan, sans l'exécuter.
 
 function lancerUninstallJson(base, applications) {
   const args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', UNINSTALL_PS1, '-Simuler', '-Json'];
@@ -450,19 +431,14 @@ test('uninstall.ps1 -Simuler -Json : l’arborescence jetable est intacte après
       JSON.stringify({ avant: scenarioE.avant, apres: scenarioE.apres }));
   });
 
-// ---- Scénario (f) : un nom périmé n'entre dans le plan QUE si le fichier existe ----
+// ---- Scénario (f) : un nom périmé n'entre dans le plan que si le fichier existe ----
 //
-// Get-SzhRaccourcisObsoletes (szh-shell.ps1, voir test/js/raccourcis.test.js) nomme six
-// entrées disparues avec la fusion des trois lanceurs en un seul, à onglets (13.09.2026).
-// La désinstallation ne doit lister QUE celles qui laissent RÉELLEMENT un .lnk sur le
-// disque : Set-SzhRaccourcisMenu retire déjà ces vieux .lnk (à leur CIBLE, pas à leur nom)
-// à chaque ouverture de session -- un poste qui a tourné au moins une fois depuis la mise à
-// jour ne doit donc plus se voir proposer cinq lignes fantômes dans le plan.
+// Get-SzhRaccourcisObsoletes (szh-shell.ps1) nomme six raccourcis d'anciens lanceurs.
+// Set-SzhRaccourcisMenu les retire déjà à chaque ouverture de session (d'après leur cible) :
+// le plan ne liste que ceux qui ont encore un .lnk sur le disque.
 //
-// $env:APPDATA est redirigé vers un dossier « menu Démarrer » jetable : ni le vrai menu du
-// compte qui exécute les tests, ni C:\ProgramData\SZH ne sont touchés -- même prudence que
-// les scénarios (a) à (d) plus haut, par un pilote direct (Get-SzhPlanDesinstallation
-// -Profil) plutôt que par uninstall.ps1, pour ne dépendre que du strict nécessaire.
+// $env:APPDATA vise un menu Démarrer jetable, et le pilote appelle directement
+// Get-SzhPlanDesinstallation -Profil.
 
 const scenarioF = (function () {
   if (!POWERSHELL) { return null; }
@@ -474,8 +450,7 @@ const scenarioF = (function () {
   const pilote = path.join(travail, 'eprouver.ps1');
   fs.mkdirSync(base, { recursive: true });
   fs.mkdirSync(menu, { recursive: true });
-  // Un SEUL des six noms périmés laisse un vrai fichier sur cette arborescence -- les cinq
-  // autres restent absents, et ne doivent donc pas apparaître dans le plan.
+  // Un seul des six noms périmés a un fichier : les cinq autres n'entrent pas dans le plan.
   fs.writeFileSync(path.join(menu, 'Revues SZH.lnk'), 'x', 'utf8');
 
   const script = [
@@ -503,16 +478,15 @@ test('un nom périmé n’entre dans le plan de désinstallation que si le fichi
     assert.ok(Array.isArray(scenarioF.plan), 'sortie non JSON');
     const raccourcis = scenarioF.plan.filter((e) => e.type === 'raccourci');
 
-    // Les deux entrées ACTUELLES sont toujours dans le plan, quel que soit leur état réel :
-    // seules les entrées PÉRIMÉES sont soumises à la garde « seulement si le fichier existe ».
+    // Les deux raccourcis actuels sont toujours dans le plan, qu'ils existent ou non.
     const canoniques = raccourcis.filter((e) => e.detail === NOM_APPLICATION || e.detail === NOM_MISE_A_JOUR);
     assert.strictEqual(canoniques.length, 2, 'les deux entrées actuelles ont disparu du plan');
     for (const c of canoniques) {
       assert.strictEqual(c.present, false, c.detail + ' ne devrait pas exister sur cette arborescence jetable');
     }
 
-    // Tout le reste des entrées « raccourci » est donc PÉRIMÉ par élimination -- et il ne
-    // doit en rester qu'une seule : celle dont le fichier a été réellement posé ci-dessus.
+    // Les autres entrées « raccourci » sont périmées : seule reste celle dont le fichier
+    // existe.
     const perimes = raccourcis.filter((e) => canoniques.indexOf(e) === -1);
     assert.strictEqual(perimes.length, 1,
       'un nom périmé sans fichier réel est quand même entré dans le plan : ' +

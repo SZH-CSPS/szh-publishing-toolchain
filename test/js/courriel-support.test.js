@@ -1,16 +1,10 @@
-// Le troisième et dernier modèle de courriel du dépôt (le courriel de support de l'écran
-// d'erreur, Show-SzhErreur dans windows/szh-common.ps1). Ce fichier a longtemps comparé
-// deux moteurs qui ne se parlaient jamais -- lib/gabarits.js (JS, cockpit) et un mini-Twig
-// écrit à la main dans Get-SzhCourriel (PowerShell). Depuis le 14.09.2026, il n'y a plus
-// qu'UN SEUL moteur (lib/gabarits.js) : Get-SzhCourriel l'exécute via VSCodium-en-Node
-// (outils/rendre-gabarit.js, vscodium-extension/szh-cockpit). Ce fichier devient donc un
-// contrôle de CÂBLAGE : il prouve que les trois gabarits de support rendent, par
-// Get-SzhCourriel, EXACTEMENT ce que rend lib/gabarits.js (conventions de trim et CRLF
-// comprises), qu'une construction Twig hors de portée de l'ancien mini-moteur ({% if %},
-// {% for %}, loop.last, un filtre) est maintenant rendue correctement, et que le repli
-// (VSCodium ou l'extension introuvables) rend un texte simple sans jamais lever.
-//
-//   node --test test/js/courriel-support.test.js
+// Le courriel de support de l'écran d'erreur (Show-SzhErreur, windows/szh-common.ps1).
+// Get-SzhCourriel rend ses gabarits avec lib/gabarits.js, lancé par VSCodium-en-Node
+// (outils/rendre-gabarit.js). On vérifie que :
+// - les trois gabarits de support rendent par Get-SzhCourriel ce que rend lib/gabarits.js,
+//   espaces de bord et CRLF compris ;
+// - {% if %}, {% for %}, loop.last et les filtres passent par ce chemin ;
+// - sans VSCodium ni extension, Get-SzhCourriel rend un texte de repli sans lever.
 'use strict';
 
 const test = require('node:test');
@@ -26,11 +20,8 @@ const COMMUN_PS1 = path.join(RACINE, 'windows', 'szh-common.ps1');
 const { compiler } = require(path.join(RACINE, 'vscodium-extension', 'szh-cockpit', 'lib', 'gabarits'));
 const { normaliserRenduCourriel } = require(path.join(RACINE, 'vscodium-extension', 'szh-cockpit', 'lib', 'courriel'));
 
-// Convention sujet/corps du cockpit, importée de lib/courriel.js#normaliserRenduCourriel
-// plutôt que recopiée ici : le lanceur Windows ne passe jamais par ce module (il n'a pas de
-// Node), mais Get-SzhCourriel applique la MÊME convention -- sujet débarrassé de ses blancs
-// de bord, corps amputé d'un retour à la ligne de chaque côté -- et c'est ce que ce test
-// vérifie, contre la RÉELLE fonction du produit plutôt que contre sa propre copie figée.
+// Convention sujet/corps de lib/courriel.js : sujet sans blancs de bord, corps privé d'un
+// retour à la ligne de chaque côté. Get-SzhCourriel applique la même de son côté.
 function rendreConvention(source, nom, variables) {
   return normaliserRenduCourriel(compiler(source, nom).rendre(variables));
 }
@@ -58,19 +49,9 @@ test('chaque support.*.twig compile et rend un sujet et un corps non vides ; les
   }
 });
 
-// Les six anciens textes de windows/szh-textes.ps1 ('mail.sujet'/'mail.corps', fr/de/en),
-// recopiés ici AVANT leur retrait -- l'oracle indépendant de ce test.
-//
-// Deux réglages typographiques minimes ont été appliqués en les recopiant, tous deux de la
-// même famille que err.toolkit/arch.ok.livre corrigés par ailleurs dans ce fichier : ces
-// six textes n'avaient JAMAIS été vus par test/typo-check.py (mail.corps est une chaîne à
-// DOUBLES guillemets -- pour porter `r`n -- hors de portée de son extracteur PowerShell, qui
-// ne lit que "= '...'"). Devenus un gabarit, ils entrent dans une surface contrôlée et en
-// héritent : une apostrophe courbe (A1 : "l'outil" -> "l’outil", fr seulement) et une
-// insécable devant les deux-points de la colonne la plus courte (E2 : "Journal : " a un seul
-// espace, jamais exempté par la garde d'alignement qui ne laisse passer que deux espaces ou
-// plus -- fr et de). Reproduire le défaut tel quel aurait fait échouer test/typo-check.py
-// sur ce tout nouveau fichier, pour un manque qui n'avait simplement jamais été relevé.
+// Texte attendu de chaque gabarit de support, écrit à la main : la référence indépendante
+// de ce test. Il suit test/typo-check.py : apostrophe courbe (règle A1, fr) et insécable
+// devant les deux-points précédés d'un seul espace (règle E2).
 const NBSP = '\u00a0';
 
 const ANCIENS = {
@@ -110,20 +91,16 @@ for (const langue of ['fr', 'de', 'en']) {
   });
 }
 
-// ---- Le câblage réel, Windows seulement ----
-// Get-SzhCourriel (windows/szh-common.ps1) appelle désormais un vrai sous-processus
-// (VSCodium-en-Node) : on éprouve donc la VRAIE fonction PowerShell, extraite mot pour mot
-// du VRAI szh-common.ps1 (même technique que test/js/orphelins-toolkit.test.js pour
-// Remove-SzhToolkitOrphelins), plutôt que de faire confiance à la lecture du code.
+// ---- Get-SzhCourriel exécuté, Windows seulement ----
+// La fonction est extraite telle quelle de windows/szh-common.ps1, avec ses dépendances,
+// et lancée dans un script jetable (comme dans test/js/orphelins-toolkit.test.js).
 
-// Le dossier du cockpit DANS CE DÉPÔT (pas une extension posée pour ce compte) :
-// $env:SZH_COCKPIT_DOSSIER (Get-SzhDossierCockpit, szh-common.ps1) vise directement ici,
-// pour éprouver lib/gabarits.js et outils/rendre-gabarit.js tels qu'ils sont dans l'arbre
-// de travail, sans dépendre d'une extension déjà empaquetée et posée sur le poste.
+// $env:SZH_COCKPIT_DOSSIER (Get-SzhDossierCockpit) vise le cockpit du dépôt, et non une
+// extension installée sur le poste.
 const DOSSIER_COCKPIT_REPO = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 
-// VSCodium doit exister sur le poste pour ces tests : Get-SzhCourriel le lance en vrai.
-// Mêmes deux chemins que Get-VSCodiumExe (szh-common.ps1).
+// Get-SzhCourriel lance VSCodium, qui doit donc être installé. Mêmes chemins que
+// Get-VSCodiumExe (szh-common.ps1).
 const sansVSCodium = (function () {
   if (process.platform !== 'win32') { return 'pas Windows'; }
   const candidats = [
@@ -136,9 +113,8 @@ const sansVSCodium = (function () {
 
 const { POWERSHELL, sansPowerShell } = require('./gardes');
 
-// Le corps d'une fonction PowerShell : de sa ligne de déclaration jusqu'à la première ligne
-// qui n'est QUE « } », en colonne 0 -- identique à l'aide de même nom dans
-// test/js/orphelins-toolkit.test.js.
+// Le texte d'une fonction PowerShell : de sa déclaration jusqu'à la première ligne réduite
+// à « } » en colonne 0.
 function corpsFonction(source, nom) {
   const lignes = source.split('\r\n');
   let debut = -1;
@@ -154,16 +130,14 @@ function corpsFonction(source, nom) {
   return lignes.slice(debut, fin + 1).join('\r\n');
 }
 
-// Sans BOM sous PowerShell 5.1, un .ps1 SANS ce préfixe se relit avec la page de code ANSI
-// du poste, pas en UTF-8 (mêmes précautions que orphelins-toolkit.test.js).
+// Sans BOM, PowerShell 5.1 lit un .ps1 dans la page de code ANSI du poste.
 function ecrirePs1(chemin, contenu) {
   fs.writeFileSync(chemin, '\ufeff' + contenu, 'utf8');
 }
 
 function psChaine(v) { return "'" + String(v).replace(/'/g, "''") + "'"; }
-// Une valeur de hashtable peut être un tableau (variable `auteurs` du gabarit jetable,
-// ci-dessous) : @('a', 'b'), jamais String(v) qui les joindrait en une seule chaîne et
-// ferait disparaître le {% for %} qui la parcourt.
+// Un tableau devient @('a', 'b') : String(v) le joindrait en une chaîne, et le {% for %}
+// du gabarit jetable n'aurait rien à parcourir.
 function psValeur(v) {
   if (Array.isArray(v)) { return '@(' + v.map(psValeur).join(', ') + ')'; }
   return psChaine(v);
@@ -174,12 +148,11 @@ function psHashtable(obj) {
 
 const COMMUN_SOURCE = fs.existsSync(COMMUN_PS1) ? fs.readFileSync(COMMUN_PS1, 'utf8') : '';
 const CORPS_GET_SZH_COURRIEL = POWERSHELL ? corpsFonction(COMMUN_SOURCE, 'Get-SzhCourriel') : '';
-// Get-SzhCourriel appelle maintenant ces quatre-là (VSCodium-en-Node, dossier de
-// l'extension, journal, texte de repli) : la fonction extraite seule ne suffit plus, il
-// leur faut ces dépendances dans le même script-pilote jetable.
+// Dépendances de Get-SzhCourriel : VSCodium-en-Node, dossier de l'extension, journal,
+// texte de repli.
 const CORPS_GET_VSCODIUM_EXE = POWERSHELL ? corpsFonction(COMMUN_SOURCE, 'Get-VSCodiumExe') : '';
 const CORPS_GET_SZH_DOSSIER_COCKPIT = POWERSHELL ? corpsFonction(COMMUN_SOURCE, 'Get-SzhDossierCockpit') : '';
-// Le lancement de VSCodium-en-Node vit dans szh-shell.ps1 : Get-SzhCourriel en dépend aussi.
+// Le lancement de VSCodium-en-Node vit dans szh-shell.ps1.
 const SHELL_SOURCE = fs.readFileSync(path.join(RACINE, 'windows', 'szh-shell.ps1'), 'utf8');
 const CORPS_LANCEUR_NODE = POWERSHELL
   ? ['ConvertTo-SzhArgumentEchappe', 'ConvertTo-SzhArguments', 'Get-SzhOutilCockpit', 'Invoke-SzhNodeCockpit']
@@ -187,17 +160,14 @@ const CORPS_LANCEUR_NODE = POWERSHELL
   : '';
 const CORPS_WRITE_SZH_LOG = POWERSHELL ? corpsFonction(COMMUN_SOURCE, 'Write-SzhLog') : '';
 const CORPS_T = POWERSHELL ? corpsFonction(COMMUN_SOURCE, 'T') : '';
-// T() lit $SzhTextes et $SzhLangue -- windows/szh-textes.ps1 est une table de données pure
-// (aucun effet de bord), son vrai chemin se dot-source donc tel quel dans le pilote.
+// T() lit $SzhTextes et $SzhLangue. windows/szh-textes.ps1 n'a pas d'effet de bord : le
+// pilote le charge tel quel.
 const TEXTES_PS1 = path.join(RACINE, 'windows', 'szh-textes.ps1');
 
-// Exécute Get-SzhCourriel (extraite ci-dessus, avec ses dépendances) dans un dossier de
-// travail jetable qui porte son propre « mail-templates » -- $PSScriptRoot suit le fichier
-// .ps1 réellement lancé, donc ce dossier-là, jamais windows/mail-templates/ du dépôt.
-// `appel` est la ligne PowerShell qui peuple $sortie ; en cas de levée, $sortie.ok est faux
-// et $sortie.erreur porte le message. `extraEnv` s'ajoute à l'environnement du pilote --
-// $env:SZH_COCKPIT_DOSSIER, en particulier, pour viser un dossier précis sans dépendre
-// d'une extension posée sur le poste.
+// Exécute Get-SzhCourriel dans le dossier jetable `travail`, qui porte son propre
+// mail-templates/ : $PSScriptRoot suit le .ps1 lancé. `appel` est la ligne PowerShell qui
+// remplit $sortie ; si elle lève, $sortie.ok est faux et $sortie.erreur porte le message.
+// `extraEnv` s'ajoute à l'environnement du pilote.
 function executerGetSzhCourriel(travail, appel, extraEnv) {
   const pilote = [
     "$ErrorActionPreference = 'Stop'",
@@ -229,18 +199,11 @@ function executerGetSzhCourriel(travail, appel, extraEnv) {
   return JSON.parse(fs.readFileSync(pSortie, 'utf8'));
 }
 
-// Le contrôle qui prouve la mission : un gabarit jetable avec {% if %}, {% for %},
-// loop.last et un filtre -- hors de portée de l'ancien mini-moteur (il y levait
-// systématiquement « construction Twig non prise en charge ») -- est maintenant rendu
-// CORRECTEMENT par Get-SzhCourriel, puisque c'est lib/gabarits.js qui s'en charge en vrai.
-// Rouge avant le passage au moteur unique (14.09.2026), vert après : voir le rapport de
-// mission pour la preuve des deux états.
-// Pas de retour à la ligne entre {% endfor %} et {% endblock %} : comme les vrais gabarits
-// de support (une seule ligne vide avant {% endblock %}), pour ne pas cumuler deux \n de
-// fin -- .NET (-replace '\n$', '') et JS (.replace(/\n$/, '')) ne s'accordent pas sur
-// combien en retirer quand il y en a deux d'affilée (`$` de .NET matche aussi juste avant
-// un \n final, et -replace remplace TOUTES les occurrences), un écart de la convention de
-// rendu qui n'est pas l'objet de ce test.
+// Gabarit jetable avec {% if %}, {% for %}, loop.last et un filtre.
+// Pas de retour à la ligne entre {% endfor %} et {% endblock %}, comme dans les gabarits de
+// support : avec deux \n de fin, .NET (-replace '\n$', '') et JS (.replace(/\n$/, '')) n'en
+// retirent pas le même nombre, car le `$` de .NET correspond aussi juste avant un \n final
+// et -replace remplace toutes les occurrences.
 const GABARIT_JETABLE = '{% block sujet %}Bilan{% endblock %}\r\n' +
   '{% block corps %}\r\n' +
   '{% for a in auteurs %}{{ a|upper }}{% if loop.last %} (dernier){% endif %}\r\n' +
@@ -265,8 +228,7 @@ for (const langue of ['fr', 'de', 'en']) {
         const sourceJs = fs.readFileSync(path.join(GABARITS, 'support.' + langue + '.twig'), 'utf8');
         const resultatJs = rendreConvention(sourceJs, 'support.' + langue + '.twig', VARIABLES_ESSAI);
         assert.equal(resultatPs.sujet, resultatJs.sujet);
-        // `r`n côté PowerShell (mailto), \n côté JS : même comparaison qu'ailleurs dans ce
-        // fichier, normalisée avant de comparer.
+        // `r`n côté PowerShell (mailto), \n côté JS.
         assert.equal(String(resultatPs.corps).replace(/\r\n/g, '\n'), resultatJs.corps);
       } finally {
         fs.rmSync(travail, { recursive: true, force: true });
@@ -289,8 +251,7 @@ test('Get-SzhCourriel rend maintenant correctement {% if %}/{% for %}/loop.last 
     const resultatJs = rendreConvention(GABARIT_JETABLE, 'jetable.fr.twig', VARIABLES_JETABLE);
     assert.equal(resultatPs.sujet, resultatJs.sujet);
     assert.equal(String(resultatPs.corps).replace(/\r\n/g, '\n'), resultatJs.corps);
-    // Preuve que loop.last et le filtre |upper ont vraiment tourné, pas juste que « ok »
-    // est vrai : le dernier auteur porte « (dernier) », le premier non.
+    // loop.last et |upper ont tourné : seul le dernier auteur porte « (dernier) ».
     assert.match(resultatPs.corps, /MARTIN \(dernier\)/);
     assert.doesNotMatch(resultatPs.corps, /DUPONT \(dernier\)/);
   } finally {
@@ -298,9 +259,8 @@ test('Get-SzhCourriel rend maintenant correctement {% if %}/{% for %}/loop.last 
   }
 });
 
-// Le repli (VSCodium introuvable, extension introuvable, script manquant...) ne doit
-// JAMAIS lever -- $env:SZH_COCKPIT_DOSSIER pointé sur un dossier vide simule ce cas sans
-// avoir à désinstaller quoi que ce soit sur le poste de test.
+// Le repli (VSCodium, extension ou script introuvable) ne lève pas. Un
+// $env:SZH_COCKPIT_DOSSIER vide simule ce cas.
 test('Get-SzhCourriel : repli en texte simple quand le dossier du cockpit est vide, sans lever',
   { skip: sansPowerShell }, () => {
     const travail = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-courriel-repli-'));
@@ -315,8 +275,7 @@ test('Get-SzhCourriel : repli en texte simple quand le dossier du cockpit est vi
       assert.equal(resultat.ok, true, 'Get-SzhCourriel a levé au lieu de replier : ' + resultat.erreur);
       assert.ok(resultat.sujet && resultat.sujet.length > 0, 'repli : sujet vide');
       assert.ok(resultat.corps && resultat.corps.length > 0, 'repli : corps vide');
-      // Le texte de repli (szh-textes.ps1) est différent du gabarit habituel -- il ne doit
-      // jamais avoir lu ni rendu support.fr.twig.
+      // Le texte de repli vient de szh-textes.ps1, et non de support.fr.twig.
       assert.doesNotMatch(resultat.sujet, /outil Revue SZH/);
     } finally {
       fs.rmSync(travail, { recursive: true, force: true });

@@ -1,11 +1,5 @@
-﻿// Tests de la détection des copies en conflit (OneDrive/SharePoint).
-//
-// Chaque marqueur texte de conflit doit être reconnu, les doublons numérotés
-// testés avec et sans l'original à côté, et une vraie arborescence explorée pour
-// vérifier l'ordre stable et l'ignorance des dossiers interdits.
-//
-// Exécution : depuis la racine du dépôt,
-//   node --test test/js/copies-conflit.test.js
+﻿// Détection des copies en conflit déposées par OneDrive ou SharePoint
+// (lib/copies-conflit.js et son branchement dans lib/cycle-vie.js).
 'use strict';
 
 const test = require('node:test');
@@ -41,9 +35,8 @@ test('estCopieConflit : chaque marqueur textuel est reconnu', () => {
 
 // ---- estCopieConflit : casse ignorée ----
 
-// La casse du MARQUEUR est ignorée à la reconnaissance, mais celle du NOM est conservée
-// dans l'original reconstitué : ce nom sert à ouvrir le fichier d'origine, et la
-// compilation passe par WSL, où « Ausgabe.yaml » et « ausgabe.yaml » sont deux fichiers.
+// Le nom reconstitué sert à ouvrir l'original, et la compilation passe par la WSL, où
+// « Ausgabe.yaml » et « ausgabe.yaml » sont deux fichiers.
 test('estCopieConflit : la casse du marqueur est ignorée, celle du nom conservée', () => {
   const cas = 'AUSGABE-COPIE EN CONFLIT.YAML';
   const verdict = estCopieConflit(cas);
@@ -54,8 +47,7 @@ test('estCopieConflit : la casse du marqueur est ignorée, celle du nom conserv�
   assert.strictEqual(mixte.original, 'Ausgabe.yaml', 'casse du nom perdue');
 });
 
-// Un nom qui ne porte QUE le marqueur ne laisse aucun fichier d'origine devant lui :
-// « .yaml » n'est pas un nom, et le comparateur n'aurait rien à ouvrir.
+// « .yaml » seul n'est pas un nom : le comparateur n'aurait rien à ouvrir.
 test('estCopieConflit : un nom réduit au marqueur ne désigne aucun original', () => {
   assert.strictEqual(estCopieConflit('copie en conflit.yaml'), null,
     'un nom sans rien devant le marqueur a produit un original');
@@ -74,13 +66,12 @@ test('estCopieConflit : doublon (N) détecté quand l\'original existe', () => {
 });
 
 test('estCopieConflit : doublon (N) ignoré quand l\'original n\'existe pas', () => {
-  const existe = () => false;  // L'original n'existe jamais.
+  const existe = () => false;
   const verdict = estCopieConflit('ausgabe (1).yaml', existe);
   assert.strictEqual(verdict, null, 'doublon faussement reconnu sans original');
 });
 
 test('estCopieConflit : doublon (N) ignoré si pas de fonction existe', () => {
-  // Pas d'argument `existe`, équivalent à "aucun voisin n'existe".
   const verdict = estCopieConflit('ausgabe (1).yaml');
   assert.strictEqual(verdict, null, 'doublon faussement reconnu sans vérification');
 });
@@ -104,7 +95,6 @@ test('estCopieConflit : un fichier normal n\'est jamais signalé', () => {
 // ---- estCopieConflit : extensions ignorées ----
 
 test('estCopieConflit : une extension hors liste est ignorée', () => {
-  // Une image en conflit : le marqueur est présent, mais l'extension n'est pas surveillée.
   const verdict = estCopieConflit('couverture-copie en conflit.jpg');
   assert.strictEqual(verdict, null, 'image en conflit faussement signalée');
 });
@@ -112,7 +102,7 @@ test('estCopieConflit : une extension hors liste est ignorée', () => {
 // ---- estCopieConflit : temporaires du cockpit ----
 
 test('estCopieConflit : un nom commençant par "~$" est toujours ignoré', () => {
-  // Temporaire d'écriture atomique du cockpit, jamais une copie en conflit.
+  // Temporaire d'écriture atomique du cockpit.
   const verdict = estCopieConflit('~$ausgabe.yaml');
   assert.strictEqual(verdict, null, 'temporaire cockpit faussement signalé');
 });
@@ -120,62 +110,51 @@ test('estCopieConflit : un nom commençant par "~$" est toujours ignoré', () =>
 // ---- chercherCopies : vraie arborescence ----
 
 test('chercherCopies : explore une arborescence et ignore les dossiers interdits', () => {
-  // Crée une structure temporaire avec copies à différents niveaux.
   const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'copies-conflit-'));
 
   try {
-    // Racine : une copie en conflit.
     fs.writeFileSync(path.join(racine, 'readme-copie en conflit.md'), '');
     fs.writeFileSync(path.join(racine, 'readme.md'), '');
 
-    // Sous-dossier articles/<slug>/ : une copie en conflit.
     fs.mkdirSync(path.join(racine, 'articles'));
     fs.mkdirSync(path.join(racine, 'articles', 'essai'));
     fs.writeFileSync(path.join(racine, 'articles', 'essai', 'essai (conflicted copy).yaml'), '');
     fs.writeFileSync(path.join(racine, 'articles', 'essai', 'essai.yaml'), '');
 
-    // Dossier 'out' : une copie en conflit qui DOIT être ignorée.
+    // Copies à ignorer : dans out/ et .szh-avant-reimport/.
     fs.mkdirSync(path.join(racine, 'out'));
     fs.writeFileSync(path.join(racine, 'out', 'sortie-copie en conflit.html'), '');
 
-    // Dossier '.szh-avant-reimport' : une copie en conflit qui DOIT être ignorée.
     fs.mkdirSync(path.join(racine, '.szh-avant-reimport'));
     fs.writeFileSync(path.join(racine, '.szh-avant-reimport', 'save-copie en conflit.json'), '');
 
-    // Fichier normal (sans conflit).
     fs.writeFileSync(path.join(racine, 'config.yaml'), '');
 
-    // Lance la recherche.
     const copies = chercherCopies(racine);
 
-    // Doit trouver exactement 2 copies : une à la racine, une dans articles/essai/.
     assert.strictEqual(copies.length, 2, 'mauvais nombre de copies trouvées : ' + copies.length);
 
-    // Vérifie qu'elles sont bien triées par chemin.
     const chemins = copies.map((c) => c.chemin);
     assert.deepStrictEqual(chemins.slice(), chemins.sort(), 'les copies ne sont pas triées par chemin');
 
-    // La première doit être dans articles/essai/ (tri lexicographique : 'a' < 'r').
+    // Tri par chemin : articles/essai/ passe avant la racine (« a » < « r »).
     assert.ok(copies[0].chemin.includes('articles') && copies[0].chemin.includes('essai'),
       'première copie mal localisée : ' + copies[0].chemin);
     assert.strictEqual(copies[0].nom, 'essai (conflicted copy).yaml', 'nom incorrect');
     assert.strictEqual(copies[0].original, 'essai.yaml', 'original incorrect');
     assert.strictEqual(copies[0].marqueur, 'conflicted copy', 'marqueur incorrect');
 
-    // La seconde doit être à la racine.
     assert.ok(copies[1].chemin.includes('readme-copie en conflit.md'),
       'seconde copie mal identifiée : ' + copies[1].chemin);
     assert.strictEqual(copies[1].nom, 'readme-copie en conflit.md', 'nom incorrect');
     assert.strictEqual(copies[1].original, 'readme.md', 'original incorrect');
     assert.strictEqual(copies[1].marqueur, 'copie en conflit', 'marqueur incorrect');
 
-    // Vérifie que les copies dans 'out' et '.szh-avant-reimport' sont absentes.
     const enOut = copies.some((c) => c.chemin.includes('out'));
     const enSauvegarde = copies.some((c) => c.chemin.includes('.szh-avant-reimport'));
     assert.ok(!enOut, 'une copie de « out » n\'aurait pas dû être trouvée');
     assert.ok(!enSauvegarde, 'une copie de « .szh-avant-reimport » n\'aurait pas dû être trouvée');
   } finally {
-    // Nettoie.
     fs.rmSync(racine, { recursive: true });
   }
 });
@@ -192,7 +171,6 @@ test('chercherCopies : limite la profondeur à 6 niveaux', () => {
   const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'copies-conflit-profondeur-'));
 
   try {
-    // Crée une arborescence profonde.
     let courant = racine;
     for (let i = 0; i < 8; i++) {
       courant = path.join(courant, 'niveau' + (i + 1));
@@ -200,10 +178,9 @@ test('chercherCopies : limite la profondeur à 6 niveaux', () => {
       fs.writeFileSync(path.join(courant, 'fichier.yaml'), '');
     }
 
-    // Ajoute une copie au niveau 7 (hors limite).
+    // Copie dans le dossier le plus profond, au-delà de la limite.
     fs.writeFileSync(path.join(courant, 'fichier-copie en conflit.yaml'), '');
 
-    // Lance la recherche : ne doit pas le trouver (limite à 6).
     const copies = chercherCopies(racine);
     assert.strictEqual(copies.length, 0,
       'une copie au niveau 7 aurait dû être ignorée (limite 6)');
@@ -212,12 +189,10 @@ test('chercherCopies : limite la profondeur à 6 niveaux', () => {
   }
 });
 
-// ---- Le dossier PARTAGÉ de l'outil : l'autre terrain de collision -------------------
+// ---- Le dossier partagé de l'outil ---------------------------------------------------
 //
-// Le balayage ne regardait que le dossier du numéro ouvert. Or une copie en conflit déposée
-// par le synchroniseur dans « _Systeme » (rapports d'erreur, journaux, suggestions de
-// traduction, inventaire des postes) n'appartient à aucun numéro : elle n'était vue de
-// personne, et ce dossier ne s'ouvre jamais à la main.
+// « _Systeme » (rapports d'erreur, journaux, suggestions de traduction, inventaire des
+// postes) n'appartient à aucun numéro et ne s'ouvre pas à la main : il est balayé à part.
 
 const { chercherCopiesPlat } = require(
   path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit', 'lib', 'copies-conflit.js')
@@ -231,8 +206,7 @@ function dossierSystemeJetable() {
   fs.mkdirSync(path.join(systeme, 'rapports'), { recursive: true });
   fs.mkdirSync(path.join(systeme, 'inventaire'), { recursive: true });
   fs.mkdirSync(path.join(systeme, 'journaux', 'trop-profond'), { recursive: true });
-  // Le cas réel : deux postes écrivent le même rapport, OneDrive tranche en déposant la
-  // version perdante à côté.
+  // Deux postes écrivent le même rapport : OneDrive dépose la version perdante à côté.
   fs.writeFileSync(path.join(systeme, 'rapports', '20260915-0800-PC-aaa.json'), '{}');
   fs.writeFileSync(path.join(systeme, 'rapports',
     '20260915-0800-PC-aaa-copie en conflit (RMO-DESK).json'), '{}');
@@ -240,9 +214,9 @@ function dossierSystemeJetable() {
   fs.writeFileSync(path.join(systeme, 'index.json'), '{}');
   fs.writeFileSync(path.join(systeme, 'index (copie en conflit).json'), '{}');
   fs.writeFileSync(path.join(systeme, 'inventaire', 'notes-Konfliktkopie.md'), '');
-  // Un niveau de trop : hors de portée d'un balayage plat, et c'est voulu.
+  // Un niveau de trop : hors de portée du balayage plat.
   fs.writeFileSync(path.join(systeme, 'journaux', 'trop-profond', 'a-copie en conflit.json'), '{}');
-  // Le temporaire d'une écriture atomique n'est JAMAIS une copie en conflit.
+  // Temporaire d'écriture atomique, à ignorer.
   fs.writeFileSync(path.join(systeme, 'rapports', '~$20260915-0800-PC-bbb.json.123.ab'), '{}');
   return { racine, systeme };
 }
@@ -261,7 +235,7 @@ test('chercherCopiesPlat : le dossier partagé et ses sous-dossiers directs, pas
       'le balayage plat est descendu trop bas : il doit rester bon marché');
     assert.ok(!copies.some((c) => c.nom.startsWith('~$')),
       'un temporaire d’écriture atomique a été pris pour une copie en conflit');
-    // Le fichier d'origine est nommé, pour que le comparateur puisse s'ouvrir dessus.
+    // L'original est nommé, pour que le comparateur puisse l'ouvrir.
     const rapport = copies.find((c) => c.nom.endsWith('(RMO-DESK).json'));
     assert.strictEqual(rapport.original, '20260915-0800-PC-aaa.json');
     assert.ok(fs.existsSync(rapport.cheminOriginal), 'le chemin de l’original ne mène nulle part');
@@ -286,11 +260,9 @@ test('chercherCopiesPlat : une racine absente ou vide ne lève pas', () => {
   assert.deepStrictEqual(chercherCopiesPlat(null), []);
 });
 
-// ---- Le branchement réel : lib/cycle-vie.js ----------------------------------------
+// ---- Le branchement dans lib/cycle-vie.js -------------------------------------------
 //
-// C'est là qu'était le trou : chercherCopies n'était appelée qu'avec la racine d'un numéro.
-// lib/cycle-vie.js demande « vscode », que ce banc n'a pas ; une doublure minimale suffit —
-// rien de ce qui est éprouvé ici ne touche à l'interface.
+// Doublure minimale de « vscode » : rien de ce qui est vérifié ici ne touche à l'interface.
 function chargerCycleVie() {
   const Module = require('module');
   const orig = Module._load;
@@ -318,9 +290,8 @@ test('cycle-vie : le dossier partagé est DÉRIVÉ de celui des rapports, et il 
   const { racine, systeme } = dossierSystemeJetable();
   const avant = process.env.SZH_RAPPORTS;
   try {
-    // SZH_RAPPORTS nomme directement le dossier des rapports (lib/rapport-erreur.js) : le
-    // dossier partagé est son PARENT, jamais recomposé à la main — le segment du nom de
-    // l'application ne vit qu'à un seul endroit du JavaScript.
+    // SZH_RAPPORTS nomme le dossier des rapports (lib/rapport-erreur.js) ; le dossier
+    // partagé est son parent, pour que le nom de l'application ne vive qu'à un endroit.
     process.env.SZH_RAPPORTS = path.join(systeme, 'rapports');
     assert.strictEqual(cycleVie.dossierPartageOutil(), systeme,
       'le dossier partagé n’est pas le parent du dossier des rapports');
@@ -343,8 +314,8 @@ test('cycle-vie : sans ancrage ni surcharge, le balayage du dossier partagé ne 
   const base = process.env.SZH_BASE;
   const local = process.env.LOCALAPPDATA;
   try {
-    // Ni surcharge, ni ancrage, ni config lisible : rien à balayer, et surtout aucune
-    // exception qui remonterait jusqu'au rafraîchissement de l'éditeur.
+    // Ni surcharge, ni ancrage, ni config lisible : rien à balayer, et aucune exception
+    // qui remonterait jusqu'au rafraîchissement de l'éditeur.
     delete process.env.SZH_RAPPORTS;
     delete process.env.SZH_ANCRAGE;
     process.env.SZH_BASE = path.join(os.tmpdir(), 'szh-base-qui-nexiste-pas');
@@ -361,10 +332,9 @@ test('cycle-vie : sans ancrage ni surcharge, le balayage du dossier partagé ne 
 });
 
 test('cycle-vie : les deux appelants ajoutent le dossier partagé à ce qu’ils trouvent', () => {
-  // Contrôle de source : les deux seuls chemins qui alimentent la barre du contrôle de
-  // source (avertirCopiesConflit et rafraichirConflitsScm) doivent tous deux y passer —
-  // sans quoi une copie du dossier partagé disparaîtrait de la liste au premier
-  // rafraîchissement.
+  // Lecture du source : avertirCopiesConflit et rafraichirConflitsScm alimentent tous deux
+  // la vue du contrôle de source ; si l'un oubliait le dossier partagé, ses copies
+  // disparaîtraient de la liste au rafraîchissement suivant.
   const source = fs.readFileSync(
     path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit', 'lib', 'cycle-vie.js'), 'utf8');
   const appels = source.match(/copiesDuDossierPartage()/g) || [];

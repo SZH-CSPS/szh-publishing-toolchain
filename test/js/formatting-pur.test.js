@@ -1,7 +1,6 @@
-// lib/formatting-pur.js : la part de lib/formatting.js qui ne référence pas `vscode`,
-// extraite pour que lib/medias.js et lib/panneaux.js puissent la réutiliser sans tirer
-// tout l'hôte avec elle. Ce fichier ne charge JAMAIS lib/formatting.js par la voie
-// vscode-factice : le module doit se charger tel quel, hors de l'éditeur.
+// lib/formatting-pur.js : la part de lib/formatting.js qui ne référence pas `vscode`, pour
+// que lib/medias.js et lib/panneaux.js la réutilisent sans charger tout l'hôte. Le module se
+// charge ici tel quel, sans faux vscode.
 'use strict';
 
 const test = require('node:test');
@@ -14,8 +13,7 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 
 test('formatting-pur.js se charge sans require("vscode")', () => {
-  // Un require('vscode') qui échouerait ferait tomber ce require tout entier : le simple
-  // fait d'arriver ici, sans faux vscode posé par un harnais, prouve la pureté du module.
+  // Sans faux vscode, un require('vscode') ferait échouer ce require : arriver ici suffit.
   delete require.cache[require.resolve(path.join(COCKPIT, 'lib', 'formatting-pur.js'))];
   const pur = require(path.join(COCKPIT, 'lib', 'formatting-pur.js'));
   assert.ok(typeof pur.basculerEnrobage === 'function');
@@ -35,8 +33,8 @@ test('formatting.js réexporte les mêmes fonctions que formatting-pur.js (ident
   const { chargerAvecVscodeFactice } = require('./dom-minimal');
   const pur = require(path.join(COCKPIT, 'lib', 'formatting-pur.js'));
   const fmt = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'formatting.js'));
-  // nomMediaUnique n'est pas de ceux-là : formatting.js ne l'a jamais exporté, seul
-  // fmtFigure l'appelle en interne — pas un contrat de réexport à garder.
+  // nomMediaUnique n'en fait pas partie : formatting.js ne l'exporte pas, seul fmtFigure
+  // l'appelle.
   for (const nom of ['basculerEnrobage', 'basculerSouligne', 'basculerTitre', 'basculerCitation',
     'enroberBloc', 'poserBloc', 'blocAutour', 'squeletteTableau', 'tableauVierge',
     'blocReferenceTable', 'blocSautPage', 'noteBasPage', 'nomTableLibre', 'PALETTE_MEF',
@@ -56,9 +54,8 @@ test('attrBloc échappe l’antislash avant le guillemet (comme citerValeur de r
   assert.strictEqual(pur.attrBloc('important', ''), '{.important}');
 });
 
-// Les trois boucles while (fs.existsSync(...)) qui cherchent un nom libre reçoivent une
-// borne : sans elle, un dossier pathologique (ou un appelant qui boucle par erreur) tourne
-// pour toujours au lieu d'échouer proprement.
+// Les trois boucles while (fs.existsSync(...)) qui cherchent un nom libre sont bornées :
+// sur un dossier où tous les noms sont pris, elles échouent au lieu de tourner sans fin.
 test('nomMediaUnique (formatting-pur) refuse de boucler sans fin : borne à 1000, erreur claire', () => {
   const pur = require(path.join(COCKPIT, 'lib', 'formatting-pur.js'));
   const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-nom-media-'));
@@ -87,11 +84,9 @@ test('panneaux.js importe PALETTE_MEF de formatting-pur.js, pas de formatting.js
 
 // ---- noteBasPage : l'appel [^n] au curseur, sa définition en fin de document ----
 //
-// Note en référence, jamais la note inline ^[…] — voir le commentaire de noteBasPage
-// (lib/formatting-pur.js) pour les deux raisons (forme rendue par l'import Word, lisibilité
-// du paragraphe). Ces tests rejouent ce que fait fmtNoteBasPage : la fonction pure calcule
-// une plage de lignes à remplacer, appliquer() (ci-dessous) rejoue ce remplacement sur un
-// document en mémoire, comme test/js/formatting.test.js le fait déjà pour poserBloc.
+// Note en référence, et non note inline ^[…] (voir noteBasPage, lib/formatting-pur.js). La
+// fonction pure calcule une plage de lignes à remplacer ; appliquer() rejoue ce
+// remplacement sur un document en mémoire, comme fmtNoteBasPage dans l'éditeur.
 
 const pur = require(path.join(COCKPIT, 'lib', 'formatting-pur.js'));
 
@@ -164,8 +159,8 @@ test('sélection non vide : l’appel suit la sélection, le corps n’est ni d�
   const debut = doc.indexOf('important');
   const fin = debut + 'important'.length;
   const { texte } = appliquerNote(doc, { debutLigne: 0, debutCol: debut, finLigne: 0, finCol: fin });
-  // Le mot sélectionné reste intact et à sa place ; l'appel se pose juste après lui, la
-  // suite de la phrase n'est ni coupée ni déplacée.
+  // Le mot sélectionné reste à sa place ; l'appel se pose juste après lui, sans couper ni
+  // déplacer la suite de la phrase.
   assert.strictEqual(texte, 'Une phrase avec un mot important[^1] à noter.\n\n[^1]: ');
   assert.ok(texte.indexOf('important[^1]') !== -1);
   assert.ok(texte.indexOf('à noter.') !== -1, 'la fin de la phrase a disparu');
@@ -178,17 +173,15 @@ test('sélection non vide sur plusieurs lignes : les lignes qui suivent restent 
   const { texte } = appliquerNote(doc, { debutLigne: 0, debutCol: debut, finLigne: 0, finCol: finLigne0 });
   assert.strictEqual(texte,
     'Premier paragraphe avec un passage à citer[^1]\nsur deux lignes.\n\nDeuxième paragraphe.\n\n[^1]: ');
-  // Rien du corps n'a bougé : les deux lignes suivantes et le second paragraphe survivent
-  // mot pour mot.
+  // Le reste du corps est intact : les deux lignes suivantes et le second paragraphe.
   assert.ok(texte.indexOf('sur deux lignes.') !== -1);
   assert.ok(texte.indexOf('Deuxième paragraphe.') !== -1);
 });
 
 // ---- basculerEnrobage / basculerSouligne / basculerTitre / basculerCitation ----
 //
-// Jusqu'ici ces six fonctions n'étaient vérifiées que par leur PRÉSENCE dans l'inventaire
-// des réexports (test « identité » ci-dessus) : une régression dans leur logique même — par
-// exemple basculerEnrobage qui ne retirerait plus jamais l'enrobage — passait inaperçue.
+// Le comportement de ces six fonctions, au-delà de leur présence dans les réexports
+// (test « identité » plus haut).
 
 test('basculerEnrobage (**) : pose, retire, aller-retour', () => {
   assert.strictEqual(pur.basculerEnrobage('mot', '**'), '**mot**');
@@ -241,7 +234,7 @@ test('tableauVierge : la structure attendue par serialiserTable, en-tête + deux
     ['Colonne 1', 'Colonne 2', 'Colonne 3']);
   assert.deepStrictEqual(modele.lignes[1].cellules.map((c) => c.contenu), ['', '', '']);
   assert.deepStrictEqual(modele.lignes[2].cellules.map((c) => c.contenu), ['', '', '']);
-  // Le modèle doit être directement sérialisable, pas juste vraisemblable en apparence.
+  // Le modèle se sérialise directement.
   const html = serialiserTable(modele);
   assert.match(html, /<table/);
   assert.match(html, /Colonne 1/);

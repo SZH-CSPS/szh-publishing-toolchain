@@ -1,14 +1,10 @@
 // Où vivent les revues : la clé de config.json qui déplace la racine de tout le travail.
 //
-//   node --test "test/js/*.test.js"
-//
-// Le défaut de cet interrupteur était implicite — clé absente valait « dossier de test » —
-// et il est lu deux fois, par lib/archivage.js et par windows/szh-common.ps1. Deux dangers,
-// gardés ici :
-//   * un poste qui ne dit rien doit continuer de voir exactement les mêmes revues, sinon
-//     une mise à jour ferait disparaître le travail d'un rédacteur sans un mot ;
-//   * les deux moitiés doivent lire la même valeur. `"devMode": "false"` les séparait
-//     déjà : [bool]'false' vaut $true en PowerShell, 'false' === true est faux en
+// La clé est lue deux fois, par lib/archivage.js et par windows/szh-common.ps1. On vérifie :
+//   * qu'une clé absente vaut toujours « dossier de test », pour qu'un poste sans réglage
+//     voie les mêmes revues après une mise à jour ;
+//   * que les deux moitiés lisent la même valeur, y compris pour `"devMode": "false"` :
+//     [bool]'false' vaut $true en PowerShell, alors que 'false' === true est faux en
 //     JavaScript.
 'use strict';
 
@@ -57,16 +53,16 @@ test('emplacement des revues : chaque configuration donne la racine attendue', (
 });
 
 test('un poste qui ne dit rien garde la racine qu’il avait', () => {
-  // La règle d'avant : clé absente -> mode développeur -> arborescence de test. Elle ne
-  // doit pas bouger, c'est la seule qui ne fasse disparaître aucune revue.
+  // Clé absente -> mode développeur -> arborescence de test : la seule règle qui ne fasse
+  // disparaître aucune revue d'un poste existant.
   for (const cfg of [null, undefined, {}, { repo: 'x' }, { revuesRoots: [] }]) {
     assert.strictEqual(archivage.resoudreEmplacementRevues(cfg), archivage.EMPLACEMENT_TEST);
   }
 });
 
 test('lireModeDeveloppeur n’est que l’ancien nom de l’emplacement de test', () => {
-  // L'hôte et ses réglages appellent encore les deux anciens noms : ils doivent suivre la
-  // clé neuve, sinon la bascule du cockpit n'aurait plus d'effet.
+  // L'hôte et ses réglages appellent les deux anciens noms : ils suivent la clé, sinon la
+  // bascule du cockpit serait sans effet.
   assert.strictEqual(typeof archivage.lireModeDeveloppeur(), 'boolean');
   assert.strictEqual(typeof archivage.ecrireModeDeveloppeur, 'function');
   assert.strictEqual(archivage.ecrireModeDeveloppeur.length, 1);
@@ -80,7 +76,7 @@ test('la bascule écrit les deux clés, la neuve et l’ancienne', () => {
   const versTest = archivage.configAvecEmplacement(versProd, 'test');
   assert.strictEqual(versTest.emplacementRevues, 'test');
   assert.strictEqual(versTest.devMode, true);
-  // Une valeur inconnue ne doit pas écrire n'importe quoi dans config.json.
+  // Une valeur inconnue n'écrit pas n'importe quoi dans config.json.
   assert.strictEqual(archivage.configAvecEmplacement({}, 'sharepoint').emplacementRevues, 'test');
   // Et ce qui est écrit se relit à l'identique.
   for (const cfg of [versProd, versTest]) {
@@ -111,8 +107,8 @@ test('les deux moitiés déclarent les mêmes clés et les mêmes valeurs', () =
     'le dernier mot doit rester « test », le défaut historique');
 });
 
-// Les deux résolveurs sur les mêmes cas, pour de vrai. Windows seulement : szh-common.ps1
-// vise Windows PowerShell 5.1 et son dot-source touche %LOCALAPPDATA%, absent ailleurs.
+// Les deux résolveurs exécutés sur les mêmes cas. Windows seulement : szh-common.ps1 vise
+// Windows PowerShell 5.1, et son chargement lit %LOCALAPPDATA%.
 const { POWERSHELL, sansPowerShell } = require('./gardes');
 
 test('PowerShell et JavaScript rendent le même emplacement', { skip: sansPowerShell }, () => {
@@ -120,8 +116,8 @@ test('PowerShell et JavaScript rendent le même emplacement', { skip: sansPowerS
   const casJson = path.join(travail, 'cas.json');
   const pilote = path.join(travail, 'resoudre.ps1');
   fs.writeFileSync(casJson, JSON.stringify(CAS.map((c) => ({ config: c.config }))), 'utf8');
-  // Le pilote ne fait que dot-sourcer le socle et appeler le résolveur : rien n'est écrit
-  // dans C:\ProgramData\SZH — la résolution est pure des deux côtés.
+  // Le pilote charge szh-common.ps1 et appelle le résolveur, qui n'écrit rien, des deux
+  // côtés.
   fs.writeFileSync(pilote, [
     '$ErrorActionPreference = \'Stop\'',
     '. "' + COMMUN_PS1 + '"',
@@ -151,7 +147,7 @@ test('l’écriture de l’emplacement ne touche pas un config.json absent', () 
   // manque : un fichier posé ici avant lui le priverait des deux.
   assert.ok(corps.indexOf('if (-not (Test-Path $SzhConfigFile)) { return \'\' }') !== -1,
     'la migration doit renoncer quand config.json n’existe pas');
-  // Et jamais « production » sans avoir compté les numéros des deux côtés.
+  // « production » n'est proposé qu'après avoir compté les numéros des deux côtés.
   assert.ok(corps.indexOf('Measure-SzhNumeros $SzhEmplacementTest') !== -1 &&
     corps.indexOf('Measure-SzhNumeros $SzhEmplacementProd') !== -1,
     'le choix doit regarder les deux racines');

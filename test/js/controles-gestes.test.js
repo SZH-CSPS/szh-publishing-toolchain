@@ -11,10 +11,10 @@ const path = require('path');
 const COCKPIT = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit');
 require('./poste-isole');
 
-// Les notifications sorties, avec leurs boutons ; les commandes lancées ; la réponse à donner.
+// Notifications affichées (avec leurs boutons), commandes lancées, réponse à donner.
 const notifs = [];
 const commandes = [];
-// Les liens ouverts hors de l'éditeur (le brouillon de courriel au support).
+// Liens ouverts hors de l'éditeur (le brouillon de courriel au support).
 const liens = [];
 let reponse;
 
@@ -93,9 +93,8 @@ let tour = 0;
 async function compilerEtValider(reperes) {
   tour++;
   fs.writeFileSync(PDF, '%PDF-1.7 essai ' + tour + '\n', 'utf8');
-  // Les PDF d'essai ont tous la même taille, et coedition.empreinte() ne relit le fichier
-  // que si la taille ou le mtime change : deux écritures dans le même tic d'horloge
-  // passaient pour le même PDF, jamais revalidé. Un mtime propre à chaque tour l'exclut.
+  // coedition.empreinte() ne relit le fichier que si sa taille ou son mtime change, et les
+  // PDF d'essai ont tous la même taille : chaque tour reçoit donc son propre mtime.
   const t = 1700000000 + tour;
   fs.utimesSync(PDF, t, t);
   reperesRendus = reperes;

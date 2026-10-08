@@ -1,8 +1,7 @@
-// Le module gardes.js DOIT faire échouer un test dont l'outil est déclaré obligatoire et
-// absent, jamais le sauter. Le mécanisme réel (échec au chargement du module, sur le poste
-// de Robin, pour un vrai outil manquant) ne se simule pas ici sans PATH tronqué — ce fichier
-// éprouve donc directement la fonction `exiger`, sur un nom de variable et un motif
-// fictifs, pour prouver que « obligatoire + absent » lève et que les deux autres cas non.
+// gardes.js fait échouer, au lieu de sauter, un test dont l'outil est déclaré obligatoire
+// et absent. Simuler un vrai outil manquant demanderait un PATH tronqué : on appelle donc
+// `exiger` directement, sur une variable et un motif fictifs. « Obligatoire et absent »
+// lève, les autres cas non.
 'use strict';
 
 const test = require('node:test');

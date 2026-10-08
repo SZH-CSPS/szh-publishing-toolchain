@@ -1,7 +1,5 @@
 // Le moteur de gabarits (lib/gabarits.js) : un cas par construction reconnue, et les
 // erreurs qui doivent porter le nom du gabarit et le numéro de ligne.
-//
-//   node --test test/js/gabarits.test.js
 'use strict';
 
 const test = require('node:test');
@@ -75,8 +73,8 @@ test('filtres chaînés', () => {
 });
 
 // L'échappement HTML sert les gabarits de page (print-templates/), pas les courriels ni
-// les exports, qui sont en texte brut. Il n'est JAMAIS automatique : un gabarit HTML doit
-// le poser champ par champ, et ce banc fige les deux moitiés de cette règle.
+// les exports, qui sont en texte brut. Il n'est pas automatique : un gabarit HTML le pose
+// champ par champ.
 test('filtre escape : les cinq caractères qui cassent une page HTML', () => {
   assert.equal(corps('{{ x|escape }}', { x: '<a href="u">T & T\'s</a>' }),
     '&lt;a href=&quot;u&quot;&gt;T &amp; T&#39;s&lt;/a&gt;');

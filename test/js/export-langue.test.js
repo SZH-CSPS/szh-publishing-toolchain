@@ -1,25 +1,16 @@
 // Fichier de langue de l'interface : la copie de tous les libellés du cockpit, français et
 // allemand côte à côte, qu'on envoie à qui relit.
 //
-//   node --test "test/js/export-langue.test.js"
-//
-// Ce que ce fichier garde :
-//   * l'EXPORT COMPLET. C'est le seul défaut qui compte vraiment ici. Un export qui perd la
-//     moitié des clés se lit exactement comme un export entier : le fichier s'ouvre, les
-//     entrées sont bien formées, la relecture se fait — et les libellés absents ne sont
-//     jamais relus, sans que personne ne s'en aperçoive. Les DEUX sources doivent y être :
-//     TEXTES_COCKPIT (lib/i18n.js) ET les deux package.nls*.json, qui portent les titres de
-//     commandes et le tutoriel, donc du texte que la personne voit aussi.
-//   * le TROU QUI SE VOIT. Une clé absente d'une langue sort avec `null` en face. Escamoter
-//     l'entrée reviendrait à cacher au relecteur précisément ce qu'on voudrait qu'il voie.
-//   * l'ORDRE STABLE. Deux exports des mêmes tables doivent se comparer ligne à ligne : un
-//     tri qui dépend de la locale ou de l'ordre d'insertion rendrait tout diff illisible, et
-//     personne ne saurait dire ce qui a changé entre deux envois.
-//   * les VALEURS INTACTES. Apostrophes typographiques, espaces insécables, guillemets,
-//     marqueurs {0} : une normalisation ferait relire un texte que personne ne voit à
-//     l'écran, et les corrections reviendraient sur une autre chaîne que celle affichée.
-//   * l'EN-TÊTE. Schéma et version : un fichier relu six mois plus tard doit dire à quelle
-//     grammaire et à quelle livraison il se rapporte.
+// On vérifie :
+//   * que l'export est complet. Un export à moitié vide se lit comme un export entier, et
+//     les libellés manquants ne seraient jamais relus. Il contient TEXTES_COCKPIT
+//     (lib/i18n.js) et les deux package.nls*.json (titres de commandes, tutoriel) ;
+//   * qu'une clé absente d'une langue sort avec `null` en face, pour que le relecteur la
+//     voie ;
+//   * que l'ordre est stable (par source puis par clé), pour comparer deux envois ;
+//   * que les valeurs sont intactes (apostrophes, insécables, guillemets, marqueurs {0}) :
+//     le relecteur corrige la chaîne affichée ;
+//   * que l'en-tête porte le schéma et la version.
 'use strict';
 
 const test = require('node:test');
@@ -73,7 +64,7 @@ test('aucune clé perdue : les deux tables du cockpit et les deux package.nls y 
     }
   }
 
-  // Et rien d'inventé au passage : le compte est celui de l'union des deux langues.
+  // Rien d'inventé : le compte est celui de l'union des deux langues.
   const union = (paire) => new Set(Object.keys(paire.fr).concat(Object.keys(paire.de)));
   assert.strictEqual(cockpit.size, union(TEXTES_COCKPIT).size, 'le compte des libellés du cockpit ne tombe pas juste');
   assert.strictEqual(commandes.size, union(NLS).size, 'le compte des titres de commandes ne tombe pas juste');
@@ -93,7 +84,7 @@ test('une clé absente d’une langue sort quand même, avec null en face', () =
   const commandes = parCle(objet, 'commandes');
   assert.strictEqual(commandes.get('cmd.seul').fr, null, 'le trou est masqué au lieu d’être dit');
   assert.strictEqual(commandes.get('cmd.seul').de, 'Nur auf Deutsch');
-  // Une chaîne vide EST une valeur : elle ne doit pas se confondre avec un trou.
+  // Une chaîne vide est une valeur, distincte d'une clé absente.
   const vide = exp.construire({ cockpit: { fr: { x: '' }, de: { x: '' } }, commandes: {}, version: '1', lire: {} });
   assert.strictEqual(parCle(vide, 'cockpit').get('x').fr, '', 'une valeur vide est prise pour un trou');
 });
@@ -103,8 +94,7 @@ test('l’ordre est stable : deux exports des mêmes tables se comparent ligne �
   const b = exportReel();
   assert.deepStrictEqual(b.entrees, a.entrees, 'deux exports des mêmes tables donnent deux ordres');
 
-  // Trié par source puis par clé, et non par ordre d'insertion : c'est ce tri-là qui rend
-  // un diff lisible d'un envoi à l'autre.
+  // Trié par source puis par clé, et non par ordre d'insertion.
   const desordre = exp.construire({
     cockpit: { fr: { zz: 'z', aa: 'a', mm: 'm' }, de: { mm: 'm', aa: 'a' } },
     commandes: { fr: { 'cmd.b': 'b', 'cmd.a': 'a' }, de: {} },
@@ -129,14 +119,13 @@ test('les valeurs ne sont pas retouchées : apostrophes, insécables, guillemets
   for (const cle of Object.keys(brut)) {
     assert.strictEqual(cockpit.get(cle).fr, brut[cle], 'valeur retouchée : ' + cle);
   }
-  // Et à travers la sérialisation : l'aller-retour JSON ne doit rien perdre non plus.
+  // L'aller-retour JSON ne perd rien non plus.
   const relu = JSON.parse(exp.serialiser(objet));
   for (const e of relu.entrees) {
     if (e.fr !== null) { assert.strictEqual(e.fr, brut[e.cle], 'valeur altérée par la sérialisation : ' + e.cle); }
   }
 
-  // Les vraies tables du dépôt portent ces caractères : on le vérifie là aussi, sans quoi
-  // le contrôle ci-dessus n'éprouverait qu'un jeu d'essai complaisant.
+  // Même vérification sur les tables du dépôt, qui portent ces caractères.
   const reel = parCle(exportReel(), 'cockpit');
   const avecApo = Object.keys(TEXTES_COCKPIT.fr).filter((c) => String(TEXTES_COCKPIT.fr[c]).indexOf(APO) !== -1);
   assert.ok(avecApo.length > 0, 'plus aucune apostrophe typographique dans lib/i18n.js ?');
@@ -151,28 +140,22 @@ test('l’en-tête dit le schéma, la version, les langues et ce qu’est ce fic
   assert.deepStrictEqual(objet.langues, ['fr', 'de']);
   // L'horodatage porte son fuseau : sans lui, l'heure se relit à une heure près.
   assert.match(objet.genere, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/);
-  // Un JSON ne porte pas de commentaire : _lire est le seul endroit où dire que ce fichier
-  // est une copie. Vide, personne ne saurait quoi en faire.
+  // Un JSON n'a pas de commentaire : _lire explique ce qu'est le fichier.
   const dit = exp.construire({
     cockpit: {}, commandes: {}, version: '1',
     lire: { fr: 'Ce fichier est une COPIE.', de: 'Diese Datei ist eine KOPIE.' }
   });
   assert.strictEqual(dit._lire.fr, 'Ce fichier est une COPIE.');
   assert.strictEqual(dit._lire.de, 'Diese Datei ist eine KOPIE.');
-  // Le nom proposé porte la version : un fichier relu plus tard se raccroche à ce qui était
-  // affiché ce jour-là.
+  // Le nom proposé porte la version affichée ce jour-là.
   assert.strictEqual(exp.nomFichier(VERSION), 'langue-szh-cockpit-' + VERSION + '.json');
 });
 
-// ---- Le bouton, dans le DOM, par le chemin réel ----
+// ---- Le bouton, dans le DOM ----
 //
-// Le défaut gardé ici a été vécu la veille, avec la pastille du vérificateur de traduction :
-// le module était juste, ses tests verts, et le bouton ne s'affichait nulle part. Éprouver
-// ce qu'une fonction rend ne dit RIEN de ce qu'une page montre. On rend donc la vraie page
-// des réglages (l'onglet Paramètres de l'Accueil, avec le vrai media/accueil.js), et on y cherche
-// le bouton.
-//
-// Les libellés sont ceux de l'hôte (textesAccueil), chargés par page-reglages.js.
+// On rend la page des réglages (onglet Paramètres de l'Accueil, avec media/accueil.js) et on
+// y cherche le bouton : une fonction juste ne garantit pas que la page l'affiche. Les
+// libellés sont ceux de l'hôte (textesAccueil), chargés par page-reglages.js.
 const { ouvrirReglages } = require('./page-reglages');
 
 function textesDe(racine) {
@@ -194,11 +177,10 @@ test('réglages : le bouton du fichier de langue est dans la page, et parle', ()
   assert.strictEqual(vu.length, 1,
     'le bouton « ' + libelle + ' » n’est pas dans la page de réglages ; boutons vus : '
     + JSON.stringify(boutons.map((b) => b.textContent)));
-  // Son explication est là aussi : un bouton qui enregistre un fichier pour l’envoyer à
-  // quelqu’un ne se devine pas de son seul libellé.
+  // Son explication est affichée : le libellé seul ne dit pas à quoi sert le fichier.
   assert.ok(textesDe(zones).includes(TEXTES_COCKPIT.fr['accueil.regl.fichier.aide']),
     'le bouton est là, mais rien ne dit à quoi sert le fichier');
-  // Et il parle à l’hôte : un bouton muet serait le même défaut, une fois de plus.
+  // Et il envoie un message à l’hôte.
   vu[0].dispatchEvent({ type: 'click' });
   assert.ok(page.messages.some((m) => m.type === 'exporterLangue'),
     'le clic n’envoie rien à l’hôte ; messages vus : ' + JSON.stringify(page.messages));

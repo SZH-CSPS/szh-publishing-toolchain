@@ -1,8 +1,6 @@
 // L'aperçu de la date imprimée d'une fiche : pipeline/filters/szh-date-apercu.lua (le
 // formateur de szh-commun.lua, celui de la compilation) et lib/date-apercu.js, qui le lance
 // dans le moteur avec la saisie sur stdin.
-//
-//   node --test test/js/date-apercu.test.js
 'use strict';
 
 const test = require('node:test');

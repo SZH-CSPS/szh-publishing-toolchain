@@ -1,18 +1,17 @@
-// Fabrique des .docx d'essai pour les figures à plusieurs images (décision de Robin du
-// 29.09.2026) — partagée par test/js/manuscrit-figures.test.js (le nettoyeur) et
-// test/js/import-figures.test.js (l'import et son filet de sécurité). Pas un test : un module.
+// Fabrique des .docx d'essai pour les figures à plusieurs images, utilisée par
+// test/js/manuscrit-figures.test.js (le nettoyeur) et test/js/import-figures.test.js
+// (l'import). Ce n'est pas un test.
 //
-// Deux familles, les mêmes que le diagnostic qui a ouvert ce chantier :
+// Deux familles :
 //   * « brut » : un manuscrit quelconque (styles Normal et heading 1), l'en-tête de figure
-//     TAPÉ à la main (« Légende : … », « Texte alternatif : … », « Copyright : … ») ;
+//     tapé à la main (« Légende : … », « Texte alternatif : … », « Copyright : … ») ;
 //   * « pronto » : une copie du gabarit livré (revue-template), dont le premier bloc figure
 //     reçoit les mêmes valeurs dans ses paragraphes « SZH Cle Abb/Tab ».
 // Et trois contenus : (a) deux images dans un paragraphe, (b) deux paragraphes d'images,
 // (c) un tableau 1×2 de mise en page. Les images sont de vrais PNG (400×300 et 300×400), avec
 // une description Word (descr) chacune — ou sans, sur demande.
 //
-// Le programme Python est écrit au vol (patron de test/js/manuscrit-gabarit.test.js : jamais
-// de binaire figé dans le dépôt).
+// Le programme Python est écrit au vol, plutôt qu'un binaire figé dans le dépôt.
 'use strict';
 
 const fs = require('fs');
@@ -21,9 +20,8 @@ const path = require('path');
 const { python, cheminPython } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
-// Gabarits V4 (29.09.2026) : deux fichiers, FR et DE — la fabrique reste sur le FR (les tests
-// qu'elle sert ne portent pas sur la langue des étiquettes, seulement sur la reconnaissance
-// des blocs figure/tableau).
+// Le gabarit existe en FR et en DE ; la fabrique prend le FR, car ses tests portent sur la
+// reconnaissance des blocs figure et tableau, et non sur la langue des étiquettes.
 const GABARIT = path.join(RACINE, 'revue-template', "Pronto - modele d'article_FR.docx");
 const ENV_UTF8 = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
 
@@ -211,7 +209,7 @@ const CREDIT = '© Jeanne Test';
 const p = (texte, style) => ({ p: [{ t: texte }], style: style });
 const img = (cle, descr) => ({ img: cle, descr: descr === undefined ? 'descr Word ' + cle : descr });
 
-// Les trois contenus du diagnostic. `descrB` : la description Word de la seconde image
+// Les trois contenus. `descrB` : la description Word de la seconde image
 // (vide : l'image n'a pas de texte alternatif, et l'import doit le dire).
 function contenu(cas, descrB) {
   const a = img('A');
@@ -222,8 +220,8 @@ function contenu(cas, descrB) {
 }
 
 // Un manuscrit brut, avec (par défaut) une bibliographie et un corps assez long ; `court` :
-// sans bibliographie ni seconde section, neuf paragraphes — la forme de l'incident « tout le
-// corps supprimé ».
+// sans bibliographie ni seconde section, neuf paragraphes : la forme où le nettoyeur
+// risquerait de supprimer tout le corps.
 function manuscritBrut(cas, options) {
   const o = options || {};
   const corps = [
@@ -262,7 +260,7 @@ function dossierJetable(prefixe) {
 }
 
 // Les enchaînements de la règle « 0, 1 ou 2 paragraphes vides entre deux images d'une même
-// figure » (décision de Robin, 29.09.2026) : deux images séparées par `entre`, une liste de
+// figure » : deux images séparées par `entre`, une liste de
 // blocs — des vides, un texte, ou une nouvelle série de clés (`clesSecondes(style)`).
 const vide = () => ({ p: [] });
 function deuxImagesSeparees(entre) {

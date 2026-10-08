@@ -1,7 +1,5 @@
 // La vue « Publier sur le site web » de la Documentation : une notice « fonctionnalité à
 // venir », ouverte depuis l'arbre, qui ne parle jamais à l'hôte.
-//
-//   node --test test/js/documentation-web.test.js
 'use strict';
 
 const test = require('node:test');

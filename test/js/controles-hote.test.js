@@ -1,6 +1,6 @@
-// lib/controles-hote.js configuré seul, sans extension.js : le module ne dépend pas de l'hôte.
-// Les constats y sont rangés par source : en poser pour l'une ne doit jamais effacer ceux
-// d'une autre, et le voile « Analyse en cours… » se lève quand la tâche est finie.
+// lib/controles-hote.js configuré seul, sans extension.js. Les constats sont rangés par
+// source : en poser pour l'une n'efface pas ceux d'une autre. Le voile « Analyse en
+// cours… » se lève quand la tâche est finie.
 'use strict';
 
 const test = require('node:test');
@@ -18,7 +18,7 @@ const barres = [];
 const notifs = { erreurs: [], avertissements: [], infos: [], boutons: [], reponse: undefined };
 const reglages = {};
 
-// Le module demande « vscode », que ce banc n'a pas : une doublure minimale suffit.
+// Doublure minimale de « vscode ».
 function charger() {
   const Module = require('module');
   const orig = Module._load;
@@ -140,8 +140,8 @@ test('terminerAnalyse sans analyse en cours ne pousse rien', () => {
 });
 
 // Une seule figure sans texte alternatif : la vue la range en bloquant (lib/constats.js,
-// gravite), la barre d'état et la notification doivent dire la même chose, et retomber
-// avec elle quand la validation PDF/UA est éteinte.
+// gravite) ; la barre d'état et la notification disent la même chose, et passent en
+// avertissement avec elle quand la validation PDF/UA est éteinte.
 const JOURNAL_FIGURE = '[numerotation-avertissement] figure-sans-alt | article « 00-a » | image « media/fig-01.png » | L’image n’a pas de texte alternatif | [de] Bild ohne Alt\n';
 
 async function compilerFigure() {

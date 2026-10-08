@@ -2,8 +2,6 @@
 // remplit le descriptif par défaut, marqué « à relire », avec ses doutes ; « Voir l'original »
 // rend celui de la source ; l'acceptation écrit ce qui est affiché, par kirby-contenu.js. Un
 // résumé dont la source a changé ne s'affiche plus.
-//
-//   node --test test/js/documentation-resumes.test.js
 'use strict';
 
 const test = require('node:test');

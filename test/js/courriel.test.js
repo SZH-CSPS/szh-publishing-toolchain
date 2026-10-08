@@ -1,9 +1,4 @@
-// Les gabarits de courriel (lib/courriel.js, mail-templates/*.twig) : chaque .twig
-// compile, existe dans les deux langues, rend un sujet et un corps non vides, l'italien
-// replie sur le français, un nom inconnu lève, et le rendu retrouve au caractère près les
-// quatre anciens textes de lib/i18n.js (recopiés ci-dessous avant leur retrait).
-//
-//   node --test test/js/courriel.test.js
+// Les gabarits de courriel du cockpit (lib/courriel.js, mail-templates/*.twig).
 'use strict';
 
 const test = require('node:test');
@@ -16,14 +11,8 @@ const GABARITS = path.join(COCKPIT, 'mail-templates');
 const { compiler } = require(path.join(COCKPIT, 'lib', 'gabarits'));
 const courriel = require(path.join(COCKPIT, 'lib', 'courriel'));
 
-// Les quatre textes d'origine (art.envoi.sujet/corps, trad.lien.sujet/corps), fr et de,
-// recopiés de lib/i18n.js avant leur retrait — l'oracle indépendant de ce test.
-//
-// Glissement du 13.09.2026 : le chemin de secours de trad.lien.corps (« sans le lien ») nommait
-// un lanceur de produit disparu (« Zeitschriften SZH », « Revues SZH ») ; il nomme maintenant
-// le lanceur unique et son onglet, au caractère près (espaces insécables comprises) — recopié
-// ici depuis traduction.fr.twig / traduction.de.twig. Le défaut gardé ne change pas : un
-// gabarit qui s'écarterait de cet oracle, ne serait-ce que d'un caractère, se verrait ici.
+// Texte attendu de chaque gabarit, fr et de, écrit à la main : la référence indépendante
+// de ce test. Un écart d'un seul caractère fait échouer le test.
 const ANCIENS = {
   "fr": {
     "art.envoi.sujet": "Version finale – {0}",

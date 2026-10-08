@@ -1,8 +1,6 @@
 // La vue « Propositions » de la Documentation : l'entrée de l'arbre, les messages de l'hôte
 // (documentation-hote.js) et la page (media/_propositions.js). Les lots sont synthétiques,
 // écrits ici dans la bibliothèque jetable du numéro d'essai (docs/FORMAT-PROPOSITIONS.md).
-//
-//   node --test test/js/documentation-propositions.test.js
 'use strict';
 
 const test = require('node:test');
@@ -592,8 +590,8 @@ test('page : sous le seuil, le détail prend toute la largeur, avec « ← Liste
   assert.strictEqual(panel.querySelector('.prop-detail .szh-tete-nom').textContent, 'Zêta fédéral');
   page.redimensionner(1400);
   assert.ok(panel.querySelector('.prop-split--detail'));
-  // Mesuré dans VSCodium : entre 960 et 1280 px de vue, le tableau à côté du détail défile
-  // en largeur et tronque ses colonnes ; le détail y prend donc toute la place.
+  // Entre 960 et 1280 px de vue, le tableau à côté du détail défilerait en largeur et
+  // tronquerait ses colonnes : le détail y prend toute la place.
   page.redimensionner(1200);
   assert.ok(panel.querySelector('.prop-split--plein'), 'à 1200 px, le détail devait passer en pleine largeur');
   page.redimensionner(1300);

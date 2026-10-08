@@ -1,7 +1,5 @@
 // Une date stockée qui n'existe pas au calendrier (2026-02-30) survit à l'ouverture et à
 // l'enregistrement de la Documentation, et se signale au lieu de disparaitre.
-//
-//   node --test test/js/documentation-date-brute.test.js
 'use strict';
 
 const test = require('node:test');

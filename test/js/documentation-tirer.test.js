@@ -1,7 +1,5 @@
 // « Tirer dans ce numéro » et « Traduire dans ce numéro » rechargent la Documentation : une
 // carte modifiée est d'abord enregistrée, et le geste part seulement après l'accusé.
-//
-//   node --test test/js/documentation-tirer.test.js
 'use strict';
 
 const test = require('node:test');

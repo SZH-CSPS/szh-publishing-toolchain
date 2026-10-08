@@ -1,15 +1,12 @@
-// pipeline/docx-titres.py : pré-pass d'import qui déduit les niveaux de titre d'un .docx
-// dépourvu (ou à moitié dépourvu) de styles Word — utilisé par pipeline/import-docx.sh sur
-// CHAQUE import réel, sans aucun test avant ce fichier (grep confirmé : aucune occurrence
-// hors de lui-même et de pipeline/import-docx.sh, exclu de cette revue).
+// pipeline/docx-titres.py, lancé par pipeline/import-docx.sh à chaque import : déduit les
+// niveaux de titre d'un .docx qui n'a pas, ou peu, de styles de titre.
 //
-//   node --test "test/js/*.test.js"
-//
-// Trois fixtures .docx minimales, fabriquées ici (patron test/js/docx-meta-titre.test.js,
-// fabriquerDocx) plutôt que figées en binaire — le style de chaque paragraphe se lit dans le
-// test : styles de section absents (déduction complète, par paliers de taille de police),
-// « à moitié » présents (déduction en complément, tout au niveau 2), complets (aucune
-// déduction, même si des paragraphes ressemblent fortement à des titres).
+// Trois .docx minimaux, fabriqués ici pour que le style de chaque paragraphe se lise dans
+// le test :
+// - sans styles de titre : déduction complète, par paliers de taille de police ;
+// - à moitié stylé : déduction en complément, tout au niveau 2 ;
+// - entièrement stylé : aucune déduction, même pour des paragraphes qui ressemblent à des
+//   titres.
 'use strict';
 
 const test = require('node:test');
@@ -91,7 +88,7 @@ test('docx-titres.py : styles « à moitié » présents, déduction en complém
   { skip: sansPython }, () => {
     // Un seul titre stylé (Heading1, <= MAX_STYLES_MIXTE) et trois candidats heuristiques
     // nets (>= MIN_CANDIDATS_MIXTE) : document jugé « à moitié stylé », les candidats
-    // sortent TOUS en niveau 2, la hiérarchie restant à la charge des styles.
+    // sortent tous en niveau 2, la hiérarchie restant à la charge des styles.
     const sortie = deduire([
       { texte: 'Titre style', style: 'Heading1' },
       { texte: 'Un sous-titre implicite un', gras: true },

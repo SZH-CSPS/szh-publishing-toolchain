@@ -1,7 +1,5 @@
 // La note d'une figure (note="…" sur l'image) et d'un tableau (data-note sur <table>) :
 // imprimée sous l'objet, lue et réécrite par le cockpit sans rien perdre ni rien ajouter.
-//
-//   node --test test/js/figures-note.test.js
 'use strict';
 
 const test = require('node:test');

@@ -1,29 +1,16 @@
-// diagnostic.ps1 : trois défauts trouvés en revue, gardés ici.
+// windows/diagnostic.ps1. Les tests sont numérotés par sujet :
 //
-//   node --test "test/js/*.test.js"
+// 1. Une application absente marquée `"requis": false` dans windows/apps.lock (SumatraPDF)
+//    ressort au ton 'note', qui ne fait pas échouer le diagnostic ; une application requise
+//    absente ressort en 'manque'.
 //
-// 1. Branche morte (ligne ~102) : `if (-not $app.requis) { $etat = 'manque' }` recopiait
-//    la valeur déjà posée juste au-dessus — les deux branches étaient identiques. SumatraPDF
-//    porte `"requis": false` dans apps.lock (windows/apps.lock), et son absence doit se lire
-//    au ton 'note', qui existe déjà (fonction Dire) mais n'était jamais atteint pour cette
-//    application. Conséquence : un poste sans SumatraPDF — pourtant conforme, puisqu'il
-//    n'est pas requis — ressortait avec `exit 1` comme n'importe quel vrai défaut.
+// 2. Le nombre de raccourcis annoncé vient du tableau rendu par Get-SzhRaccourcisMenu
+//    (szh-common.ps1), et non d'un chiffre écrit dans le texte.
 //
-// 2. Compte périmé (lignes ~196 et ~199) : les textes affichés au rédacteur disaient en dur
-//    « 4 entrées » / « les 4 entrées », alors que Get-SzhRaccourcisMenu (szh-common.ps1) en
-//    pose 5 depuis l'arrivée de « Books SZH-CSPS » (voir test/js/raccourcis.test.js, qui
-//    l'affirme : `r.passe2.poses === 5`). Le chiffre est maintenant dérivé du tableau rendu
-//    par Get-SzhRaccourcisMenu, pour qu'un sixième produit ne rende plus ce diagnostic faux
-//    sans qu'aucune ligne n'ait besoin de changer ici.
-//
-// 3. Clés de registre en dur (lignes ~209 et ~214) : `SZH.Markdown` et le schéma `szh` sont
-//    possédés et nommés par update.ps1 (Set-SzhProgIdMarkdown, Set-SzhProtocoleSzh), pas par
-//    diagnostic.ps1. Aucune variable ni fonction de szh-common.ps1 ne les expose aujourd'hui ;
-//    ce fichier n'a donc PAS été centralisé (une centralisation reste à faire — voir le
-//    rapport de la tâche). Ce test garde à la place un commentaire ⚠ qui nomme update.ps1 et
-//    les deux lignes où il faudrait regarder avant de renommer quoi que ce soit là-bas — et
-//    vérifie, en relisant le VRAI update.ps1, que ces deux fonctions sont toujours où le
-//    commentaire dit qu'elles sont.
+// 3. Les clés de registre `SZH.Markdown` et `szh` sont écrites en dur dans diagnostic.ps1,
+//    mais appartiennent à update.ps1 (Set-SzhProgIdMarkdown, Set-SzhProtocoleSzh). Un
+//    commentaire de diagnostic.ps1 le dit et cite les lignes de ces fonctions ; le test
+//    vérifie que ces lignes sont toujours les bonnes.
 'use strict';
 
 const test = require('node:test');
@@ -40,9 +27,8 @@ const DIAG_PATH = path.join(RACINE, 'windows', 'diagnostic.ps1');
 const DIAG = lire('windows', 'diagnostic.ps1');
 const UPDATE = lire('windows', 'update.ps1');
 
-// Une tranche du VRAI texte de diagnostic.ps1, entre deux motifs qui doivent tous deux
-// exister : si l'un des deux disparaît, ce script a changé de forme et le test doit le dire
-// plutôt que de continuer à éprouver un extrait qui ne correspond plus au fichier.
+// Extrait de diagnostic.ps1 entre deux motifs. Si l'un manque, le script a changé de forme
+// et le test échoue.
 function tranche(source, debutMotif, finMotif) {
   const iDebut = source.indexOf(debutMotif);
   assert.ok(iDebut !== -1, 'motif de début introuvable dans diagnostic.ps1 : ' + debutMotif);
@@ -62,8 +48,7 @@ function ligneContenant(source, motif) {
 
 test('correctif 1 : la branche « pas requis » ne recopie plus la branche « requis »', () => {
   const bloc = tranche(DIAG, '$sujet = $app.nom', '\r\n  $v = ');
-  // Les deux affectations à $etat doivent maintenant différer ; avant le correctif, la
-  // seconde ligne écrivait 'manque' au lieu de 'note' et les deux étaient identiques.
+  // Deux affectations à $etat, de valeurs différentes : 'manque' puis 'note'.
   const lignesEtat = bloc.split('\r\n').filter((l) => l.indexOf('$etat = ') !== -1 || l.indexOf('$etat =') !== -1);
   assert.ok(lignesEtat.length >= 2, 'les deux affectations de $etat ont disparu du bloc');
   assert.ok(bloc.indexOf("$etat = 'manque'") !== -1, 'la branche par défaut doit rester « manque »');
@@ -72,8 +57,8 @@ test('correctif 1 : la branche « pas requis » ne recopie plus la branche « re
 });
 
 test('correctif 1 : le ton \'note\' n\'est pas compté dans le verdict final', () => {
-  // $aReparer ne retient que 'manque' : c'est ce qui rend le correctif 1 sûr. S'il retenait
-  // aussi 'note', passer SumatraPDF à ce ton n'aurait rien réparé.
+  // $aReparer ne retient que 'manque' : sinon le ton 'note' ferait aussi échouer le
+  // diagnostic.
   const ligne = ligneContenant(DIAG, '$aReparer = @($Bilan');
   assert.match(ligne, /Where-Object \{ \$_\.etat -eq 'manque' \}/,
     'le filtre du verdict a changé : vérifier qu\'il ne compte toujours que \'manque\'');
@@ -84,8 +69,8 @@ test('correctif 2 : plus de littéral « 4 entrées », le compte vient de Get-S
     'diagnostic.ps1 porte encore un compte écrit en dur : ' + "'4 entrées'");
   assert.ok(DIAG.indexOf('les 4 entrées') === -1,
     'diagnostic.ps1 porte encore un compte écrit en dur : ' + "'les 4 entrées'");
-  // Les deux textes affichés doivent tous deux se former avec -f à partir d'un .Count tiré
-  // du tableau rendu par Get-SzhRaccourcisMenu — jamais un chiffre écrit à la main.
+  // Les deux textes se forment avec -f à partir du .Count du tableau de
+  // Get-SzhRaccourcisMenu.
   assert.ok(DIAG.indexOf('$raccourcisMenu = @(Get-SzhRaccourcisMenu)') !== -1,
     'le tableau de raccourcis n\'est plus capturé dans une variable nommée');
   assert.match(DIAG, /'Raccourcis du menu Démarrer'\s*\(\s*'\{0\} entrées en place'\s*-f\s*\$raccourcisMenu\.Count\s*\)/);
@@ -99,17 +84,13 @@ test('correctif 3 : les clés de registre restent en dur, mais un commentaire �
   assert.ok(bloc.indexOf('Set-SzhProtocoleSzh') !== -1, 'le commentaire ne nomme plus Set-SzhProtocoleSzh');
   assert.ok(bloc.indexOf('centralisation') !== -1,
     'le commentaire ne dit plus qu\'une centralisation reste à faire — sans quoi le prochain lecteur croira le sujet clos');
-  // Les deux littéraux existent toujours : aucune fonction de szh-common.ps1 ne les nomme
-  // aujourd'hui (vérifié à l'écriture de ce correctif), donc rien n'a été centralisé ici.
+  // Aucune fonction de szh-common.ps1 ne nomme ces clés : elles restent écrites en dur.
   assert.ok(bloc.indexOf('HKCU:\\Software\\Classes\\SZH.Markdown\\shell\\open\\command') !== -1);
   assert.ok(bloc.indexOf('HKCU:\\Software\\Classes\\szh\\shell\\open\\command') !== -1);
 });
 
-// La ligne de fonction PowerShell : de sa déclaration jusqu'à la première ligne qui n'est
-// QUE « } » en colonne 0, la fermeture du top-level dans le style constant de ce dépôt
-// (même méthode que test/js/orphelins-toolkit.test.js, dupliquée ici pour que ce fichier
-// reste autonome). Rend des numéros de ligne 1-based, pour les comparer à ceux cités dans
-// le commentaire ⚠ de diagnostic.ps1.
+// Bornes d'une fonction PowerShell : de sa déclaration jusqu'à la première ligne réduite à
+// « } » en colonne 0. Numéros de ligne à partir de 1, comme ceux cités dans diagnostic.ps1.
 function bornesFonction(source, nom) {
   const lignes = source.split('\r\n');
   let debut = -1;
@@ -125,15 +106,9 @@ function bornesFonction(source, nom) {
   return { debut: debut + 1, fin: fin + 1 };
 }
 
-// Ce test a déjà attrapé ce qu'il garde : la fusion des trois lanceurs (13.09.2026) a
-// inséré des lignes dans update.ps1 au-dessus de ces deux fonctions, et la citation de
-// diagnostic.ps1 a vieilli sans que rien ne le dise. Elle a été recalée sur les bornes
-// réelles. Les chiffres ne sont volontairement PAS écrits dans le nom du test : ils
-// changeront encore, et un nom qui les porte devrait être réécrit à chaque fois.
+// Toute modification d'update.ps1 au-dessus de ces fonctions décale les lignes : il faut
+// alors mettre à jour la citation dans diagnostic.ps1.
 test('correctif 3 : les lignes citées d’update.ps1 sont toujours les bonnes', () => {
-  // Si update.ps1 bouge ces fonctions sans que quiconque ne relise ce commentaire, ce test
-  // le dit — plutôt que de laisser une citation de lignes fausse orienter le prochain
-  // lecteur vers le mauvais endroit du fichier.
   const reelProgId = bornesFonction(UPDATE, 'Set-SzhProgIdMarkdown');
   const reelProtocole = bornesFonction(UPDATE, 'Set-SzhProtocoleSzh');
   const bloc = tranche(DIAG, '# ⚠ Ces deux chemins de registre',
@@ -147,21 +122,19 @@ test('correctif 3 : les lignes citées d’update.ps1 sont toujours les bonnes',
     'la citation de Set-SzhProtocoleSzh ne correspond plus à update.ps1');
 });
 
-// ---- Les correctifs 1 et 2, réellement exécutés ----
-// Windows seulement. Rien n'est écrit dans le vrai registre, la vraie tâche planifiée ou
-// C:\ProgramData : les deux essais ci-dessous travaillent uniquement dans des dossiers
-// jetables sous le dossier temporaire de l'utilisateur, jamais posés au sens du poste.
+// ---- Les sujets 1 et 2, exécutés ----
+// Windows seulement. Les essais travaillent dans des dossiers jetables du dossier
+// temporaire, sans toucher au registre, aux tâches planifiées ni à C:\ProgramData.
 
 const { POWERSHELL, sansPowerShell } = require('./gardes');
 
-// Windows PowerShell 5.1 lit un .ps1 SANS BOM avec la page de code ANSI du poste, pas en
-// UTF-8 : les accents des extraits ci-dessous (« à », « é », « ô »…) en ressortiraient
-// mojibake sans ce préfixe (même remarque, et même geste, que test/js/orphelins-toolkit.test.js).
+// Sans BOM, PowerShell 5.1 lit un .ps1 dans la page de code ANSI du poste, et les accents
+// des extraits seraient corrompus.
 function ecrirePs1(chemin, contenu) {
   fs.writeFileSync(chemin, '\uFEFF' + contenu, 'utf8');
 }
 
-// ---- Correctif 1, en vrai : SumatraPDF (requis: false) vs une application requise ----
+// ---- Sujet 1 : une application facultative et une application requise, absentes ----
 
 const BLOC_BILAN_DIRE = tranche(DIAG,
   '$script:Bilan = New-Object System.Collections.ArrayList', '\r\n\r\nWrite-SzhBanniere');
@@ -172,7 +145,7 @@ const LIGNE_VERDICT = ligneContenant(DIAG, '$aReparer = @($Bilan');
 const bilanApps = (function () {
   if (!POWERSHELL) { return null; }
   const travail = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-diagnostic-apps-'));
-  // Deux sondes qui ne peuvent pas exister : un GUID dans %TEMP%, jamais posé par personne.
+  // Deux sondes qui n'existent pas.
   const introuvableRequise = path.join(os.tmpdir(), 'szh-test-introuvable-' + process.pid + '-requise.exe');
   const introuvableFacultative = path.join(os.tmpdir(), 'szh-test-introuvable-' + process.pid + '-facultative.exe');
   const appsLock = {
@@ -197,8 +170,8 @@ const bilanApps = (function () {
     '[System.IO.File]::WriteAllText($sortie, $json, (New-Object System.Text.UTF8Encoding($false)))'
   ].join('\r\n') + '\r\n';
   ecrirePs1(pilote, script);
-  // $PSScriptRoot est automatique et vaut le dossier du script exécuté par -File : c'est ce
-  // qui fait lire l'apps.lock de ce dossier-jetable, pas le vrai windows/apps.lock du poste.
+  // $PSScriptRoot vaut le dossier du script lancé par -File : le pilote lit l'apps.lock du
+  // dossier jetable.
   const run = spawnSync(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', pilote, sortie],
     { encoding: 'utf8', windowsHide: true, timeout: 60000 });
   const lu = fs.existsSync(sortie) ? JSON.parse(fs.readFileSync(sortie, 'utf8')) : null;
@@ -220,13 +193,12 @@ test('correctif 1, réellement exécuté : requis:false ressort en \'note\', req
 
 test('correctif 1, réellement exécuté : le verdict final ne compte que l\'application requise',
   { skip: sansPowerShell }, () => {
-    // C'est la preuve de bout en bout du correctif : SEULE l'application requise fait
-    // grossir le compte qui décide de exit 0 / exit 1 (voir diagnostic.ps1:249-264).
+    // Seule l'application requise compte dans le nombre qui décide du code de sortie.
     assert.strictEqual(bilanApps.r.aReparerCount, 1,
       'le verdict final compte l\'application facultative absente comme un défaut à réparer');
   });
 
-// ---- Correctif 2, en vrai : le compte de raccourcis vient de Get-SzhRaccourcisMenu ----
+// ---- Sujet 2 : le nombre de raccourcis vient de Get-SzhRaccourcisMenu ----
 
 const BLOC_RACCOURCIS = tranche(DIAG,
   '$absents = New-Object System.Collections.ArrayList',
@@ -243,14 +215,11 @@ const bilanRaccourcis = (function () {
     '. "' + COMMUN_PS1 + '"',
     BLOC_BILAN_DIRE,
     '$menu = $args[0]; $toolkitReel = $args[1]; $sortie = $args[2]',
-    // Pose, dans un menu Démarrer jetable, les VRAIS raccourcis que rend Get-SzhRaccourcisMenu
-    // pour ce dépôt — c'est ce qui rend $absents vide, et fait passer le bloc dans ses
-    // branches 'ok', celles dont ce correctif change le texte.
+    // Pose dans un menu Démarrer jetable les raccourcis de Get-SzhRaccourcisMenu : $absents
+    // est vide, et le bloc passe par ses branches 'ok', celles qui affichent le nombre.
     '$null = Set-SzhRaccourcisMenu -Menu $menu -Toolkit $toolkitReel',
     BLOC_RACCOURCIS,
-    // Un second appel, indépendant de celui déjà capturé dans $raccourcisMenu par le bloc
-    // ci-dessus : s'ils divergent, le compte affiché ne serait plus vraiment DÉRIVÉ de la
-    // fonction, mais d'un état capturé une fois puis recopié.
+    // Second appel, indépendant de $raccourcisMenu : les deux nombres doivent concorder.
     '$compteIndependant = @(Get-SzhRaccourcisMenu -Toolkit $toolkitReel).Count',
     '$json = [ordered]@{',
     '  raccourcisMenuCount = $raccourcisMenu.Count',
