@@ -481,8 +481,7 @@ test('creerFiche refuse un uuidImpose mal formé', () => {
   } finally { nettoyer(racine); }
 });
 
-// Le texte attendu a été relevé sur creerFiche avant l'ajout de uuidImpose ; seul l'Uuid,
-// tiré au hasard, est relu dans la fiche écrite.
+// Texte attendu de creerFiche. Seul l'Uuid, tiré au hasard, est relu dans la fiche écrite.
 const ATTENDUS = {
   simple: 'Title: Un livre\n\n----\n\nUuid: {uuid}\n\n----\n\nAusgabe: \n\n----\n\nCategorie: manuel\n\n----\n\n'
     + 'Auteurs: A\n\n----\n\nAnnee: 2026\n\n----\n\nEditeur: E\n\n----\n\nDescriptif: D\n',

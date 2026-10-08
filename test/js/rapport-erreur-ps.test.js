@@ -1,28 +1,20 @@
 // Parité entre l'écrivain PowerShell des rapports d'erreur (windows/szh-rapport.ps1) et
 // l'écrivain JS (vscodium-extension/szh-cockpit/lib/rapport-erreur.js + lib/codes-erreur.js).
-// Les deux moteurs doivent produire, pour un même incident, un JSON structurellement
-// identique -- même masquage, même signature (l'anti-inondation partagée, dans
-// etat-utilisateur.json, en dépend directement), même format d'id, mêmes plafonds.
+// Pour un même incident, les deux produisent un JSON de même structure : même masquage, même
+// signature, même format d'id, mêmes plafonds. L'anti-inondation partagée
+// (etat-utilisateur.json, clé "rapports") dépend de la signature : si les deux écrivains
+// divergeaient, l'un laisserait passer ce que l'autre étouffe, ou un même incident aurait
+// deux signatures et ne se regrouperait plus.
 //
 //   node --test test/js/rapport-erreur-ps.test.js
-//   node --test "test/js/*.test.js"
 //
-// Défaut réel que ce fichier garde : la parité de calcul entre deux langages qui ne
-// s'exécutent jamais ensemble (PowerShell 5.1 côté lanceur, Node côté cockpit) ne se
-// remarque qu'au moment où l'anti-inondation partagée (etat-utilisateur.json, clé
-// "rapports") se met à diverger en silence -- un rapport que l'un des deux écrivains
-// laisserait passer alors que l'autre l'étoufferait, ou deux signatures différentes pour un
-// même incident qui empêcheraient tout regroupement. La technique (extraction du corps de
-// fonction depuis le vrai .ps1, pilote généré, spawnSync('powershell.exe', ...), pilote
-// écrit avec BOM UTF-8) reprend test/js/courriel-support.test.js, seul autre banc du dépôt à
-// éprouver deux moteurs indépendants sur la même sortie.
+// Les corps de fonction sont extraits du vrai .ps1 et lancés par un pilote généré (écrit avec
+// BOM UTF-8), comme dans test/js/courriel-support.test.js.
 //
-// Aucun test ici ne touche le vrai C:\ProgramData\SZH, le vrai %LOCALAPPDATA%\SZH ni le vrai
-// dossier SharePoint : SZH_BASE, LOCALAPPDATA, USERPROFILE, SZH_ANCRAGE, SZH_RAPPORTS et
-// SZH_LANCEUR_SIMULE sont systématiquement redirigés vers des dossiers jetables
-// (fs.mkdtempSync), aussi bien pour les appels PowerShell spawnés que pour les appels directs
-// à lib/rapport-erreur.js dans CE processus Node (chaque fichier de `node --test` tourne dans
-// son propre processus : modifier process.env ici ne fuit pas vers les autres fichiers).
+// SZH_BASE, LOCALAPPDATA, USERPROFILE, SZH_ANCRAGE, SZH_RAPPORTS et SZH_LANCEUR_SIMULE sont
+// redirigés vers des dossiers jetables, pour les appels PowerShell comme pour les appels
+// directs à lib/rapport-erreur.js dans ce processus. Chaque fichier de `node --test` tourne
+// dans son propre processus : modifier process.env ici n'atteint pas les autres fichiers.
 'use strict';
 
 const test = require('node:test');
@@ -41,17 +33,12 @@ const SOURCE_RAPPORT = fs.readFileSync(SOURCE_RAPPORT_PATH, 'utf8');
 const codesErreur = require(path.join(RACINE, 'vscodium-extension', 'szh-cockpit', 'lib', 'codes-erreur'));
 const rapportErreurJs = require(path.join(RACINE, 'vscodium-extension', 'szh-cockpit', 'lib', 'rapport-erreur'));
 
-// ---------------------------------------------------------------------------------------
-// PowerShell disponible ? (même détection que partout ailleurs dans le dépôt)
-// ---------------------------------------------------------------------------------------
 const { POWERSHELL, sansPowerShell } = require('./gardes');
 
 // ---------------------------------------------------------------------------------------
-// Le corps d'une fonction PowerShell, du vrai fichier -- même technique que
-// test/js/courriel-support.test.js et test/js/orphelins-toolkit.test.js : de sa ligne de
-// déclaration jusqu'à la première ligne qui n'est QUE "}" en colonne 0. windows/szh-rapport.ps1
-// est écrit en LF (pas CRLF) : on découpe sur les deux, on rejoint toujours en CRLF (ce que
-// PowerShell 5.1 préfère dans un script sur disque).
+// Le corps d'une fonction PowerShell, lu dans le vrai fichier : de sa ligne de déclaration
+// jusqu'à la première ligne qui n'est que "}" en colonne 0. windows/szh-rapport.ps1 est en
+// LF : on découpe sur les deux fins de ligne et on rejoint en CRLF.
 // ---------------------------------------------------------------------------------------
 function corpsFonction(source, nom) {
   const lignes = source.split(/\r\n|\n/);
@@ -68,18 +55,15 @@ function corpsFonction(source, nom) {
   return lignes.slice(debut, fin + 1).join('\r\n');
 }
 
-// Sans BOM sous PowerShell 5.1, un .ps1 SANS ce préfixe se relit avec la page de code ANSI
-// du poste, pas en UTF-8 (même précaution que courriel-support.test.js / orphelins-toolkit).
+// Sans BOM, PowerShell 5.1 relit un .ps1 avec la page de code ANSI du poste, pas en UTF-8.
 function ecrirePs1(chemin, contenu) {
   fs.writeFileSync(chemin, '\ufeff' + contenu, 'utf8');
 }
 
-// Échappement PowerShell dans une chaîne SIMPLE-quote : double ' (U+0027) ET les guillemets
-// typographiques de la même famille (U+2018/2019/201A/201B) que PowerShell 5.1 traite comme
-// des délimiteurs interchangeables -- vérifié À L'EXÉCUTION en écrivant ce lot (un ' seul,
-// non doublé, ferme la chaîne et casse le script avec « Le terminateur ' est manquant » ;
-// même mécanisme, même remède, que les 35 occurrences déjà en place dans
-// windows/szh-textes.ps1 -- voir le commentaire au sommet de Get-SzhRapportResume).
+// Échappement dans une chaîne PowerShell entre apostrophes : on double ' (U+0027) et les
+// guillemets typographiques U+2018/2019/201A/201B, que PowerShell 5.1 traite comme des
+// délimiteurs équivalents (un seul, non doublé, ferme la chaîne : « Le terminateur ' est
+// manquant »). Même règle que dans windows/szh-textes.ps1.
 function psChaine(v) {
   if (v === null || v === undefined) { return '$null'; }
   return "'" + String(v).replace(/['\u2018\u2019\u201A\u201B]/g, (m) => m + m) + "'";
@@ -94,9 +78,8 @@ function psTableauFichiers(liste) {
 }
 
 // ---------------------------------------------------------------------------------------
-// Exécute un jeu de fonctions PURES (extraites telles quelles du vrai fichier, aucune
-// dépendance à szh-common.ps1) suivi d'un appel qui peuple $sortie -- même schéma que
-// executerGetSzhCourriel dans courriel-support.test.js.
+// Exécute des fonctions pures extraites du vrai fichier (sans szh-common.ps1), puis un appel
+// qui remplit $sortie.
 // ---------------------------------------------------------------------------------------
 function executerFonctionsPures(travail, fonctions, appel) {
   const corps = fonctions.map((nom) => corpsFonction(SOURCE_RAPPORT, nom)).join('\r\n\r\n');
@@ -121,11 +104,10 @@ function executerFonctionsPures(travail, fonctions, appel) {
 }
 
 // ---------------------------------------------------------------------------------------
-// Exécute un script qui dot-source le VRAI szh-common.ps1 (donc szh-rapport.ps1 avec lui) et
-// lance le code donné, avec les variables d'environnement isolées passées en overrides.
-// Rend { status, stdout, stderr }. Jamais de fenêtre : aucun des scénarios ci-dessous ne
-// passe par -Versions ni par SZH_LANCEUR_SIMULE=1 sauf quand le test l'exige explicitement --
-// et Write-SzhRapport/Clear-SzhRapportsEnAttente n'ouvrent de toute façon jamais de WinForms.
+// Exécute un script qui charge le vrai szh-common.ps1 (et donc szh-rapport.ps1) et lance le
+// code donné, avec les variables d'environnement isolées passées en overrides.
+// Rend { status, stdout, stderr }. Write-SzhRapport et Clear-SzhRapportsEnAttente n'ouvrent
+// pas de fenêtre.
 // ---------------------------------------------------------------------------------------
 function executerAvecSzhCommun(travail, overrides, script) {
   const pilote = [
@@ -148,7 +130,7 @@ function executerAvecSzhCommun(travail, overrides, script) {
   return { status: run.status, stdout: run.stdout || '', stderr: run.stderr || '' };
 }
 
-// Un dossier jetable par test (jamais le vrai ProgramData / LOCALAPPDATA / SharePoint).
+// Un dossier jetable par test.
 function dossierJetable(prefixe) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefixe));
 }
@@ -165,8 +147,7 @@ function environnementIsole(travail, extra) {
   return Object.assign(base, extra || {});
 }
 
-// Un seul fichier .json dans un dossier -- le lit et le rend parsé. Échoue si ce n'est pas
-// exactement un.
+// Lit et rend parsé l'unique fichier .json d'un dossier ; échoue s'il n'y en a pas exactement un.
 function lireUniqueRapport(dossier) {
   const fichiers = fs.readdirSync(dossier).filter((f) => f.endsWith('.json'));
   assert.strictEqual(fichiers.length, 1, 'attendu exactement un rapport dans ' + dossier + ', trouvé : ' + JSON.stringify(fichiers));
@@ -177,7 +158,7 @@ function lireUniqueRapport(dossier) {
 }
 
 // =========================================================================================
-// 1. Masquage identique sur des entrées adverses (règles 1 à 6, y compris 5a/5b amendées)
+// 1. Masquage identique sur des entrées adverses (règles 1 à 6, dont 5a/5b)
 // =========================================================================================
 
 const RACINES_ESSAI = {
@@ -247,8 +228,8 @@ test('Ce que le masquage ne doit jamais toucher (chemin, hex, GUID, URL, slug) :
   });
 
 // =========================================================================================
-// 2. Signature identique -- LE test le plus important : deux hachages qui divergent font
-//    diverger l'anti-inondation partagée entre les deux écrivains.
+// 2. Signature identique : deux hachages différents feraient diverger l'anti-inondation
+//    partagée entre les deux écrivains.
 // =========================================================================================
 
 const CAS_SIGNATURE = [
@@ -283,8 +264,8 @@ test('Get-SzhRapportSignature (PowerShell) rend le même hachage que codesErreur
   });
 
 // =========================================================================================
-// 3. Format de l'id -- identique (D9 : fondé sur l'UTC), byte pour byte pour les mêmes
-//    horodatage/poste/hex (calculerId est une fonction pure côté JS).
+// 3. Format de l'id (fondé sur l'UTC) : identique octet pour octet pour les mêmes
+//    horodatage, poste et hex (calculerId est une fonction pure côté JS).
 // =========================================================================================
 
 test('Get-SzhRapportId (PowerShell) et codesErreur.calculerId (JS) rendent le même id pour les mêmes horodatage/poste/hex',
@@ -304,7 +285,7 @@ test('Get-SzhRapportId (PowerShell) et codesErreur.calculerId (JS) rendent le m�
         assert.equal(resultat.ok, true, resultat.erreur);
         assert.equal(resultat.resultat, attendu, 'id divergent pour ' + JSON.stringify(c));
       }
-      // L'exemple même du schéma v1 (docs/RAPPORTS-ERREUR.md §2).
+      // L'exemple du schéma v1 (docs/RAPPORTS-ERREUR.md).
       const exemple = codesErreur.calculerId(new Date('2026-09-09T08:15:30Z'), 'ROBIN-PC', 'a1b2c3');
       assert.equal(exemple, '20260909-081530-ROBIN-PC-a1b2c3');
     } finally {
@@ -313,11 +294,10 @@ test('Get-SzhRapportId (PowerShell) et codesErreur.calculerId (JS) rendent le m�
   });
 
 // =========================================================================================
-// 4. Le dossier des rapports -- dérivé de l'ancrage des deux côtés, au caractère près
-//    (jamais un chemin absolu en dur). C'est CE test qui garde le contrat des deux jumeaux :
+// 4. Le dossier des rapports, dérivé de l'ancrage des deux côtés, au caractère près.
 //    $script:SzhSegmentApplication (szh-ancrage.ps1) et SEGMENT_APPLICATION
-//    (lib/rapport-erreur.js) doivent changer ensemble, sinon les deux dérivations divergent
-//    et un rapport écrit par le lanceur n'atterrit plus là où le cockpit écrit les siens.
+//    (lib/rapport-erreur.js) changent ensemble, sinon un rapport du lanceur n'atterrit pas là
+//    où le cockpit écrit les siens.
 // =========================================================================================
 
 test('Get-SzhDossierRapportsDepuisAncrage (PowerShell, szh-ancrage.ps1) == dossierRapportsDepuisAncrage (JS) pour le même ancrage',
@@ -328,13 +308,11 @@ test('Get-SzhDossierRapportsDepuisAncrage (PowerShell, szh-ancrage.ps1) == dossi
       const attendu = rapportErreurJs.dossierRapportsDepuisAncrage(ancrage);
       assert.match(attendu, /\\_Systeme\\rapports$/, 'le dossier des rapports a bougé côté JS !');
 
-      // Dot-source du VRAI szh-ancrage.ps1 (pas une extraction de fonction) : cette fonction
-      // dérive son résultat de $script:SzhDeriveDossierRapports, une CONSTANTE définie au
-      // sommet du fichier -- une extraction isolée du seul corps de fonction (comme ailleurs
-      // dans ce fichier) la laisserait $null et romprait silencieusement la dérivation
-      // (constaté : Join-Path avec un second argument $null rend juste l'ancrage, sans la
-      // moindre erreur). szh-ancrage.ps1 ne fait que définir des fonctions/variables, jamais
-      // de fenêtre ni d'effet de bord au chargement -- le dot-sourcer seul est sûr.
+      // On charge tout szh-ancrage.ps1, sans extraire la fonction : elle lit
+      // $script:SzhDeriveDossierRapports, une constante définie en tête du fichier. Extraite
+      // seule, la constante vaudrait $null, et Join-Path avec un second argument $null rend
+      // l'ancrage sans erreur. szh-ancrage.ps1 ne fait que définir des fonctions et des
+      // variables : le charger est sans effet de bord.
       const pilote = [
         "$ErrorActionPreference = 'Stop'",
         '. ' + psChaine(SOURCE_ANCRAGE_PATH),
@@ -358,9 +336,9 @@ test('Get-SzhDossierRapportsDepuisAncrage (PowerShell, szh-ancrage.ps1) == dossi
   });
 
 // =========================================================================================
-// 5. Parité JSON complète pour UN MÊME incident (schéma v1, clé par clé) -- champs volatils
-//    (id, horodatage, horodatageLocal, poste, versions) neutralisés ; tout le reste doit
-//    coïncider EXACTEMENT.
+// 5. Parité JSON complète pour un même incident (schéma v1, clé par clé). Les champs
+//    volatils (id, horodatage, horodatageLocal, poste, versions) sont neutralisés ; tout le
+//    reste coïncide exactement.
 // =========================================================================================
 
 test('Write-SzhRapport (PowerShell) et emettreRapport (JS) produisent, pour un même incident, un JSON identique champ par champ (hors champs volatils)',
@@ -369,11 +347,10 @@ test('Write-SzhRapport (PowerShell) et emettreRapport (JS) produisent, pour un m
     const travailJs = dossierJetable('szh-rapport-incident-js-');
     const ancienEnv = Object.assign({}, process.env);
     try {
-      // Racine utilisateur FICTIVE, commune aux deux moteurs (juste une chaîne de
-      // comparaison pour le masquage -- n'a pas besoin d'exister sur le disque) : le message,
-      // la pile et le fichier concerné y font tous les trois référence, pour que le masquage
-      // "~\..." produise EXACTEMENT le même résultat des deux côtés sans dépendre d'un
-      // ancrage SharePoint réel ou partagé entre les deux dossiers jetables.
+      // Racine utilisateur fictive, commune aux deux moteurs (une simple chaîne pour le
+      // masquage, absente du disque). Le message, la pile et le fichier concerné y font
+      // référence, pour que le masquage "~\..." donne le même résultat des deux côtés sans
+      // dépendre d'un ancrage SharePoint réel.
       const FAUX_USERPROFILE = 'C:\\Users\\FauxIncident';
       const cheminFichier = FAUX_USERPROFILE + '\\Bureau\\52_Revue\\2020-05\\articles\\03-x\\03-x.md';
       const message = 'Erreur : token: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.sig ; chemin ' +
@@ -390,7 +367,7 @@ test('Write-SzhRapport (PowerShell) et emettreRapport (JS) produisent, pour un m
         produit: { type: 'revue', numero: '2020-05', emplacement: 'production' }
       };
 
-      // ---- Côté JS : appel direct de emettreRapport, dans CE processus Node -------------
+      // ---- Côté JS : appel direct de emettreRapport, dans ce processus ------------------
       process.env.SZH_BASE = path.join(travailJs, 'programdata');
       process.env.LOCALAPPDATA = path.join(travailJs, 'localappdata');
       process.env.USERPROFILE = FAUX_USERPROFILE;
@@ -451,7 +428,7 @@ test('Write-SzhRapport (PowerShell) et emettreRapport (JS) produisent, pour un m
         assert.ok(r.poste && typeof r.poste === 'object');
         assert.ok(r.versions && typeof r.versions === 'object');
       }
-      // poste.powershell : null côté cockpit, renseigné côté lanceur (exigence explicite).
+      // poste.powershell : null côté cockpit, renseigné côté lanceur.
       assert.equal(rJs.poste.powershell, null);
       assert.ok(rPs.poste.powershell, 'poste.powershell doit être renseigné côté PowerShell');
     } finally {
@@ -463,9 +440,8 @@ test('Write-SzhRapport (PowerShell) et emettreRapport (JS) produisent, pour un m
   });
 
 // =========================================================================================
-// 6. D10 -- SZH_RAPPORTS (dossier direct) et SZH_ANCRAGE (ancrage) sont orthogonales, des
-//    deux côtés. Ici : le côté PowerShell seul (l'orthogonalité côté JS est du ressort de
-//    test/js/rapport-erreur.test.js, hors de mon périmètre).
+// 6. SZH_RAPPORTS (dossier direct) et SZH_ANCRAGE (ancrage) sont indépendantes. Côté
+//    PowerShell ici ; côté JS dans test/js/rapport-erreur.test.js.
 // =========================================================================================
 
 test('D10 : SZH_RAPPORTS seul -- le rapport atterrit directement dedans, ancrage.trouve = false',
@@ -533,8 +509,8 @@ test('D10 : SZH_RAPPORTS ET SZH_ANCRAGE ensemble -- SZH_RAPPORTS gagne pour l\'�
   });
 
 // =========================================================================================
-// 7. Anti-inondation (§4.3, D6 : jour calendaire LOCAL) -- décision pure, puis vérification
-//    de bout en bout que Write-SzhRapport l'applique réellement.
+// 7. Anti-inondation (jour calendaire local) : la décision pure, puis Write-SzhRapport de
+//    bout en bout.
 // =========================================================================================
 
 test('Get-SzhRapportDecisionAntiInondation : une signature revue avant 24 h est étouffée, ne compte pas dans le plafond du jour',
@@ -622,7 +598,7 @@ test('Write-SzhRapport de bout en bout : un second appel identique (même signat
   });
 
 // =========================================================================================
-// 8. File d'attente hors ligne (§4.4)
+// 8. File d'attente hors ligne
 // =========================================================================================
 
 test('Sans SZH_RAPPORTS ni ancrage résolvable, le rapport va dans %LOCALAPPDATA%\\SZH\\rapports-en-attente',
@@ -649,12 +625,12 @@ test('Limit-SzhRapportsEnAttente : purge les fichiers de plus de 30 jours, plafo
       const dossier = path.join(travail, 'attente');
       fs.mkdirSync(dossier, { recursive: true });
       const maintenant = Date.now();
-      // Un fichier vieux de 40 jours : doit disparaître.
+      // Un fichier vieux de 40 jours disparaît.
       const vieux = path.join(dossier, 'vieux.json');
       fs.writeFileSync(vieux, '{}', 'utf8');
       const tempsVieux = new Date(maintenant - 40 * 24 * 3600 * 1000);
       fs.utimesSync(vieux, tempsVieux, tempsVieux);
-      // 55 fichiers récents : au-delà de 50, les plus anciens doivent disparaître.
+      // 55 fichiers récents : au-delà de 50, les plus anciens disparaissent.
       for (let i = 0; i < 55; i++) {
         const p = path.join(dossier, 'recent-' + String(i).padStart(3, '0') + '.json');
         fs.writeFileSync(p, '{}', 'utf8');
@@ -716,21 +692,21 @@ test('GARDE-FOU : Clear-SzhRapportsEnAttente ne fait rien en SZH_LANCEUR_SIMULE=
   });
 
 // =========================================================================================
-// 9. D5 : un échec d'écriture ne lève jamais, et n'écrit pas de second rapport sur lui-même
+// 9. Un échec d'écriture ne lève pas, et n'écrit pas de second rapport sur lui-même
 // =========================================================================================
 
 test('D5 : un dossier de rapports impossible à créer (composant du chemin = un fichier) n\'empêche jamais le processus de finir proprement',
   { skip: sansPowerShell }, () => {
     const travail = dossierJetable('szh-rapport-echec-ecriture-');
     try {
-      // Un FICHIER là où Write-SzhRapport voudra créer un DOSSIER : New-Item -Force lève.
+      // Un fichier là où Write-SzhRapport veut créer un dossier : New-Item -Force lève.
       const obstacle = path.join(travail, 'obstacle.txt');
       fs.writeFileSync(obstacle, 'ceci est un fichier, pas un dossier', 'utf8');
       const dossierImpossible = path.join(obstacle, 'rapports');
 
       const env = environnementIsole(travail, { SZH_RAPPORTS: dossierImpossible });
-      // La file d'attente elle-même doit aussi être injoignable, pour forcer le tout dernier
-      // repli (§4, RAPPORT-ECHEC-ECRITURE, jamais transformé en rapport).
+      // La file d'attente est aussi injoignable, pour forcer le dernier repli
+      // (RAPPORT-ECHEC-ECRITURE, jamais transformé en rapport).
       env.LOCALAPPDATA = path.join(obstacle, 'localappdata');
 
       const run = executerAvecSzhCommun(travail, env,
@@ -759,8 +735,8 @@ test('D5 : Write-SzhRapport appelé sans code ne lève pas et n\'écrit rien',
   });
 
 // =========================================================================================
-// 10. UTF-8 sans BOM, accents en clair (pas en \uXXXX) -- ConvertTo-Json de PowerShell 5.1
-//     échappe le non-ASCII par défaut ; vérifié ici sur le VRAI fichier écrit sur disque.
+// 10. UTF-8 sans BOM, accents en clair (pas en \uXXXX) : ConvertTo-Json de PowerShell 5.1
+//     échappe le non-ASCII par défaut. Vérifié sur le fichier écrit.
 // =========================================================================================
 
 test('Le rapport écrit par PowerShell est UTF-8 SANS BOM, indenté 2 espaces, et les accents sont de vrais caractères UTF-8 (pas \\u00e9)',
@@ -781,15 +757,15 @@ test('Le rapport écrit par PowerShell est UTF-8 SANS BOM, indenté 2 espaces, e
       // Indentation 2 espaces.
       assert.match(texte, /\n  "id":/, 'indentation attendue : 2 espaces');
 
-      // Accents en clair : la table des résumés (fixe, connue) doit apparaître telle quelle,
-      // jamais en \u00e9 -- recherche sur le TEXTE BRUT, pas sur l'objet déjà reparsé.
+      // Accents en clair : la table des résumés doit apparaître telle quelle, pas en é.
+      // La recherche porte sur le texte brut, pas sur l'objet reparsé.
       assert.ok(texte.indexOf('\u00e9') !== -1 || texte.indexOf(json.message) !== -1,
         'aucun caractère accentué littéral trouvé dans le fichier brut');
       assert.equal(texte.indexOf('\\u00'), -1, 'un échappement \\u00.. résiduel a été trouvé dans le fichier écrit');
       assert.match(json.resume.fr, /à l\u2019ouverture|dans l\u2019extension/, 'resume.fr inattendu : ' + json.resume.fr);
       assert.ok(json.message.indexOf('éàüö') !== -1, 'le message accentué ne survit pas tel quel : ' + json.message);
 
-      // Un vrai \n final (JSON.stringify(...) + '\n' côté JS, même convention ici).
+      // Un \n final (JSON.stringify(...) + '\n' côté JS, même convention ici).
       assert.ok(texte.endsWith('}\n') || texte.endsWith('}\r\n'), 'le fichier devrait se terminer par un retour à la ligne');
     } finally {
       fs.rmSync(travail, { recursive: true, force: true });

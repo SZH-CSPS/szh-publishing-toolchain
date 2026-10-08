@@ -1,31 +1,24 @@
-// lib/rapport-erreur.js : l'écrivain des rapports d'erreur automatiques côté cockpit
-// (docs/RAPPORTS-ERREUR.md, §2 et §4 à §6), et les deux accroches d'extension.js (COMPIL-ECHEC,
-// COCKPIT-EXCEPTION). Défaut réel gardé par ce fichier (trouvé en l'écrivant, pas en le
-// vivant en production) : sans garde dédiée, une compilation en échec déclenchée par un
-// AUTRE fichier de test (controles.test.js, interaction.test.js, pdfua.test.js — hors du
-// périmètre de ce jalon) aurait écrit pour de vrai dans le vrai %LOCALAPPDATA%\SZH, voire
-// dans le vrai dossier SharePoint sur un poste où un ancrage est déjà configuré :
-// ecritureReelleEviteeParHarnaisTest() (lib/rapport-erreur.js) coupe l'écriture réelle dès
-// que test/js/hote-factice.js pose SZH_RESEAU_INTERDIT ET qu'aucune destination explicite
-// (SZH_ANCRAGE ou SZH_RAPPORTS) n'a été fournie — jamais en production, où cette variable
-// n'est jamais posée.
+// lib/rapport-erreur.js : l'écrivain des rapports d'erreur automatiques du cockpit
+// (docs/RAPPORTS-ERREUR.md), et les deux accroches d'extension.js (COMPIL-ECHEC,
+// COCKPIT-EXCEPTION).
 //
-// AMENDEMENT D10 (09.09.2026, Robin, en éprouvant ce module de bout en bout) : deux
-// variables ORTHOGONALES, dont le nom dit la vérité — SZH_ANCRAGE pour l'ANCRAGE
-// (Daten_Allgemein - General ; même variable que Resolve-SzhAncrage côté PowerShell), et
-// SZH_RAPPORTS pour le DOSSIER DE RAPPORTS, directement, tel quel (elle l'emporte sans
-// condition sur la dérivation depuis l'ancrage, mais ne remplace pas la résolution de
-// l'ancrage elle-même — le champ `ancrage` du rapport et les chemins relatifs restent
-// ceux de l'ancrage résolu séparément). Avant cet amendement, SZH_RAPPORTS désignait
-// l'ancrage, et un dossier de rapports qu'on lui passait directement héritait d'un
-// `2_Produkte\…` de trop en dessous de lui.
+// Une compilation en échec lancée par un autre fichier de test (controles.test.js,
+// interaction.test.js, pdfua.test.js) écrirait sinon dans le vrai %LOCALAPPDATA%\SZH, voire
+// dans le vrai dossier SharePoint. ecritureReelleEviteeParHarnaisTest() coupe l'écriture
+// quand test/js/hote-factice.js pose SZH_RESEAU_INTERDIT et qu'aucune destination explicite
+// (SZH_ANCRAGE ou SZH_RAPPORTS) n'est fournie. En production, cette variable n'existe pas.
+//
+// Deux variables indépendantes : SZH_ANCRAGE désigne l'ancrage (Daten_Allgemein - General,
+// comme Resolve-SzhAncrage côté PowerShell) ; SZH_RAPPORTS désigne directement le dossier
+// des rapports. SZH_RAPPORTS l'emporte sur le dossier dérivé de l'ancrage, mais ne remplace
+// pas la résolution de l'ancrage : le champ `ancrage` du rapport et les chemins relatifs
+// restent ceux de l'ancrage.
 //
 //   node --test test/js/rapport-erreur.test.js
 //
-// Aucun test ci-dessous ne touche le vrai C:\ProgramData\SZH, le vrai %LOCALAPPDATA%\SZH
-// ni le vrai SharePoint : tout passe par SZH_ANCRAGE, SZH_RAPPORTS, SZH_BASE (config.json,
-// state.json, toolkit/VERSION) et la variable réelle LOCALAPPDATA (etat-utilisateur.json,
-// rapports-en-attente), chacune pointée vers un dossier jetable (fs.mkdtempSync).
+// Rien ne touche le vrai C:\ProgramData\SZH, %LOCALAPPDATA%\SZH ni SharePoint : SZH_ANCRAGE,
+// SZH_RAPPORTS, SZH_BASE (config.json, state.json, toolkit/VERSION) et LOCALAPPDATA
+// (etat-utilisateur.json, rapports-en-attente) pointent vers des dossiers jetables.
 'use strict';
 
 const test = require('node:test');
@@ -38,15 +31,12 @@ const COCKPIT = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cock
 const rapportErreur = require(path.join(COCKPIT, 'lib', 'rapport-erreur.js'));
 const codesErreur = require(path.join(COCKPIT, 'lib', 'codes-erreur.js'));
 
-// Les tests qui comparent un VRAI chemin de dossier ne peuvent tenir que sous Windows :
-// lib/rapport-erreur.js normalise ses chemins à l'antislash — c'est son contrat, la flotte
-// est sous Windows et les chemins d'un rapport doivent se coller tels quels dans
-// l'explorateur — si bien qu'un /tmp/xyz d'ubuntu en ressort en \tmp\xyz, et qu'aucune de
-// ces attentes ne peut y tenir. Même partage que les tests à corps PowerShell (voir
-// .github/workflows/ci.yml) : sautés par le job `contrats` (ubuntu), joués en entier par
-// `contrats-windows`, qui passe le même node --test sur windows-latest. Les tests qui ne
-// parlent que du schéma, du masquage, de la politique anti-inondation ou de la source du
-// module, eux, restent joués partout.
+// Les tests qui comparent un vrai chemin de dossier ne tiennent que sous Windows :
+// lib/rapport-erreur.js normalise ses chemins à l'antislash, pour qu'ils se collent tels
+// quels dans l'Explorateur, et un /tmp/xyz d'ubuntu en ressort en \tmp\xyz. Ils sont sautés
+// par le job `contrats` (ubuntu) et joués par `contrats-windows` (voir
+// .github/workflows/ci.yml). Les tests du schéma, du masquage, de l'anti-inondation et de la
+// source du module tournent partout.
 const HORS_WINDOWS = process.platform !== 'win32'
   ? 'chemins Windows : joué par le job contrats-windows'
   : false;
@@ -55,16 +45,11 @@ function dossierJetable(prefixe) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefixe + '-'));
 }
 
-// Exécute `fn` avec les variables d'environnement données, puis les restaure exactement
-// telles qu'elles étaient (posées ou absentes) — indispensable ici : plusieurs tests de ce
-// fichier posent SZH_RAPPORTS / SZH_BASE / LOCALAPPDATA, et un oubli de restauration
-// ferait déteindre un test sur le suivant dans le même processus (node --test donne un
-// processus par FICHIER, pas par test).
-// Gère aussi bien un `fn` synchrone qu'asynchrone : un `fn` async rend une promesse
-// IMMÉDIATEMENT (avant son premier await), et restaurer l'environnement dans un simple
-// `finally` synchrone le ferait donc TROP TÔT — avant la suite du corps de `fn`, qui
-// tournerait alors sous le MAUVAIS environnement. Restaurer seulement quand la promesse se
-// dénoue règle le problème pour les deux cas.
+// Exécute `fn` avec les variables d'environnement données, puis les restaure telles qu'elles
+// étaient (posées ou absentes). node --test donne un processus par fichier, pas par test :
+// sans restauration, un test déteindrait sur le suivant.
+// Pour un `fn` async, qui rend sa promesse avant son premier await, la restauration attend
+// que la promesse se dénoue : un `finally` synchrone restaurerait trop tôt.
 function avecEnv(vars, fn) {
   const anciennes = {};
   for (const cle of Object.keys(vars)) { anciennes[cle] = process.env[cle]; process.env[cle] = vars[cle]; }
@@ -86,20 +71,17 @@ function avecEnv(vars, fn) {
 function attendre(ms) { return new Promise((r) => setTimeout(r, ms)); }
 function unTick() { return new Promise((r) => setImmediate(r)); }
 
-// Un sandbox complet (ancrage + base + local) pour un appel à emettreRapport() qui doit
-// vraiment écrire (SZH_ANCRAGE -> origine 'essai' — la garde du banc ne s'applique donc
-// pas, voir l'en-tête). `SZH_RESEAU_INTERDIT` n'est jamais posé dans cette section
-// (Partie 1, module pur, sans hote-factice) : la garde ne joue de toute façon aucun rôle
-// ici. `varsSandbox()` ne pose PAS SZH_RAPPORTS : le dossier de rapports reste dérivé de
-// l'ancrage (le cas courant) ; les tests dédiés à SZH_RAPPORTS le posent eux-mêmes.
+// Un bac à sable complet (ancrage + base + local) pour un appel à emettreRapport() qui doit
+// écrire (SZH_ANCRAGE donne l'origine 'essai', hors de la garde du banc). varsSandbox() ne
+// pose pas SZH_RAPPORTS : le dossier de rapports est dérivé de l'ancrage, sauf dans les
+// tests dédiés à SZH_RAPPORTS.
 function sandbox() {
   return { ancrage: dossierJetable('szh-ancrage'), base: dossierJetable('szh-base'), local: dossierJetable('szh-local') };
 }
 function varsSandbox(s) { return { SZH_ANCRAGE: s.ancrage, SZH_BASE: s.base, LOCALAPPDATA: s.local }; }
 function dossierRapportsDe(s) {
-  // Les segments viennent du module, PAS d'une recopie : le nom du dossier de l'application
-  // vit à un seul endroit (SEGMENT_APPLICATION), et ce banc ne doit pas casser le jour où
-  // il changerait. Le test dédié plus bas, lui, compare bien à une chaîne tapée à la main.
+  // Les segments viennent du module (SEGMENT_APPLICATION, défini à un seul endroit). Le test
+  // dédié plus bas compare, lui, à une chaîne tapée à la main.
   return path.join.apply(path, [s.ancrage].concat(rapportErreur.SEGMENTS_DOSSIER_RAPPORTS));
 }
 function dossierAttenteDe(s) { return path.join(s.local, 'SZH', 'rapports-en-attente'); }
@@ -110,7 +92,7 @@ const CHAMPS_MINIMAUX = {
 };
 
 // =========================================================================================
-// Partie 1 — le module, seul (pur pour l'essentiel, sandbox jetable pour le reste)
+// Partie 1 : le module seul (pur pour l'essentiel, bac à sable jetable pour le reste)
 // =========================================================================================
 
 test('construireRapport() : un rapport complet est conforme au schéma v1 (validerRapport)', () => {
@@ -166,22 +148,20 @@ test('construireRapport() : message/pile/extrait passent par le masquage (§4.1)
 
 test('dossierRapportsDepuisAncrage() : dans NOTRE arbre, sous _Systeme\\rapports', { skip: HORS_WINDOWS }, () => {
   const derive = rapportErreur.dossierRapportsDepuisAncrage('C:\\un\\ancrage');
-  // Les trois invariants, comparés à des chaînes tapées en dur ICI — sauf le nom de
-  // l'application, qui vit à un seul endroit (SEGMENT_APPLICATION).
+  // Les trois invariants, comparés à des chaînes tapées ici, sauf le nom de l'application
+  // (SEGMENT_APPLICATION).
   assert.ok(derive.startsWith('C:\\un\\ancrage\\2_Produkte\\'),
     'la dérivation ne part plus de <ancrage>\\2_Produkte : ' + derive);
   assert.ok(derive.endsWith('\\' + rapportErreur.SEGMENT_APPLICATION + '\\_Systeme\\rapports'),
     'dérivation inattendue : ' + derive);
-  // Le dossier d'une AUTRE équipe, où les rapports vivaient avant le 15.09.2026, n'est plus
-  // visé : il n'y a pas eu de période de transition, et rien ne doit y retomber par mégarde.
+  // Le dossier _AutoReportToolbox, qui appartient à une autre équipe, n'est pas visé.
   assert.ok(derive.indexOf('_AutoReportToolbox') === -1,
     'les rapports repartent dans le dossier étranger d’avant le déménagement : ' + derive);
 });
 
 test('le nom du dossier de l’application ne vit qu’à UN seul endroit du JavaScript', () => {
-  // Contrat explicite du lot : une seule constante à corriger si le dossier de l'application
-  // changeait de nom, de chaque côté (celle-ci, et $script:SzhSegmentApplication dans
-  // windows/szh-ancrage.ps1).
+  // Une seule constante à corriger si le dossier de l'application change de nom, de chaque
+  // côté : celle-ci, et $script:SzhSegmentApplication dans windows/szh-ancrage.ps1.
   const source = fs.readFileSync(path.join(COCKPIT, 'lib', 'rapport-erreur.js'), 'utf8');
   const declarations = source.match(/const SEGMENT_APPLICATION\s*=\s*'[^']+';/g) || [];
   assert.equal(declarations.length, 1,
@@ -248,11 +228,9 @@ test('résolution passive : rien de tout cela n’aboutit -> absent, en silence'
   });
 });
 
-// Trouvé en comparant les deux écrivains (JS et PowerShell) sur un même incident : PS
-// normalise déjà `ancrage.chemin` en antislash (via Resolve-SzhAncrage), le JS le
-// recopiait tel quel — un SZH_ANCRAGE tapé avec des barres obliques (habitude de shell)
-// rendait donc deux chaînes différentes pour le MÊME ancrage, incollables l'une à l'autre
-// avec `fichiers[].chemin` (toujours en antislash, lui).
+// PowerShell normalise `ancrage.chemin` en antislash (Resolve-SzhAncrage) ; le JS fait de
+// même. Un SZH_ANCRAGE tapé avec des barres obliques doit donner la même chaîne, qui se
+// colle avec `fichiers[].chemin` (toujours en antislash).
 test('résolution passive : SZH_ANCRAGE en barres obliques -> chemin rendu en antislash, sans séparateur final', { skip: HORS_WINDOWS }, () => {
   const s = sandbox();
   const enOblique = s.ancrage.replace(/\\/g, '/') + '/';   // + un séparateur final, pour de bon
@@ -278,12 +256,10 @@ test('résolution passive : la même normalisation s’applique à l’ancrage v
   });
 });
 
-// Le point qui compte réellement pour la personne qui lit le rapport : `ancrage.chemin`
-// et `fichiers[].chemin` doivent pouvoir se COLLER l'un à l'autre dans l'Explorateur.
-// versCheminRelatif()/masquer() (codes-erreur.js) acceptent déjà l'un ou l'autre séparateur
-// pour RECONNAÎTRE la racine dans un chemin absolu (vérifié par exécution, pas supposé) —
-// seul le champ `ancrage.chemin` lui-même, jamais masqué (§4.1), avait besoin du correctif
-// ci-dessus. Ce test-ci le prouve de bout en bout, ancrage ET fichier concaténables.
+// `ancrage.chemin` et `fichiers[].chemin` doivent se coller l'un à l'autre dans
+// l'Explorateur. versCheminRelatif() et masquer() (codes-erreur.js) reconnaissent la racine
+// quel que soit le séparateur ; `ancrage.chemin`, jamais masqué, est normalisé à part. Ce
+// test le vérifie de bout en bout.
 test('emettreRapport() : ancrage en barres obliques + fichier réel -> chemins collables tels quels', { skip: HORS_WINDOWS }, () => {
   const s = sandbox();
   const cheminArticle = path.join(s.ancrage, '2_Produkte', '52_Revue', 'x.md');   // toujours en antislash (fs/path)
@@ -295,7 +271,7 @@ test('emettreRapport() : ancrage en barres obliques + fichier réel -> chemins c
     const rapport = JSON.parse(fs.readFileSync(path.join(dossierRapportsDe(s), resultat.id + '.json'), 'utf8'));
     assert.equal(rapport.ancrage.chemin, s.ancrage);
     assert.equal(rapport.fichiers[0].chemin, '2_Produkte\\52_Revue\\x.md');
-    // Le test que ferait la personne qui lit le rapport : coller les deux bouts.
+    // Ce que ferait la personne qui lit le rapport : coller les deux bouts.
     assert.equal(rapport.ancrage.chemin + '\\' + rapport.fichiers[0].chemin,
       path.join(s.ancrage, '2_Produkte', '52_Revue', 'x.md'));
   });
@@ -303,9 +279,8 @@ test('emettreRapport() : ancrage en barres obliques + fichier réel -> chemins c
 
 test('résolution passive : aucun balayage de disque (fs.readdirSync jamais appelé)', () => {
   const s = sandbox();
-  // Un ancrage introuvable à tous les niveaux, MAIS un dossier voisin bien rempli : si la
-  // résolution se mettait à énumérer quoi que ce soit pour « chercher », readdirSync le
-  // trahirait immédiatement.
+  // Un ancrage introuvable à tous les niveaux, mais un dossier voisin rempli : si la
+  // résolution se mettait à énumérer pour « chercher », readdirSync le trahirait.
   fs.mkdirSync(path.join(s.local, 'SZH'), { recursive: true });
   for (let i = 0; i < 10; i++) { fs.mkdirSync(path.join(s.local, 'leurre-' + i)); }
   const original = fs.readdirSync;
@@ -399,9 +374,8 @@ test('decisionAntiInondation() : la fenêtre de 24 h se referme juste après, pa
 
 test('emettreRapport() : dossier de rapports injoignable -> mise en attente, puis viderFileAttente() la vide', { skip: HORS_WINDOWS }, () => {
   const s = sandbox();
-  // Obstrue le dossier réel : un FICHIER là où '2_Produkte' devrait être un dossier fait
-  // échouer le mkdirSync récursif de l'écriture — exactement « injoignable » (SharePoint
-  // pas synchronisé, ou tout autre empêchement du même effet).
+  // Un fichier là où '2_Produkte' devrait être un dossier fait échouer le mkdirSync récursif :
+  // c'est l'équivalent d'un dossier injoignable (SharePoint pas synchronisé, par exemple).
   fs.writeFileSync(path.join(s.ancrage, '2_Produkte'), 'obstacle');
 
   const resultat = avecEnv(varsSandbox(s), () => rapportErreur.emettreRapport(CHAMPS_MINIMAUX));
@@ -410,7 +384,7 @@ test('emettreRapport() : dossier de rapports injoignable -> mise en attente, pui
   const attente = dossierAttenteDe(s);
   assert.deepEqual(fs.readdirSync(attente), [resultat.id + '.json']);
 
-  // Le vidage : un ancrage propre, cette fois, résout l'obstruction.
+  // Le vidage : un ancrage propre lève l'obstruction.
   const ancragePropre = dossierJetable('szh-ancrage-propre');
   const deplace = avecEnv({ SZH_ANCRAGE: ancragePropre, SZH_BASE: s.base, LOCALAPPDATA: s.local },
     () => rapportErreur.viderFileAttente());
@@ -425,9 +399,8 @@ test('purgerFileAttente() : plafond de 50 fichiers (les plus anciens effacés) e
   const dossier = path.join(local, 'SZH', 'rapports-en-attente');
   fs.mkdirSync(dossier, { recursive: true });
   const maintenant = Date.now();
-  // 5 fichiers vieux de 40 jours (à effacer sans être transmis), 50 fichiers récents à
-  // dates échelonnées (les 5 plus anciens de ceux-là devraient tomber sous le plafond de 50
-  // s'ils s'ajoutaient aux fichiers restants — ici, exactement 50 doivent survivre).
+  // 5 fichiers vieux de 40 jours (effacés sans être transmis), 50 fichiers récents à dates
+  // échelonnées : exactement 50 doivent survivre.
   for (let i = 0; i < 5; i++) {
     const p = path.join(dossier, 'vieux-' + i + '.json');
     fs.writeFileSync(p, '{}');
@@ -453,8 +426,8 @@ test('emettreRapport() : un échec d’écriture, réel ET en attente, ne lève 
   const localBloque = path.join(dossierJetable('szh-local-bloque'), 'fichier-pas-un-dossier');
   fs.writeFileSync(localBloque, 'x');   // LOCALAPPDATA lui-même n'est pas un dossier : la file échoue aussi
 
-  // Appel SANS try/catch autour : si emettreRapport() laissait fuir une exception, ce test
-  // échouerait immédiatement de lui-même (D5, la règle absolue).
+  // Appel sans try/catch : si emettreRapport() laissait fuir une exception, ce test
+  // échouerait de lui-même.
   const resultat = avecEnv({ SZH_ANCRAGE: s.ancrage, SZH_BASE: s.base, LOCALAPPDATA: localBloque },
     () => rapportErreur.emettreRapport(CHAMPS_MINIMAUX));
   assert.equal(resultat.ecrit, false);
@@ -462,11 +435,9 @@ test('emettreRapport() : un échec d’écriture, réel ET en attente, ne lève 
   assert.equal(resultat.motif, 'ecriture-impossible');
 });
 
-// Demandé après relecture : du code de production qui se désarme sur une variable
-// d'environnement de test mérite un test qui prouve l'INVERSE — sans elle, l'écriture a
-// bien lieu — sans quoi un jour quelqu'un désarme le rapport d'erreur sans s'en apercevoir.
-// Nom de fonction gardé stable (ne pas renommer, cf. lib/rapport-erreur.js) : d'autres
-// endroits de ce fichier s'y réfèrent en toute confiance.
+// Le code de production se désarme sur une variable de test : ce test prouve l'inverse, que
+// sans elle l'écriture a lieu. Ne pas renommer la fonction (voir lib/rapport-erreur.js) :
+// d'autres endroits de ce fichier y font référence.
 test('ecritureReelleEviteeParHarnaisTest() : ne coupe QUE sous SZH_RESEAU_INTERDIT, sans destination explicite', () => {
   const avaitInterdit = process.env.SZH_RESEAU_INTERDIT;
   const avaitRapports = process.env.SZH_RAPPORTS;
@@ -479,16 +450,16 @@ test('ecritureReelleEviteeParHarnaisTest() : ne coupe QUE sous SZH_RESEAU_INTERD
     assert.equal(rapportErreur.ecritureReelleEviteeParHarnaisTest({ origine: 'essai' }), false,
       'un ancrage explicitement fourni par le test (SZH_ANCRAGE) doit toujours pouvoir écrire');
 
-    // D10 : SZH_RAPPORTS fournit une destination explicite à lui seul — même sur un
-    // ancrage résolu par config.json (jamais fourni par le test).
+    // SZH_RAPPORTS fournit à lui seul une destination explicite, même sur un ancrage résolu
+    // par config.json.
     process.env.SZH_RAPPORTS = 'peu-importe-le-dossier';
     assert.equal(rapportErreur.ecritureReelleEviteeParHarnaisTest({ origine: 'config' }), false,
       'SZH_RAPPORTS doit à lui seul suffire à autoriser l’écriture, quelle que soit l’origine de l’ancrage');
     delete process.env.SZH_RAPPORTS;
 
     delete process.env.SZH_RESEAU_INTERDIT;
-    // Hors du banc de test (le cas réel de production, où cette variable n'existe jamais) :
-    // l'écriture ne doit JAMAIS être coupée, quelle que soit l'origine de l'ancrage.
+    // Hors du banc de test (la production, où cette variable n'existe pas), l'écriture n'est
+    // jamais coupée, quelle que soit l'origine de l'ancrage.
     assert.equal(rapportErreur.ecritureReelleEviteeParHarnaisTest({ origine: 'config' }), false);
     assert.equal(rapportErreur.ecritureReelleEviteeParHarnaisTest({ origine: 'cache' }), false);
     assert.equal(rapportErreur.ecritureReelleEviteeParHarnaisTest({ origine: 'essai' }), false);
@@ -500,8 +471,8 @@ test('ecritureReelleEviteeParHarnaisTest() : ne coupe QUE sous SZH_RESEAU_INTERD
 
 test('emettreRapport() : sans SZH_RESEAU_INTERDIT, l’écriture réelle a bien lieu même hors origine « essai »', { skip: HORS_WINDOWS }, () => {
   const s = sandbox();
-  // L'ancrage vient de config.json (origine 'config'), PAS de SZH_ANCRAGE : exactement le
-  // cas que la garde du banc de test pourrait couper à tort si elle était mal réglée.
+  // L'ancrage vient de config.json (origine 'config'), pas de SZH_ANCRAGE : le cas que la
+  // garde du banc couperait à tort si elle était mal réglée.
   fs.rmSync(s.ancrage, { recursive: true, force: true });
   fs.writeFileSync(path.join(s.base, 'config.json'), JSON.stringify({ ancrageSharePoint: s.base }) + '\n');
 
@@ -520,13 +491,11 @@ test('emettreRapport() : sans SZH_RESEAU_INTERDIT, l’écriture réelle a bien 
     'le rapport doit avoir été écrit pour de vrai dans le dossier dérivé de l’ancrage résolu par config.json');
 });
 
-// ---- D10 : SZH_ANCRAGE et SZH_RAPPORTS sont deux surcharges ORTHOGONALES --------------
+// ---- SZH_ANCRAGE et SZH_RAPPORTS sont deux surcharges indépendantes ------------------
 //
-// Amendement du 09.09.2026 (Robin, en éprouvant ce module) : avant D10, SZH_RAPPORTS ÉTAIT
-// la surcharge d'ancrage, et un dossier de rapports qu'on lui passait directement héritait
-// d'un `2_Produkte\<application>\_Systeme\rapports` de trop en
-// dessous de lui. Les trois tests ci-dessous couvrent chaque variable séparément, puis leur
-// combinaison — exactement le piège qui a été trouvé.
+// Un dossier de rapports passé dans SZH_RAPPORTS est utilisé tel quel, sans
+// `2_Produkte\<application>\_Systeme\rapports` ajouté en dessous. Les trois tests couvrent
+// chaque variable seule, puis leur combinaison.
 
 test('SZH_ANCRAGE seule : dérive le dossier de rapports habituel (2_Produkte\\…) SOUS elle', { skip: HORS_WINDOWS }, () => {
   const s = sandbox();
@@ -534,7 +503,7 @@ test('SZH_ANCRAGE seule : dérive le dossier de rapports habituel (2_Produkte\\�
     const resultat = rapportErreur.emettreRapport(CHAMPS_MINIMAUX);
     assert.equal(resultat.ecrit, true, 'motif : ' + resultat.motif);
     assert.deepEqual(fs.readdirSync(dossierRapportsDe(s)), [resultat.id + '.json']);
-    // Rien d'écrit directement DANS l'ancrage : tout est sous 2_Produkte\<application>\…
+    // Rien n'est écrit directement dans l'ancrage : tout est sous 2_Produkte\<application>\…
     assert.deepEqual(fs.readdirSync(s.ancrage), ['2_Produkte']);
   });
 });
@@ -542,21 +511,20 @@ test('SZH_ANCRAGE seule : dérive le dossier de rapports habituel (2_Produkte\\�
 test('SZH_RAPPORTS seule : le dossier de rapports EST cette valeur, telle quelle, sans dérivation', () => {
   const s = sandbox();
   const rapportsDirect = dossierJetable('szh-rapports-direct');
-  // SZH_ANCRAGE mis à '' explicitement : la Partie 2 (plus bas dans ce fichier) le pose
-  // globalement dès le chargement du module, avant qu'aucun test ne s'exécute — sans ce
-  // vidage, ce test hériterait de sa valeur et résoudrait un ancrage qu'il ne veut pas.
+  // SZH_ANCRAGE vidé explicitement : la Partie 2, plus bas, le pose globalement au chargement
+  // du module, et ce test en hériterait.
   avecEnv({ SZH_ANCRAGE: '', SZH_RAPPORTS: rapportsDirect, SZH_BASE: s.base, LOCALAPPDATA: s.local }, () => {
-    // Aucun ancrage résolu (SZH_ANCRAGE absent, config.json et le cache vides) : sans D10,
-    // ce cas partirait en file d'attente. Avec D10, SZH_RAPPORTS suffit à lui seul.
+    // Aucun ancrage résolu (SZH_ANCRAGE absent, config.json et cache vides) : SZH_RAPPORTS
+    // suffit à lui seul, sans passer par la file d'attente.
     assert.equal(rapportErreur.resoudreAncrage().trouve, false);
     const resultat = rapportErreur.emettreRapport(CHAMPS_MINIMAUX);
     assert.equal(resultat.ecrit, true, 'motif : ' + resultat.motif);
     assert.equal(resultat.enAttente, false);
-    // Le fichier est DIRECTEMENT dans rapportsDirect — aucun « 2_Produkte » en dessous.
+    // Le fichier est directement dans rapportsDirect, sans « 2_Produkte » en dessous.
     assert.deepEqual(fs.readdirSync(rapportsDirect), [resultat.id + '.json']);
     const rapport = JSON.parse(fs.readFileSync(path.join(rapportsDirect, resultat.id + '.json'), 'utf8'));
-    // Sans ancrage résolu, le champ `ancrage` du rapport le dit honnêtement : trouvé
-    // séparément de « où atterrit le fichier », D10 ne change rien à ce champ.
+    // Sans ancrage résolu, le champ `ancrage` du rapport le dit : il ne dépend pas de
+    // l'endroit où le fichier atterrit.
     assert.deepEqual(rapport.ancrage, { trouve: false, origine: 'absent', chemin: null });
   });
 });
@@ -565,36 +533,34 @@ test('SZH_ANCRAGE + SZH_RAPPORTS ensemble : orthogonales — chacune ne fait que
   const s = sandbox();
   const rapportsDirect = dossierJetable('szh-rapports-direct-combine');
   avecEnv({ SZH_ANCRAGE: s.ancrage, SZH_RAPPORTS: rapportsDirect, SZH_BASE: s.base, LOCALAPPDATA: s.local }, () => {
-    // Un fichier d'article, réellement sous l'ancrage : la mise en chemin relatif doit
-    // continuer à fonctionner exactement comme si SZH_RAPPORTS n'existait pas.
+    // Un fichier d'article sous l'ancrage : la mise en chemin relatif fonctionne comme sans
+    // SZH_RAPPORTS.
     const cheminArticle = path.join(s.ancrage, '2_Produkte', '52_Revue', 'x.md');
     const resultat = rapportErreur.emettreRapport(Object.assign({}, CHAMPS_MINIMAUX, {
       fichiers: [{ chemin: cheminArticle, role: 'article' }]
     }));
     assert.equal(resultat.ecrit, true, 'motif : ' + resultat.motif);
 
-    // La destination d'écriture EST rapportsDirect, tel quel — jamais dérivée de l'ancrage.
+    // La destination d'écriture est rapportsDirect, tel quel.
     assert.deepEqual(fs.readdirSync(rapportsDirect), [resultat.id + '.json']);
     assert.equal(fs.existsSync(dossierRapportsDe(s)), false,
       'aucune dérivation ne doit avoir eu lieu sous l’ancrage : SZH_RAPPORTS l’emporte sans condition');
 
     const rapport = JSON.parse(fs.readFileSync(path.join(rapportsDirect, resultat.id + '.json'), 'utf8'));
-    // L'ancrage, lui, reste celui résolu par SZH_ANCRAGE — origine 'essai', chemin exact —
-    // et le fichier de l'article sort bien relatif À CET ANCRAGE, D10 ne touchant en rien
-    // à la résolution de l'ancrage ni au masquage des chemins.
+    // L'ancrage reste celui de SZH_ANCRAGE (origine 'essai', chemin exact), et le fichier de
+    // l'article sort relatif à cet ancrage.
     assert.deepEqual(rapport.ancrage, { trouve: true, origine: 'essai', chemin: s.ancrage });
     assert.deepEqual(rapport.fichiers[0], { chemin: '2_Produkte\\52_Revue\\x.md', relatifA: 'ancrage', role: 'article' });
   });
 });
 
 // =========================================================================================
-// Partie 2 — les deux accroches d'extension.js, via l'hôte factice
+// Partie 2 : les deux accroches d'extension.js, via l'hôte factice
 // =========================================================================================
 //
-// Les trois variables sont posées AVANT d'activer l'hôte (activate() vide la file dès
-// l'activation) et reposées en tête de chaque test de cette partie : la Partie 1 les
-// manipule aussi, dans le MÊME processus (node --test donne un processus par fichier), et
-// rien ne garantit l'ordre relatif d'exécution des deux parties.
+// Les trois variables sont posées avant d'activer l'hôte (activate() vide la file dès
+// l'activation) et reposées en tête de chaque test : la Partie 1 les modifie aussi dans le
+// même processus, et l'ordre d'exécution des deux parties n'est pas garanti.
 const { revueDEssai, activerHote } = require('./hote-factice');
 const NOM_TACHE_BUILD = 'Aperçu / Export PDF';
 
@@ -608,12 +574,11 @@ function reposerEnvHote() {
 reposerEnvHote();
 const REVUE = revueDEssai();
 
-// Pas de process.on('uncaughtException', …) côté extension.js (retiré après relecture :
-// poser un tel écouteur change le comportement de l'hôte d'extensions PARTAGÉ pour toutes
-// les extensions, et attraperait les exceptions des AUTRES). COCKPIT-EXCEPTION part donc
-// d'une frontière plus étroite et plus sûre : envelopperCommande(), posée sur cmd() et
-// cmdEcriture() — l'enregistrement de TOUTES les commandes szh.*. Rien à intercepter ici
-// avant activation ; le test plus bas invoque directement une commande rendue défaillante.
+// extension.js ne pose pas de process.on('uncaughtException', …) : l'hôte d'extensions est
+// partagé, et un tel écouteur attraperait les exceptions des autres extensions.
+// COCKPIT-EXCEPTION part d'envelopperCommande(), posée sur cmd() et cmdEcriture(), qui
+// enregistrent toutes les commandes szh.*. Le test plus bas invoque une commande rendue
+// défaillante.
 const HOTE = activerHote(REVUE);
 HOTE.arbre().definirRacine(REVUE);
 
@@ -643,8 +608,8 @@ test('hôte : une compilation en échec (code non nul) écrit un rapport COMPIL-
 
 test('hôte : une compilation réussie (code 0) ne déclenche jamais de rapport, même avec des constats de contenu', async () => {
   reposerEnvHote();
-  // Un vrai .szh-journal.log portant une ligne de constat de qualité, pour que la garde
-  // porte sur le CODE de sortie et non sur l'absence de contenu à signaler.
+  // Un vrai .szh-journal.log portant une ligne de constat de qualité, pour que la garde porte
+  // sur le code de sortie et non sur l'absence de contenu à signaler.
   fs.writeFileSync(path.join(REVUE, '.szh-journal.log'),
     "⚠ Un dossier de articles/ contient des espaces\n", 'utf8');
   const avant = fichiersRapportsHote().length;
@@ -661,9 +626,8 @@ test('hôte : une commande szh.* qui lève écrit un rapport COCKPIT-EXCEPTION, 
   arbre.definirSectionDeployee = () => { throw new Error('essai de panne cockpit'); };
   const avant = fichiersRapportsHote().length;
   try {
-    // szh.ouvrirSection appelle fournisseur.definirSectionDeployee() en premier geste :
-    // l'enveloppe posée sur cmd() doit signaler PUIS relancer À L'IDENTIQUE — VSCodium doit
-    // voir exactement la même erreur qu'en l'absence de notre accroche.
+    // szh.ouvrirSection appelle d'abord fournisseur.definirSectionDeployee() : l'enveloppe
+    // posée sur cmd() signale, puis relance la même erreur, que VSCodium voit inchangée.
     assert.throws(() => HOTE.executer('szh.ouvrirSection', 'articles'), /essai de panne cockpit/);
   } finally {
     arbre.definirSectionDeployee = original;

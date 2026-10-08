@@ -1,30 +1,24 @@
-// Smoke test S1 : la chaîne d'import réelle, du .docx jusqu'au .md et au .meta.yaml, sur
-// un document figé du dépôt.
+// Smoke test : la chaîne d'import réelle, du .docx jusqu'au .md et au .meta.yaml, sur un
+// document du dépôt.
 //
 //   node --test test/js/smoke-import-docx.test.js
 //
-// Pourquoi un smoke test et pas un contrôle de plus sur docx-meta.py : tous les contrôles
-// existants (docx-meta-titre.test.js, import.test.js…) fabriquent leur propre .docx et
-// n'exercent qu'un maillon à la fois. Aucun ne rejoue la chaîne ENTIÈRE — docx-meta.py,
-// docx-tables.py, docx-titres.py, pandoc et ses six filtres Lua dans l'ordre du vrai script
-// — sur un document qui existe déjà, tel quel, pour de vrais auteur·e·s. Un maillon qui
-// casse en silence (ordre des filtres, option pandoc retirée par erreur) ne se verrait sur
-// aucun des deux flancs : chaque test unitaire continuerait de passer.
+// Les autres contrôles (docx-meta-titre.test.js, import.test.js…) fabriquent leur propre
+// .docx et n'exercent qu'un maillon. Celui-ci rejoue la chaîne entière (docx-meta.py,
+// docx-tables.py, docx-titres.py, pandoc et ses filtres Lua dans l'ordre du vrai script) :
+// un maillon cassé (ordre des filtres, option pandoc retirée) se voit ici alors que chaque
+// test unitaire passe encore.
 //
-// Le document choisi est livre-template/Modele-chapitre-SZH.docx : déjà versionné, déjà
-// exercé par test/js/import-numerotation-titres.test.js par la même chaîne réelle (même
-// invocation WSL), et suffisamment composé pour ce contrôle — titre, trois niveaux de
-// titre, une liste, un tableau, une note de bas de page. Pas de tableau d'auteur·e·s (un
-// chapitre de livre n'en a pas ; docx-meta.py écrit alors une fiche sans auteur, ce que la
-// référence figée montre aussi).
+// Le document est livre-template/Modele-chapitre-SZH.docx, déjà exercé par
+// test/js/import-numerotation-titres.test.js : titre, trois niveaux de titre, une liste, un
+// tableau, une note de bas de page. Pas de tableau d'auteur·e·s (un chapitre de livre n'en a
+// pas) : docx-meta.py écrit une fiche sans auteur, comme la référence.
 //
-// ⚠ Le pandoc qui compile en production est celui de la WSL SZH-Publishing (3.5, épinglé) —
-// pas celui, éventuel, du PATH Windows (3.9 sur ce poste : mémoire du dépôt, commit
-// 6fcb2e8, une figure légendée sort en HTML brut sous 3.5 et pas sous 3.9). La référence
-// versionnée ci-dessous a donc été écrite UNE FOIS depuis une vraie exécution WSL, jamais
-// tapée à la main ; ce test tourne sous WSL et nulle part ailleurs. Sans la distro, il saute
-// bruyamment (gardes.js, sansPandocWsl) — sauf sous SZH_WSL_OBLIGATOIRE, où l'absence
-// devient un échec net plutôt qu'un silence.
+// Le pandoc qui compile en production est celui de la WSL SZH-Publishing, pas celui du PATH
+// Windows, dont la version diffère et dont la sortie peut différer (une figure légendée, par
+// exemple). La référence versionnée vient d'une vraie exécution dans la WSL, et ce test ne
+// tourne que là. Sans la distribution, il est sauté avec un motif (gardes.js,
+// sansPandocWsl), sauf sous SZH_WSL_OBLIGATOIRE, où l'absence est un échec.
 'use strict';
 
 const test = require('node:test');
@@ -43,8 +37,8 @@ const FIXTURES = path.join(__dirname, 'fixtures', 'smoke-import');
 const SLUG = 'essai-s1';
 
 // Même conversion de chemin que import-numerotation-titres.test.js : wsl.exe n'accepte pas
-// un chemin Windows tel quel, et Git Bash déforme /mnt/c si on l'appelle depuis lui — d'où
-// l'appel direct par spawnSync plutôt que par un script shell.
+// un chemin Windows tel quel, et Git Bash déforme /mnt/c : d'où l'appel direct par
+// spawnSync plutôt que par un script shell.
 function cheminVersWsl(p) {
   const abs = path.resolve(p).replace(/\\/g, '/');
   const m = abs.match(/^([A-Za-z]):\/(.*)$/);
@@ -58,9 +52,9 @@ function wsl(args) {
     { encoding: 'utf8', windowsHide: true, timeout: 120000 });
 }
 
-// CRLF -> LF avant comparaison : la référence est écrite en LF (sortie WSL), un clone du
-// dépôt sous Windows peut réécrire les fichiers versionnés en CRLF selon .gitattributes —
-// le contenu, pas la fin de ligne, est ce que ce test garde.
+// CRLF -> LF avant comparaison : la référence est en LF (sortie WSL), et un clone sous
+// Windows peut réécrire les fichiers versionnés en CRLF selon .gitattributes. Le test garde
+// le contenu, pas la fin de ligne.
 function normaliser(texte) {
   return texte.replace(/\r\n/g, '\n');
 }

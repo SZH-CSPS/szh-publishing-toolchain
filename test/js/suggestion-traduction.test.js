@@ -3,29 +3,23 @@
 //
 //   node --test "test/js/*.test.js"
 //
-// Ce que ce fichier garde :
-//   * l'ALLER-RETOUR. On écrit un format que RIEN n'appelle encore en production : sans une
-//     lecture éprouvée, une faute de structure — une clé renommée, un champ oublié —
-//     passerait des mois sans se voir, et le jour où quelqu'un voudra relire ces fichiers,
-//     ils seront tous faux. listerSuggestions est écrite pour cela, et éprouvée ici.
-//   * les DEUX SUGGESTIONS DE LA MÊME SECONDE. Le nom porte la date à la seconde près :
-//     cliquer la pastille, corriger, recliquer, et la deuxième suggestion écraserait la
-//     première sans un mot. C'est exactement le geste qu'on attend de quelqu'un qui relit.
-//   * le DOSSIER FRÈRE DE articles/. Les deux recensements d'articles du dépôt listent les
-//     sous-dossiers de <racine>/articles : un dossier de suggestions placé là serait examiné
-//     comme un article.
-//   * le LISEZ-MOI POSÉ UNE FOIS. Quelqu'un a pu l'annoter ; une réécriture à chaque
-//     suggestion effacerait cela en silence.
-//   * la LECTURE QUI NE LÈVE PAS. Ces dossiers vivent sur OneDrive : un fichier tronqué en
-//     cours de synchronisation ne doit pas emporter la lecture de tous les autres.
-//   * le RÉGLAGE ÉTEINT PAR DÉFAUT, et tolérant à un config.json écrit à la main — la même
-//     tolérance que l'emplacement des revues, sans quoi « "verifTraduction": "true" » se
-//     lirait faux en silence.
-//   * le GESTE « supprimer », et le PIÈGE qui va avec. Une suggestion de suppression n'a
-//     pas de texte proposé : le contrôle « rien à proposer », écrit avant elle, la
-//     refuserait à tous les coups. Et le champ `geste` est apparu APRÈS les premiers
-//     fichiers : ceux-là n'en portent pas et doivent se relire « remplacer », sans quoi le
-//     schéma /1 aurait menti en restant /1.
+// Ce que ce fichier vérifie :
+//   * l'aller-retour : le format écrit n'est relu par rien d'autre en production. Sans
+//     lecture éprouvée (listerSuggestions), une clé renommée ou un champ oublié passerait
+//     inaperçu jusqu'au jour où l'on voudrait relire ces fichiers ;
+//   * deux suggestions dans la même seconde : le nom porte la date à la seconde, et
+//     cliquer, corriger, recliquer ne doit pas écraser la première ;
+//   * le dossier est frère de articles/ : les deux recensements d'articles listent les
+//     sous-dossiers de <racine>/articles, où un dossier de suggestions passerait pour un
+//     article ;
+//   * le lisez-moi est posé une fois : quelqu'un a pu l'annoter ;
+//   * la lecture ne lève pas : ces dossiers vivent sur OneDrive, et un fichier tronqué en
+//     cours de synchronisation ne doit pas empêcher de lire les autres ;
+//   * le réglage est éteint par défaut, et tolère un config.json écrit à la main, comme
+//     l'emplacement des revues (« "verifTraduction": "true" » se lit vrai) ;
+//   * le geste « supprimer » : une suggestion de suppression n'a pas de texte proposé, et le
+//     contrôle « rien à proposer » ne doit pas la refuser. Un fichier sans champ `geste` se
+//     relit « remplacer », sans changer de version de schéma.
 'use strict';
 
 const test = require('node:test');
@@ -108,19 +102,17 @@ test('le dossier est frère de articles/, jamais dedans', () => {
   assert.ok(fs.existsSync(path.join(racine, 'traduction')), 'dossier absent à la racine');
   assert.ok(!fs.existsSync(path.join(racine, 'articles', 'traduction')),
     'le dossier s’est rangé DANS articles/ : il y serait recensé comme un article');
-  // La règle des deux recensements du dépôt, rejouée telle quelle : les sous-dossiers de
-  // <racine>/articles qui portent <nom>/<nom>.md. C'est mot pour mot celle de
-  // FournisseurRevue._sousDossiersAvecMd (extension.js) et de listerSlugs
-  // (lib/export-ojs.js) — ni l'une ni l'autre n'est exportée, et ce contrôle vaut d'être
-  // tenu à l'endroit où la règle est écrite, pas seulement là où elle est appliquée.
+  // La règle des deux recensements, rejouée telle quelle : les sous-dossiers de
+  // <racine>/articles qui portent <nom>/<nom>.md, comme FournisseurRevue._sousDossiersAvecMd
+  // (extension.js) et listerSlugs (lib/export-ojs.js), qui ne sont pas exportées.
   const recenses = fs.readdirSync(path.join(racine, 'articles'), { withFileTypes: true })
     .filter((e) => e.isDirectory() &&
       fs.existsSync(path.join(racine, 'articles', e.name, e.name + '.md')))
     .map((e) => e.name);
   assert.deepStrictEqual(recenses, ['mon-article'],
     'le dossier de suggestions est entré dans le recensement des articles');
-  // Et la source elle-même : les deux recensements partent bien de articles/, si bien que
-  // rien à la racine du numéro ne peut y entrer.
+  // Dans la source : les deux recensements partent de articles/, rien à la racine du numéro
+  // ne peut y entrer.
   const extension = fs.readFileSync(path.join(COCKPIT, 'extension.js'), 'utf8');
   assert.match(extension, /_sousDossiersAvecMd\(profils\.chemins\(profilCourant\(\), this\.racine\)\.unites\)/,
     'le recensement de l’arbre ne part plus du dossier des unités : la garde ne vaut plus');
@@ -138,7 +130,7 @@ test('le LISEZ-MOI est posé une fois, bilingue, et n’est plus réécrit', () 
   assert.match(texte, /\[de\] /, 'le LISEZ-MOI n’existe qu’en français');
   assert.ok(!/\u00df/.test(texte), 'orthographe suisse : « ss », jamais « ß »');
 
-  // Quelqu'un l'annote : la suggestion suivante ne doit pas effacer cette annotation.
+  // Quelqu'un l'annote : la suggestion suivante n'efface pas l'annotation.
   fs.writeFileSync(lisez, texte + '\r\nNote de la rédaction : lu le 14.09.\r\n');
   sugg.ecrireSuggestion(racine, proposition({ propose: 'Dritter Versuch' }));
   assert.match(fs.readFileSync(lisez, 'utf8'), /Note de la rédaction/,
@@ -152,7 +144,7 @@ test('une suggestion sans changement et sans commentaire est refusée', () => {
   assert.strictEqual(res.ok, false);
   assert.strictEqual(res.raison, 'vide');
   assert.strictEqual(sugg.listerSuggestions(racine).length, 0, 'un fichier vide de sens a été écrit');
-  // Le même texte AVEC un commentaire a quelque chose à dire : c'est une remarque.
+  // Le même texte avec un commentaire a quelque chose à dire : c'est une remarque.
   assert.ok(sugg.ecrireSuggestion(racine,
     proposition({ propose: 'Alter Titel', commentaire: 'Vérifier la source.' })).ok);
 });
@@ -163,8 +155,8 @@ test('une suggestion sans changement et sans commentaire est refusée', () => {
 
 test('une suggestion de suppression s’écrit sans aucun texte proposé', () => {
   const racine = numeroEssai();
-  // Ni proposition, ni commentaire : ce qu'estVide refuse pour un remplacement. Ici, le
-  // geste EST le propos, et c'est le piège de ce chantier.
+  // Ni proposition, ni commentaire : ce qu'estVide refuse pour un remplacement. Ici, le geste
+  // est le propos.
   const res = sugg.ecrireSuggestion(racine,
     proposition({ geste: 'supprimer', propose: '', commentaire: '' }));
   assert.ok(res.ok, 'la suppression a été refusée comme « rien à proposer » : ' + JSON.stringify(res));
@@ -173,20 +165,18 @@ test('une suggestion de suppression s’écrit sans aucun texte proposé', () =>
   assert.strictEqual(relues.length, 1);
   assert.strictEqual(relues[0].geste, 'supprimer');
   assert.strictEqual(relues[0].propose, '', 'une suppression ne propose aucun texte');
-  // Le texte d'avant reste consigné : c'est de LUI que la suggestion parle.
+  // Le texte d'origine reste consigné : c'est de lui que la suggestion parle.
   assert.strictEqual(relues[0].actuel, 'Alter Titel');
-  // Et le schéma ne change pas de version pour un champ ajouté.
+  // Le schéma ne change pas de version pour un champ ajouté.
   assert.strictEqual(relues[0].schema, 'szh-suggestion-traduction/1');
 });
 
 test('une suppression passe même quand « actuel » est vide (ou égal à « propose ») : ' +
   'le court-circuit du geste, pas la comparaison générale, doit l’accepter', () => {
-  // Sans commentaire et avec actuel/propose tous deux vides, la comparaison générale
-  // d'estVide() (propose === actuel && commentaire === '') serait vraie elle aussi — ce
-  // cas-ci ne prouverait donc rien de spécifique au geste « supprimer ». C'est justement le
-  // piège : il isole le court-circuit dédié en construisant un scénario où actuel est déjà
-  // vide, là où le test voisin (actuel: 'Alter Titel') passe pour une tout autre raison
-  // (propose et actuel diffèrent).
+  // Avec actuel et propose vides et sans commentaire, la comparaison générale d'estVide()
+  // (propose === actuel && commentaire === '') serait vraie aussi. Ce scénario, où actuel est
+  // déjà vide, isole donc le court-circuit propre au geste « supprimer » ; le test voisin
+  // (actuel: 'Alter Titel') passe pour une autre raison (propose et actuel diffèrent).
   const racine = numeroEssai();
   const res = sugg.ecrireSuggestion(racine,
     proposition({ geste: 'supprimer', actuel: '', propose: '', commentaire: '' }));
@@ -195,9 +185,9 @@ test('une suppression passe même quand « actuel » est vide (ou égal à « pr
 });
 
 test('une suppression jette le texte que le formulaire avait dans sa zone de saisie', () => {
-  // La page cache la zone « Traduction proposée » quand le geste est armé, mais l'hôte ne
-  // s'y fie pas : un fichier qui porterait « supprimer » ET une proposition donnerait à
-  // relire un remplacement que personne n'a fait.
+  // La page cache la zone « Traduction proposée » quand le geste est armé, mais l'hôte ne s'y
+  // fie pas : un fichier qui porterait « supprimer » et une proposition donnerait à relire un
+  // remplacement que personne n'a fait.
   const racine = numeroEssai();
   sugg.ecrireSuggestion(racine, proposition({ geste: 'supprimer', propose: 'Reste de frappe' }));
   assert.strictEqual(sugg.listerSuggestions(racine)[0].propose, '');
@@ -205,7 +195,7 @@ test('une suppression jette le texte que le formulaire avait dans sa zone de sai
 
 test('un fichier écrit avant le champ « geste » se relit « remplacer »', () => {
   const racine = numeroEssai();
-  // Un fichier de la première version du format, mot pour mot : pas de clé « geste ».
+  // Un fichier de la première version du format : pas de clé « geste ».
   const dossier = path.join(racine, 'traduction');
   fs.mkdirSync(dossier, { recursive: true });
   fs.writeFileSync(path.join(dossier, '20260901-080000-mon-article-title-de.json'),
@@ -223,7 +213,7 @@ test('un fichier écrit avant le champ « geste » se relit « remplacer »', ()
 });
 
 test('un geste inconnu vaut « remplacer », et ne fait pas lever', () => {
-  // Le geste vient d'un message de webview : tout ce qui n'est pas « supprimer » est le
+  // Le geste vient d'un message de webview : tout ce qui n'est pas « supprimer » devient le
   // geste ordinaire, plutôt qu'une valeur libre recopiée dans le fichier.
   const racine = numeroEssai();
   sugg.ecrireSuggestion(racine, proposition({ geste: 'effacer-la-revue' }));
@@ -233,9 +223,8 @@ test('un geste inconnu vaut « remplacer », et ne fait pas lever', () => {
 });
 
 test('la page arme le geste au lieu de l’envoyer, et le formulaire dit ce qu’il enregistrera', () => {
-  // Trois relais entre le bouton et le fichier, et aucun n'est visible d'ici : le bouton
-  // bascule un interrupteur, le message porte « geste », et la page montre un bandeau. Le
-  // défaut voisin de celui des pastilles serait un bouton qui envoie tout de suite.
+  // Trois relais entre le bouton et le fichier : le bouton bascule un interrupteur, le message
+  // porte « geste », et la page montre un bandeau. Le bouton n'envoie rien tout de suite.
   const page = fs.readFileSync(path.join(COCKPIT, 'media', 'suggestion.js'), 'utf8');
   const html = fs.readFileSync(path.join(COCKPIT, 'media', 'suggestion.html'), 'utf8');
   assert.match(html, /id="supprimer"/, 'le second bouton n’est pas dans la page');
@@ -245,7 +234,7 @@ test('la page arme le geste au lieu de l’envoyer, et le formulaire dit ce qu�
     'le message envoyé à l’hôte ne porte pas le geste');
   assert.match(page, /gesteQuoi\.textContent = suppression \? TXT\.supprimerQuoi/,
     'le bandeau ne reprend pas le texte du geste');
-  // Et l'hôte transmet ce que la page a dit, sinon tout ce qui précède est décoratif.
+  // L'hôte transmet ce que la page a dit.
   const hote = fs.readFileSync(path.join(COCKPIT, 'lib', 'traduction-hote.js'), 'utf8');
   assert.match(hote, /geste: msg\.geste/,
     'l’hôte n’envoie pas le geste au module : toute suppression s’écrirait « remplacer »');
@@ -323,15 +312,12 @@ test('ecrireVerifTraduction pose un booléen propre sans toucher au reste de con
 
 // ---- La pastille, dans le DOM, par le chemin réel ----
 //
-// Le défaut qui a valu ces trois tests : Robin a activé le mode et n'a jamais vu la
-// pastille. Tout ce qui précède passait au vert, parce que tout ce qui précède éprouve le
-// MODULE — le format des fichiers, le réglage, la relecture — et jamais la webview. Entre le
-// réglage sur le disque et un bouton à l'écran il y a quatre relais, et aucun n'était gardé :
-// l'hôte lit le réglage, le met dans le message `valeurs`, la page le retient, et les cartes
-// posent leurs pastilles au rendu. Un seul relais muet, et le mode est invisible sans qu'une
-// ligne de code n'ait l'air fausse.
+// Les tests précédents éprouvent le module (format, réglage, relecture), pas la webview. Entre
+// le réglage sur le disque et un bouton à l'écran, il y a quatre relais : l'hôte lit le
+// réglage, le met dans le message `valeurs`, la page le retient, et les cartes posent leurs
+// pastilles au rendu. Un seul relais muet rendrait le mode invisible.
 //
-// On rend donc ici la vraie page, avec le vrai _fiches.js, et on compte les boutons.
+// On rend donc la vraie page, avec le vrai _fiches.js, et on compte les boutons.
 const { ouvrir, libellesHote } = require('./dom-minimal');
 
 function ouvrirFichesVerif(verifTrad) {
@@ -363,8 +349,8 @@ test('pastilles : le mode actif en pose, et chacune dit sa langue', () => {
   const vues = pastilles(ouvrirFichesVerif(true));
   assert.ok(vues.length > 0,
     'aucune pastille alors que le mode est actif : le réglage ne parvient plus à la page');
-  // Le contenu EST le code de langue : c'est lui qui distingue les deux pastilles des
-  // mots-clés, que rien d'autre ne sépare.
+  // Le contenu est le code de langue : c'est lui qui distingue ces pastilles de celles des
+  // mots-clés.
   for (const b of vues) {
     assert.strictEqual(b.balise, 'button', 'la pastille n’est pas un bouton');
     assert.match(b.textContent, /^(FR|DE|IT)$/,
@@ -382,8 +368,8 @@ test('pastilles : le mode inactif n’en pose aucune, et n’en réserve pas la 
 });
 
 test('pastilles : un message sans verifTrad n’en pose aucune — l’absence vaut éteint', () => {
-  // Un hôte plus ancien, ou un relais qui oublierait la clé, ne doit pas allumer le mode
-  // par accident. C'est l'inverse du défaut gardé plus haut, et les deux comptent.
+  // Un hôte plus ancien, ou un relais qui oublierait la clé, n'allume pas le mode par
+  // accident.
   assert.strictEqual(pastilles(ouvrirFichesVerif(undefined)).length, 0,
     'une clé absente allume le mode');
 });

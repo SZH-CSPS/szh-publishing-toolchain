@@ -1,16 +1,15 @@
 // Case « Ne pas afficher ce chapitre dans la table des matières » (formulaire des fiches,
-// livre seulement) : la clé `sommaire: non` de <slug>.meta.yaml, sa case dans le
-// formulaire, et pourquoi un article n'en montre jamais rien.
+// livre seulement) : la clé `sommaire: non` de <slug>.meta.yaml et sa case dans le
+// formulaire. Un article n'en montre rien.
 //
 //   node --test test/js/sommaire-chapitre.test.js
 //
-// pipeline/profils/livre.mk (CHAPITRES_HORS_SOMMAIRE) accepte déjà `non` et `false` lus à
-// la main dans le fichier ; ce lot ajoute la case qui écrit ce que la chaîne sait déjà lire.
-// Ce que ce fichier tient :
-//   * une fiche sans `sommaire` sort exactement comme avant que ce champ existe ;
-//   * cochée -> `sommaire: non` ; décochée -> la clé est RETIRÉE, jamais `sommaire: oui` ;
+// pipeline/profils/livre.mk (CHAPITRES_HORS_SOMMAIRE) lit `non` et `false`. Ce que ce fichier
+// vérifie :
+//   * une fiche sans `sommaire` sort inchangée ;
+//   * cochée -> `sommaire: non` ; décochée -> la clé est retirée (pas de `sommaire: oui`) ;
 //   * les autres clés (picto-entete, les champs d'un auteur de collectif) ne bougent pas ;
-//   * la case n'existe dans le DOM que pour un livre, jamais pour un article.
+//   * la case n'existe dans le DOM que pour un livre.
 'use strict';
 
 const test = require('node:test');
@@ -85,7 +84,7 @@ test('la fiche garde ses autres clés : picto-entete et les champs d’un auteur
   assert.match(sortie, /^sommaire: non$/m);
   assert.ok(sortie.indexOf('affiliation: "SZH/CSPS"') !== -1, 'un champ de l’auteur a disparu');
   assert.ok(sortie.indexOf('fonction: "Rédacteur ou rédactrice"') !== -1);
-  // Décoche à son tour : la fiche revient à son état d’avant, picto-entete et auteur compris.
+  // Décoche à son tour : la fiche revient à son état initial, picto-entete et auteur compris.
   const relu2 = yaml.analyserMeta(sortie);
   relu2.horsSommaire = false;
   const revenu = yaml.serialiserMeta(relu2);
@@ -146,7 +145,7 @@ test('livre : chaque carte offre la case « hors sommaire », cochée selon la f
   const cocheSuite = page.conteneur()
     .querySelectorAll('[data-slug="02-suite"] [data-cle="sommaire"]')[0];
   assert.strictEqual(cocheSuite.checked, false, 'la case ne reprend pas horsSommaire=false de la fiche');
-  // Le libellé et la ligne d'aide sont bien du texte de l'hôte (i18n), pas codés en dur ici.
+  // Le libellé et la ligne d'aide viennent des textes de l'hôte (i18n).
   const texte = page.textes();
   assert.ok(texte.indexOf(TEXTES_COCKPIT.fr['fiches.sommaire']) !== -1, 'libellé de la case absent du DOM');
   assert.ok(texte.indexOf(TEXTES_COCKPIT.fr['fiches.sommaire.aide']) !== -1, 'ligne d’aide absente du DOM');
@@ -165,8 +164,8 @@ test('revue : la case « hors sommaire » n’existe jamais, même si la fiche p
 
 // ---- type, licence, DOI, mots-clés : absents pour un chapitre -----------------------
 //
-// Aucun sens pour un livre : pas de taxonomie d'article, pas de licence par chapitre, pas
-// d'export OJS (donc pas de DOI), pas de classification thématique edudoc/thésaurus.
+// Sans objet pour un livre : pas de taxonomie d'article, pas de licence par chapitre, pas
+// d'export OJS (donc pas de DOI), pas de classification thématique edudoc.
 
 test('livre : la fiche n’offre ni type, ni licence, ni DOI, ni mots-clés', () => {
   const page = ouvrirFiches([
@@ -201,9 +200,8 @@ test('revue : type, licence, DOI et mots-clés restent offerts (non-régression)
     'la grille de mots-clés a disparu d’une carte d’article');
 });
 
-// changerLangue() lit `editeurMots` sans garde suffisante avant ce lot : absent pour un
-// chapitre (ESTLIVRE), il fallait vérifier que changer la langue de la fiche ne lève
-// toujours rien — compterMotsClesLangue() le tolérait déjà, changerLangue() non.
+// changerLangue() lit `editeurMots`, absent pour un chapitre (ESTLIVRE) : changer la langue
+// de la fiche ne doit pas lever.
 test('livre : changer la langue de la fiche d’un chapitre ne lève rien sans grille de mots-clés', () => {
   const page = ouvrirFiches([
     { slug: '01-ouverture', valeurs: { lang: 'fr', title: { fr: 'T' } } }
@@ -250,7 +248,7 @@ test('décocher la case puis enregistrer envoie horsSommaire=false', () => {
     'la case décochée ne part pas comme horsSommaire=false');
 });
 
-// ---- L'hôte : gate côté nettoyerCarte et écriture réelle sur disque ----
+// ---- L'hôte : filtre de nettoyerCarte et écriture réelle sur disque ----
 
 const { livreDEssai, activerHote } = require('./hote-factice');
 const fs = require('fs');
@@ -303,12 +301,9 @@ test('livre : l’aller-retour complet écrit « sommaire: non », préserve pic
   assert.ok(revenu.indexOf('picto-entete: ecouter') !== -1, 'picto-entete a été perdu au retrait de la clé');
 });
 
-// La préservation de type/licence/doi/keywords hérités sur une fiche de chapitre, et la
-// non-régression du même geste côté revue, vivent respectivement dans hote-livre.test.js
-// et hote.test.js : chacun d'eux a déjà son propre activerHote() de tout le fichier — « un
-// seul activerHote() par processus » (hote-factice.js) interdit d'en ajouter un ici.
-
-// Le repli hors livre de nettoyerCarte() (defense en profondeur, même si la webview
-// fournissait horsSommaire pour un article) vit dans son propre fichier : ce test-ci vient
-// d'appeler activerHote(), qui pose déjà le profil 'livre' pour tout le processus — voir
-// test/js/sommaire-chapitre-revue.test.js.
+// La conservation de type/licence/doi/keywords hérités sur une fiche de chapitre, et le même
+// geste côté revue, sont testés dans hote-livre.test.js et hote.test.js, qui ont chacun leur
+// activerHote() (un seul par processus, hote-factice.js).
+//
+// Le repli hors livre de nettoyerCarte() est testé dans
+// test/js/sommaire-chapitre-revue.test.js : ce fichier a activé l'hôte sur un livre.

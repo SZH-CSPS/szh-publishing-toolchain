@@ -1,21 +1,17 @@
-// Les réglages protégés : l'export OJS et les titres de bibliographie.
+// Les réglages protégés : l'export OJS, les titres de bibliographie et les tâches
+// éditoriales.
 //
-//   node --test "test/js/*.test.js"
+//   node --test test/js/reglages-proteges.test.js
 //
-// Ce qu'ils sont, et pourquoi ils sont à part. Ces deux blocs décrivent la CHAÎNE DE
-// PUBLICATION et non le confort d'une personne : une rubrique OJS renommée sur un seul
-// poste fait atterrir ses articles dans la mauvaise section de la revue, et un titre de
-// bibliographie changé d'un côté fait paraître deux numéros de la même revue avec deux
-// titres différents. Ils étaient pourtant offerts à la saisie libre dans « Réglages SZH »,
-// entre le thème et le zoom, sans que rien ne dise qu'on engageait tout le monde.
+// Ces blocs décrivent la chaîne de publication, pas le confort d'une personne : une rubrique
+// OJS renommée sur un seul poste envoie ses articles dans la mauvaise section, et un titre de
+// bibliographie changé d'un côté donne deux numéros de la même revue avec deux titres
+// différents. Ils se lisent partout, ne se modifient qu'après un déverrouillage explicite qui
+// dit ce qu'il engage, et le poste signale quand il s'écarte de la version déployée. Le
+// formulaire produit le fichier à transmettre à l'administrateur.
 //
-// La règle posée : ils se LISENT partout, ils ne se MODIFIENT qu'après un déverrouillage
-// explicite qui dit ce qu'il engage, et le poste dit quand il s'écarte de la version
-// déployée. Le formulaire sait produire le fichier à transmettre à l'administrateur.
-//
-// ⚠ Ce que ces contrôles gardent avant tout : un fichier déployé VIDE ne doit rien effacer.
-//   Il part vide, et la première mise à jour aurait emporté la configuration OJS des postes
-//   qui en avaient une.
+// Un fichier déployé vide n'efface rien : il est livré vide, et la première mise à jour
+// emporterait sinon la configuration OJS des postes qui en ont une.
 'use strict';
 
 const test = require('node:test');
@@ -28,8 +24,8 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
 
-// Le fichier déployé est détourné AVANT le premier require : aucun contrôle ne lit ni
-// n'écrit celui du poste.
+// Le fichier déployé est détourné avant le premier require : aucun contrôle ne touche celui
+// du poste.
 const POSTE = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-proteges-'));
 const DEPLOYE = path.join(POSTE, 'settings-protected.json');
 process.env.SZH_REGLAGES_PROTEGES = DEPLOYE;
@@ -54,42 +50,41 @@ test('le fichier déployé se lit, et son absence ne se confond pas avec son vid
   assert.strictEqual(proteges.lireReglagesProteges(), null, 'un tableau n’est pas une configuration');
   deployer({ ojs: { types: { editorial: 'ED' } } });
   assert.deepStrictEqual(proteges.lireReglagesProteges(), { ojs: { types: { editorial: 'ED' } } });
-  // Un BOM ne doit pas faire échouer la lecture : plusieurs outils du poste en posent un.
+  // Un BOM ne fait pas échouer la lecture : plusieurs outils du poste en posent un.
   fs.writeFileSync(DEPLOYE, '﻿' + JSON.stringify({ biblio: { titres: {} } }));
   assert.deepStrictEqual(proteges.lireReglagesProteges(), { biblio: { titres: {} } });
 });
 
 test('seuls les deux blocs connus sont retenus', () => {
-  // Un fichier déployé qui porterait autre chose — une clé de la configuration du poste
-  // recopiée par erreur — ne doit pas se déverser dans celle du poste.
+  // Une autre clé dans le fichier déployé (une clé de configuration du poste recopiée par
+  // erreur) ne se déverse pas dans celle du poste.
   const lu = proteges.blocsProteges({
     ojs: { types: {} }, biblio: {}, emplacementRevues: 'production', repo: 'ailleurs/x'
   });
   assert.deepStrictEqual(Object.keys(lu).sort(), ['biblio', 'ojs']);
-  // Les clés de documentation du fichier (« _lisezmoi », « _exemple ») n'en sont pas non plus.
+  // Les clés de documentation du fichier (« _lisezmoi », « _exemple ») sont ignorées aussi.
   assert.deepStrictEqual(proteges.blocsProteges({ _lisezmoi: 'x', _exemple: { ojs: {} } }), {});
 });
 
 // ---- Le relais vers la configuration du poste ----
 
 test('un bloc déployé prend la main, un bloc absent laisse celui du poste', () => {
-  // C'EST le contrôle qui compte. Le fichier déployé part vide : s'il effaçait ce qu'il ne
-  // nomme pas, la première mise à jour emporterait la configuration OJS des postes qui en
-  // avaient déjà une.
+  // Le fichier déployé est livré vide : s'il effaçait ce qu'il ne nomme pas, la première mise
+  // à jour emporterait la configuration OJS des postes qui en ont une.
   const poste = { repo: 'x', emplacementRevues: 'test', ojs: { types: { editorial: 'ED' } } };
   const apres = proteges.configAvecProteges(poste, { biblio: { titres: { revue: { fr: 'Sources' } } } });
   assert.deepStrictEqual(apres.ojs, { types: { editorial: 'ED' } },
     'un bloc que la référence ne nomme pas a été effacé');
   assert.deepStrictEqual(apres.biblio, { titres: { revue: { fr: 'Sources' } } });
-  // Et les clés voisines survivent : l'emplacement des revues vit dans le même fichier.
+  // Les clés voisines survivent : l'emplacement des revues vit dans le même fichier.
   assert.strictEqual(apres.repo, 'x');
   assert.strictEqual(apres.emplacementRevues, 'test');
   assert.deepStrictEqual(poste.biblio, undefined, 'la configuration de départ a été modifiée');
-  // Une référence entièrement vide ne change donc rien du tout.
+  // Une référence vide ne change rien.
   assert.deepStrictEqual(proteges.configAvecProteges(poste, {}), poste);
 });
 
-// ---- La divergence, dite plutôt que devinée ----
+// ---- La divergence, signalée ----
 
 test('la divergence ne se mesure que sur ce que la référence impose', () => {
   const poste = { ojs: { types: { editorial: 'ED' } }, biblio: { titres: {} } };
@@ -104,8 +99,8 @@ test('la divergence ne se mesure que sur ce que la référence impose', () => {
 });
 
 test('la comparaison ne dépend pas de l’ordre des clés', () => {
-  // La table des rubriques OJS en porte des dizaines : une comparaison textuelle aurait
-  // fait diverger un poste qui n'avait rien changé, à chaque ouverture du panneau.
+  // La table des rubriques OJS en porte des dizaines : une comparaison textuelle (ordre des
+  // clés) ferait diverger un poste qui n'a rien changé.
   const a = { ojs: { revues: { fr: { genreFichier: 'T', groupeAuteur: 'A' } } } };
   const b = { ojs: { revues: { fr: { groupeAuteur: 'A', genreFichier: 'T' } } } };
   assert.deepStrictEqual(proteges.divergences(a, b), []);
@@ -124,7 +119,7 @@ test('le fichier à télécharger porte les deux blocs et un mot d’explication
   assert.deepStrictEqual(relu.ojs, { types: { editorial: 'ED' } });
   assert.deepStrictEqual(relu.biblio, { titres: {} });
   assert.strictEqual(relu.repo, undefined, 'une clé étrangère est partie dans le fichier');
-  // Il doit pouvoir être déployé tel quel : ce que ce module relira doit être les deux blocs.
+  // Il se déploie tel quel : ce que ce module relit, ce sont les deux blocs.
   assert.deepStrictEqual(Object.keys(proteges.blocsProteges(relu)).sort(), ['biblio', 'ojs']);
   assert.match(texte, /\n$/, 'un fichier de configuration se termine par une fin de ligne');
 });
@@ -137,16 +132,14 @@ test('le fichier livré n’impose rien, et montre la forme attendue', () => {
     'le fichier livré impose un bloc : il écraserait celui de tous les postes dès la mise à jour');
   assert.ok(String(livre._lisezmoi || '').length > 200,
     'le fichier livré doit dire ce qu’il est et ce qu’on en fait : c’est son seul commentaire possible');
-  // L'exemple montre les deux blocs, sous leur vrai nom, pour qu'on n'ait pas à deviner.
+  // L'exemple montre les deux blocs sous leur vrai nom.
   for (const bloc of proteges.BLOCS) {
     assert.ok((livre._exemple || {})[bloc], 'exemple absent pour le bloc : ' + bloc);
   }
 });
 
-// Le diagnostic du poste compare les mêmes blocs, depuis PowerShell, sans partager une
-// ligne de code avec lib/reglages-proteges.js : sa liste est une COPIE, et une copie qui ne
-// se vérifie pas finit par dormir. Un bloc ajouté ici et oublié là-bas ne se dirait nulle
-// part — le poste divergerait en silence, ce qui est précisément ce que ce fichier évite.
+// Le diagnostic du poste compare les mêmes blocs depuis PowerShell, avec sa propre liste. Un
+// bloc ajouté ici et oublié là-bas ferait diverger le poste sans que rien ne le dise.
 test('le diagnostic du poste regarde exactement les mêmes blocs', () => {
   const ps = lire('windows', 'diagnostic.ps1');
   const m = ps.match(/\$protegesBlocs\s*=\s*@\(([^)]*)\)/);
@@ -187,17 +180,17 @@ test('les trois blocs partent verrouillés, et l’écriture est refusée', asyn
   assert.ok(valeurs.proteges, 'l’état des réglages protégés n’est pas envoyé à la page');
   assert.strictEqual(valeurs.proteges.deverrouille, false, 'la page s’ouvre déverrouillée');
 
-  // Un message qui arriverait quand même — page restée ouverte, envoi automatique en vol —
-  // ne doit pas passer. Le formulaire grise déjà, mais le verrou ne peut pas vivre dans la
-  // page seule : elle est remplaçable, l'hôte ne l'est pas.
+  // Un message qui arrive quand même (page restée ouverte, envoi automatique en cours) est
+  // refusé. Le formulaire grise déjà, mais le verrou vit dans l'hôte : la page est
+  // remplaçable, l'hôte non.
   await p._recepteur({ type: 'reglerOjs', ojs: { types: { editorial: 'AR' } } });
   const refus = dernier(p, 'erreur');
   assert.ok(refus && refus.bloc === 'ojs', 'l’écriture verrouillée n’a pas été refusée');
   assert.match(refus.message, /verrouill/i);
   await p._recepteur({ type: 'reglerBiblio', titres: { revue: { fr: 'Sources' } } });
   assert.strictEqual(dernier(p, 'erreur').bloc, 'biblio', 'la bibliographie s’écrit encore verrouillée');
-  // Les tâches éditoriales ont rejoint les deux autres : elles décrivent le processus d'une
-  // revue, pas le confort d'une personne, et chaque poste tenait jusqu'ici sa propre liste.
+  // Les tâches éditoriales sont protégées aussi : elles décrivent le processus d'une revue,
+  // pas le confort d'une personne.
   await p._recepteur({ type: 'taches-enregistrer', taches: { revue: [{ id: 'x', fr: 'x', de: 'x' }] } });
   assert.strictEqual(dernier(p, 'erreur').bloc, 'tachesArticle',
     'les tâches s’écrivent encore verrouillées');
@@ -224,10 +217,9 @@ test('les tâches partent à la page, et s’écrivent une fois déverrouillées
   assert.deepStrictEqual(cfg.tachesArticle.revue,
     [{ id: 'relecture-croisee', fr: 'relecture croisée', de: 'Gegenlesen' }],
     'l’identifiant n’a pas été dérivé de l’intitulé français');
-  // Une revue absente du message garde SES intitulés : configAvecTaches n'en touche qu'une,
-  // et écrit la table complète — celle d'à côté y descend donc telle qu'elle était lue,
-  // c'est-à-dire le jeu de départ sur un poste neuf. Jamais vide, jamais celle qu'on vient
-  // d'écrire : c'est là qu'une seule liste pour les deux revues se serait vue.
+  // Une revue absente du message garde ses intitulés : configAvecTaches n'en modifie qu'une
+  // et écrit la table complète, où l'autre revue redescend telle qu'elle a été lue (le jeu de
+  // départ sur un poste neuf). Une liste unique pour les deux revues se verrait ici.
   assert.ok(Array.isArray(cfg.tachesArticle.zeitschrift)
     && cfg.tachesArticle.zeitschrift.length > 1,
     'la revue absente du message a perdu ses intitulés');
@@ -235,7 +227,7 @@ test('les tâches partent à la page, et s’écrivent une fois déverrouillées
     'la tâche écrite sur une revue a débordé sur l’autre');
 
   // La page reçoit la table relue : sans elle, la rangée suivante fabriquerait un second
-  // identifiant sur le même intitulé.
+  // identifiant pour le même intitulé.
   const relu = dernier(p, 'valeurs');
   assert.strictEqual(relu.taches.table.revue[0].id, 'relecture-croisee');
   await p._recepteur({ type: 'deverrouiller', valeur: false });
@@ -244,7 +236,7 @@ test('les tâches partent à la page, et s’écrivent une fois déverrouillées
 test('déverrouiller pose une question modale, et un refus ne déverrouille pas', async () => {
   const p = await panneauReglages();
   const avant = HOTE.avertissements.length;
-  // File de réponses vide -> undefined, c'est-à-dire « Annuler ».
+  // File de réponses vide : undefined, c'est-à-dire « Annuler ».
   await p._recepteur({ type: 'deverrouiller', valeur: true });
   const questions = HOTE.avertissements.slice(avant);
   assert.strictEqual(questions.length, 1, 'aucune question posée, ou plusieurs');
@@ -255,7 +247,7 @@ test('déverrouiller pose une question modale, et un refus ne déverrouille pas'
     'le détail ne dit pas à qui s’adresser');
   assert.strictEqual(dernier(p, 'proteges').deverrouille, false,
     'un refus a quand même déverrouillé');
-  // Et l'écriture reste refusée.
+  // L'écriture reste refusée.
   await p._recepteur({ type: 'reglerOjs', ojs: {} });
   assert.ok(dernier(p, 'erreur'), 'l’écriture est passée après un refus');
 });
@@ -270,13 +262,13 @@ test('déverrouiller puis accepter laisse écrire, et le poste dit qu’il diver
   await p._recepteur({ type: 'reglerBiblio', titres: { revue: { fr: 'Sources', de: 'Literatur', it: 'Bibliografia' } } });
   const enregistre = dernier(p, 'enregistre');
   assert.ok(enregistre && enregistre.bloc === 'biblio', 'l’écriture déverrouillée n’a pas abouti');
-  // Le poste vient de s'écarter de la version déployée : le bandeau doit le dire tout de
-  // suite, pas au prochain rechargement du panneau.
+  // Le poste vient de s'écarter de la version déployée : le bandeau le dit tout de suite,
+  // sans attendre le rechargement du panneau.
   const etat = dernier(p, 'proteges');
   assert.deepStrictEqual(etat.divergences, ['biblio']);
   assert.ok(etat.avertissement.length > 0, 'la divergence est mesurée mais pas dite');
 
-  // Reverrouiller ne repose aucune question : on peut toujours refermer.
+  // Reverrouiller ne pose aucune question.
   const avant = HOTE.avertissements.length;
   await p._recepteur({ type: 'deverrouiller', valeur: false });
   assert.strictEqual(HOTE.avertissements.length, avant, 'reverrouiller pose une question');
@@ -303,10 +295,9 @@ test('« Télécharger » écrit un fichier déployable, même verrouillé', asy
 
 // ---- Le formulaire, réellement rendu ----
 //
-// Le verrou ne peut pas vivre dans la page seule — elle est remplaçable, l'hôte ne l'est
-// pas, et c'est lui qui refuse l'écriture (contrôlé plus haut). Mais un formulaire dont les
-// champs restent saisissables invite à saisir, et le refus n'arrive qu'après coup : la page
-// doit dire, avant le geste, que ces réglages ne sont pas à elle.
+// C'est l'hôte qui refuse l'écriture (vérifié plus haut). Mais un champ saisissable invite à
+// saisir, et le refus n'arriverait qu'après : la page dit, avant toute saisie, que ces
+// réglages sont verrouillés.
 
 function ouvrirFormulaire() {
   const { ouvrirReglages } = require('./page-reglages');
@@ -349,8 +340,8 @@ test('le formulaire grise les trois blocs tant qu’on n’a pas déverrouillé'
   for (const el of verrouilles) {
     assert.ok(el.classes.has('fige'), 'contrôle non grisé : ' + el.balise);
     // readOnly sur un champ de saisie, disabled sur le reste : un champ désactivé sort de
-    // l'ordre de tabulation et n'est plus lisible au lecteur d'écran, alors qu'un réglage
-    // qu'on ne peut pas changer doit rester lisible.
+    // l'ordre de tabulation et du lecteur d'écran, alors qu'un réglage verrouillé doit rester
+    // lisible.
     if (el.balise === 'input' && el.type === 'text') {
       assert.strictEqual(el.readOnly, true, 'champ de saisie encore modifiable');
       assert.strictEqual(el.disabled, false,
@@ -373,8 +364,8 @@ test('le formulaire ne se déverrouille que sur la réponse de l’hôte', () =>
   assert.strictEqual(cases.length, 1, 'une seule case, « déverrouiller », attendue');
   assert.strictEqual(cases[0].checked, false);
 
-  // Cocher n'ouvre rien par soi-même : la page demande, et attend. C'est l'hôte qui pose la
-  // question modale — une webview ne peut pas bloquer.
+  // Cocher n'ouvre rien : la page demande et attend. C'est l'hôte qui pose la question modale,
+  // une webview ne pouvant pas bloquer.
   cases[0].checked = true;
   cases[0].dispatchEvent({ type: 'change' });
   assert.ok(controles(page).every((el) => el.classes.has('fige')),
@@ -406,10 +397,8 @@ test('le formulaire dit quand ce poste s’écarte de la version de la rédactio
   assert.match(bandeau().textContent, /ne porte plus/);
 });
 
-// Les tâches éditoriales, réellement rendues. Ce bloc a déménagé d'une modale de la vue
-// « Articles » : c'est le genre de déménagement qui s'arrête à mi-chemin sans que rien ne
-// le dise — la page s'affiche, le bloc reste vide, et personne ne s'en aperçoit avant le
-// prochain bouclage.
+// Les tâches éditoriales, réellement rendues : un bloc vide s'afficherait sans erreur et ne se
+// remarquerait qu'au bouclage suivant.
 test('le formulaire montre les tâches des deux revues, et relit ce qui est à l’écran', () => {
   const { page, biblio, taches } = ouvrirFormulaire();
   page.envoyer({
@@ -422,16 +411,16 @@ test('le formulaire montre les tâches des deux revues, et relit ce qui est à l
   const attendus = (taches.table.revue.length + taches.table.zeitschrift.length) * 2;
   assert.strictEqual(champs.length, attendus,
     'un champ par tâche et par langue attendu, pour les deux revues');
-  // L'identifiant n'est PAS un champ : il est écrit dans le sidecar de chaque article, et
-  // le montrer inviterait à le corriger — ce qui décocherait la tâche partout.
+  // L'identifiant n'est pas un champ : il est écrit dans le sidecar de chaque article, et le
+  // modifier décocherait la tâche partout.
   assert.ok(champs.every((c) => c.dataset.tacheId), 'l’identifiant ne suit plus le champ');
   assert.ok(zone.querySelectorAll('[data-tache-langue="fr"]').length > 0
     && zone.querySelectorAll('[data-tache-langue="de"]').length > 0,
     'une des deux langues manque');
 
-  // Corriger un intitulé ne touche pas à l'identifiant : c'est là que se joue le
-  // décochage silencieux de tous les articles.
-  // Un seul attribut par sélecteur dans le harnais DOM : on filtre le reste à la main.
+  // Corriger un intitulé ne touche pas à l'identifiant, sinon tous les articles perdraient la
+  // coche de cette tâche.
+  // Un seul attribut par sélecteur dans le harnais DOM : le reste se filtre à la main.
   const premier = champs.filter((c) => c.dataset.tacheRevue === 'revue'
     && c.dataset.tacheLangue === 'fr')[0];
   assert.ok(premier, 'aucun champ français pour la revue');

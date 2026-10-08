@@ -3,13 +3,12 @@
 //   node --test "test/js/*.test.js"
 //
 // Le numéro qu'un article porte à l'écran vient de son rang dans l'ordre du numéro
-// (ausgabe.yaml) ; le préfixe de son dossier, lui, est figé à l'import et n'a jamais été
-// renommé. Les deux divergent donc dès le premier déplacement, et l'on cherche l'article 3
-// dans l'explorateur pour tomber sur « 01- ».
+// (ausgabe.yaml) ; le préfixe de son dossier est posé à l'import. Après un déplacement, les
+// deux divergent : on cherche l'article 3 dans l'explorateur et on tombe sur « 01- ».
 //
-// Ce module calcule le renommage qui les réaligne. Il est PUR : il ne touche pas au disque,
-// il rend un plan. C'est ce qui permet de l'éprouver sur les cas qui font mal — le cycle,
-// l'interruption, le dossier déjà en place — sans monter une arborescence à chaque fois.
+// Ce module calcule le renommage qui les réaligne. Il est pur : il rend un plan sans toucher
+// au disque, ce qui permet d'éprouver les cas difficiles (cycle, interruption, dossier déjà en
+// place) sans monter une arborescence.
 'use strict';
 
 const test = require('node:test');
@@ -20,10 +19,9 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 const plan = require(path.join(COCKPIT, 'lib', 'renumerotation.js'));
 
-// Un article tel que l'hôte le lira sur le disque : son dossier, et les fichiers posés
-// directement dedans. media/ et tables/ sont des dossiers, ils ne sont pas listés ici — et
-// c'est le fond de l'affaire : ce qu'ils contiennent est désigné en chemin relatif depuis
-// le .md, et ne bouge donc pas.
+// Un article tel que l'hôte le lit sur le disque : son dossier, et les fichiers posés
+// directement dedans. media/ et tables/ ne sont pas listés : leur contenu est désigné en
+// chemin relatif depuis le .md, et ne bouge pas.
 function article(slug, extras) {
   return { slug: slug,
            fichiers: [slug + '.md', slug + '.meta.yaml'].concat(extras || []) };
@@ -39,9 +37,8 @@ test('plan : un dossier déjà au bon rang n’est pas touché', () => {
   assert.strictEqual(p.aFaire, false);
 });
 
-// La règle métier qui a motivé toute cette bascule : le premier article affiché à l'écran
-// (prefixeOrdre(0), lib/articles.js) doit être celui dont le dossier porte « 00- », pas
-// « 01- ». Un décalage de un ici referait exactement le bug que ce module corrige.
+// Le premier article affiché à l'écran (prefixeOrdre(0), lib/articles.js) est celui dont le
+// dossier porte « 00- », pas « 01- ».
 test('plan : le premier article de l’ordre prend « 00 »', () => {
   const p = plan.planRenumerotation(
     [article('edito'), article('inclusion')],
@@ -63,8 +60,8 @@ test('plan : le rang décide du préfixe, et le reste du nom ne bouge pas', () =
 });
 
 test('plan : un échange passe par un nom temporaire, sinon il écrase', () => {
-  // Le cas qui casse une implémentation naïve : renommer 00 en 01 alors que 01 existe
-  // encore. Le plan doit donc sortir en deux passes.
+  // Le cas qui casse une implémentation naïve : renommer 00 en 01 alors que 01 existe encore.
+  // Le plan sort donc en deux passes.
   const p = plan.planRenumerotation(
     [article('00-edito'), article('01-inclusion')],
     ['01-inclusion', '00-edito']);
@@ -77,15 +74,15 @@ test('plan : un échange passe par un nom temporaire, sinon il écrase', () => {
     assert.match(etape.de, /^~ordre-/, 'la seconde passe doit partir du nom temporaire');
     assert.ok(!/^~ordre-/.test(etape.vers), 'un nom temporaire est resté à l’arrivée');
   }
-  // Et aucun nom temporaire ne peut heurter un dossier existant.
+  // Aucun nom temporaire ne heurte un dossier existant.
   const existants = new Set(['00-edito', '01-inclusion']);
   for (const etape of aller) { assert.ok(!existants.has(etape.vers)); }
 });
 
 test('plan : les fichiers du dossier suivent son nom', () => {
-  // Le Makefile exige que le .md porte le nom de son dossier ; la fiche, la bibliographie
-  // et le sidecar des tâches suivent la même règle. Un fichier oublié resterait invisible
-  // pour la chaîne.
+  // Le Makefile exige que le .md porte le nom de son dossier ; la fiche, la bibliographie et
+  // le sidecar des tâches suivent la même règle. Un fichier oublié serait invisible pour la
+  // chaîne.
   const p = plan.planRenumerotation(
     [article('03-gremion', ['03-gremion.biblio.md', '03-gremion.taches.yaml'])],
     ['03-gremion']);
@@ -109,7 +106,7 @@ test('plan : un fichier qui ne porte pas le nom du dossier reste tranquille', ()
 });
 
 test('plan : un dossier sans préfixe en reçoit un', () => {
-  // Un article créé à la main, ou importé avant que la chaîne ne préfixe.
+  // Un article créé à la main, sans préfixe.
   const p = plan.planRenumerotation([article('inclusion'), article('00-edito')],
     ['00-edito', 'inclusion']);
   const vers = p.renommages.map((r) => r.vers);
@@ -128,7 +125,7 @@ test('plan : au-delà de neuf, le préfixe garde deux chiffres', () => {
 // ---- 2. Ce que le plan refuse ------------------------------------------------------
 
 test('plan : un ordre qui ne parle pas des mêmes articles est refusé', () => {
-  // Le garde-fou qui compte : un ordre calculé sur une liste périmée renommerait au hasard.
+  // Un ordre calculé sur une liste périmée renommerait au hasard : refusé.
   assert.throws(() => plan.planRenumerotation([article('01-a'), article('02-b')], ['01-a']),
     /ordre/i, 'un ordre incomplet doit être refusé, pas complété d’office');
   assert.throws(() => plan.planRenumerotation([article('01-a')], ['01-a', '02-b']),
@@ -136,8 +133,8 @@ test('plan : un ordre qui ne parle pas des mêmes articles est refusé', () => {
 });
 
 test('plan : deux articles ne peuvent pas viser le même nom', () => {
-  // Impossible par construction, puisque le préfixe vient du rang — ce contrôle existe
-  // pour que cela reste vrai le jour où le calcul du préfixe changera.
+  // Impossible par construction, puisque le préfixe vient du rang : ce contrôle le garde vrai
+  // si le calcul du préfixe change.
   const p = plan.planRenumerotation(
     [article('01-essai'), article('02-essai')], ['02-essai', '01-essai']);
   const cibles = p.renommages.map((r) => r.vers);
@@ -147,9 +144,8 @@ test('plan : deux articles ne peuvent pas viser le même nom', () => {
 // ---- 3. La reprise, quand un lot s’est interrompu -----------------------------------
 
 test('reprise : des dossiers temporaires laissés derrière se terminent', () => {
-  // Une interruption au milieu — un fichier verrouillé, une fenêtre fermée — laisse des
-  // « ~ordre-… » sur le disque. Sans reprise, le numéro reste dans un état que personne ne
-  // sait lire. Le nom temporaire porte donc sa destination, et la reprise la relit.
+  // Une interruption (fichier verrouillé, fenêtre fermée) laisse des « ~ordre-… » sur le
+  // disque. Le nom temporaire porte sa destination, et la reprise la relit.
   const restes = ['~ordre-02-inclusion', '01-edito'];
   const p = plan.planReprise(restes);
   assert.strictEqual(p.aFaire, true);

@@ -411,8 +411,8 @@ test('page : un filtre de décision vide la sélection ; le tri vaut aussi dans 
   assert.strictEqual(ligne(panel, 'VD-1').querySelector('.prop-case').checked, false);
 });
 
-// Les dates des décisions, posées à la main : la plus récente en tête.
-// Le jour, n jours avant aujourd'hui (UTC), au format des décisions.
+// Les dates des décisions, posées à la main : la plus récente en tête. ilYa(n) rend le jour
+// n jours avant aujourd'hui (UTC), au format des décisions.
 function ilYa(n) { return new Date(Date.now() - n * 86400000).toISOString().slice(0, 10); }
 function dater(cleP, date, mtime) {
   const f = pr.cheminDecision(RACINE_ARBRE, cleP);
@@ -611,9 +611,9 @@ test('bibliothèque : « récemment » vaut 30 jours : J-29 et J-30 listées, J-
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }
 });
 
-// La raison d'une garde est le seul texte qui explique un bouton désactivé, au plus petit corps :
-// elle prend l'encre principale (Lc 80,9 en Light+ contre 75,7). L'état « Acceptée » reste en
-// encre secondaire, comme « refusée ».
+// La raison d'une garde, seul texte qui explique un bouton désactivé, est au plus petit corps :
+// elle prend l'encre principale pour rester lisible. L'état « Acceptée » reste en encre
+// secondaire, comme « refusée ».
 test('contraste : la raison d’une garde en --encre, l’état « Acceptée » en --encre-2, jetons que cockpit-contraste mesure', () => {
   const css = fs.readFileSync(path.join(COCKPIT, 'media', '_propositions.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
   for (const [sel, jeton] of [['.prop-garde-raison', 'var(--encre)'], ['.prop-etat--acceptee', 'var(--encre-2)']]) {

@@ -3,12 +3,11 @@
 //
 //   node --test "test/js/*.test.js"
 //
-// AUCUN réseau ici : les commandes qui en ont besoin (numeros-ojs, caracteres) prennent leur
+// Aucun réseau : les commandes qui en ont besoin (numeros-ojs, caracteres) reçoivent leur
 // fonction de récupération en paramètre (opts.recuperer), comme moissonner()/rafraichir() de
-// lib/auteurs-ojs.js — les tests lui donnent des fixtures XML/HTML, jamais ojs.szh.ch.
-// SZH_RESEAU_INTERDIT est de toute façon posé plus bas pour prouver que newsletter et
-// metadonnees s'en passent complètement, et que les deux autres échouent proprement sans
-// `recuperer` injecté.
+// lib/auteurs-ojs.js, et les tests leur donnent des fixtures XML/HTML. SZH_RESEAU_INTERDIT
+// est posé plus bas pour vérifier que newsletter et metadonnees s'en passent, et que les deux
+// autres échouent proprement sans `recuperer` injecté.
 'use strict';
 
 const test = require('node:test');
@@ -20,15 +19,15 @@ const path = require('path');
 const RACINE_COCKPIT = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit');
 const secretariat = require(path.join(RACINE_COCKPIT, 'lib', 'secretariat.js'));
 
-// config.json toujours détourné : aucun test ne doit lire ni écrire C:\ProgramData (même
-// motif que test/js/export-ojs.test.js, dont lib/secretariat.js réutilise configOjs()).
+// config.json détourné : aucun test ne lit ni n'écrit C:\ProgramData (comme
+// test/js/export-ojs.test.js, dont lib/secretariat.js réutilise configOjs()).
 const CONFIG_ESSAI = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'szh-secr-cfg-')), 'config.json');
 process.env.SZH_CONFIG_OJS = CONFIG_ESSAI;
 
 function dossierTemp(prefixe) { return fs.mkdtempSync(path.join(os.tmpdir(), prefixe)); }
 
-// ---- Fixtures : un numéro local jetable, avec accents, plusieurs auteurs et un titre à
-// épreuve du CSV (point-virgule + guillemet) -----------------------------------------
+// ---- Fixtures : un numéro local jetable, avec accents, plusieurs auteurs et un titre
+// piège pour le CSV (point-virgule + guillemet) --------------------------------------
 
 function ecrireNumeroEssai() {
   const racine = dossierTemp('szh-secr-numero-');
@@ -273,10 +272,9 @@ test('collecterNumeroLocal : DOI par rang, sans-DOI en fin de compteur, titre + 
     'Amélie Dentz, Bianca Frank Baud, Nicolas Ruffieux et Chantal Martin Sölch');
 });
 
-// Un numéro pas encore paru : `date: ""`, comme TOUS les numéros au moment où la newsletter
-// se prépare (avant parution). Le dossier est nommé « 2027-03 » — c'est le nom du dossier,
-// et lui seul, qui doit donner l'année de repli (voir lib/yaml.js, titreNumero, et
-// lib/metadonnees-hote.js, anneeNumero : même règle, trois endroits).
+// Un numéro pas encore paru : `date: ""`, comme tous les numéros au moment où la newsletter
+// se prépare. Le dossier est nommé « 2027-03 » : son nom seul donne l'année de repli (même
+// règle dans lib/yaml.js, titreNumero, et lib/metadonnees-hote.js, anneeNumero).
 function ecrireNumeroSansDate() {
   const parent = dossierTemp('szh-secr-sansdate-');
   const racine = path.join(parent, '2027-03');
@@ -370,7 +368,7 @@ test('commandeNewsletter : produit les .txt de rubrique et auteurs.csv, sans ré
     assert.ok(documentation.indexOf('<a href="https://ojs.szh.ch/index.php/revue/fr/article/view/2026-03-doc" target="_blank">') !== -1, documentation);
     assert.ok(documentation.indexOf('Comptes rendus') !== -1, documentation);
 
-    // Aucune rubrique « Dossier thématique »/« Tribune libre » dans la fixture : pas de fichier.
+  // Aucune rubrique « Dossier thématique » ni « Tribune libre » dans la fixture : pas de fichier.
     assert.ok(!fs.existsSync(path.join(dossierSortie, '2-dossier-thematique.txt')));
     assert.ok(!fs.existsSync(path.join(dossierSortie, '4-tribune-libre.txt')));
 
@@ -379,23 +377,21 @@ test('commandeNewsletter : produit les .txt de rubrique et auteurs.csv, sans ré
     assert.ok(auteursCsv.toString('utf8').indexOf('\r\n') !== -1, 'fins de ligne CRLF attendues');
     const lignesAuteurs = auteursCsv.toString('utf8').replace(/^\uFEFF/, '').split('\r\n').filter((l) => l !== '');
     assert.strictEqual(lignesAuteurs.length, 8); // en-tête + 7 auteur·e·s (1+4+1+1, dont "" prénom)
-    // Le titre à double piège (point-virgule + guillemet) ressort bien entre guillemets doublés,
-    // sur les quatre lignes des auteur·e·s de l'article concerné.
+    // Le titre piège (point-virgule + guillemet) ressort entre guillemets doublés, sur les
+    // quatre lignes des auteur·e·s de l'article concerné.
     assert.ok(lignesAuteurs.some((l) => l.indexOf('""guillemet""') !== -1), lignesAuteurs.join('\n'));
 
-    // L'article sans DOI a un lien (sa page OJS) : plus d'avertissement « sans lien ».
+    // L'article sans DOI a un lien (sa page OJS) : pas d'avertissement « sans lien ».
     assert.ok(!evenements.some((e) => e.t === 'avert' && e.texte.indexOf('10-doc') !== -1));
   } finally {
     if (avant === undefined) { delete process.env.SZH_RESEAU_INTERDIT; } else { process.env.SZH_RESEAU_INTERDIT = avant; }
   }
 });
 
-// La Documentation est désormais une arborescence Kirby (lib/kirby-contenu.js) : son
-// dossier n'a plus de <slug>.md du tout (seulement <slug>.meta.yaml,
-// documentation.<lang>.txt et les dossiers de ses fiches — hors du périmètre de ce test).
-// ecrireNumeroEssai() ci-dessus lui en écrit toujours un, ce qui ne prouve donc rien de la
-// nouvelle réalité : ce contrôle-ci construit son propre numéro, sans <slug>.md pour la
-// Documentation, et vérifie qu'elle est quand même reconnue et publiée — comme avant.
+// La Documentation est une arborescence Kirby (lib/kirby-contenu.js) : son dossier n'a pas de
+// <slug>.md, seulement <slug>.meta.yaml, documentation.<lang>.txt et les dossiers de ses
+// fiches. ecrireNumeroEssai() lui écrit un .md : ce contrôle construit donc son propre
+// numéro, sans <slug>.md pour la Documentation, et vérifie qu'elle est reconnue et publiée.
 test('commandeNewsletter : la Documentation Kirby (sans .md) est quand même reconnue et publiée', async () => {
   const avant = process.env.SZH_RESEAU_INTERDIT;
   process.env.SZH_RESEAU_INTERDIT = '1';
@@ -433,9 +429,9 @@ test('commandeNewsletter : la Documentation Kirby (sans .md) est quand même rec
 
 // ---- Sans --gabarits : lecture directe d'export-templates/, rien écrit hors de la sortie --
 //
-// Il n'existe plus de dossier « installé » sur le poste : un gabarit se modifie dans le
-// dépôt, part dans le VSIX, et se lit toujours depuis export-templates/ de l'extension —
-// une copie locale figerait une version périmée qu'aucune mise à jour ne rattraperait.
+// Un gabarit se modifie dans le dépôt, part dans le VSIX et se lit depuis export-templates/
+// de l'extension : une copie locale figerait une version qu'aucune mise à jour ne
+// rattraperait.
 
 test('commandeNewsletter : sans --gabarits, lit export-templates/ et n’écrit rien hors de sa sortie', async () => {
   const avant = process.env.SZH_RESEAU_INTERDIT;
@@ -446,19 +442,18 @@ test('commandeNewsletter : sans --gabarits, lit export-templates/ et n’écrit 
   try {
     const racine = ecrireNumeroEssai();
     const dossierSortie = dossierTemp('szh-secr-defaut-sortie-');
-    // Aucun dossierGabarits dans les options : le défaut de commandeNewsletter doit suffire.
+    // Aucun dossierGabarits dans les options : le défaut de commandeNewsletter suffit.
     const resultat = await secretariat.commandeNewsletter({ racineNumero: racine, dossierSortie: dossierSortie });
     assert.strictEqual(resultat.ok, true);
-    // Le rendu a bien eu lieu, avec les gabarits livrés — sans qu'aucun --gabarits ne soit passé.
+    // Le rendu a eu lieu, avec les gabarits livrés, sans --gabarits.
     assert.ok(fs.existsSync(path.join(dossierSortie, '3-varia.txt')));
     assert.ok(fs.existsSync(path.join(dossierSortie, '0-intro.txt')));
     assert.ok(fs.existsSync(path.join(dossierSortie, 'auteurs.csv')));
-    // Les neuf gabarits attendus sont bien tous là où ils sont lus, à la source.
+    // Les neuf gabarits attendus sont là où ils sont lus.
     for (const nom of secretariat.NOMS_GABARITS_DEFAUT) {
       assert.ok(fs.existsSync(path.join(source, nom)), nom + ' absent de export-templates/');
     }
-    // export-templates/ n'a pas bougé : ni fichier ajouté, ni fichier touché — la lecture
-    // est seule en jeu, rien n'y est jamais écrit.
+    // export-templates/ n'a pas bougé : ni fichier ajouté, ni fichier modifié.
     assert.deepStrictEqual(fs.readdirSync(source).sort(), avantListe);
     assert.deepStrictEqual(avantListe.map((n) => fs.statSync(path.join(source, n)).mtimeMs), avantMtimes);
   } finally {
@@ -493,7 +488,7 @@ test('commandeNumerosOjs : suit le resumptionToken, groupe en numéros, écrit l
   assert.deepStrictEqual(Object.keys(cache.numeros).sort(), ['2025-04', '2026-03']);
   assert.strictEqual(cache.numeros['2026-03'][0].revue, 'revue');
 
-  // Un second appel pour l'AUTRE revue ne doit pas effacer ce qui précède.
+  // Un second appel pour l'autre revue n'efface pas ce qui précède.
   const baseZ = secretariat.BASES_OAI.zeitschrift;
   const recuperer2 = async (url) => {
     if (url === baseZ + '?verb=ListRecords&metadataPrefix=oai_dc') {
@@ -504,7 +499,7 @@ test('commandeNumerosOjs : suit le resumptionToken, groupe en numéros, écrit l
   };
   await secretariat.commandeNumerosOjs({ revue: 'zeitschrift', cheminCache: cheminCache, recuperer: recuperer2 });
   const cacheApres = secretariat.lireCacheNumeros(cheminCache);
-  // "2026-03" porte maintenant DEUX numéros (revue ET zeitschrift), l'ancien "2025-04" reste.
+  // "2026-03" porte deux numéros (revue et zeitschrift), l'ancien "2025-04" reste.
   assert.strictEqual(cacheApres.numeros['2026-03'].length, 2);
   assert.ok(cacheApres.numeros['2026-03'].some((n) => n.revue === 'revue'));
   assert.ok(cacheApres.numeros['2026-03'].some((n) => n.revue === 'zeitschrift'));
@@ -517,8 +512,8 @@ test('commandeNumerosOjs : revue inconnue refusée, --cache requis', async () =>
 });
 
 // ---- --depuis-annee : from=AAAA-01-01 sur la première page seulement, numéros trop anciens
-// écartés (from filtre la date de MODIFICATION, pas de parution — voir le commentaire de
-// commandeNumerosOjs pour le cas réel r2025-04) -----------------------------------------
+// écartés (from filtre la date de modification, pas de parution : voir le commentaire de
+// commandeNumerosOjs) -------------------------------------------------------------------
 
 test('commandeNumerosOjs : --depuis-annee pose &from=AAAA-01-01 sur la première page, jamais sur la page suivante (resumptionToken)', async () => {
   const base = secretariat.BASES_OAI.revue;
@@ -527,7 +522,7 @@ test('commandeNumerosOjs : --depuis-annee pose &from=AAAA-01-01 sur la première
     recordOaiDc({ id: '1', setSpec: 'revue:ED', titreFr: 'Éditorial', creators: ['Morand, Robin'],
       doi: '10.57161/r2026-03-00', volume: '16', numero: '03', annee: '2026', titreNumero: 'Numéro' }),
     'jeton-1');
-  // Pas de `from` ici : une page de resumptionToken ne porte QUE le jeton. Si le code le
+  // Pas de `from` ici : une page de resumptionToken ne porte que le jeton. Si le code le
   // répétait, cette URL ne serait pas dans `pages` et le test échouerait sur « URL inattendue ».
   pages[base + '?verb=ListRecords&resumptionToken=jeton-1'] = enveloppeOai(
     recordOaiDc({ id: '2', setSpec: 'revue:VA', titreFr: 'Varia', creators: ['Dupont, Anne'],
@@ -561,7 +556,7 @@ test('commandeNumerosOjs : --depuis-annee écarte un numéro d’année antérie
     recordOaiDc({ id: '1', setSpec: 'revue:ED', titreFr: 'Éditorial 2026', creators: ['Morand, Robin'],
       doi: '10.57161/r2026-03-00', volume: '16', numero: '03', annee: '2026', titreNumero: 'Numéro 2026' }) + '\n' +
     // Le seul des neuf articles de r2025-04 retouché après le 01.01.2026 : `from` le ramène
-    // seul, sans les huit autres — le numéro serait donc amputé s'il n'était pas écarté.
+    // sans les huit autres, et le numéro serait amputé s'il n'était pas écarté.
     recordOaiDc({ id: '2', setSpec: 'revue:VA', titreFr: 'Article retouché', creators: ['Dupont, Anne'],
       doi: '10.57161/r2025-04-03', volume: '15', numero: '04', annee: '2025', titreNumero: 'Numéro 2025' })
   );
@@ -580,12 +575,11 @@ test('commandeNumerosOjs : --depuis-annee écarte un numéro d’année antérie
   assert.deepStrictEqual(Object.keys(cache.numeros), ['2026-03']); // aucune entrée de cache pour 2025-04
 });
 
-// ---- Progression pendant le moissonnage : étape AVANT la requête, total toujours 0 ----
+// ---- Progression pendant le moissonnage : étape avant la requête, total toujours 0 ----
 //
-// Le point du correctif n'est pas seulement « une étape existe » (elle existait déjà, mais
-// APRÈS la page reçue) : c'est l'ORDRE qui compte, puisque c'est pendant les ~4,6 s d'attente
-// réseau que l'utilisateur a besoin d'un signe de vie. La vérification se fait donc DANS
-// `recuperer`, avant qu'il ne rende la main — le seul endroit qui voit vraiment l'ordre.
+// L'étape « page <n> » doit précéder la requête : c'est pendant les quelques secondes
+// d'attente réseau que l'utilisateur a besoin d'un signe de vie. La vérification se fait dans
+// `recuperer`, avant qu'il ne rende la main, seul endroit qui voit l'ordre.
 
 test('commandeNumerosOjs : une étape "page N" est émise AVANT chaque requête réseau, pas seulement après', async () => {
   const xmlPage1 = enveloppeOai(recordOaiDc({
@@ -603,9 +597,7 @@ test('commandeNumerosOjs : une étape "page N" est émise AVANT chaque requête 
     emettre: (e) => evenements.push(e),
     recuperer: async () => {
       appels++;
-      // Au moment de la requête, l'étape « page <n> » doit DÉJÀ avoir été émise — avec le
-      // code d'avant le correctif, elle n'arrivait qu'après ce retour, cette assertion aurait
-      // donc échoué.
+      // Au moment de la requête, l'étape « page <n> » a déjà été émise.
       assert.ok(
         evenements.some((e) => e.t === 'etape' && e.texte.indexOf('page ' + appels) !== -1),
         'l’étape « page ' + appels + ' » doit précéder la requête, pas la suivre'
@@ -712,11 +704,10 @@ test('commandeEdudoc : progres monotone, un total connu d’avance (nombre de nu
 
 // ---- commandeEdudoc + mots-clés (690) : jointure par DOI depuis un numéro local ---------
 //
-// Décision de Robin : la source des mots-clés edudoc est le .meta.yaml de l'article dans le
-// numéro local, jamais l'OAI. Le thésaurus est injecté via opts.motsClesConnus, jamais lu
-// sur C:\ProgramData — même façon de faire que opts.recuperer pour le réseau ailleurs dans
-// ce fichier. Les fonctions d'appariement (indexerThesaurus, apparierDescripteurs) viennent
-// de lib/mots-cles-edudoc.js : ce fichier ne fait que les appeler, jamais les réimplémenter.
+// Les mots-clés edudoc viennent du .meta.yaml de l'article dans le numéro local, pas de
+// l'OAI. Le thésaurus est injecté par opts.motsClesConnus, sans lecture de C:\ProgramData,
+// comme opts.recuperer pour le réseau. L'appariement (indexerThesaurus, apparierDescripteurs)
+// vient de lib/mots-cles-edudoc.js, que ce module appelle.
 
 const THESAURUS_EDUDOC_ESSAI = [
   { de: 'Inklusion', fr: 'inclusion' },
@@ -727,9 +718,9 @@ const THESAURUS_EDUDOC_ESSAI = [
 ];
 
 // Un numéro local avec deux articles : l'un à deux mots-clés reconnus (+ un non reconnu),
-// l'autre à cinq — bornes mesurées en vrai sur les numéros du poste (« de 3 à 7 »). Le DOI
-// est posé explicitement dans la fiche (`doi:`) : c'est lui, pas le rang, qui doit faire la
-// jointure avec le cache OAI, exactement comme comparerArticle/comparerNumero.
+// l'autre à cinq (les numéros réels en portent de 3 à 7). Le DOI est posé dans la fiche
+// (`doi:`) : c'est lui, pas le rang, qui fait la jointure avec le cache OAI, comme
+// comparerArticle/comparerNumero.
 function ecrireNumeroEdudocMotsCles() {
   const racine = dossierTemp('szh-secr-edu-local-');
   fs.writeFileSync(path.join(racine, 'ausgabe.yaml'), [
@@ -771,7 +762,7 @@ function ecrireNumeroEdudocMotsCles() {
 }
 
 // Cache OAI/edudoc avec trois articles : deux ont un pendant local (les DOI ci-dessus), le
-// troisième n'en a aucun — sa ligne doit sortir sans descripteurs, avec un avertissement.
+// troisième non ; sa ligne sort sans descripteurs, avec un avertissement.
 function cacheEdudocMotsClesEssai(cheminCache) {
   const art1 = secretariat.decoderRecordOai(secretariat.extraireBlocsRecord(enveloppeOai(recordOaiDc({
     id: '1', setSpec: 'revue:VA', titreFr: 'Article a deux mots-cles', creators: ['Dentz, Amelie'],
@@ -808,8 +799,8 @@ test('commandeEdudoc : avec --numero (racines locales), colonnes 690 en forme ca
   const lignes = csv.replace(/^\uFEFF/, '').split('\r\n').filter((l) => l !== '');
   assert.strictEqual(lignes.length, 4); // en-tête + 3 articles (dont celui sans pendant local)
 
-  // En-tête : cinq paires 690__a-N/690__b-N — le maximum rencontré, porté par l'article à
-  // cinq mots-clés reconnus.
+  // En-tête : cinq paires 690__a-N/690__b-N, le maximum, porté par l'article à cinq mots-clés
+  // reconnus.
   assert.ok(lignes[0].indexOf('"690__a-1"') !== -1 && lignes[0].indexOf('"690__b-1"') !== -1, lignes[0]);
   assert.ok(lignes[0].indexOf('"690__a-5"') !== -1 && lignes[0].indexOf('"690__b-5"') !== -1, lignes[0]);
   assert.ok(lignes[0].indexOf('"690__a-6"') === -1, 'pas de sixième paire : le maximum est cinq');
@@ -822,25 +813,25 @@ test('commandeEdudoc : avec --numero (racines locales), colonnes 690 en forme ca
   assert.ok(ligneB, 'ligne de l’article à cinq mots-clés introuvable : ' + lignes.join('\n'));
   assert.ok(ligneC, 'ligne du troisième article introuvable : ' + lignes.join('\n'));
 
-  // Forme canonique du thésaurus (ici identique à la saisie, mais la colonne allemande
-  // prouve que l'appariement passe bien par l'index, jamais par la position dans la liste).
+  // Forme canonique du thésaurus (identique à la saisie ici) : la colonne allemande prouve que
+  // l'appariement passe par l'index, pas par la position dans la liste.
   assert.ok(ligneA.indexOf('"Inklusion"') !== -1 && ligneA.indexOf('"inclusion"') !== -1, ligneA);
   assert.ok(ligneA.indexOf('"Nachteilsausgleich"') !== -1 && ligneA.indexOf('"compensation"') !== -1, ligneA);
 
-  // Remplissage à droite : les trois lignes ont exactement le même nombre de colonnes que
-  // l'en-tête, quel que soit leur nombre réel de descripteurs (2, 5, ou 0).
+  // Remplissage à droite : les trois lignes ont autant de colonnes que l'en-tête, quel que soit
+  // leur nombre de descripteurs (2, 5 ou 0).
   assert.strictEqual(ligneA.split(';').length, nbColonnesEntete);
   assert.strictEqual(ligneB.split(';').length, nbColonnesEntete);
   assert.strictEqual(ligneC.split(';').length, nbColonnesEntete);
 
   // Le troisième article (OAI) n'a pas de pendant local : ligne sans descripteurs, avec un
-  // avertissement explicite — le CSV reste valide (colonnes toutes présentes, vides).
+  // avertissement ; le CSV reste valide (colonnes présentes, vides).
   assert.ok(evenements.some((e) => e.t === 'avert' &&
     e.texte.indexOf('10.57161/r2026-03-03') !== -1 && e.texte.indexOf('aucun article des numéros du poste') !== -1),
     evenements.map((e) => e.texte).join('\n'));
 
-  // Bilan chiffré : 2 + 5 = 7 descripteurs exportés, un mot-clé saisi non reconnu par le
-  // thésaurus, compté et listé plutôt que perdu en silence.
+  // Bilan chiffré : 2 + 5 = 7 descripteurs exportés, et un mot-clé saisi non reconnu par le
+  // thésaurus, compté et listé.
   assert.ok(evenements.some((e) => e.t === 'etape' && e.texte.indexOf('7 descripteur') !== -1),
     evenements.map((e) => e.texte).join('\n'));
   assert.ok(evenements.some((e) => e.t === 'avert' &&
@@ -874,8 +865,8 @@ test('commandeEdudoc : un même mot-clé non reconnu saisi par deux articles ne 
     fs.writeFileSync(path.join(dossier, slug + '.md'), 'Texte.\n');
     fs.writeFileSync(path.join(dossier, slug + '.meta.yaml'), lignes.concat(['']).join('\n'));
   };
-  // Même terme, deux graphies différentes (casse) — même clé pliée (plierDescripteur), doit
-  // compter et s'afficher une seule fois, sous la première graphie rencontrée.
+  // Même terme, deux casses : même clé pliée (plierDescripteur), compté et affiché une fois,
+  // sous la première graphie rencontrée.
   article('premier', [
     'type: varia', 'lang: fr', 'doi: "10.57161/r2026-03-01"',
     'title:', '  fr: "Premier article"',
@@ -899,17 +890,17 @@ test('commandeEdudoc : un même mot-clé non reconnu saisi par deux articles ne 
   assert.strictEqual(resultat.ok, true);
 
   // Aucun descripteur (le terme n'est pas dans le thésaurus) : seul le bilan des non reconnus
-  // est en jeu ici.
+  // est en jeu.
   assert.ok(evenements.some((e) => e.t === 'etape' && e.texte.indexOf('0 descripteur') !== -1),
     evenements.map((e) => e.texte).join('\n'));
 
-  // Un seul avertissement de bilan, et le compte qu'il annonce dit bien « 1 » — le terme
-  // saisi deux fois (une par article, sous deux casses) ne doit compter qu'une fois.
+  // Un seul avertissement de bilan, qui annonce « 1 » : le terme saisi deux fois (une par
+  // article, sous deux casses) compte une fois.
   const bilans = evenements.filter((e) => e.t === 'avert' && e.texte.indexOf('pas reconnu') !== -1);
   assert.strictEqual(bilans.length, 1, 'un seul avertissement de bilan attendu : ' + evenements.map((e) => e.texte).join('\n'));
   assert.ok(bilans[0].texte.indexOf('1 mot-clé n’est pas reconnu') === 0, 'compté une fois, au singulier : ' + bilans[0].texte);
 
-  // Et il n'apparaît qu'une fois dans la liste affichée, quelle que soit sa casse.
+  // Il n'apparaît qu'une fois dans la liste affichée, quelle que soit sa casse.
   const occurrences = bilans[0].texte.toLowerCase().split('terme partage inconnu').length - 1;
   assert.strictEqual(occurrences, 1, bilans[0].texte);
   // La première graphie rencontrée est celle qui est gardée.
@@ -994,8 +985,8 @@ test('commandeCaracteres : progres monotone, total = seuls les articles à galle
   });
   assert.strictEqual(resultat.ok, true);
   const progres = evenements.filter((e) => e.t === 'progres');
-  // Seuls les deux articles à galley HTML comptent, l'article sans galley n'entre jamais
-  // dans le total (il n'est jamais téléchargé, donc jamais compté « à télécharger »).
+  // Seuls les deux articles à galley HTML comptent : l'article sans galley n'est pas
+  // téléchargé, donc pas compté.
   assert.strictEqual(progres.length, 2);
   assert.ok(progres.every((e) => e.total === 2), 'même total partout : ' + JSON.stringify(progres));
   assert.deepStrictEqual(progres.map((e) => e.fait), [1, 2]);
@@ -1026,7 +1017,7 @@ test('commandeMetadonnees : compare et rapporte concordances/divergences/absence
   assert.ok(rapport.indexOf('00-editorial') !== -1 && rapport.indexOf('concorde') !== -1, rapport);
   // Les deux varia locaux n'ont pas de contrepartie OAI (DOI différents dans la fixture).
   assert.ok(rapport.indexOf('aucun article OJS ne porte ce DOI') !== -1, rapport);
-  // 10-doc n'a pas de DOI local : comparaison impossible, le dit explicitement.
+  // 10-doc n'a pas de DOI local : comparaison impossible, et le rapport le dit.
   assert.ok(rapport.indexOf('pas de DOI local') !== -1, rapport);
   // L'article OAI 99 n'a pas de pendant local.
   assert.ok(rapport.indexOf('sans correspondance locale') !== -1 && rapport.indexOf('10.57161/r2026-03-99') !== -1, rapport);

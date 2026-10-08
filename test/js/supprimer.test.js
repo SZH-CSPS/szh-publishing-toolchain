@@ -2,10 +2,9 @@
 //
 //   node --test "test/js/*.test.js"
 //
-// Mesuré le 12.09.2026 : l'archivage du numéro 2027-03 s'est annulé parce que `out/`
-// refusait de disparaître — EPERM sur le DOSSIER, pas sur un fichier. Il portait l'attribut
-// `ReadOnly` que OneDrive pose sur ses dossiers marque-place, et `fs.rmSync` ne le retire
-// que des fichiers. L'attribut ôté, la suppression passe.
+// OneDrive pose l'attribut `ReadOnly` sur ses dossiers marque-place. Windows refuse alors de
+// les supprimer (EPERM sur le dossier, pas sur un fichier), et `fs.rmSync` ne retire
+// l'attribut que des fichiers. Une suppression qui échoue ainsi annule un archivage.
 'use strict';
 
 const test = require('node:test');
@@ -41,9 +40,8 @@ test('suppression : un chemin déjà absent n’est pas une erreur', async () =>
 });
 
 test('suppression : les dossiers en lecture seule partent aussi', async () => {
-  // Le cas réel : OneDrive pose l'attribut sur ses dossiers marque-place, et Windows refuse
-  // alors de les supprimer. Le contrôle vaut sur les deux systèmes — ailleurs, c'est un
-  // chmod ordinaire, et l'arbre part de toute façon.
+  // OneDrive pose l'attribut sur ses dossiers marque-place, et Windows refuse alors de les
+  // supprimer. Ailleurs, c'est un chmod ordinaire, et l'arbre part de toute façon.
   const base = arbre();
   const out = path.join(base, 'out');
   fs.chmodSync(path.join(out, 'article'), 0o555);
@@ -59,24 +57,21 @@ test('suppression : l’attribut se retire sur tout l’arbre, pas seulement à 
   const out = path.join(base, 'out');
   const pdf = path.join(out, 'article', 'article.pdf');
   fs.chmodSync(pdf, 0o444);
-  // Assertion explicite avant retrait : le fichier est bien en lecture seule (bit
-  // d'écriture propriétaire absent), sinon le test suivant ne prouverait rien.
+  // Le fichier est bien en lecture seule (bit d'écriture du propriétaire absent), sinon la
+  // suite ne prouverait rien.
   assert.strictEqual(fs.statSync(pdf).mode & 0o200, 0,
     'le fichier n’est pas réellement en lecture seule avant le retrait');
   retirerLectureSeule(out);
-  // Le fichier est de nouveau inscriptible : c'est ce que Windows lit comme « plus en
-  // lecture seule ». Assertion explicite sur le mode, en plus de l'écriture réelle
-  // ci-dessous (qui lèverait si l'attribut tenait encore).
+  // Le fichier est de nouveau inscriptible, ce que Windows lit comme « plus en lecture
+  // seule ». L'assertion sur le mode s'ajoute à l'écriture réelle ci-dessous.
   assert.notStrictEqual(fs.statSync(pdf).mode & 0o200, 0,
     'retirerLectureSeule n’a pas redonné le bit d’écriture, à deux niveaux de profondeur');
   fs.appendFileSync(pdf, '!');                    // lèverait si l'attribut tenait encore
   fs.rmSync(base, { recursive: true, force: true });
 });
 
-// Le nombre d'essais avant le retrait de l'attribut lecture-seule n'était verrouillé nulle
-// part : rien n'empêchait un refactor de le déclencher un essai trop tard (ou trop tôt) sans
-// qu'aucun test ne le remarque — seul le résultat final (l'arbre finit par partir) était
-// vérifié, jamais LE MOMENT du retrait.
+// Le moment du retrait compte : l'attribut se retire après le premier refus, ni avant ni
+// après.
 test('suppression : l’attribut se retire après le tout PREMIER refus, jamais plus tard', async () => {
   const base = arbre();
   const out = path.join(base, 'out');

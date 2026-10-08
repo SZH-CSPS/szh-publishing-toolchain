@@ -1,18 +1,16 @@
-// La flèche d'un constat, jusqu'au bout : l'élément en cause doit être SÉLECTIONNÉ là où
-// il se corrige — le passage dans le .md, le tableau dans son éditeur.
+// La flèche d'un constat sélectionne l'élément en cause là où il se corrige : le passage
+// dans le .md, le tableau dans son éditeur.
 //
 //   node --test "test/js/selection-focus.test.js"
 //
-// Le défaut signalé le 29.09.2026 : la mécanique existait (surlignerFocus, trouverPlageFocus)
-// et la flèche ouvrait bien l'article, mais rien n'y était jamais sélectionné. Trois causes,
-// chacune éprouvée ici par le chemin réel du clic (vue « À corriger » -> commande -> éditeur) :
+// Trois pièges, chacun éprouvé par le chemin réel du clic (vue « À corriger » -> commande ->
+// éditeur) :
 //   1. `vscode.open` rend la main avant que l'hôte d'extension connaisse le nouvel éditeur :
-//      visibleTextEditors et activeTextEditor décrivaient encore l'écran d'avant, et
-//      surlignerFocus se taisait. Le harnais le reproduit tel quel : ni l'un ni l'autre ne
-//      sont remplis par l'ouverture, seul showTextDocument rend l'éditeur ;
-//   2. le .md déjà ouvert dans un autre groupe recevait la sélection à la place ;
-//   3. une référence jamais citée vit dans <slug>.biblio.md, pas dans le .md, et son titre
-//      y est en italique quand le constat l'écrit aplati.
+//      visibleTextEditors et activeTextEditor décrivent encore l'écran d'avant. Le harnais le
+//      reproduit : l'ouverture ne les remplit pas, seul showTextDocument rend l'éditeur ;
+//   2. le .md déjà ouvert dans un autre groupe ne doit pas recevoir la sélection à la place ;
+//   3. une référence jamais citée vit dans <slug>.biblio.md, pas dans le .md, et son titre y
+//      est en italique alors que le constat l'écrit aplati.
 'use strict';
 
 const test = require('node:test');
@@ -66,8 +64,8 @@ function editeurFactice(chemin, colonne) {
 HOTE.stub.window.showTextDocument = (uri) => Promise.resolve(editeurFactice(uri.fsPath, 1));
 HOTE.stub.window.createTextEditorDecorationType = () => ({ dispose() {} });
 HOTE.stub.OverviewRulerLane = { Center: 2 };
-// vscode.open n'est enregistrée nulle part : c'est exactement le trou mesuré — elle ne
-// laisse aucune trace dans visibleTextEditors ni dans activeTextEditor.
+// vscode.open n'est enregistrée nulle part : elle ne laisse aucune trace dans
+// visibleTextEditors ni dans activeTextEditor.
 
 function selectionne(ed) {
   if (!ed || !ed.selection) { return null; }

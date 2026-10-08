@@ -1,23 +1,17 @@
-// Les raccourcis du menu Démarrer : ce que le rédacteur trouve dans son menu, et ce qui
-// arrive quand le menu se refuse.
+// Les raccourcis du menu Démarrer : les entrées que Pronto pose, et ce qui se passe quand le
+// menu refuse l'écriture.
 //
-//   node --test "test/js/*.test.js"
+//   node --test test/js/raccourcis.test.js
 //
-// Le défaut gardé ici est une absence : la mise à jour n'avait aucune entrée de menu.
-// `update.ps1` posait deux raccourcis de lanceur et aucun pour lui-même, si bien que la
-// seule façon de mettre l'outil à jour à la demande était le sélecteur de versions du
-// lanceur — atteignable seulement par qui savait déjà où chercher. Quatre dangers, tous
-// gardés ici :
-//   * le libellé d'un .lnk est un nom de fichier, donc figé : un poste germanophone ne
-//     doit pas lire « Mise à jour de l’outil Revue », d'où deux entrées à noms fixes,
-//     chacune portant sa langue à update.ps1 plutôt qu'une entrée renommée à chaque passe ;
-//   * une mise à jour doit se VOIR — elle télécharge, elle peut échouer, son journal est
-//     la seule trace : son raccourci ne passe donc pas par hidden.vbs, contrairement aux
-//     deux lanceurs ;
-//   * un menu Démarrer tenu par une stratégie de groupe ne doit pas faire échouer une mise
-//     à jour par ailleurs réussie, mais doit le dire au journal ;
-//   * un raccourci d'une version antérieure, mal nommé, doit être retiré et non doublé —
-//     sans toucher au sous-dossier « SZH », qui appartient à un autre produit.
+// Points vérifiés :
+//   * le libellé d'un .lnk est un nom de fichier, donc figé : l'entrée de mise à jour a un nom
+//     sans mot à traduire, pour qu'un poste germanophone ne lise pas un libellé français ;
+//   * une mise à jour télécharge, peut échouer, et son journal est la seule trace : son
+//     raccourci ne passe pas par hidden.vbs et ouvre une fenêtre visible ;
+//   * un menu Démarrer tenu par une stratégie de groupe ne fait pas échouer la mise à jour,
+//     mais le journal le dit ;
+//   * un raccourci d'une version antérieure est retiré, pas doublé, sans toucher au
+//     sous-dossier « SZH », qui appartient à un autre produit.
 'use strict';
 
 const test = require('node:test');
@@ -38,29 +32,24 @@ const LANCEUR_MAJ = lire('windows', 'update-launcher.ps1');
 const BOOTSTRAP = lire('windows', 'bootstrap.ps1');
 const OUVRIR = lire('windows', 'open-revue.ps1');
 const OUVRIR_LIVRE = lire('windows', 'open-livre.ps1');
-// open-revue.ps1 reste le point d'entrée que visent les raccourcis et le protocole "szh:" ;
-// open-livre.ps1 n'est plus qu'une enveloppe qui lui renvoie.
+// open-revue.ps1 est le point d'entrée que visent les raccourcis et le protocole "szh:" ;
+// open-livre.ps1 lui renvoie.
 const SHELL_PRODUITS = lire('windows', 'szh-produits.ps1');
 const ICONE_PY = lire('windows', 'icone.py');
-// Les deux icônes de l'application ne sortent pas du même dessin ni du même outil que
-// les trois icônes de produit : leur source est un .svg, rendu par Edge. D'où un second
-// fabricant, et c'est celui-là qu'il faut interroger pour pronto.ico et pronto-maj.ico.
+// pronto.ico et pronto-maj.ico sont rendus par Edge depuis un .svg, par icone-pronto.py, et non
+// par le fabricant des icônes de produit.
 const ICONE_PRONTO_PY = lire('windows', 'icone-pronto.py');
 
-// Les cinq entrées PÉRIMÉES depuis le 13.09.2026 (fusion des trois lanceurs en un seul, à
-// onglets, et des deux mises à jour en une entrée à nom fixe) : elles ne se posent plus,
-// mais leurs littéraux survivent ailleurs — Get-SzhRaccourcisObsoletes (szh-shell.ps1) les
-// nomme pour la désinstallation, et les deux noms de mise à jour restent les valeurs de
-// `raccourci.maj.nom` (szh-textes.ps1), qui ne nomment plus aucun raccourci actuel. C'est ce
-// que garde encore le test « les libellés des raccourcis existent dans les trois langues »,
-// plus bas — d'où ce nom conservé.
+// Les cinq anciennes entrées (trois lanceurs de produit, deux mises à jour par langue). Elles
+// ne se posent plus, mais Get-SzhRaccourcisObsoletes (szh-shell.ps1) les nomme pour la
+// désinstallation, et les deux noms de mise à jour restent les valeurs de
+// `raccourci.maj.nom` (szh-textes.ps1), vérifiées par le test « les libellés des raccourcis
+// existent dans les trois langues ».
 const NOMS = ['Revues SZH', 'Zeitschriften SZH', 'Books SZH-CSPS',
   'Mise à jour de l’outil Revue', 'Aktualisierung des Redaktionstools'];
 
-// Les DEUX entrées réellement posées depuis le 13.09.2026. Le nom définitif de l'application
-// n'est pas arrêté (voir le commentaire de $script:SzhNomApplication dans szh-shell.ps1) :
-// on le LIT depuis là plutôt que de le recopier en dur, pour qu'un futur baptême ne casse
-// pas ce fichier sans avoir rien cassé de réel.
+// Les deux entrées posées. Le nom de l'application est lu dans $script:SzhNomApplication
+// (szh-shell.ps1) plutôt que recopié, pour qu'un changement de nom ne casse pas ce fichier.
 function litLitteral(source, nomVar) {
   const m = source.match(new RegExp('\\$script:' + nomVar + "\\s*=\\s*'([^']+)'"));
   assert.ok(m, nomVar + ' introuvable dans szh-shell.ps1');
@@ -70,24 +59,23 @@ const NOM_APPLICATION = litLitteral(SHELL, 'SzhNomApplication');
 const NOM_MISE_A_JOUR = litLitteral(SHELL, 'SzhNomMiseAJour');
 const NOMS_ACTUELS = [NOM_APPLICATION, NOM_MISE_A_JOUR];
 
-// Windows seulement : szh-common.ps1 vise Windows PowerShell 5.1, et un .lnk n'existe que
-// là. Hissé en tête de fichier (il ne l'était qu'en bas avant) : plusieurs contrôles plus
-// haut exécutent maintenant réellement la fonction, pour un fait (l'ordre des noms selon la
-// langue) qu'une lecture de texte ne peut pas prouver.
+// Windows seulement : szh-common.ps1 vise Windows PowerShell 5.1, et un .lnk n'existe que là.
+// Plusieurs contrôles exécutent la fonction, pour des faits (l'ordre des noms selon la
+// langue) qu'une lecture du texte ne prouve pas.
 const { POWERSHELL, sansPowerShell, sauter } = require('./gardes');
 
 // ---- Ce que szh-shell.ps1 déclare ----
 
 test('les raccourcis du menu sont posés par une seule fonction, paramétrable', () => {
-  // Une seule, parce que trois scripts la posent : la mise à jour, la tâche de connexion
-  // et l'installation d'un poste. Trois copies divergeraient sans qu'on le voie.
+  // Une seule définition, car trois scripts la posent : la mise à jour, la tâche de
+  // connexion et l'installation d'un poste.
   for (const attendu of ['function Get-SzhRaccourcisMenu', 'function Set-SzhRaccourcisMenu']) {
     assert.ok(SHELL.indexOf(attendu) !== -1, 'szh-shell.ps1 ne déclare plus : ' + attendu);
   }
   const debut = SHELL.indexOf('function Set-SzhRaccourcisMenu');
   const corps = SHELL.slice(debut, SHELL.indexOf('\r\nfunction ', debut + 10));
-  // $Menu et $Toolkit paramétrables : c'est ce qui rend la fonction éprouvable hors du
-  // vrai menu Démarrer, et c'est ce dont se sert le contrôle du bas de ce fichier.
+  // $Menu et $Toolkit paramétrables : la fonction s'éprouve hors du vrai menu Démarrer (voir
+  // le contrôle en bas de ce fichier).
   assert.match(corps, /\[string\]\$Menu\s+=\s+''/);
   assert.match(corps, /\[string\]\$Toolkit\s+=\s+\$SzhToolkit/);
   // Le bilan est rendu, pas affiché : chaque appelant l'écrit dans son propre journal.
@@ -97,14 +85,9 @@ test('les raccourcis du menu sont posés par une seule fonction, paramétrable',
   }
 });
 
-// Glissement du 13.09.2026 : il n'y avait pas « deux entrées de mise à jour, une par
-// équipe », mais quatre en tout (deux lanceurs de produit à noms fixes ET deux mises à jour
-// à noms fixes, une par langue) — Set-SzhLangueProduit et $SzhLanguesRaccourci ont disparu
-// avec ce modèle. Le défaut d'origine ne bougeait pas pour autant : un poste germanophone ne
-// doit jamais lire un libellé français figé dans un nom de fichier. Le nouveau garde-fou
-// est plus direct — le nom UNIQUE de la mise à jour ne contient plus aucun mot à traduire,
-// donc il ne change JAMAIS avec $SzhLangue, à la différence de sa description. Éprouvé en
-// exécutant réellement Get-SzhRaccourcisMenu sous fr puis sous de, et en comparant.
+// Le nom de l'entrée de mise à jour ne contient aucun mot à traduire : il ne change pas avec
+// $SzhLangue, contrairement à sa description. Vérifié en exécutant Get-SzhRaccourcisMenu
+// sous fr puis sous de.
 test('l’entrée de mise à jour garde un nom fixe quelle que soit la langue, à la différence de sa description',
   { skip: sansPowerShell }, () => {
     const lireEnLangue = (langue) => {
@@ -140,73 +123,66 @@ test('l’entrée de mise à jour garde un nom fixe quelle que soit la langue, �
   });
 
 test('la mise à jour se voit, le lanceur non', () => {
-  // Glissement du 13.09.2026 : un seul lanceur (trois onglets) au lieu de trois, et la mise
-  // à jour ne reçoit plus -Langue par son raccourci — le défaut gardé ne change pas pour
-  // autant : la mise à jour doit rester visible quand le lanceur, lui, reste sans console.
+  // Le lanceur reste sans console ; la mise à jour reste visible.
   const debut = SHELL.indexOf('function Get-SzhRaccourcisMenu');
   const corps = SHELL.slice(debut, SHELL.indexOf('\r\nfunction ', debut + 10));
   // Le lanceur unique : wscript.exe //B hidden.vbs, donc sans console.
   const lignesVbs = corps.split('\r\n').filter((l) => l.indexOf('//B "{0}"') !== -1);
   assert.strictEqual(lignesVbs.length, 1, 'seul le lanceur passe par hidden.vbs');
   assert.ok(lignesVbs[0].indexOf('open-revue.ps1') !== -1 || lignesVbs[0].indexOf('$lanceur') !== -1);
-  // La mise à jour : powershell.exe en direct, et rien d'autre. hidden.vbs ici cacherait
-  // le téléchargement, l'attente et l'échec.
+  // La mise à jour : powershell.exe en direct. hidden.vbs cacherait le téléchargement,
+  // l'attente et l'échec.
   const ligneMaj = corps.split('\r\n').filter((l) => l.indexOf('-ExecutionPolicy Bypass -File') !== -1);
   assert.strictEqual(ligneMaj.length, 1, 'l’entrée de mise à jour a changé de forme');
   assert.ok(ligneMaj[0].indexOf('hidden.vbs') === -1, 'la mise à jour ne doit pas être cachée');
   assert.match(ligneMaj[0], /-NoProfile -ExecutionPolicy Bypass -File "\{0\}"/);
   assert.ok(ligneMaj[0].indexOf('-Langue') === -1,
     'la mise à jour reçoit encore -Langue : elle ne devrait plus le passer par son raccourci');
-  // Windows PowerShell 5.1 nommé explicitement : $PSHOME désignerait pwsh si la mise à
-  // jour avait été lancée depuis PowerShell 7, et pwsh n'a pas de powershell.exe à côté.
+  // Windows PowerShell 5.1 nommé explicitement : $PSHOME désignerait pwsh si la mise à jour
+  // était lancée depuis PowerShell 7, et pwsh n'a pas de powershell.exe à côté.
   assert.ok(corps.indexOf("System32\\WindowsPowerShell\\v1.0\\powershell.exe") !== -1);
-  // Fenêtre normale, dite explicitement plutôt que laissée au défaut.
+  // Fenêtre normale, explicite.
   assert.match(SHELL, /\$lnk\.WindowStyle = 1/);
 });
 
 test('le lanceur et sa mise à jour portent chacun leur propre icône, fabriquée par icone-pronto.py', () => {
-  // Épinglé à la barre des tâches, un raccourci perd son libellé : l'icône devient le seul
-  // repère. Glissement du 13.09.2026 : Get-SzhRaccourcisMenu ne pose plus que DEUX entrées,
-  // donc ne cherche plus que DEUX icônes (pronto.ico pour le lanceur, pronto-maj.ico pour
-  // la mise à jour), fabriquées par icone-pronto.py depuis pronto.svg et pronto-maj.svg.
-  // szh-revue.ico, szh-zeitschrift.ico et szh-livre.ico restent au dépôt et fabriqués par
-  // icone.py — ils servent encore aux raccourcis posés à la racine d'un numéro ou d'un livre
-  // (szh-produits.ps1) — mais ce n'est plus ce fichier-ci qui les cherche pour le menu Démarrer.
+  // Épinglé à la barre des tâches, un raccourci perd son libellé : l'icône est le seul repère.
+  // Get-SzhRaccourcisMenu cherche deux icônes, pronto.ico (lanceur) et pronto-maj.ico (mise à
+  // jour), fabriquées par icone-pronto.py depuis pronto.svg et pronto-maj.svg.
+  // szh-revue.ico, szh-zeitschrift.ico et szh-livre.ico (icone.py) servent aux raccourcis
+  // posés à la racine d'un numéro ou d'un livre (szh-produits.ps1).
   const debut = SHELL.indexOf('function Get-SzhRaccourcisMenu');
   const corps = SHELL.slice(debut, SHELL.indexOf('\r\nfunction ', debut + 10));
   const icones = ['pronto.ico', 'pronto-maj.ico'];
   for (const ico of icones) {
     assert.ok(corps.indexOf(ico) !== -1, 'szh-shell.ps1 ne cherche plus ' + ico);
-    // Le fichier existe, et icone.py sait le refaire : un .ico déposé à la main ne se
+    // Le fichier existe et son fabricant sait le refaire : un .ico déposé à la main ne se
     // régénère pas, et l'écart ne se verrait qu'à la prochaine retouche du dessin.
     assert.ok(fs.existsSync(path.join(RACINE, 'windows', ico)), ico + ' manque au dépôt');
     assert.ok(ICONE_PRONTO_PY.indexOf("'" + ico + "'") !== -1, 'icone-pronto.py ne fabrique plus ' + ico);
   }
-  // Deux images distinctes, sinon l'icône ne distingue plus le lanceur de sa mise à jour.
+  // Deux images distinctes, pour distinguer le lanceur de sa mise à jour.
   const empreintes = new Set(icones.map((i) =>
     require('crypto').createHash('sha256').update(fs.readFileSync(path.join(RACINE, 'windows', i))).digest('hex')));
   assert.strictEqual(empreintes.size, 2, 'les deux icônes du menu sont identiques');
-  // Le repli quand l'icône manque reste celle de l'éditeur, jamais rien : sans
-  // IconLocation le shell montre celle de wscript.exe, qui ne dit rien à personne.
+  // Si l'icône manque, le repli est celle de l'éditeur : sans IconLocation, le shell montre
+  // celle de wscript.exe.
   assert.ok(SHELL.indexOf('elseif ($codium) { $lnk.IconLocation = $codium }') !== -1);
 });
 
 test('la barre des tâches reçoit une identité, des deux côtés', () => {
-  // Le défaut gardé ici ne change pas : le bouton de la barre des tâches portait l'icône de
-  // PowerShell, alors que le raccourci du menu Démarrer et la fenêtre elle-même portaient la
-  // bonne. La barre ne regarde pas l'icône de la fenêtre : elle groupe les boutons par
-  // AppUserModelID et prend l'image de ce côté-là. Sans identité déclarée, Windows en
-  // déduit une de l'exécutable hôte — powershell.exe, lancé par hidden.vbs — et affiche
-  // son icône. Il faut les deux moitiés, et ce sont elles que ce contrôle garde.
+  // La barre des tâches ne regarde pas l'icône de la fenêtre : elle groupe les boutons par
+  // AppUserModelID et prend l'image associée. Sans identité déclarée, Windows la déduit de
+  // l'exécutable hôte (powershell.exe, lancé par hidden.vbs) et affiche son icône. Il faut
+  // l'identité sur le raccourci et dans le processus : ce contrôle garde les deux.
   //
   // Deux identités : « Pronto » prend celle de VSCodium, qu'il ouvre (un seul bouton dans la
-  // barre des tâches), et la mise à jour garde la sienne, une seule et sans langue.
+  // barre des tâches), et la mise à jour a la sienne, sans langue.
   assert.match(SHELL, /\$script:SzhAppIds = @\{/);
   assert.match(SHELL, /'codium'\s*=\s*'VSCodium\.VSCodium'/);
   assert.match(SHELL, /'maj'\s*=\s*'SZH\.Publishing\.MiseAJour'/);
-  // Les anciennes clés n'existent plus, « suite » (la fenêtre WinForms) comprise : une identité par produit ou par langue de
-  // mise à jour n'aurait plus de sens dans ce modèle. Cherchées dans la table elle-même,
-  // pas dans tout le fichier -- ses clés reviennent ailleurs (szh-produits.ps1 notamment).
+  // Aucune identité par produit ou par langue, ni « suite » (fenêtre WinForms). La recherche
+  // se limite à la table : ses clés reviennent ailleurs (szh-produits.ps1 notamment).
   const iTable = SHELL.indexOf('$script:SzhAppIds = @{');
   const corpsTable = SHELL.slice(iTable, SHELL.indexOf('}', iTable));
   for (const ancien of ["'suite'", "'revue'", "'zeitschrift'", "'livre'", "'maj.fr'", "'maj.de'"]) {
@@ -214,19 +190,18 @@ test('la barre des tâches reçoit une identité, des deux côtés', () => {
       'szh-shell.ps1 garde encore une ancienne clé d’identité dans $SzhAppIds : ' + ancien);
   }
 
-  // Première moitié : le .lnk porte l'identité — c'est elle qui fait retrouver au bouton
-  // l'icône du raccourci, et qui fait qu'« Épingler » épingle le lanceur et non
-  // powershell.exe. Posée APRÈS $lnk.Save() : WScript.Shell réécrit le fichier entier et
-  // effacerait une propriété posée avant lui.
+  // Sur le raccourci : l'identité fait retrouver au bouton l'icône du raccourci, et
+  // « Épingler » épingle le lanceur et non powershell.exe. Elle est posée après
+  // $lnk.Save() : WScript.Shell réécrit le fichier entier et effacerait une propriété posée
+  // avant.
   const save = SHELL.indexOf('$lnk.Save()');
   const pose = SHELL.indexOf('Set-SzhLnkAppId', save);
   assert.ok(save !== -1 && pose !== -1, 'l’identité n’est plus posée sur les raccourcis');
   assert.ok(pose > save, 'posée avant $lnk.Save(), elle serait effacée par la sauvegarde');
 
-  // Seconde moitié : le processus se déclare AVANT sa première fenêtre. Windows lit
-  // l'identité quand la fenêtre s'inscrit à la barre et ne la relit jamais ensuite ;
-  // déclarée après, elle n'a plus aucun effet. La seule fenêtre de Pronto est le sélecteur
-  // de version (open-revue.ps1 -Versions), qui prend l'identité de la mise à jour.
+  // Dans le processus : l'identité se déclare avant la première fenêtre, car Windows la lit
+  // quand la fenêtre s'inscrit à la barre et ne la relit plus. La seule fenêtre de Pronto est
+  // le sélecteur de version (open-revue.ps1 -Versions), qui prend l'identité de la mise à jour.
   const iVersions = OUVRIR.indexOf('if ($Versions) {');
   const decl = OUVRIR.indexOf("Set-SzhAppUserModelId (Get-SzhAppId 'maj')", iVersions);
   const fenetre = OUVRIR.indexOf('Show-SzhVersions', iVersions);
@@ -234,8 +209,7 @@ test('la barre des tâches reçoit une identité, des deux côtés', () => {
   assert.ok(fenetre !== -1, 'open-revue.ps1 -Versions n’ouvre plus le sélecteur');
   assert.ok(decl < fenetre, 'identité déclarée après la première fenêtre : trop tard');
 
-  // Chaque produit garde sa propre ligne dans la table (icône, raccourci...), mais plus de
-  // champ appId.
+  // Chaque produit garde sa ligne dans la table (icône, raccourci...), sans champ appId.
   for (const jeton of ['revue', 'zeitschrift', 'livre']) {
     const debutLigne = SHELL_PRODUITS.indexOf(jeton + ' = @{');
     assert.ok(debutLigne !== -1, 'szh-produits.ps1 : ligne de table manquante pour ' + jeton);
@@ -243,15 +217,14 @@ test('la barre des tâches reçoit une identité, des deux côtés', () => {
   assert.ok(SHELL_PRODUITS.indexOf('appId') === -1,
     'szh-produits.ps1 garde encore un champ appId : il n’a plus de sens depuis la fusion des lanceurs');
 
-  // L'entrée « Pronto » ouvre VSCodium sur l'Accueil, qui porte l'identité de l'éditeur : elle
-  // ne déclare plus celle du lanceur. open-livre.ps1 n'est plus qu'une enveloppe d'open-revue.ps1.
+  // L'entrée « Pronto » ouvre VSCodium sur l'Accueil, qui porte l'identité de l'éditeur.
+  // open-livre.ps1 est une enveloppe d'open-revue.ps1.
   assert.ok(OUVRIR.indexOf('exit (Start-SzhAccueil)') !== -1, 'open-revue.ps1 n’ouvre plus l’Accueil');
   assert.ok(OUVRIR.indexOf("Get-SzhAppId 'suite'") === -1, 'open-revue.ps1 déclare encore l’identité du lanceur');
   assert.ok(OUVRIR_LIVRE.indexOf("Join-Path $PSScriptRoot 'open-revue.ps1'") !== -1,
     'open-livre.ps1 ne délègue plus à open-revue.ps1');
 
-  // La fenêtre de mise à jour n'est pas un lanceur, mais elle a son bouton elle aussi — une
-  // seule clé fixe désormais, « maj », et non plus une par langue de son ancien raccourci.
+  // La fenêtre de mise à jour a son propre bouton, sous une seule clé fixe, « maj ».
   assert.ok(UPDATE.indexOf("Get-SzhAppId 'maj'") !== -1,
     'update.ps1 ne déclare plus son identité par la clé fixe "maj"');
   assert.ok(UPDATE.indexOf('Set-SzhAppUserModelId $idMaj') !== -1,
@@ -270,15 +243,13 @@ test('les libellés des raccourcis existent dans les trois langues, en « ss »'
       assert.ok(l.trim().length > cle.length + 6, 'traduction vide : ' + l);
     }
   }
-  // Les trois noms de produit (« Revues SZH », « Zeitschriften SZH », « Books SZH-CSPS »)
-  // sont des littéraux de szh-shell.ps1, pas des clés traduites ; les deux noms de mise à
-  // jour viennent de szh-textes.ps1 (valeurs de raccourci.maj.nom). Chacun est un nom de
-  // fichier .lnk : aucun caractère interdit par Windows.
+  // Les trois noms de produit sont des littéraux de szh-shell.ps1 ; les noms de mise à jour
+  // viennent de szh-textes.ps1 (raccourci.maj.nom). Chacun est un nom de fichier .lnk : aucun
+  // caractère interdit par Windows.
   for (const nom of NOMS) {
     assert.ok(!/[<>:"/\\|?*]/.test(nom), 'nom de fichier impossible : ' + nom);
-    // PowerShell traite l’apostrophe courbe comme un délimiteur de chaîne, au même titre
-    // que la droite : dans le source elle est DOUBLÉE. On compare donc les deux formes —
-    // sans quoi ce contrôle échouerait sur une chaîne pourtant correcte.
+    // PowerShell traite l'apostrophe courbe comme un délimiteur de chaîne : dans le source,
+    // elle est doublée. On compare donc les deux formes.
     const doublee = nom.split('’').join('’’');
     assert.ok(SHELL.indexOf(nom) !== -1 || SHELL.indexOf(doublee) !== -1 ||
       TEXTES.indexOf(nom) !== -1 || TEXTES.indexOf(doublee) !== -1,
@@ -290,9 +261,8 @@ test('les libellés des raccourcis existent dans les trois langues, en « ss »'
 });
 
 test('la mise à jour ne parle plus d’un seul raccourci, ni d’un produit', () => {
-  // Le message de fin d'étape annonçait « raccourci « Revues SZH » à jour » — au singulier,
-  // et en nommant le produit français jusque dans la phrase allemande, alors qu'il y a
-  // quatre entrées et deux équipes.
+  // Le message de fin d'étape ne nomme pas un produit : il y a plusieurs entrées et deux
+  // langues.
   const lignes = TEXTES.match(/'maj\.e4\.ok'\s*=\s*(.+)/g) || [];
   assert.strictEqual(lignes.length, 3, 'il manque une traduction de maj.e4.ok');
   for (const l of lignes) {
@@ -304,31 +274,31 @@ test('la mise à jour ne parle plus d’un seul raccourci, ni d’un produit', (
 // ---- Les trois appelants ----
 
 test('les trois chemins d’installation posent les mêmes raccourcis', () => {
-  // Poste neuf (bootstrap), mise à jour (update), et chaque ouverture de session
-  // (update-launcher) : sans le troisième, un poste déjà à la dernière version n'obtiendrait
-  // jamais une entrée ajoutée après coup, puisque update.ps1 ne s'exécute plus.
+  // Poste neuf (bootstrap), mise à jour (update) et chaque ouverture de session
+  // (update-launcher) : sans le troisième, un poste déjà à jour, où update.ps1 ne tourne pas,
+  // n'obtiendrait jamais une entrée ajoutée après coup.
   for (const [nom, source] of [['update.ps1', UPDATE], ['update-launcher.ps1', LANCEUR_MAJ],
     ['bootstrap.ps1', BOOTSTRAP]]) {
     const i = source.indexOf('Set-SzhRaccourcisMenu');
     assert.ok(i !== -1, nom + ' ne pose plus les raccourcis du menu Démarrer');
-    // Jamais bloquant : l'appel est sous try, et le catch écrit au lieu de relever.
+  // Non bloquant : l'appel est sous try, et le catch écrit au journal au lieu de relever.
     const avant = source.slice(0, i);
     const dernierTry = avant.lastIndexOf('try {');
     assert.ok(dernierTry !== -1 && avant.indexOf('} catch', dernierTry) === -1,
       nom + ' : l’appel doit être sous try, un menu verrouillé ne doit rien faire échouer');
     const apres = source.slice(i, i + 1400);
     assert.ok(/\} catch \{/.test(apres), nom + ' : pas de catch après l’appel');
-    // Et le journal doit le dire : un raccourci absent qui ne se dit pas est introuvable.
+  // Un raccourci absent est signalé au journal.
     assert.ok(apres.indexOf('$bilanMenu.manques') !== -1,
       nom + ' : les raccourcis non posés ne sont plus journalisés');
   }
-  // bootstrap.ps1 pose les raccourcis APRÈS avoir obtenu le toolkit : si la Release est
-  // injoignable, le repli hors ligne a déjà copié les scripts, et le poste garde son menu
-  // même quand la première mise à jour échoue sur le manifest.
+  // bootstrap.ps1 pose les raccourcis après avoir obtenu le toolkit : si la Release est
+  // injoignable, le repli hors ligne a déjà copié les scripts, et le poste a son menu même
+  // quand la première mise à jour échoue sur le manifest.
   assert.ok(BOOTSTRAP.indexOf("Impossible d''obtenir le toolkit") <
     BOOTSTRAP.indexOf('Set-SzhRaccourcisMenu'), 'bootstrap pose le menu avant le toolkit');
-  // update-launcher.ps1 les pose AVANT de regarder s'il y a du neuf, sinon la sortie
-  // anticipée « à jour » sauterait par-dessus.
+  // update-launcher.ps1 les pose avant de chercher une nouvelle version, sinon la sortie
+  // anticipée « à jour » sauterait l'étape.
   assert.ok(LANCEUR_MAJ.indexOf('Set-SzhRaccourcisMenu') <
     LANCEUR_MAJ.indexOf('Get-SzhManifest'), 'la sortie « à jour » sauterait le menu');
 });
@@ -337,28 +307,28 @@ test('update.ps1 prend la langue de son raccourci, pour cette fenêtre seulement
   assert.match(UPDATE, /\[string\]\$Langue/);
   const debut = UPDATE.indexOf('. "$PSScriptRoot\\szh-common.ps1"');
   const corps = UPDATE.slice(debut, UPDATE.indexOf("T 'maj.fenetre'"));
-  // La langue est appliquée avant le premier texte affiché, sinon le titre de la fenêtre
-  // et la bannière sortiraient dans l'autre langue.
+  // La langue s'applique avant le premier texte affiché, sinon le titre de la fenêtre et la
+  // bannière sortiraient dans l'autre langue.
   assert.ok(corps.indexOf('$script:SzhLangue = $Langue.ToLower()') !== -1,
     'update.ps1 n’applique plus la langue reçue');
-  // Trois valeurs admises, les mêmes que partout ; une valeur inconnue est ignorée plutôt
-  // que fatale — c'est un détail d'affichage, pas une raison d'arrêter une mise à jour.
+  // Trois valeurs admises ; une valeur inconnue est ignorée : c'est un détail d'affichage, pas
+  // une raison d'arrêter une mise à jour.
   assert.match(corps, /@\('fr', 'de', 'en'\) -contains \$Langue\.ToLower\(\)/);
   // $env:SZH_LANGUE garde le dernier mot, comme dans szh-common et Set-SzhLangueProduit.
   assert.ok(corps.indexOf('$envLangue') !== -1 && corps.indexOf('-not $envLangue') !== -1,
     'la variable d’environnement doit garder le dernier mot');
-  // Et la préférence du poste n'est pas réécrite : la mise à jour n'est pas un produit et
-  // n'a pas à choisir la langue des lanceurs.
+  // La préférence du poste n'est pas réécrite : la mise à jour n'a pas à choisir la langue des
+  // lanceurs.
   assert.ok(corps.indexOf('Save-SzhState') === -1,
     'update.ps1 ne doit pas écrire la préférence de langue du poste');
   assert.ok(corps.indexOf('Set-SzhLangueProduit') === -1);
 });
 
 // ---- La fonction, réellement exécutée ----
-// Rien n'est écrit dans le vrai menu Démarrer — $Menu pointe sur un dossier de travail.
+// Rien n'est écrit dans le vrai menu Démarrer : $Menu pointe sur un dossier de travail.
 
-// Un seul passage de PowerShell pour les quatre situations : le démarrage du socle coûte
-// plus cher que tout le reste.
+// Un seul lancement de PowerShell pour les quatre situations : le démarrage du socle coûte
+// plus cher que le reste.
 const PILOTE = [
   "$ErrorActionPreference = 'Stop'",
   '. "' + COMMUN_PS1 + '"',
@@ -366,7 +336,7 @@ const PILOTE = [
   '$sh = New-Object -ComObject WScript.Shell',
   'New-Item -ItemType Directory -Force -Path $menu | Out-Null',
   // Un raccourci d'une version antérieure, mal nommé ; un raccourci étranger ; et le
-  // sous-dossier « SZH » d'un autre produit, auquel rien ne doit toucher.
+  // sous-dossier « SZH » d'un autre produit, qui ne doit pas être touché.
   "$a = $sh.CreateShortcut((Join-Path $menu 'Mise a jour Revue SZH.lnk'))",
   '$a.TargetPath = (Join-Path $env:WINDIR \'System32\\wscript.exe\')',
   "$a.Arguments = ('//B \"{0}\" \"{1}\"' -f (Join-Path $toolkit 'windows\\hidden.vbs'), (Join-Path $toolkit 'windows\\update.ps1'))",
@@ -385,7 +355,7 @@ const PILOTE = [
   '  [ordered]@{ nom = $_.Name; cible = $l.TargetPath; args = $l.Arguments; desc = $l.Description; icone = $l.IconLocation',
   '    fenetre = [int]$l.WindowStyle; appid = [string](Get-SzhLnkAppId $_.FullName) } })',
   "$r.sousDossier = @(Get-ChildItem -LiteralPath (Join-Path $menu 'SZH') -Filter '*.lnk' | ForEach-Object { $_.Name })",
-  // 2. deux fois de suite ne doit rien doubler
+  // 2. deux passes de suite ne doublent rien
   '$p2 = Set-SzhRaccourcisMenu -Menu $menu -Toolkit $toolkit',
   '$r.passe2 = [ordered]@{ poses = @($p2.poses).Count; retires = @($p2.retires).Count; manques = @($p2.manques).Count',
   '  fichiers = @(Get-ChildItem -LiteralPath $menu -Filter \'*.lnk\').Count }',
@@ -393,10 +363,9 @@ const PILOTE = [
   "$verrou = Join-Path (Split-Path $menu -Parent) 'menu-verrouille'",
   'New-Item -ItemType Directory -Force -Path $verrou | Out-Null',
   "Invoke-SzhNatif { & icacls $verrou /inheritance:r /grant ($env:USERNAME + ':(RX)') 2>$null | Out-Null }",
-  // Un compte administrateur (le runner de CI, entre autres) passe outre cette ACL : mesuré
-  // en tentant d'écrire un fichier témoin juste après avoir posé la restriction, plutôt que
-  // supposé -- si l'écriture passe, la garde de groupe ne bloque plus rien ici, et le
-  // contrôle qui suit ne mesurerait rien de réel.
+  // Un compte administrateur (comme le runner de CI) passe outre cette ACL. Le pilote tente
+  // d'écrire un fichier témoin juste après la restriction : si l'écriture passe, le contrôle
+  // qui suit ne mesurerait rien.
   '$aclContournee = $false',
   'try {',
   '  Set-Content -Path (Join-Path $verrou "temoin-acl.txt") -Value "x" -ErrorAction Stop',
@@ -436,10 +405,8 @@ const bilan = (function () {
 })();
 
 test('le menu reçoit les DEUX entrées, résolues comme le shell les lit', { skip: sansPowerShell }, () => {
-  // Glissement du 13.09.2026 : il n'y a plus cinq entrées (trois lanceurs de produit, deux
-  // mises à jour) mais deux — le lanceur unique à onglets, et sa mise à jour. Le défaut
-  // gardé ne change pas : chaque entrée voulue doit se poser, avec la bonne cible, la bonne
-  // icône et sa propre identité de barre des tâches.
+  // Chaque entrée (le lanceur, sa mise à jour) se pose avec la bonne cible, la bonne icône et
+  // sa propre identité de barre des tâches.
   assert.strictEqual(bilan.status, 0, 'le pilote PowerShell a échoué : ' + bilan.stderr);
   const r = bilan.r;
   assert.deepStrictEqual(r.manques, [], 'un raccourci n’a pas pu être posé');
@@ -447,8 +414,8 @@ test('le menu reçoit les DEUX entrées, résolues comme le shell les lit', { sk
   const par = {};
   for (const l of r.lnk) { par[l.nom] = l; }
 
-  // Le lanceur : caché, sans -Produit (le produit que montre l'Accueil vient du réglage du
-  // compte, pas du raccourci).
+  // Le lanceur : caché, sans -Produit (le produit montré par l'Accueil vient du réglage du
+  // compte).
   const lanceur = par[NOM_APPLICATION + '.lnk'];
   assert.ok(lanceur, NOM_APPLICATION + ' manque au menu');
   assert.match(lanceur.cible, /wscript\.exe$/i);
@@ -460,8 +427,8 @@ test('le menu reçoit les DEUX entrées, résolues comme le shell les lit', { sk
   // L'identité de VSCodium : un seul bouton dans la barre des tâches pour Pronto et l'éditeur.
   assert.strictEqual(lanceur.appid, 'VSCodium.VSCodium', 'identité de barre des tâches');
 
-  // La mise à jour : powershell.exe en direct, fenêtre normale, plus de langue portée par
-  // le raccourci (la fenêtre suit le réglage du compte, comme le lanceur).
+  // La mise à jour : powershell.exe en direct, fenêtre normale, sans langue dans le raccourci
+  // (la fenêtre suit le réglage du compte).
   const maj = par[NOM_MISE_A_JOUR + '.lnk'];
   assert.ok(maj, NOM_MISE_A_JOUR + ' manque au menu');
   assert.match(maj.cible, /WindowsPowerShell\\v1\.0\\powershell\.exe$/i);
@@ -474,8 +441,8 @@ test('le menu reçoit les DEUX entrées, résolues comme le shell les lit', { sk
   assert.strictEqual(maj.appid, 'SZH.Publishing.MiseAJour', 'identité');
   assert.ok(maj.desc.length > 8, 'description vide');
 
-  // Le défaut qui a coûté une entrée de menu, en 2026 : Windows tient l'AppUserModelID pour
-  // l'identité de l'application et n'affiche qu'une entrée par identité.
+  // Windows tient l'AppUserModelID pour l'identité de l'application et n'affiche qu'une
+  // entrée de menu par identité : chaque entrée a la sienne.
   const identites = r.lnk.map((l) => l.appid);
   assert.strictEqual(new Set(identites).size, identites.length,
     'deux entrées du menu partagent une identité : ' + identites.join(', '));
@@ -487,13 +454,12 @@ test('un ancien raccourci mal nommé est retiré, pas doublé', { skip: sansPowe
   assert.deepStrictEqual(r.retires, ['Mise a jour Revue SZH.lnk']);
   const noms = r.lnk.map((l) => l.nom);
   assert.ok(noms.indexOf('Mise a jour Revue SZH.lnk') === -1, 'l’ancien raccourci survit');
-  // Ce qui n'est pas à nous n'est pas touché : ni un raccourci étranger du premier niveau,
-  // ni le sous-dossier « SZH », qui appartient à l'AppLauncher interne.
+  // Rien d'étranger n'est touché : ni un raccourci du premier niveau, ni le sous-dossier
+  // « SZH », qui appartient à l'AppLauncher interne.
   assert.ok(noms.indexOf('Bloc-notes.lnk') !== -1, 'un raccourci étranger a été supprimé');
   assert.deepStrictEqual(r.sousDossier, ['SZH Updater.lnk'],
     'le sous-dossier « SZH » d’un autre produit a été touché');
-  // Glissement du 13.09.2026 : DEUX entrées désormais, plus l'étranger -- trois fichiers,
-  // pas six.
+  // Deux entrées plus l'étranger : trois fichiers.
   assert.strictEqual(r.lnk.length, 3, 'le menu porte les deux entrées plus l’étranger');
   // Deux passes de suite : rien de doublé, rien de retiré une seconde fois.
   assert.strictEqual(r.passe2.poses, 2);
@@ -502,12 +468,10 @@ test('un ancien raccourci mal nommé est retiré, pas doublé', { skip: sansPowe
   assert.strictEqual(r.passe2.fichiers, 3);
 });
 
-// Set-SzhRaccourcisMenu (ci-dessus) reconnaît un ancien raccourci à sa CIBLE, jamais à son
-// nom -- elle n'a donc besoin d'aucune liste de noms périmés. La désinstallation, elle, en a
-// besoin : un poste dont le toolkit a déjà été retiré ne peut plus ouvrir un .lnk pour lire
-// où il pointe, il ne lui reste que le nom (voir test/js/desinstallation.test.js, qui
-// éprouve la seconde moitié du contrat : un nom périmé n'entre dans le plan que si le
-// fichier existe réellement).
+// Set-SzhRaccourcisMenu reconnaît un ancien raccourci à sa cible, pas à son nom. La
+// désinstallation a besoin des noms : sur un poste dont le toolkit est déjà retiré, il ne
+// reste que le nom d'un .lnk. test/js/desinstallation.test.js vérifie qu'un nom périmé
+// n'entre dans le plan que si le fichier existe.
 test('Get-SzhRaccourcisObsoletes nomme les neuf entrées périmées : trois produits, trois langues de mise à jour, deux anciens noms d\'application, et Pronto (dev)',
   { skip: sansPowerShell }, () => {
     const travail = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-obsoletes-'));
@@ -529,18 +493,16 @@ test('Get-SzhRaccourcisObsoletes nomme les neuf entrées périmées : trois prod
     assert.strictEqual(run.status, 0, 'pilote : ' + (run.stderr || ''));
     const r = JSON.parse(fs.readFileSync(sortie, 'utf8'));
     fs.rmSync(travail, { recursive: true, force: true });
-    // Les trois noms de produit, en dur -- disparus avec la fusion des lanceurs -- puis les
-    // trois traductions de « raccourci.maj.nom » (fr, de, ET en : un poste dont Windows
-    // résolvait « en » avant qu'un compte n'y touche a pu recevoir cette troisième version),
-    // les deux anciens noms de l'application avant le renommage en « Pronto », et enfin
-    // « Pronto (dev) » -- périmé par rien : aucune mise à jour ne le pose jamais, seul
-    // outils-dev/pronto-dev.ps1 le fait sur un poste de développement.
+    // Les trois noms de produit, puis les trois traductions de « raccourci.maj.nom » (fr, de
+    // et en : un poste où Windows résolvait « en » a pu recevoir cette version), les deux
+    // anciens noms de l'application, et « Pronto (dev) », que seul outils-dev/pronto-dev.ps1
+    // pose sur un poste de développement.
     const attendus = ['Revues SZH', 'Zeitschriften SZH', 'Books SZH-CSPS', r.majFr, r.majDe, r.majEn,
       'Revue & Zeitschrift', 'Revue & Zeitschrift (Updater)', 'Pronto (dev)'];
     assert.strictEqual(r.obsoletes.length, 9, 'Get-SzhRaccourcisObsoletes doit nommer les neuf anciens noms');
     assert.deepStrictEqual(r.obsoletes.slice().sort(), attendus.slice().sort());
-    // Aucune des deux entrées ACTUELLES ne doit s’y glisser : la désinstallation compterait
-    // sinon le lanceur ou sa mise à jour, bien réels, parmi ce qui n’existe plus.
+    // Les deux entrées actuelles n'y figurent pas : la désinstallation les compterait sinon
+    // parmi ce qui n'existe plus.
     for (const actuel of NOMS_ACTUELS) {
       assert.ok(r.obsoletes.indexOf(actuel) === -1, actuel + ' ne devrait pas être dans les entrées périmées');
     }
@@ -548,26 +510,20 @@ test('Get-SzhRaccourcisObsoletes nomme les neuf entrées périmées : trois prod
 
 test('un menu Démarrer non inscriptible n’arrête rien, et le dit', { skip: sansPowerShell }, (t) => {
   const v = bilan.r.verrou;
-  // Un compte administrateur (le runner de CI, par exemple) passe outre la restriction
-  // d'ACL posée par le pilote : la garde de groupe ne bloque alors plus rien, et ce
-  // contrôle ne mesurerait rien de réel puisque le menu resterait inscriptible malgré
-  // l'ACL. Le pilote a tenté d'écrire un fichier témoin juste après avoir posé cette
-  // ACL (voir PILOTE plus haut) ; si l'écriture est passée, on saute plutôt que de
-  // prétendre observer un blocage qui n'a pas eu lieu -- même patron que pandocAbsent()
-  // / t.skip() dans test/js/ancrages.test.js.
+  // Un compte administrateur (comme le runner de CI) passe outre l'ACL posée par le pilote :
+  // le menu reste inscriptible et ce contrôle ne mesurerait rien. Le pilote a tenté d'écrire
+  // un fichier témoin (voir PILOTE) ; si l'écriture est passée, le test est sauté.
   if (v.aclContournee) { sauter.eleve(t); return; }
-  // Le contrat : la fonction ne lève pas — le pilote entier serait tombé sinon.
+  // La fonction ne lève pas, sinon le pilote entier serait tombé.
   assert.strictEqual(bilan.status, 0);
   assert.strictEqual(v.poses, 0);
   assert.strictEqual(v.fichiers, 0);
-  // Glissement du 13.09.2026 : deux entrées manquantes (au lieu de cinq) plus la ligne
-  // d'ensemble -- au moins trois lignes, pas six.
+  // Deux entrées manquantes plus la ligne d'ensemble : au moins trois lignes.
   assert.ok(v.manques.length >= 3, 'chaque entrée manquante doit être nommée');
   for (const nom of NOMS_ACTUELS) {
     assert.ok(v.manques.some((m) => m.indexOf(nom) === 0), 'rien n’est dit de : ' + nom);
   }
-  // Et une ligne d'ensemble qui dit la cause probable et par où passer en attendant :
-  // un journal qui ne nomme que l'échec laisse le rédacteur sans porte de sortie.
+  // Une ligne d'ensemble dit la cause probable et la marche à suivre en attendant.
   const ensemble = v.manques.filter((m) => m.indexOf('stratégie de groupe') !== -1);
   assert.strictEqual(ensemble.length, 1, 'il faut une ligne d’ensemble, et une seule');
   assert.match(ensemble[0], /Changer de version/);
@@ -575,33 +531,28 @@ test('un menu Démarrer non inscriptible n’arrête rien, et le dit', { skip: s
 });
 
 test('un toolkit incomplet ne laisse pas de raccourci mort', { skip: sansPowerShell }, () => {
-  // Le raccourci pointe dans le toolkit ; si le script visé n'y est pas, un .lnk ne ferait
-  // que clignoter. On ne le pose pas, on le dit, et le reste est posé quand même. Glissement
-  // du 13.09.2026 : Get-SzhRaccourcisMenu ne connaît plus que deux pilotes, open-revue.ps1
-  // (le lanceur) et update.ps1 (la mise à jour) -- open-livre.ps1 n'est plus un pilote de
-  // raccourci pour lui-même, le livre n'étant qu'un onglet du même lanceur. Ce toolkit
-  // partiel a open-revue.ps1 et hidden.vbs, mais pas update.ps1 : un seul manque, celui du
-  // lanceur.
+  // Le raccourci pointe dans le toolkit ; si le script visé n'y est pas, il n'est pas posé, le
+  // journal le dit, et le reste est posé. Get-SzhRaccourcisMenu connaît deux scripts :
+  // open-revue.ps1 (le lanceur) et update.ps1 (la mise à jour). Ce toolkit partiel a
+  // open-revue.ps1 et hidden.vbs, pas update.ps1 : un seul manque.
   const p = bilan.r.partiel;
   assert.deepStrictEqual(p.poses.slice().sort(), [NOM_APPLICATION]);
   assert.deepStrictEqual(p.fichiers.slice().sort(), [NOM_APPLICATION + '.lnk']);
   assert.strictEqual(p.manques.length, 1);
   for (const m of p.manques) {
     assert.match(m, /update\.ps1 manque au toolkit/);
-    // Et la suite : ce qui va le réparer, sans que personne n'ait à s'en occuper.
+    // Le message dit ce qui réparera, sans intervention.
     assert.match(m, /tâche planifiée/);
   }
 });
 
-// ---- La MIGRATION : un poste en service porte encore les cinq anciennes entrées ----
+// ---- La migration : un poste en service porte encore les cinq anciennes entrées ----
 //
-// C'est le test qui prouve qu'un poste déjà en service se met à jour tout seul, sans le
-// moindre geste du rédacteur : les cinq .lnk d'avant le 13.09.2026 (trois lanceurs, deux
-// mises à jour) sont posés à la main sur un menu Démarrer jetable, ciblant réellement les
-// scripts qu'ils visaient alors (open-revue.ps1, open-livre.ps1, update.ps1) -- c'est cette
-// cible, et non le nom du fichier, que Set-SzhRaccourcisMenu reconnaît (voir le test
-// « un ancien raccourci mal nommé... » plus haut, qui n'en pose qu'UN des cinq). Une seule
-// passe doit les retirer tous les cinq et ne laisser que les deux entrées actuelles.
+// Un poste en service se met à jour sans intervention. Les cinq anciens .lnk (trois
+// lanceurs, deux mises à jour) sont posés sur un menu Démarrer jetable, avec leurs vraies
+// cibles (open-revue.ps1, open-livre.ps1, update.ps1) : c'est la cible, et non le nom, que
+// Set-SzhRaccourcisMenu reconnaît. Une seule passe doit les retirer tous et ne laisser que
+// les deux entrées actuelles.
 test('la migration : un menu à cinq anciennes entrées n’en garde plus que deux, et le dit',
   { skip: sansPowerShell }, () => {
     const travail = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-migration-'));
@@ -617,8 +568,7 @@ test('la migration : un menu à cinq anciennes entrées n’en garde plus que de
       '$vbs = Join-Path $toolkit "windows\\hidden.vbs"',
       '$wscript = Join-Path $env:WINDIR "System32\\wscript.exe"',
       '$ps = Join-Path $env:WINDIR "System32\\WindowsPowerShell\\v1.0\\powershell.exe"',
-      // Les trois anciens lanceurs : wscript.exe //B hidden.vbs <script>, comme au temps où
-      // chaque produit avait le sien.
+      // Les trois anciens lanceurs : wscript.exe //B hidden.vbs <script>.
       "foreach ($e in @(" +
         "@{ nom = 'Revues SZH'; script = 'open-revue.ps1'; args = '' }, " +
         "@{ nom = 'Zeitschriften SZH'; script = 'open-revue.ps1'; args = ' \"-Produit\" \"zeitschrift\"' }, " +
@@ -655,8 +605,7 @@ test('la migration : un menu à cinq anciennes entrées n’en garde plus que de
     fs.rmSync(travail, { recursive: true, force: true });
 
     assert.strictEqual(r.avant, 5, 'le pilote n’a pas posé les cinq anciennes entrées');
-    // Les cinq retraits, un par ancien .lnk -- reconnus à leur CIBLE (open-revue.ps1,
-    // open-livre.ps1, update.ps1), jamais à leur nom.
+    // Les cinq retraits, reconnus à leur cible (open-revue.ps1, open-livre.ps1, update.ps1).
     assert.strictEqual(r.retires.length, 5, 'Set-SzhRaccourcisMenu ne retire plus les cinq anciennes entrées');
     assert.deepStrictEqual(r.retires.slice().sort(), [
       'Books SZH-CSPS.lnk', 'Mise a jour Revue SZH.lnk', 'Revues SZH.lnk',
@@ -665,16 +614,14 @@ test('la migration : un menu à cinq anciennes entrées n’en garde plus que de
     // Les deux entrées actuelles, posées à la même passe.
     assert.deepStrictEqual(r.poses.slice().sort(), NOMS_ACTUELS.slice().sort());
     assert.deepStrictEqual(r.manques, []);
-    // Et il ne reste plus QUE ces deux fichiers sur le disque : c'est le test qui prouve
-    // qu'un poste en service se met à jour sans intervention, pas seulement que le bilan le
-    // dit.
+    // Sur le disque, il ne reste que ces deux fichiers.
     assert.deepStrictEqual(r.apres.slice().sort(), (NOMS_ACTUELS.map((n) => n + '.lnk')).sort());
     assert.strictEqual(r.apres.length, 2, 'le menu ne porte plus exactement deux entrées');
   });
 
 // Un seul bouton dans la barre des tâches : « Pronto » prend l'identité de VSCodium. Le menu
-// Démarrer, lui, ne montre qu'une entrée par identité, et c'est « VSCodium » qui l'emportait :
-// les raccourcis de l'installeur reçoivent donc une identité à eux, et pronto.ico.
+// Démarrer ne montre qu'une entrée par identité, et « VSCodium » l'emporterait : les
+// raccourcis de l'installeur reçoivent donc une identité à eux, et pronto.ico.
 test('Pronto prend l’identité de VSCodium, et les raccourcis de VSCodium en reçoivent une autre',
   { skip: sansPowerShell }, () => {
     const travail = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-codium-lnk-'));
@@ -691,7 +638,7 @@ test('Pronto prend l’identité de VSCodium, et les raccourcis de VSCodium en r
       '$sh = New-Object -ComObject WScript.Shell',
       "New-Item -ItemType Directory -Force -Path (Join-Path $menu 'VSCodium') | Out-Null",
       // Celui de l'installeur, dans son dossier, sans icône ; celui du premier niveau porte
-      // déjà pronto.ico, comme sur un poste passé par la 3.10, et garde pourtant l'identité.
+      // déjà pronto.ico et garde l'identité.
       "foreach ($n in 'VSCodium\\VSCodium.lnk', 'VSCodium.lnk') {",
       '  $l = $sh.CreateShortcut((Join-Path $menu $n)); $l.TargetPath = $exe',
       "  if ($n -eq 'VSCodium.lnk') { $l.IconLocation = (Join-Path $toolkit 'windows\\pronto.ico') + ',0' }",
@@ -711,7 +658,7 @@ test('Pronto prend l’identité de VSCodium, et les raccourcis de VSCodium en r
     const r = fs.existsSync(sortie) ? JSON.parse(fs.readFileSync(sortie, 'utf8')) : null;
     fs.rmSync(travail, { recursive: true, force: true });
     assert.ok(r, 'le pilote a échoué : ' + (run.stderr || ''));
-    // Les raccourcis de la nouvelle entrée et de la mise à jour, chacun sous leur nom.
+    // Les raccourcis de l'entrée Pronto et de la mise à jour, chacun sous son nom.
     const pronto = r.lnk[NOM_APPLICATION + '.lnk'];
     const maj = r.lnk[NOM_MISE_A_JOUR + '.lnk'];
     assert.strictEqual(pronto.appid, 'VSCodium.VSCodium', 'Pronto ne partage pas l’identité de VSCodium');

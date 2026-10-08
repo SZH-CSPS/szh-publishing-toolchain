@@ -1,14 +1,12 @@
-// outils/secretariat-cli.js : entrée en ligne de commande des quatre exports du
-// secrétariat. lib/secretariat.js (la logique) est couverte à 97,6 % ; la couche CLI
-// elle-même — argv, JSON Lines sur stdout, code de sortie, encodage du CSV — n'était
-// éprouvée par rien (ni require, ni spawnSync sur elle dans aucun test).
+// outils/secretariat-cli.js : entrée en ligne de commande des quatre exports du secrétariat.
+// La logique (lib/secretariat.js) est testée ailleurs ; ici la couche CLI : argv, JSON Lines
+// sur stdout, code de sortie, encodage du CSV.
 //
-// « edudoc » est la seule des quatre commandes exécutable ici sans réseau : ses numéros et
-// son thésaurus 690 viennent d'un cache local (--cache) ; « numeros-ojs » et « caracteres »
-// moissonnent l'OAI-PMH/HTTP pour de vrai depuis la CLI (opts.recuperer, qui permet de
-// l'éviter, n'est accessible qu'en bibliothèque — secretariat-cli.js ne l'expose pas). Le
-// cas « commande inconnue » et le cas « --cache manquant » couvrent en plus le code de
-// sortie 1 et le message d'erreur, sans dépendre d'aucun outil externe.
+// « edudoc » est la seule commande exécutable ici sans réseau : ses numéros et son thésaurus
+// 690 viennent d'un cache local (--cache). « numeros-ojs » et « caracteres » moissonnent
+// OAI-PMH/HTTP depuis la CLI (opts.recuperer, qui l'évite, n'existe qu'en bibliothèque). Les
+// cas « commande inconnue » et « --cache manquant » couvrent le code de sortie 1 et le
+// message d'erreur, sans outil externe.
 'use strict';
 
 const test = require('node:test');
@@ -26,9 +24,8 @@ function dossierJetable(prefixe) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefixe));
 }
 
-// Même fabrique que test/js/secretariat.test.js (enveloppeOai/recordOaiDc) : repasser par
-// secretariat.decoderRecordOai() plutôt que construire l'objet article à la main garantit la
-// même forme qu'un vrai moissonnage produirait, sans dupliquer sa connaissance ici.
+// Même fabrique que test/js/secretariat.test.js (enveloppeOai/recordOaiDc) : passer par
+// secretariat.decoderRecordOai() donne la forme d'un vrai moissonnage.
 function enveloppeOai(corps) {
   return '<?xml version="1.0" encoding="UTF-8"?>\n<OAI-PMH xmlns="http://www.openarchives.org/OAI/2.0/">\n' +
     '\t<responseDate>2026-09-14T12:00:00Z</responseDate>\n\t<ListRecords>\n' + corps + '\n\t</ListRecords>\n</OAI-PMH>\n';
@@ -63,9 +60,9 @@ function cacheEssai(cheminCache) {
   secretariat.ecrireCacheNumeros(cheminCache, cache);
 }
 
-// Les champs quotés d'une ligne CSV suisse : `"a";"b, c";"d ""e"""` -> 3 entrées. Chaque
-// colonne de ce gabarit est toujours entre guillemets (filtre |csv, lib/gabarits.js), donc
-// compter les groupes entre guillemets donne le compte exact de colonnes.
+// Les champs entre guillemets d'une ligne CSV suisse : `"a";"b, c";"d ""e"""` -> 3 entrées.
+// Chaque colonne de ce gabarit est entre guillemets (filtre |csv, lib/gabarits.js) : compter
+// les groupes donne le nombre de colonnes.
 function colonnes(ligne) { return ligne.match(/"(?:[^"]|"")*"/g) || []; }
 
 test('secretariat-cli.js edudoc : code 0, JSON Lines sur stdout, CSV BOM+CRLF, colonnes exactes',
@@ -94,8 +91,8 @@ test('secretariat-cli.js edudoc : code 0, JSON Lines sur stdout, CSV BOM+CRLF, c
     const lignesCsv = csv.replace(/^﻿/, '').split('\r\n').filter((l) => l !== '');
     assert.strictEqual(lignesCsv.length, 2, 'en-tête + une ligne d’article attendues : ' + lignesCsv.length);
 
-    // 20 colonnes fixes (export-templates/edudoc.twig) + une par auteur·e connu dans
-    // l'export (2 ici) ; aucune colonne 690, --numero (racines locales) n'étant pas fourni.
+    // 20 colonnes fixes (export-templates/edudoc.twig) + une par auteur·e de l'export (2 ici) ;
+    // pas de colonne 690, --numero (racines locales) n'étant pas fourni.
     const enTete = colonnes(lignesCsv[0]);
     const corps = colonnes(lignesCsv[1]);
     assert.strictEqual(enTete.length, 22, 'nombre de colonnes d’en-tête inattendu : ' + lignesCsv[0]);
@@ -155,7 +152,7 @@ test('secretariat-cli.js edudoc : --cache manquant -> code de sortie 1, message 
 });
 
 // Les textes que lit la secrétaire : la langue de l'interface, un vrai pluriel, aucun mot
-// technique. Sans --langue, le français, que le lanceur WinForms attend.
+// technique. Sans --langue, le français.
 function edudocEssai(langue) {
   const dossier = dossierJetable('szh-cli-langue-');
   const cheminCache = path.join(dossier, 'cache.json');

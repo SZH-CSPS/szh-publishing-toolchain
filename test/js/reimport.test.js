@@ -1,23 +1,21 @@
-// Contrôles du réimport d'un article : « l'auteur renvoie son Word corrigé ».
+// Contrôles du réimport d'un article : l'auteur renvoie son Word corrigé.
 //
 //   node --test "test/js/*.test.js"
 //
-// Le défaut réparé : l'original était supprimé à l'import, et republier une correction
-// voulait dire renommer, réimporter, puis recopier la fiche à la main. La cible
-// `reimporter` remplace le corps et laisse tout le reste en place.
+// La cible `reimporter` remplace le corps de l'article et laisse tout le reste en place.
 //
-// Ce fichier surveille les endroits où la fonction redeviendrait dangereuse en silence :
+// Ce fichier surveille les endroits où la fonction deviendrait dangereuse sans bruit :
 //   * la conversion écrirait dans l'article vivant au lieu du chantier ($SZH_IMPORT_DIR) ;
-//   * les empreintes noteraient l'état INSTALLÉ et non ce que le Word a livré — chaque
-//     réimport rouvrirait alors le même faux conflit sur un tableau gardé ;
-//   * la liste blanche de ce que le Word possède s'élargirait, et un sidecar de la
-//     rédaction (tâches, traduction) partirait avec le corps ;
+//   * les empreintes noteraient l'état installé et non ce que le Word a livré : chaque
+//     réimport rouvrirait le même faux conflit sur un tableau gardé ;
+//   * la liste blanche de ce que le Word possède s'élargirait, et un sidecar de la rédaction
+//     (tâches, traduction) partirait avec le corps ;
 //   * le chantier perdrait son point de tête et le Makefile compilerait un demi-article ;
 //   * la reprise passerait après l'appariement : un réimport tué en pleine bascule laisse
-//     articles/<slug> absent, on répondrait « cet article n'existe pas » au lieu de le
-//     secourir. C'est arrivé, et c'est la raison de ce contrôle ;
-//   * un message partirait sans son allemand, ou la ligne JSON du cockpit se retrouverait
-//     noyée dans du bavardage sur stdout.
+//     articles/<slug> absent, et on répondrait « cet article n'existe pas » au lieu de le
+//     récupérer ;
+//   * un message partirait sans son allemand, ou la ligne JSON du cockpit serait noyée dans
+//     d'autres sorties sur stdout.
 'use strict';
 
 const test = require('node:test');
@@ -89,7 +87,7 @@ test('empreintes : la conversion les écrit, et le réimport note la version du 
 });
 
 test('empreintes absentes : on se montre prudent, et on le dit', () => {
-  // Un article importé avant ce suivi ne doit pas voir son travail écrasé en silence.
+  // Un article importé sans fichier d'empreintes ne voit pas son travail écrasé en silence.
   assert.match(PY, /if tables_vivantes and not empreintes\['present'\]:/,
     'l’article d’origine inconnue n’est plus traité à part');
   assert.match(PY, /'tableaux-origine-inconnue'/, 'le code de ce cas a changé');
@@ -104,14 +102,13 @@ test('réimport : seuls le corps, la bibliographie, media/ et tables/ sont rempl
   const bloc = /def possede_par_le_word\(slug\):\s*\n\s*return \{([^}]*)\}/.exec(PY);
   assert.ok(bloc, 'la liste blanche de ce que le Word possède a disparu');
   const noms = bloc[1].split(',').map((s) => s.trim()).filter(Boolean).sort();
-  // La bibliographie détachée en fait partie : elle est écrite à l'import depuis les styles
-  // du Word, donc elle en vient. L'omettre ferait mentir la liste blanche, et c'est elle
-  // qui décide de ce qui est remplacé.
+  // La bibliographie détachée en fait partie : elle est écrite à l'import depuis les styles du
+  // Word. C'est cette liste qui décide de ce qui est remplacé.
   assert.deepStrictEqual(noms,
     ["'media'", "'tables'", 'NOM_EMPREINTES', 'nom_biblio(slug)', "slug + '.md'"],
     'la liste de ce que le réimport remplace a changé — la fiche, les tâches, le suivi de '
     + 'traduction ou les portraits pourraient partir avec le corps');
-  // Le reste est recopié sans énumération : un sidecar inventé demain survivra seul.
+  // Le reste est recopié sans énumération : un nouveau sidecar survit sans modification ici.
   assert.match(PY, /def copier_preserves\(vivant, temp, slug\)/,
     'la recopie de ce que le Word ne possède pas a disparu');
   assert.match(PY, /reserves = possede_par_le_word\(slug\)/,
@@ -119,15 +116,15 @@ test('réimport : seuls le corps, la bibliographie, media/ et tables/ sont rempl
 });
 
 test('réimport : la fiche n’est jamais écrasée, et ce que le Word en disait est déposé', () => {
-  // docx-meta.py garde déjà la fiche existante ; ici la fiche du Word est écrite dans le
-  // chantier (aucune fiche à côté), puis mise de côté sans jamais rejoindre l'article.
+  // docx-meta.py garde la fiche existante ; ici, la fiche du Word est écrite dans le chantier
+  // (où il n'y a pas de fiche), puis mise de côté sans rejoindre l'article.
   assert.match(PY, /shutil\.move\(fiche_word, depot\)/,
     'la fiche que le Word aurait produite n’est plus mise de côté');
   assert.match(PY, /'fiche-du-word-differente'/, 'le code de ce cas a changé');
   assert.match(PY, /def champs_divergents\(fiche_vivante, fiche_du_word\)/,
     'la comparaison des champs de fiche a disparu');
-  // Les portraits appartiennent au formulaire des auteur·e·s : jamais réinstallés, et le
-  // détourage de ceux du Word n'est pas payé pour rien.
+  // Les portraits appartiennent au formulaire des auteur·e·s : ils ne sont pas réinstallés,
+  // et le détourage de ceux du Word est évité.
   assert.match(PY, /env\['SZH_SANS_DETOURAGE'\] = '1'/,
     'le réimport paie le détourage de portraits qu’il met au rebut');
   assert.match(MEDIAS, /if os\.environ\.get\('SZH_SANS_DETOURAGE'\):/,
@@ -185,13 +182,13 @@ test('réimport : on peut revenir à l’état d’avant, et annuler l’annulat
 // ---- Ce que le rédacteur lit, et ce que le cockpit lit ----
 
 test('réimport : aucun message ne part sans son allemand', () => {
-  // Les deux langues sont exigées par la signature, non par la discipline de l'appelant.
+  // Les deux langues sont exigées par la signature.
   assert.match(PY, /def dire\(self, fr, de\):/,
     'l’allemand est redevenu optionnel dans les lignes d’information');
   assert.match(PY, /def avertir\(self, code, champs, fr, de\):/,
     'la forme des avertissements a changé');
-  // Le formatage lui-même (« [de] » + de) vit dans szh_commun.avertir(), partagé avec
-  // docx-meta.py, docx-tables.py et livre-scinder.py — reimporter.py délègue.
+  // Le formatage (« [de] » + de) vit dans szh_commun.avertir(), partagé avec docx-meta.py,
+  // docx-tables.py et livre-scinder.py.
   assert.match(PY, /szh_commun\.avertir\(PREFIXE_AVERT, code, champs, fr, de/,
     'reimporter.py ne délègue plus le formatage à szh_commun.avertir()');
   assert.match(COMMUN, /'\[de\] ' \+ de/, 'l’allemand n’est plus préfixé « [de] »');
@@ -214,17 +211,16 @@ test('réimport : les quatre issues sont distinctes, et stdout ne porte que le J
     assert.ok(codes[1].indexOf(attendu) !== -1,
       'l’issue ' + attendu + ' n’est plus distincte : le cockpit ne saurait plus quoi dire');
   }
-  // Le cockpit lit une ligne JSON, comme pour portraits.py : tout le reste va sur stderr.
-  // Deux écritures seulement sur stdout, et toutes deux terminales : celle de rendre(),
-  // et celle des filets du sommet (Ctrl+C, panne) — pour que le cockpit ne soit jamais
-  // laissé sans réponse lisible.
+  // Le cockpit lit une ligne JSON, comme pour portraits.py : le reste va sur stderr. Deux
+  // écritures sur stdout, toutes deux terminales : celle de rendre(), et celle des filets du
+  // sommet (Ctrl+C, panne), pour que le cockpit reçoive toujours une réponse lisible.
   const prints = (PY.match(/print\(/g) || []).length;
   const surStderr = (PY.match(/file=sys\.stderr/g) || []).length;
   assert.strictEqual((PY.match(/print\(json\.dumps\(/g) || []).length, 2,
     'le nombre de lignes JSON sur stdout a changé : le contrat du cockpit ne tient plus');
   assert.strictEqual(prints - surStderr, 2,
     'un print() ne va pas sur stderr : il polluerait la ligne JSON du cockpit');
-  // Un refus n'est pas un échec : il ne doit pas s'afficher en rouge dans l'éditeur.
+  // Un refus n'est pas un échec : il ne s'affiche pas en rouge dans l'éditeur.
   for (const code of ['reimport-sans-article', 'reimport-sans-word',
     'reimport-fiche-sans-source', 'reimport-plusieurs-articles']) {
     assert.ok(PY.indexOf("'" + code + "'") !== -1, 'le code de refus ' + code + ' a changé');
@@ -250,12 +246,11 @@ test('Makefile : le redépôt d’un Word nomme un geste qui existe', () => {
   assert.ok(MK.indexOf('« Réimporter cet article » (à venir)') === -1,
     'le message du redépôt promet encore une fonction absente');
   assert.match(MK, /^reimporter:$/m, 'la cible reimporter a disparu');
-  // La cible `import` ne réimporte jamais d'elle-même : c'est une opération destructive,
-  // elle se demande.
-  // ⚠ La borne de fin est le nom d'une VARIABLE depuis que l'import sert aussi aux
-  //   chapitres d'un livre. Écrite en dur, `indexOf` rendait -1, `slice` prenait tout le
-  //   fichier, et le contrôle accusait la cible `import` d'un `reimporter.py` qui vit
-  //   ailleurs. Un contrôle qui se trompe de bloc n'est pas plus sûr qu'un contrôle absent.
+  // La cible `import` ne réimporte pas d'elle-même : c'est une opération destructive, elle se
+  // demande.
+  // La borne de fin est le nom d'une variable (l'import sert aussi aux chapitres d'un livre).
+  // Si `indexOf` rendait -1, `slice` prendrait tout le fichier et le contrôle trouverait un
+  // `reimporter.py` qui vit ailleurs.
   const finBloc = MK.indexOf('while dossier_existant "$$slug" >/dev/null; do');
   assert.ok(finBloc !== -1, 'la boucle de désambiguïsation a disparu : le bloc n’a plus de fin');
   const bloc = MK.slice(MK.indexOf('venu_de=""'), finBloc);
@@ -264,9 +259,9 @@ test('Makefile : le redépôt d’un Word nomme un geste qui existe', () => {
     + 'rédaction sans qu’on le lui demande');
   assert.match(MK, /Réimporter cet article/, 'le geste n’est plus nommé au rédacteur');
 
-  // La cible garde le code du script, à une exception près : « rien à faire » n'est pas
-  // une panne, et la règle du dossier est de n'échouer que si la configuration ne peut pas
-  // être honorée. Sans ce c=$? / exit $c, la cible réussirait quoi qu'il arrive.
+  // La cible garde le code du script, sauf « rien à faire », qui n'est pas une panne : le
+  // dossier n'échoue que si la configuration ne peut pas être honorée. Sans ce c=$? / exit $c,
+  // la cible réussirait quoi qu'il arrive.
   const recette = MK.slice(MK.indexOf('\nreimporter:'), MK.indexOf('\nannuler-reimport:'));
   assert.ok(recette.indexOf('c=$$?;') !== -1,
     'la cible reimporter ne relève plus le code du script : elle réussirait toujours');
@@ -276,42 +271,38 @@ test('Makefile : le redépôt d’un Word nomme un geste qui existe', () => {
     'la cible ne propage plus l’échec du script');
 });
 
-// ---- Les cinq issues, mesurées en EXÉCUTANT le script ----
+// ---- Les cinq issues, mesurées en exécutant le script ----
 //
-// Ce contrôle est né d'un défaut réel : le contrat annonçait « code de sortie et champ
-// resultat, redondants exprès », et rien ne mesurait le code de sortie. Un contrôle qui
-// n'aurait lu que le JSON n'aurait rien vu — c'est exactement ce qui s'est passé.
+// Le contrat annonce « code de sortie et champ resultat, redondants exprès » : ce contrôle
+// mesure le code de sortie, qu'une lecture du seul JSON ne verrait pas.
 //
-// Piège d'appel, à connaître avant de conclure qu'un script « rend toujours 0 » : dans un
-// tube (« … | tail »), $? est le code du DERNIER maillon. Il faut ${PIPESTATUS[0]}, ou pas
-// de tube. Mesuré : sans tube, ce script rend 0/1/2/3/4 ; avec un tube, 0 toujours.
+// Piège d'appel : dans un tube (« … | tail »), $? est le code du dernier maillon. Il faut
+// ${PIPESTATUS[0]}, ou pas de tube. Sans tube, ce script rend 0/1/2/3/4 ; avec un tube,
+// toujours 0.
 //
-// Les quatre premières issues sont atteintes sans conversion : pas de pandoc, pas de bash,
-// donc mesurables partout, y compris sous Windows. La cinquième (« rien à faire ») demande
-// une conversion : elle passe par un import-docx.sh factice, ce que permet --pipeline, et
-// n'est mesurée que là où un bash sait lire les chemins de ce dépôt (CI Linux, WSL).
+// Les quatre premières issues sont atteintes sans conversion (ni pandoc ni bash), donc
+// mesurables partout, y compris sous Windows. La cinquième (« rien à faire ») demande une
+// conversion : elle passe par un import-docx.sh factice (--pipeline), et n'est mesurée que là
+// où un bash sait lire les chemins de ce dépôt (CI Linux, WSL).
 
 const os = require('os');
 
 const SCRIPT = path.join(RACINE, 'pipeline', 'reimporter.py');
 
 
-// Un bash qui comprend les chemins que Python lui passera. Sous Windows, `bash` est
-// souvent la passerelle WSL : elle ne sait rien d'un chemin « C:\… », et la conversion
-// échouerait pour une raison de chemin, non de contrat.
+// Un bash qui comprend les chemins que Python lui passera. Sous Windows, `bash` est souvent la
+// passerelle WSL : elle ignore les chemins « C:\… », et la conversion échouerait pour une
+// raison de chemin, non de contrat.
 function bashCompatible() {
-  // On mesure l'opération réelle, pas une approximation : Python lancera
-  // « bash <chemin>/import-docx.sh » avec un chemin de cette forme-là — et c'est depuis
-  // Python qu'on sonde, Node ne trouvant pas le même bash (bashDuPython, test/js/gardes.js).
+  // Python lancera « bash <chemin>/import-docx.sh » avec un chemin de cette forme : on sonde
+  // depuis Python, car Node ne trouve pas le même bash (bashDuPython, test/js/gardes.js).
   return bashDuPython();
 }
 
-// Pandoc, mesuré directement (jamais via wsl.exe : ces tests lancent bash localement, pas
-// une distribution). Un poste « bash sans pandoc » (le runner CI windows-latest, sans
-// pandoc ni WSL, en est un exemple réel) passerait bashCompatible() et ferait alors échouer
-// la conversion réelle, plus loin dans la chaîne. Détection centralisée dans
-// test/js/gardes.js (sansPandoc) : un saut bruyant par sauter.pandoc(t), jamais un vert par
-// défaut.
+// Pandoc, détecté directement (pas via wsl.exe : ces tests lancent bash localement). Un poste
+// avec bash sans pandoc (le runner windows-latest) passerait bashCompatible() puis ferait
+// échouer la conversion réelle. Détection dans test/js/gardes.js (sansPandoc) :
+// sauter.pandoc(t) saute en le disant.
 
 
 function revueJetable(slug) {
@@ -352,9 +343,8 @@ test('les issues du réimport : le processus sort sur le code que le JSON annonc
     assert.deepStrictEqual(j.avertissements, ['reimport-sans-article']);
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }
 
-  // --- refusé (4) : l'article existe, mais aucun Word n'attend. Volontairement distinct
-  // de « rien à faire » : là, aucun document n'a été examiné, et le geste à faire n'est
-  // pas le même (déposer le Word corrigé).
+  // --- refusé (4) : l'article existe, mais aucun Word n'attend. Distinct de « rien à faire »,
+  // où un document a été examiné : ici le geste à faire est de déposer le Word corrigé.
   racine = revueJetable(slug);
   try {
     const r = lancer(racine, ['--article', slug]);
@@ -365,8 +355,8 @@ test('les issues du réimport : le processus sort sur le code que le JSON annonc
     assert.deepStrictEqual(j.avertissements, ['reimport-sans-word']);
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }
 
-  // --- appel mal formé (2) : un argument inconnu ne doit pas passer pour un succès, sans
-  // quoi un bug d'appel du cockpit se lirait comme une réussite.
+  // --- appel mal formé (2) : un argument inconnu n'est pas un succès, sinon un bug d'appel
+  // du cockpit se lirait comme une réussite.
   racine = revueJetable(slug);
   try {
     const r = lancer(racine, ['--zzz']);
@@ -374,7 +364,7 @@ test('les issues du réimport : le processus sort sur le code que le JSON annonc
       + ' : un appel fautif passerait pour un succès');
     assert.strictEqual(jsonDeLaSortie(r.stdout), null,
       'un appel mal formé ne doit pas produire de ligne JSON de résultat');
-    // Et l'usage part sur stderr, jamais sur stdout, qui appartient au JSON.
+    // L'usage part sur stderr ; stdout appartient au JSON.
     assert.ok(String(r.stderr).indexOf('usage : reimporter.py') !== -1,
       'l’usage ne s’affiche plus');
     assert.strictEqual(String(r.stdout).trim(), '');
@@ -399,7 +389,7 @@ test('les issues du réimport : le processus sort sur le code que le JSON annonc
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }
 
   // --- échoué (1) : le chantier ne peut pas être créé (un fichier occupe sa place). Rien
-  // n'est touché, et le code doit dire « échec », pas « réussi ».
+  // n'est touché, et le code dit « échec ».
   racine = revueJetable(slug);
   try {
     fs.writeFileSync(path.join(racine, 'articles-word', 'essai.docx'), 'pas un docx');
@@ -418,7 +408,7 @@ test('les issues du réimport : le processus sort sur le code que le JSON annonc
 
 test('issue « rien à faire » : sortie 3, et le Word cesse d’attendre', { skip: sansPython }, (t) => {
   if (!bashCompatible()) {
-    // Ni un saut silencieux ni un faux vert : on dit pourquoi, et où la mesure se fait.
+    // Le saut dit pourquoi, et où la mesure se fait.
     assert.ok(SH.indexOf('SZH_IMPORT_DIR') !== -1,
       'la couture de la conversion a disparu, et ce poste ne peut pas la mesurer');
     return;
@@ -429,8 +419,8 @@ test('issue « rien à faire » : sortie 3, et le Word cesse d’attendre', { sk
   const racine = revueJetable(slug);
   try {
     fs.writeFileSync(path.join(racine, 'articles-word', 'essai.docx'), 'pas un docx');
-    // Une conversion factice qui rend le corps inchangé : c'est la définition de « rien
-    // à faire ». --pipeline permet de la substituer sans toucher à la chaîne réelle.
+    // Une conversion factice qui rend le corps inchangé : c'est la définition de « rien à
+    // faire ». --pipeline la substitue à la chaîne réelle.
     const faux = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-pipeline-'));
     fs.writeFileSync(path.join(faux, 'import-docx.sh'), [
       '#!/bin/bash',
@@ -445,7 +435,7 @@ test('issue « rien à faire » : sortie 3, et le Word cesse d’attendre', { sk
       + ' : le cockpit peindrait un échec, ou une réussite, à la place');
     assert.strictEqual(j.resultat, 'rien');
     assert.strictEqual(j.code, 3);
-    // Le Word a été examiné : il ne doit plus être signalé comme en attente.
+    // Le Word a été examiné : il n'est plus signalé comme en attente.
     assert.deepStrictEqual(fs.readdirSync(path.join(racine, 'articles-word'))
       .filter((n) => n.endsWith('.docx')), [],
       'le Word reste en attente : il serait signalé à chaque compilation');
@@ -455,13 +445,11 @@ test('issue « rien à faire » : sortie 3, et le Word cesse d’attendre', { sk
 
 // ---- Un sidecar inventé, bout en bout ----
 //
-// Le test plus haut (« seuls le corps, la bibliographie, media/ et tables/ sont
-// remplacés ») ne lit que la liste blanche DANS LE SOURCE : rien n'y prouve que
-// copier_preserves() est réellement appelée, ni que son résultat rejoint le chantier
-// avant la bascule. Une sonde qui vide l'appel (`resultat['preserves'] = []`) laissait les
-// 16 tests du fichier verts. Ici, un fichier que ni le schéma ni le Word ne connaissent est
-// déposé AVANT un réimport réel (via --pipeline, comme le test « rien à faire » ci-dessus),
-// et sa survie est constatée sur le disque, après une vraie bascule.
+// Le test « seuls le corps, la bibliographie, media/ et tables/ sont remplacés » ne lit que
+// la liste blanche dans le source : il ne prouve pas que copier_preserves() est appelée, ni
+// que son résultat rejoint le chantier avant la bascule. Ici, un fichier que ni le schéma ni
+// le Word ne connaissent est déposé avant un réimport réel (--pipeline), et sa survie est
+// constatée sur le disque après la bascule.
 test('réimport : un sidecar inventé (tâches) que le Word ne possède pas survit à un réimport réel',
   { skip: sansPython }, (t) => {
     if (!bashCompatible()) {
@@ -476,14 +464,13 @@ test('réimport : un sidecar inventé (tâches) que le Word ne possède pas surv
     try {
       const dossierArticle = path.join(racine, 'articles', slug);
       const CONTENU_SIDECAR = 'taches:\n- corriger la note 3\n';
-      // Un sidecar de la rédaction que ni possede_par_le_word() ni aucun Word ne connaît —
-      // exactement le risque nommé dans l'en-tête de ce fichier.
+      // Un sidecar de la rédaction que possede_par_le_word() ne connaît pas : le risque nommé
+      // dans l'en-tête de ce fichier.
       fs.writeFileSync(path.join(dossierArticle, slug + '.taches.yaml'), CONTENU_SIDECAR);
 
       fs.writeFileSync(path.join(racine, 'articles-word', 'essai.docx'), 'pas un docx');
-      // Une conversion factice qui change RÉELLEMENT le corps : sans quoi « rien à faire »
-      // s'arrête avant la bascule, et le sidecar survivrait pour une mauvaise raison — il
-      // n'aurait simplement jamais été question de le remplacer.
+      // Une conversion factice qui change le corps : sinon « rien à faire » s'arrête avant la
+      // bascule, et le sidecar survivrait sans avoir été mis à l'épreuve.
       const faux = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-pipeline-sidecar-'));
       fs.writeFileSync(path.join(faux, 'import-docx.sh'), [
         '#!/bin/bash',
@@ -497,11 +484,10 @@ test('réimport : un sidecar inventé (tâches) que le Word ne possède pas surv
       assert.strictEqual(r.status, 0, 'le réimport réel n’a pas réussi : ' + r.stderr
         + ' / stdout=' + r.stdout);
       assert.strictEqual(j.resultat, 'reussi');
-      // Le corps a bien changé : ce n'est pas un « rien à faire » qui aurait laissé le
-      // sidecar intact pour une mauvaise raison.
+      // Le corps a changé : le réimport est allé jusqu'à la bascule.
       assert.match(fs.readFileSync(path.join(dossierArticle, slug + '.md'), 'utf8'),
         /Le Word corrigé a changé ce corps/, 'le corps n’a pas été remplacé par le réimport');
-      // Le sidecar, lui, n'était dans aucune liste blanche : il doit avoir survécu, intact.
+      // Le sidecar n'était dans aucune liste blanche : il a survécu, intact.
       assert.ok(fs.existsSync(path.join(dossierArticle, slug + '.taches.yaml')),
         'le sidecar inventé n’a pas survécu au réimport : copier_preserves() n’a pas fait son travail');
       assert.strictEqual(
@@ -513,8 +499,8 @@ test('réimport : un sidecar inventé (tâches) que le Word ne possède pas surv
 
 test('réimport : Ctrl+C et panne imprévue sortent sur un code, pas sur une trace', () => {
   // KeyboardInterrupt et SystemExit dérivent de BaseException : `except Exception` ne les
-  // attrape pas, et le code de sortie de principal() passe intact. C'est la seule raison
-  // pour laquelle un filet large est tolérable ici — et il n'est tolérable qu'au sommet.
+  // attrape pas, et le code de sortie de principal() passe intact. Ce filet large n'est
+  // admis qu'au sommet.
   assert.strictEqual((PY.match(/^\s*except\s*:/gm) || []).length, 0,
     'un except nu est apparu : il avalerait SystemExit et KeyboardInterrupt');
   assert.strictEqual((PY.match(/except BaseException/g) || []).length, 0,
@@ -527,7 +513,7 @@ test('réimport : Ctrl+C et panne imprévue sortent sur un code, pas sur une tra
     'les deux filets ne sont pas dans le bloc __main__');
   assert.match(PY, /'reimport-interrompu'/, 'le code du Ctrl+C a changé');
   assert.match(PY, /'reimport-panne'/, 'le code de la panne a changé');
-  // Ctrl+C tente la reprise : l'article ne doit pas rester sous .szh-bascule-<slug>.
+  // Ctrl+C tente la reprise : l'article ne reste pas sous .szh-bascule-<slug>.
   assert.ok(sommet.indexOf('reprendre_tout(revue, voix)') !== -1,
     'un Ctrl+C ne remet plus l’article en place');
   assert.strictEqual((PY.match(/sys\.exit\(principal\(sys\.argv\)\)/g) || []).length, 1,

@@ -22,8 +22,8 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const PIPE = path.join(RACINE, 'pipeline');
 const PREPASS = path.join(PIPE, 'docx-styles-corps.py');
 const FILTRE = path.join(PIPE, 'filters', 'szh-styles-corps.lua');
-// SZH_PRODUIT=revue ci-dessous -> le gabarit FR (Zeitschrift utiliserait le DE, hors périmètre
-// de ce contrôle, indépendant de la langue des étiquettes du gabarit).
+// SZH_PRODUIT=revue ci-dessous -> le gabarit FR. Le contrôle ne dépend pas de la langue des
+// étiquettes du gabarit.
 const GABARIT = path.join(RACINE, 'revue-template', "Pronto - modele d'article_FR.docx");
 
 function jetable() {
@@ -191,10 +191,9 @@ test('le style Word « Auhors » devient ::: {.szh-auteurs}, au même titre que 
 
 test('deux paragraphes « Auhors » consécutifs NE fusionnent PAS (contrairement aux blocs du cockpit)',
   { skip: sansPython || sansPandoc }, () => {
-    // Constaté sur redf_Lerngeschichten_clean.docx : un chapitre gardait par mégarde le
-    // style « Auhors » sur son premier paragraphe de corps. Fusionner l'aurait avalé dans
-    // la ligne d'auteur·e·s, en silence. Deux blocs distincts, eux, se voient — et se
-    // corrigent — à la relecture du .md.
+    // Un chapitre peut garder par erreur le style « Auhors » sur son premier paragraphe de
+    // corps. Fusionner l'avalerait dans la ligne d'auteur·e·s sans bruit ; deux blocs
+    // distincts se voient, et se corrigent, à la relecture du .md.
     const d = jetable();
     try {
       const docx = fabriquer(d, [
@@ -216,7 +215,7 @@ test('deux paragraphes « Auhors » consécutifs NE fusionnent PAS (contrairemen
     }
   });
 
-// La chaîne réelle, dans la WSL (pandoc 3.5, celui de la production), sur le gabarit livré.
+// La chaîne réelle, dans la WSL (le pandoc de la production), sur le gabarit livré.
 function cheminVersWsl(x) {
   const abs = path.resolve(x).replace(/\\/g, '/');
   const m = abs.match(/^([A-Za-z]):\/(.*)$/);
@@ -266,7 +265,7 @@ test('l\'exergue est aria-hidden, ses liens hors du clavier, les autres blocs in
       const html = r.stdout.replace(/\r\n/g, '\n');
       assert.match(html, /<div class="highlight" aria-hidden="true">/);
       assert.match(html, /<div class="hervorhebung" aria-hidden="true">/);
-      // Le lien reste (il se voit dans le PDF), mais le clavier ne s'y arrête plus.
+      // Le lien reste (il se voit dans le PDF), mais le clavier ne s'y arrête pas.
       assert.match(html, /<a href="https:\/\/x\.ch" tabindex="-1">exergue<\/a>/);
       assert.match(html, /<div class="important">\n<p>Un <a href="https:\/\/y\.ch">encadré<\/a>/);
     } finally {

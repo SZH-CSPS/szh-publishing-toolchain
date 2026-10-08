@@ -1,10 +1,7 @@
-// Fige la liste des noms exportés par extension.js sous `module.exports._pur` : le
-// contrat que le découpage d'extension.js (lib/session.js, lib/cycle-vie.js, …) ne doit
-// pas rompre. Un nom qui migre vers un module de lib/ doit être RÉ-EXPORTÉ par
-// extension.js, jamais simplement déplacé — sinon un contrôle qui l'attend là s'éteint
-// en silence.
+// Fige la liste des noms exportés par extension.js sous `module.exports._pur`. Un nom qui
+// passe dans un module de lib/ reste ré-exporté par extension.js : un contrôle qui l'attend
+// là s'éteindrait sinon sans bruit.
 //
-// Exécution : depuis la racine du dépôt,
 //   node --test test/js/pur-inventaire.test.js
 'use strict';
 
@@ -22,16 +19,10 @@ activerHote(REVUE);   // pose le crochet Module._load qui remplace 'vscode' ; ex
 
 const ext = require(path.join(COCKPIT, 'extension.js'));
 
-// Relevée le 06.09.2026, avant le découpage en lib/session.js, lib/cycle-vie.js,
-// lib/medias-hote.js, lib/documentation-hote.js, lib/apercu.js et lib/import-hote.js.
-// Ne pas ajouter ni retirer un nom ici sans avoir vérifié qu'il s'agit d'un vrai
-// changement de contrat, et non d'un effet de bord du découpage.
-//
-// +1 (120e nom) : chargeChapitres, le chargeur de la vue CHAPITRES d'un livre, exposé pour
-// prouver qu'il lit buch.yaml et les fiches sans ausgabe.yaml (test/js/livre-vue-chapitres.test.js).
-// +1 (119e nom) : proposerTutoriel, exposée pour prouver sans activation complète que
-// l'invitation au tutoriel ne s'affiche jamais sur un livre (chantier profil livre,
-// point 6 — voir son commentaire dans extension.js).
+// Ajouter ou retirer un nom ici seulement pour un vrai changement de contrat, pas pour suivre
+// un déplacement de code. chargeChapitres (test/js/livre-vue-chapitres.test.js) et
+// proposerTutoriel (pas d'invitation au tutoriel sur un livre) sont exposés pour être testés
+// sans activation complète.
 const NOMS_ATTENDUS = [
   'SCHEME_CONFLIT', 'TEXTES_COCKPIT', 'adressesAuteurs', 'ajouterColonne', 'ajouterLigne',
   'alignerCellules', 'analyserAusgabe', 'analyserFrontmatter', 'analyserMeta',
@@ -69,9 +60,7 @@ const NOMS_ATTENDUS = [
 test('module.exports._pur d’extension.js expose exactement les 120 noms figés, avant tout découpage', () => {
   assert.ok(ext && ext._pur, 'extension.js ne rend pas de module.exports._pur');
   const obtenus = Object.keys(ext._pur).sort();
-  // La taille figée (120) n'a pas besoin d'un test à part : tout désaccord de compte se
-  // lit déjà dans le deepStrictEqual ci-dessous, avec le détail des noms en trop ou
-  // manquants — un simple compte n'y ajoutait rien.
+  // Le deepStrictEqual détaille les noms en trop ou manquants, ce qui couvre aussi le compte.
   assert.deepStrictEqual(obtenus, NOMS_ATTENDUS,
     'la liste des noms exportés par _pur a changé (attendu ' + NOMS_ATTENDUS.length + ' noms, ' +
     'trouvé ' + obtenus.length + ') — un module extrait doit RÉ-EXPORTER, jamais seulement déplacer');

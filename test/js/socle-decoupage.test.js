@@ -1,20 +1,18 @@
-// Le découpage de windows/szh-common.ps1 en quatre fichiers : szh-textes.ps1 (la table des
-// textes, données pures), szh-produits.ps1 (emplacements, YAML plat, identité d'un numéro ou
-// d'un livre), szh-shell.ps1 (AppUserModelID, raccourcis du menu Démarrer, VSCodium) et
-// szh-common.ps1 lui-même, qui garde son nom, ses effets de bord de chargement et dot-source
-// les trois fils en tête.
+// windows/szh-common.ps1 et ses trois fichiers : szh-textes.ps1 (la table des textes),
+// szh-produits.ps1 (emplacements, YAML plat, identité d'un numéro ou d'un livre),
+// szh-shell.ps1 (AppUserModelID, raccourcis du menu Démarrer, VSCodium). szh-common.ps1 garde
+// ses effets de bord de chargement et charge les trois autres en tête.
 //
 //   node --test "test/js/*.test.js"
 //
-// Ce fichier ne prouve qu'une chose, mais qui engage tout le reste : les onze scripts qui
-// dot-sourcent encore « . "$PSScriptRoot\szh-common.ps1" » n'ont rien à changer, parce que
-// dot-sourcer ce seul fichier suffit à charger les trois autres et tout ce qu'ils déclarent.
-// Une fonction de chaque fil est appelée pour de vrai, sur une arborescence jetable :
-//   * T 'lanceur.encours'       -> prouve que $SzhTextes (szh-textes.ps1) est chargée ;
-//   * Get-SzhEmplacements       -> prouve que szh-produits.ps1 est chargée ;
-//   * Get-SzhRaccourcisMenu     -> prouve que szh-shell.ps1 est chargée.
-// Rien n'est écrit sous le vrai C:\ProgramData\SZH : $script:SzhBase est redirigé vers un
-// dossier de travail jetable, comme le fait déjà test/js/installation.test.js.
+// Les scripts qui chargent « . "$PSScriptRoot\szh-common.ps1" » obtiennent ainsi les trois
+// autres fichiers et tout ce qu'ils déclarent. Une fonction de chaque fichier est appelée
+// pour de vrai, sur une arborescence jetable :
+//   * T 'lanceur.encours'       -> $SzhTextes (szh-textes.ps1) est chargée ;
+//   * Get-SzhEmplacements       -> szh-produits.ps1 est chargé ;
+//   * Get-SzhRaccourcisMenu     -> szh-shell.ps1 est chargé.
+// $script:SzhBase est redirigé vers un dossier jetable, comme dans
+// test/js/installation.test.js : rien n'est écrit sous le vrai C:\ProgramData\SZH.
 'use strict';
 
 const test = require('node:test');
@@ -29,7 +27,7 @@ const COMMUN_PS1 = path.join(RACINE, 'windows', 'szh-common.ps1');
 
 const { POWERSHELL, sansPowerShell } = require('./gardes');
 
-// ---- Les quatre fichiers existent, et szh-common.ps1 les dot-source dans le bon ordre ----
+// ---- Les quatre fichiers existent, et szh-common.ps1 les charge dans le bon ordre ----
 
 test('szh-common.ps1 dot-source les trois fils, textes avant produits avant shell', () => {
   for (const f of ['szh-textes.ps1', 'szh-produits.ps1', 'szh-shell.ps1']) {
@@ -43,8 +41,7 @@ test('szh-common.ps1 dot-source les trois fils, textes avant produits avant shel
     'un des trois dot-source a disparu de szh-common.ps1');
   assert.ok(iTextes < iProduits && iProduits < iShell,
     'l’ordre déclaré (textes, produits, shell) n’est plus respecté');
-  // Aucun des onze scripts appelants n'a besoin de changer : ils dot-sourcent encore et
-  // seulement szh-common.ps1.
+  // Les scripts appelants chargent szh-common.ps1, et lui seul.
   for (const script of ['archive-revue.ps1', 'bootstrap.ps1', 'diagnostic.ps1',
     'new-livre.ps1', 'new-revue.ps1', 'open-livre.ps1', 'open-md.ps1', 'open-revue.ps1',
     'update-launcher.ps1', 'update.ps1']) {
@@ -63,8 +60,8 @@ const PILOTE = [
   "$ErrorActionPreference = 'Stop'",
   '. "' + COMMUN_PS1 + '"',
   '$travail = $args[0]; $sortie = $args[1]',
-  // Redirigé avant le premier appel : aucune des trois fonctions ci-dessous ne doit lire ou
-  // écrire sous le vrai C:\ProgramData\SZH.
+  // Redirigé avant le premier appel : aucune des trois fonctions ne lit ni n'écrit sous le
+  // vrai C:\ProgramData\SZH.
   '$script:SzhBase = Join-Path $travail "ProgramData"',
   '$script:SzhToolkit = Join-Path $SzhBase "toolkit"',
   '$script:SzhStaging = Join-Path $SzhBase "staging"',
@@ -74,8 +71,8 @@ const PILOTE = [
   '$r = [ordered]@{}',
   // szh-textes.ps1, via T.
   '$r.texte = T \'arch.titre\'',
-  // szh-produits.ps1, via Get-SzhEmplacements -- rien sur ce dossier jetable n\'existe, la
-  // fonction ne doit pas lever pour autant.
+  // szh-produits.ps1, via Get-SzhEmplacements : rien n'existe sur ce dossier jetable, et la
+  // fonction ne lève pas pour autant.
   '$emp = Get-SzhEmplacements',
   '$r.emplacement = [string]$emp.emplacement',
   '$r.base = [string]$emp.base',
@@ -105,7 +102,7 @@ test('un pilote qui ne dot-source que szh-common.ps1 obtient un résultat non vi
   { skip: sansPowerShell }, () => {
     assert.strictEqual(bilan.status, 0, 'le pilote PowerShell a échoué : ' + bilan.stderr);
     const r = bilan.r;
-    // szh-textes.ps1 : un texte réel, jamais la clé nue (ce que T rend quand la table est
+    // szh-textes.ps1 : un texte réel, pas la clé nue (ce que rend T quand la table est
     // introuvable ou incomplète).
     assert.ok(r.texte && r.texte !== 'arch.titre',
       'T ne trouve plus la table de szh-textes.ps1 : ' + JSON.stringify(r.texte));
@@ -115,8 +112,7 @@ test('un pilote qui ne dot-source que szh-common.ps1 obtient un résultat non vi
       'Get-SzhEmplacements ne rend plus un emplacement connu : ' + JSON.stringify(r.emplacement));
     assert.ok(r.base && r.base.length > 0, 'Get-SzhEmplacements rend une base vide');
     assert.strictEqual(r.encoursCount, 2, 'Get-SzhEmplacements ne rend plus les deux racines en cours');
-    // szh-shell.ps1 : les DEUX entrées du menu Démarrer (le lanceur et sa mise à jour, depuis
-    // la fusion du 13.09.2026 -- il y en avait cinq avant), jamais un tableau vide.
+    // szh-shell.ps1 : les deux entrées du menu Démarrer (le lanceur et sa mise à jour).
     assert.strictEqual(r.raccourcisCount, 2, 'Get-SzhRaccourcisMenu ne rend plus les deux entrées');
     assert.ok(r.premierNom && r.premierNom.length > 0, 'la première entrée du menu est sans nom');
   });

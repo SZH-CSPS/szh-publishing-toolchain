@@ -1,18 +1,14 @@
-// pipeline/docx-pronto.py lit le gabarit « Pronto — modèle d'article v2 » : deux tableaux
+// pipeline/pronto-lire.py lit le gabarit « Pronto — modèle d'article v2 » : deux tableaux
 // fixes en tête du document (métadonnées, puis autrices et auteurs), et des blocs
-// figure/tableau reconnus par leur forme. Contrairement à pipeline/docx-meta.py, qui
-// DEVINE sur 486 Word hérités de formes toutes différentes, ce lecteur-ci LIT une
-// structure imposée par un gabarit — il n'a donc pas le droit de deviner : une étiquette
-// inconnue, une rangée hors forme, un contenu absent doivent se DIRE (avertissement, dans
-// les deux langues) et ne jamais faire perdre de texte en silence.
+// figure/tableau reconnus par leur forme. À la différence de pipeline/docx-meta.py, qui
+// devine sur des Word de formes variées, ce lecteur lit une structure imposée : une étiquette
+// inconnue, une rangée hors forme ou un contenu absent produisent un avertissement dans les
+// deux langues, et aucun texte ne se perd en silence.
 //
-//   node --test "test/js/*.test.js"
+//   node --test test/js/pronto-lire.test.js
 //
-// Patron repris de test/js/docx-meta-titre.test.js (Python par gardes.js ; .docx fabriqués
-// depuis le test, jamais figés en binaire dans le dépôt). Les tableaux du gabarit forcent un fabricant plus général que
-// celui de docx-meta-titre.test.js (qui n'avait que des paragraphes à écrire) : il est
-// défini ci-dessous et écrit une seule fois dans un dossier jetable, comme un script
-// ordinaire, plutôt que rejoué à chaque test comme un programme -c en ligne.
+// Les .docx sont fabriqués par le test (rien de binaire dans le dépôt), par un script Python
+// écrit une fois dans un dossier jetable.
 'use strict';
 
 const test = require('node:test');
@@ -38,16 +34,12 @@ function dossierJetable() {
 
 // ---- Fabricant de .docx : styles.xml + document.xml seulement -------------------------
 //
-// docx-pronto.py ne lit que ces deux entrées du zip (comme docx-meta.py). Le fabricant
-// prend une spec JSON { styles: [[styleId, nom], ...], body: [bloc, ...] } où un bloc est
-// soit { p: [style, texte] } (un paragraphe), soit { tbl: [rangée, ...] } (un tableau,
-// rangée = [cellule, ...]). Une cellule est soit la forme courte [[style, texte], ...]
-// (des paragraphes, comme dans les tableaux 1 et 2 du gabarit), soit { gridSpan, content }
-// pour une cellule fusionnée sur plusieurs colonnes (w:gridSpan — le bloc figure/tableau à
-// rangée 0 fusionnée décrit dans la consigne), où `content` est une liste d'éléments
-// [style, texte] OU { tbl: [...] } (un tableau IMBRIQUÉ dans la cellule — le bloc tableau
-// de contenu). Écrit une fois en tant que script Python dans un dossier jetable : plus
-// lisible qu'un programme -c pour une structure aussi imbriquée.
+// pronto-lire.py ne lit que ces deux entrées du zip. Le fabricant prend une spec JSON
+// { styles: [[styleId, nom], ...], body: [bloc, ...] }. Un bloc est { p: [style, texte] }
+// (un paragraphe) ou { tbl: [rangée, ...] } (un tableau, rangée = [cellule, ...]). Une
+// cellule est soit [[style, texte], ...] (des paragraphes), soit { gridSpan, content } pour
+// une cellule fusionnée (w:gridSpan), où `content` mêle des [style, texte] et des
+// { tbl: [...] } (un tableau imbriqué dans la cellule).
 
 const FABRICANTE_PY = `#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
@@ -185,10 +177,9 @@ test.after(() => {
   if (DOSSIER_FABRICANTE) { fs.rmSync(DOSSIER_FABRICANTE, { recursive: true, force: true }); }
 });
 
-// Styles de base présents dans tout document fabriqué : les deux styles maison du gabarit
-// Pronto (reconnus par leur NOM, pas par leur styleId — d'où l'écart volontaire entre
-// l'id "SZHCle" et le nom « SZH Cle ») et Normal pour les valeurs. « SZH Cle Abb/Tab »
-// (révision du 21.09.2026) : le style des clés de bloc à la NOUVELLE forme.
+// Styles présents dans tout document fabriqué. Les styles maison sont reconnus par leur nom,
+// pas par leur styleId : d'où l'écart entre l'id "SZHCle" et le nom « SZH Cle ».
+// « SZH Cle Abb/Tab » porte les clés des blocs figure/tableau à la nouvelle forme.
 const STYLES_BASE = [
   ['SZHCle', 'SZH Cle'], ['SZHAide', 'SZH Aide'], ['Normal', 'Normal'],
   ['SZHCleAbbTab', 'SZH Cle Abb/Tab']
@@ -199,8 +190,8 @@ function fabriquerDocx(chemin, spec) {
   assert.strictEqual(r.status, 0, 'fabrication du .docx impossible : ' + r.stderr);
 }
 
-// Une rangée du tableau des métadonnées : étiquette en SZH Cle (+ SZH Aide optionnel,
-// toujours ignoré), valeur en Normal dans la seconde colonne.
+// Une rangée du tableau des métadonnées : étiquette en SZH Cle (+ SZH Aide facultatif,
+// ignoré), valeur en Normal dans la seconde colonne.
 function ligneMeta(label, valeur, aide) {
   const col0 = aide ? [['SZHCle', label], ['SZHAide', aide]] : [['SZHCle', label]];
   return [col0, [['Normal', valeur]]];
@@ -211,8 +202,8 @@ function tableMeta(lignes) {
   return { tbl: [entete, ...lignes] };
 }
 
-// Une rangée du tableau des auteurs : pas de photo (colonne 0 vide), un paragraphe SZH Cle
-// par ligne de texte fournie (« Prénom : Jeanne », etc.).
+// Une rangée du tableau des auteurs : colonne 0 (photo) vide, un paragraphe SZH Cle par
+// ligne fournie (« Prénom : Jeanne », etc.).
 function ligneAuteur(lignesTexte) {
   return [[], lignesTexte.map((t) => ['SZHCle', t])];
 }
@@ -221,58 +212,50 @@ function tableAuteurs(lignes) {
   return { tbl: lignes };
 }
 
-// Rangée 0 d'un bloc figure/tableau : une seule cellule portant un paragraphe SZH Cle par
-// champ (« Légende : … », etc.), comme les cellules du tableau des auteurs.
+// Rangée 0 d'un bloc figure/tableau : une seule cellule, un paragraphe SZH Cle par champ.
 function ligneBlocMeta(lignesTexte) {
   return [lignesTexte.map((t) => ['SZHCle', t])];
 }
 
-// Rangée 0 étalée sur PLUSIEURS cellules réelles (pas une fusion w:gridSpan, qui produirait
-// une seule cellule côté XML — voir l'en-tête de docx-pronto.py) : une première cellule
-// vide, puis les quatre paragraphes dans la seconde. Prouve que la lecture ne suppose pas
-// une seule cellule par rangée.
+// Rangée 0 étalée sur plusieurs cellules réelles (une fusion w:gridSpan donnerait une seule
+// cellule dans le XML) : une cellule vide, puis les quatre paragraphes dans la seconde.
+// Vérifie que la lecture ne suppose pas une seule cellule par rangée.
 function ligneBlocMetaMultiColonnes(lignesTexte) {
   return [[], lignesTexte.map((t) => ['SZHCle', t])];
 }
 
-// Rangée 1 d'un bloc tableau de contenu : une cellule portant le tableau interne, suivi
-// d'un paragraphe vide — Word en pose toujours un après un tableau imbriqué, et il doit
-// être ignoré.
+// Rangée 1 d'un bloc tableau de contenu : le tableau interne suivi d'un paragraphe vide,
+// que Word pose toujours après un tableau imbriqué et que le lecteur doit ignorer.
 function ligneBlocContenuTable(tableauInterne) {
   return [[{ tbl: tableauInterne }, { p: ['Normal', ''] }]];
 }
 
-// Rangée 1 restée vide de tout contenu reconnu (ni image, ni tableau) : le paragraphe
-// SZH Aide « {{IMAGE ICI}} » du gabarit, tel qu'il reste quand personne n'a rien déposé.
+// Rangée 1 sans contenu reconnu : le paragraphe SZH Aide « {{IMAGE ICI}} » du gabarit, tel
+// qu'il reste quand rien n'a été déposé.
 function ligneBlocContenuAbsent() {
   return [[['SZHAide', '{{IMAGE ICI}}']]];
 }
 
-// n paragraphes portant chacun un w:lastRenderedPageBreak, à poser au fil du corps (jamais
-// dans une cellule) pour donner une page connaissable aux tableaux qui suivent.
+// n paragraphes portant chacun un w:lastRenderedPageBreak, posés dans le corps (pas dans une
+// cellule), pour donner une page connue aux tableaux qui suivent.
 function marqueursPage(n) {
   return { marqueurs: n };
 }
 
-// Lance docx-pronto.py sur un .docx fabriqué depuis `spec`, et rend { statut, stats, fiche,
+// Lance pronto-lire.py sur un .docx fabriqué depuis `spec`, et rend { statut, stats, fiche,
 // instructions, avertissements, info, bloquant }.
 //
-// « cle-attendue-absente » (clé attendue non trouvée, ou laissée vide — jamais bloquant, voir
-// pronto_modele.py) est mise à part dans `info` plutôt que mélangée à `avertissements` : la
-// plupart des fixtures ci-dessus ne renseignent qu'un sous-ensemble des champs du gabarit (par
-// construction, pour isoler ce qu'elles testent), ce qui en produirait sinon systématiquement —
-// et casserait les assertions plus anciennes qui vérifient qu'AUCUN AUTRE avertissement n'est
-// apparu. `avertissementsTous` garde tout, pour qui en a besoin (ex. le test de parité des
-// gabarits réels).
+// « cle-attendue-absente » (clé attendue absente ou vide, jamais bloquante) va dans `info`
+// et non dans `avertissements` : la plupart des fixtures ne renseignent qu'une partie des
+// champs, et les assertions qui vérifient qu'aucun autre avertissement n'apparaît
+// casseraient. `avertissementsTous` garde tout.
 //
-// Le statut de sortie n'est plus systématiquement 0 depuis les clés bloquantes (22.09.2026) :
-// 1 signale un import refusé (voir stats.bloquant / stats.cles_non_reconnues), toute autre
-// valeur reste un vrai échec de script.
-// `produit` : le jeton `revue:` du numéro, d'où vient la LANGUE de l'article depuis le
-// 22.09.2026 (le gabarit ne porte plus de champ « Langue de l'article »). La chaîne réelle le
-// pose dans $SZH_PRODUIT, lu à la racine du numéro par import-docx.sh ; tous les contrôles
-// tournent donc « dans la Revue » par défaut, comme un vrai import. Les deux contrôles qui
-// visent la langue elle-même passent leur propre valeur — dont '' pour le cas sans numéro.
+// Statut de sortie : 1 signale un import refusé (stats.bloquant, stats.cles_non_reconnues),
+// toute autre valeur non nulle est un échec du script.
+// `produit` : le jeton `revue:` du numéro, d'où vient la langue de l'article. La chaîne réelle
+// le pose dans $SZH_PRODUIT (lu par import-docx.sh à la racine du numéro). Par défaut, les
+// contrôles tournent « dans la Revue » ; ceux qui visent la langue passent leur valeur, dont
+// '' pour le cas sans numéro.
 function importer(slug, spec, produit) {
   const base = dossierJetable();
   try {
@@ -340,21 +323,21 @@ test('docx-pronto.py : un document complet du gabarit donne une fiche juste', { 
   assert.match(vu.fiche, /resume:\n {2}fr: "Un résumé de test suffisamment long\."/,
     'résumé FR mal rangé : ' + vu.fiche);
 
-  // Deux auteurs, huit champs chacun (schéma CHAMPS_AUTEUR du cockpit, ror compris — le
-  // premier auteur en a saisi un, le second l'a laissé vide).
+  // Deux auteurs, huit champs chacun (schéma CHAMPS_AUTEUR du cockpit, ror compris : le
+  // premier auteur en a un, le second l'a laissé vide).
   assert.strictEqual((vu.fiche.match(/^- prenom:/gm) || []).length, 2, 'pas deux auteurs');
   assert.match(vu.fiche, /- prenom: "Jeanne"\n {2}nom: "Dupont"\n {2}fonction: "Chercheuse"\n {2}affiliation: "HEP Vaud"\n {2}ror: "https:\/\/ror\.org\/03xyz1234"\n {2}orcid: "0000-0001-2345-6789"\n {2}email: "jeanne\.dupont@ex\.ch"/,
     'auteur 1 incomplet, mal ordonné, ou le ROR saisi n’a pas été repris : ' + vu.fiche);
   assert.match(vu.fiche, /- prenom: "Marc"\n {2}nom: "Müller"\n {2}fonction: "Professeur"\n {2}affiliation: "PH Zürich"\n {2}email: "marc\.mueller@ex\.ch"/,
     'auteur 2 incomplet ou mal ordonné : ' + vu.fiche);
-  // L'auteur 2 n'a pas saisi de ROR (« ROR: » suivi de rien) : aucune ligne `ror:` ne doit
-  // apparaître entre son prénom et l'email qui le suit dans la fiche.
+  // L'auteur 2 n'a pas de ROR (« ROR: » suivi de rien) : aucune ligne `ror:` entre son
+  // prénom et son email dans la fiche.
   const blocMarc = vu.fiche.slice(vu.fiche.indexOf('"Marc"'), vu.fiche.indexOf('marc.mueller'));
   assert.ok(!/ {2}ror: /.test(blocMarc),
     'l’auteur 2, qui n’a pas saisi de ROR, en a pourtant un dans la fiche : ' + vu.fiche);
   assert.ok(!/keyword/i.test(vu.fiche), 'un mot-clé est apparu alors qu’aucune rangée n’en porte');
 
-  // Les deux tableaux (métadonnées, auteurs) sont consommés : ils quitteront le corps.
+  // Les deux tableaux (métadonnées, auteurs) sont consommés : ils quittent le corps.
   assert.match(vu.instructions, /^T\t1$/m, 'tableau des métadonnées non marqué consommé');
   assert.match(vu.instructions, /^T\t2$/m, 'tableau des auteurs non marqué consommé');
   assert.strictEqual(vu.stats.tableau1_consomme, true);
@@ -370,7 +353,7 @@ test('docx-pronto.py : les paragraphes SZH Aide ne finissent jamais dans une val
   }
 });
 
-// ---- 2. Email : / Email: — l’irrégularité mesurée du gabarit ---------------------------
+// ---- 2. Email : / Email: — les deux graphies du gabarit --------------------------------
 
 function specEmail(separateur) {
   return {
@@ -424,9 +407,8 @@ test('docx-pronto.py : une étiquette inconnue mais PRÉSENTE (valeur réelle) b
     ]
   });
 
-  // « Mots-clés » est reconnue (score 1,0 — elle est écrite exactement) mais n'a aucune
-  // destination : un contenu réel (« inclusion, école ») serait perdu si l'import continuait —
-  // c'est exactement ce qui doit bloquer, avant même de regarder si le titre, lui, est bon.
+  // « Mots-clés » est reconnue exactement mais n'a aucune destination : son contenu réel
+  // serait perdu si l'import continuait, donc l'import est bloqué.
   assert.strictEqual(vu.bloquant, true, 'une étiquette sans destination et à valeur réelle aurait dû bloquer l’import');
   assert.strictEqual(vu.fiche, null, 'rien n’aurait dû être écrit — le document ne s’importe pas : ' + vu.fiche);
   assert.strictEqual(vu.instructions, '', 'aucune instruction n’aurait dû être écrite non plus');
@@ -448,12 +430,11 @@ test('docx-pronto.py : une étiquette inconnue mais PRÉSENTE (valeur réelle) b
 
 // ---- 5. Type d'article : les quatre libellés du gabarit, et un mot hors liste ----------
 //
-// Le gabarit (revu le 16 septembre 2026) offre « dossier thématique · éditorial · varia ·
-// tribune libre ». « dossier thématique » n'est pas le libellé d'un type mais celui de son
-// GROUPE (GROUPES_TYPES.dossier de lib/yaml.js) : un article du dossier porte le jeton
-// `article`. « recension », « article scientifique » et « entretien » ne sont plus
-// proposés par le gabarit — un document qui en porterait un doit se comporter comme
-// n'importe quel mot hors liste : avertir, ne rien écrire.
+// Le gabarit offre « dossier thématique · éditorial · varia · tribune libre ». « dossier
+// thématique » est le libellé d'un groupe (GROUPES_TYPES.dossier de lib/yaml.js) : un article
+// du dossier porte le jeton `article`. « recension », « article scientifique » et
+// « entretien » ne sont pas proposés par le gabarit et se traitent comme un mot hors liste :
+// avertir, ne rien écrire.
 
 function docTypeSeul(libelle) {
   return {
@@ -535,8 +516,8 @@ test('docx-pronto.py : un bloc tableau bien formé lit sa méta, retrouve le tab
       }
     ]
   });
-  // L'ancienne forme (tableau enveloppe) est encore lue, mais avertit désormais qu'il faut la
-  // convertir (révision du 21.09.2026) — c'est le SEUL avertissement attendu ici.
+  // L'ancienne forme (tableau enveloppe) est lue, avec un avertissement qui demande de la
+  // convertir : c'est le seul avertissement attendu ici.
   assert.deepStrictEqual(
     vu.avertissements.filter((l) => l.indexOf('bloc-ancienne-forme') === -1), [],
     'un bloc tableau bien formé ne devrait signaler que la conversion vers la nouvelle forme : '
@@ -549,14 +530,11 @@ test('docx-pronto.py : un bloc tableau bien formé lit sa méta, retrouve le tab
   assert.strictEqual(b.legende, 'Résultats bruts', 'la légende n’a pas été lue');
   assert.strictEqual(b.tbl_interne, true, 'le tableau interne n’a pas été retrouvé');
   assert.strictEqual(b.consommee, true, 'le bloc n’est pas marqué consommé');
-  // Le tableau enveloppe (3e tableau de premier niveau : métadonnées, auteurs, puis le bloc)
-  // n'est PAS consommé, et c'est délibéré depuis le 22.09.2026. Une ligne T dit à la chaîne
-  // de faire disparaître un tableau : docx-tables.py le saute ENTIÈREMENT, sans descendre
-  // dedans, et szh-meta.lua le retire de l'AST. Sur une enveloppe de bloc TABLEAU, cela
-  // ferait disparaître le tableau qu'elle contient, sans un mot. Le bloc s'imprime donc tel
-  // quel, et 'bloc-ancienne-forme' dit comment retrouver un tableau légendé.
-  // ⚠ Ne pas « réparer » ce contrôle en remettant une ligne T : c'est le tableau interne
-  //   qu'on perdrait.
+  // Le tableau enveloppe (3e tableau : métadonnées, auteurs, puis le bloc) n'est pas
+  // consommé. Une ligne T fait disparaître un tableau entier : docx-tables.py le saute sans
+  // descendre dedans et szh-meta.lua le retire de l'AST. Sur l'enveloppe d'un bloc tableau,
+  // le tableau interne disparaîtrait avec. Le bloc s'imprime donc tel quel, et
+  // 'bloc-ancienne-forme' dit comment retrouver un tableau légendé.
   assert.doesNotMatch(vu.instructions, /^T\t3$/m,
     'le tableau enveloppe d’un bloc ne doit JAMAIS recevoir de ligne T : son tableau interne '
     + 'disparaîtrait de l’article. Instructions : ' + vu.instructions);
@@ -609,9 +587,8 @@ test('docx-pronto.py : une fiche déjà là n’est jamais réécrite', { skip: 
       'la fiche existante a été modifiée');
     const stats = JSON.parse(String(r.stdout).trim().split(/\r?\n/).pop());
     assert.strictEqual(stats.meta_ecrit, false, 'meta_ecrit aurait dû rester faux');
-    // « cle-attendue-absente » est mise à part : SPEC_COMPLET ne renseigne pas ROR/ORCID pour
-    // le second auteur (délibérément, voir ce fixture) — une information, jamais un
-    // avertissement propre.
+    // « cle-attendue-absente » est à part : SPEC_COMPLET ne renseigne pas ROR/ORCID pour le
+    // second auteur, ce qui produit une information et non un avertissement.
     const avert = String(r.stderr).split(/\r?\n/)
       .filter((l) => l.indexOf('[import-avertissement]') === 0)
       .filter((l) => l.indexOf('cle-attendue-absente') === -1);
@@ -641,14 +618,13 @@ test('docx-pronto.py : aucun mot-clé n’est jamais écrit dans la fiche', { sk
   }
 });
 
-// ---- 10. Bibliographie reconnue au TITRE, plus au style (décision de la rédaction) -----
+// ---- 10. Bibliographie reconnue au titre -----------------------------------------------
 //
-// Le gabarit Pronto ne définit aucun style de bibliographie : la détection par style de
-// docx-meta.py n'a donc rien à reconnaître dessus (mesuré sur le banc de 20 articles :
-// 0 paragraphe détaché sur 19). La reconnaissance se fait ici au TITRE — un paragraphe de
-// niveau de titre (1 à 3) — comparé, une fois aplati, au même lexique que
-// szh-citations.lua : tout ce qui suit ce titre, jusqu'à la fin du document, devient la
-// bibliographie, un paragraphe = une entrée, les vides sautés.
+// Le gabarit Pronto n'a pas de style de bibliographie, la détection par style de
+// docx-meta.py n'y trouve rien. La bibliographie se reconnaît à son titre : un paragraphe de
+// niveau 1 à 3 dont le texte aplati figure dans le lexique de szh-citations.lua. Tout ce qui
+// suit, jusqu'à la fin du document, devient la bibliographie : un paragraphe par entrée,
+// paragraphes vides sautés.
 
 const STYLES_TITRE = STYLES_BASE.concat([['H1', 'heading 1']]);
 
@@ -667,8 +643,7 @@ function specBiblioTitre(titreTexte, entrees) {
   return { styles: STYLES_TITRE, body: corps };
 }
 
-// fr, de, it, avec/sans accent, numéroté — les variantes que la rédaction demande de
-// couvrir explicitement.
+// fr, de, it, avec ou sans accent, numéroté.
 const VARIANTES_TITRE_BIBLIO = [
   'Références', 'References', 'Bibliographie', '5. Références',
   'Literatur', 'Literaturverzeichnis', 'Bibliografia'
@@ -727,14 +702,12 @@ test("pronto-lire.py : « entretien » est reconnu comme le type interview", { s
     '« entretien » est un type du gabarit, il ne devrait pas avertir');
 });
 
-// ---- 13. Blocs collés : un tableau fusionné rend plusieurs blocs, jamais un seul --------
+// ---- 13. Blocs collés : un tableau fusionné rend plusieurs blocs -----------------------
 //
-// Mesuré sur le gabarit réel avec deux blocs figure copiés l'un à la suite de l'autre, sans
-// paragraphe entre eux : LibreOffice fusionne les deux `w:tbl`/`table:table` adjacents en
-// UN SEUL tableau de 2×N rangées à la conversion .odt. Le lecteur doit RÉPARER — reconnaître
-// les N blocs empilés — plutôt que perdre la légende et le texte alternatif de chacun en
-// silence. Le cas ci-dessous glue directement deux (puis trois) blocs dans un seul tableau
-// fabriqué, exactement la forme qu'aurait produite la fusion.
+// Deux blocs figure collés sans paragraphe entre eux sont fusionnés par LibreOffice en un
+// seul tableau de 2×N rangées lors de la conversion .odt. Le lecteur reconnaît les N blocs
+// empilés, pour ne perdre ni légende ni texte alternatif. Le cas ci-dessous colle deux, puis
+// trois blocs dans un seul tableau fabriqué, la forme que produit cette fusion.
 
 function specBlocsColles(nBlocs) {
   const rangees = [];
@@ -785,10 +758,10 @@ test('pronto-lire.py : un bloc normal (2 rangées) reste 1 bloc, sans avertissem
 // ---- 16. Garde-fou « bloc-mal-forme » : un tableau porte les étiquettes d'un bloc mais pas -
 //          sa forme ------------------------------------------------------------------------
 //
-// Aujourd'hui un tel tableau est simplement ignoré : imprimé tel quel dans l'article, sa
-// légende et son texte alternatif jamais lus, sans que rien ne le dise. Le garde-fou se
-// déclenche quand ressemble_a_un_bloc() est vrai (au moins un paragraphe SZH Cle dont
-// l'étiquette est une des quatre du bloc) et n_blocs_meta() vaut 0 (la forme ne tient pas).
+// Un tel tableau serait imprimé tel quel, sa légende et son texte alternatif jamais lus. Le
+// garde-fou se déclenche quand ressemble_a_un_bloc() est vrai (au moins un paragraphe SZH Cle
+// porte une des quatre étiquettes du bloc) et que n_blocs_meta() vaut 0 (la forme ne tient
+// pas).
 
 const LEGENDE_TEST = 'Légende : Répartition des élèves';
 
@@ -816,8 +789,8 @@ test('pronto-lire.py : un tableau à 3 rangées portant les étiquettes d’un b
   assert.ok(ligne.indexOf('Répartition des élèves') !== -1,
     'l’étiquette remplie n’apparaît pas dans l’avertissement : ' + ligne);
   assert.ok(ligne.indexOf('tableau 3') !== -1, 'le rang du tableau n’apparaît pas : ' + ligne);
-  // Le 3e tableau (métadonnées, auteurs, puis celui-ci) n’est pas marqué consommé : il reste
-  // visible dans le corps compilé, comme n’importe quel tableau non reconnu.
+  // Le 3e tableau (métadonnées, auteurs, puis celui-ci) n'est pas consommé : il reste visible
+  // dans le corps compilé, comme tout tableau non reconnu.
   assert.ok(!/^T\t3$/m.test(vu.instructions),
     'le tableau mal formé a pourtant été marqué consommé :\n' + vu.instructions);
   assert.strictEqual(vu.stats.blocs.length, 0, 'un tableau mal formé ne devrait produire aucun bloc');
@@ -834,12 +807,11 @@ test('pronto-lire.py : une rangée de méta sans rangée de contenu (1 rangée) 
     'le tableau mal formé (1 rangée) a pourtant été marqué consommé :\n' + vu.instructions);
 });
 
-// ---- 17. Le numéro de page : connaissable seulement quand Word l'a mesuré --------------
+// ---- 17. Le numéro de page : connu seulement quand Word l'a mesuré ---------------------
 //
-// w:lastRenderedPageBreak n'existe que dans un .docx déjà ouvert par Word. Un .docx fabriqué
-// par ce test n'en porte aucun par défaut (comme tous les autres ci-dessus) : c'est
-// exactement le cas « page inconnue » du test 16 déjà passé (aucune mention de page dans son
-// avertissement). Celui-ci ajoute des marqueurs et vérifie que la bonne page en sort.
+// w:lastRenderedPageBreak n'existe que dans un .docx déjà ouvert par Word. Les .docx
+// fabriqués n'en portent pas : c'est le cas « page inconnue » du test 16 (pas de page dans
+// l'avertissement). Ce test ajoute des marqueurs et vérifie la page annoncée.
 
 test('pronto-lire.py : des w:lastRenderedPageBreak avant le tableau donnent la bonne page', { skip: sansPython }, () => {
   const vu = importer('18-page-connue', {
@@ -873,18 +845,16 @@ test('pronto-lire.py : sans aucun marqueur, le message se tient et ne parle jama
   assert.ok(ligne, 'aucun avertissement bloc-mal-forme : ' + vu.avertissements.join(' / '));
   assert.ok(!/page/i.test(ligne), 'un document sans marqueur ne devrait jamais parler de page : ' + ligne);
   assert.ok(!/page none/i.test(ligne), '« page None » ne devrait jamais apparaître : ' + ligne);
-  // La phrase doit quand même commencer par le rang, et rester lisible : la parenthèse ne
-  // doit jamais rester vide.
+  // La phrase commence par le rang, et la parenthèse n'est jamais vide.
   assert.ok(ligne.indexOf('()') === -1, 'une parenthèse vide est apparue : ' + ligne);
   assert.ok(ligne.indexOf('3ᵉ tableau') !== -1 || ligne.indexOf('tableau 3') !== -1,
     'le rang du tableau n’apparaît pas dans la phrase : ' + ligne);
 });
 
-// ---- 18. Faux positif à ne pas déclencher : un vrai tableau de contenu ------------------
+// ---- 18. Faux positif à éviter : un vrai tableau de contenu -----------------------------
 //
-// Une colonne d'en-tête intitulée « Légende », en style Normal (pas SZH Cle, pas de forme
-// « Étiquette : valeur ») : ce n'est PAS une étiquette de bloc, et ne doit rien déclencher.
-// C'est exactement le piège que ressemble_a_un_bloc() doit éviter (voir son commentaire).
+// Une colonne d'en-tête « Légende » en style Normal (ni SZH Cle, ni forme « Étiquette :
+// valeur ») n'est pas une étiquette de bloc : c'est le piège que ressemble_a_un_bloc() évite.
 
 test('pronto-lire.py : un tableau de contenu avec une colonne « Légende » ne déclenche rien', { skip: sansPython }, () => {
   const vu = importer('19-faux-positif', {
@@ -907,16 +877,16 @@ test('pronto-lire.py : un tableau de contenu avec une colonne « Légende » ne 
 
 // ---- 19. Un bloc bien formé ne déclenche jamais ce code ---------------------------------
 
-// ---- 21. Blocs figure/tableau — NOUVELLE forme (révision du 21.09.2026, décision de Robin) -
+// ---- 21. Blocs figure/tableau, nouvelle forme ------------------------------------------
 //
-// Plus de tableau enveloppe : 1 à 4 paragraphes SZH Cle Abb/Tab consécutifs, suivis à 1 ou 2
-// paragraphes de distance (un paragraphe vide toléré) par un paragraphe portant une image, ou
-// par un tableau. Un document reçoit un fichier de relations (word/_rels/document.xml.rels)
-// dès qu'une image y est posée — voir drawing()/RIDS_IMAGES dans FABRICANTE_PY.
+// Pas de tableau enveloppe : 1 à 4 paragraphes SZH Cle Abb/Tab consécutifs, suivis à 1 ou 2
+// paragraphes (un paragraphe vide toléré) d'un paragraphe portant une image, ou d'un tableau.
+// Un document reçoit un fichier de relations (word/_rels/document.xml.rels) dès qu'il porte
+// une image : voir drawing()/RIDS_IMAGES dans FABRICANTE_PY.
 
 function clesAbbTab(champs) {
-  // champs : liste de chaînes "Étiquette : valeur" (ordre quelconque, comme le contrat
-  // l'autorise) — un paragraphe SZH Cle Abb/Tab par entrée.
+  // champs : liste de chaînes "Étiquette : valeur", dans n'importe quel ordre ; un paragraphe
+  // SZH Cle Abb/Tab par entrée.
   return champs.map((t) => ({ p: ['SZHCleAbbTab', t] }));
 }
 
@@ -1037,9 +1007,8 @@ test('pronto-lire.py : nouvelle forme — bloc tableau reconnu, mais SANS ligne 
   assert.strictEqual(b.nature, 'table');
   assert.strictEqual(b.tbl_interne, true);
   assert.strictEqual(b.consommee, true);
-  // Différence assumée avec l'ancienne forme : le
-  // tableau n'est plus enveloppé, rien ne doit donc le faire sauter à l'import — seuls les
-  // tableaux 1 et 2 (métadonnées, auteurs) sont consommés.
+  // Le tableau de la nouvelle forme n'est pas enveloppé : seuls les tableaux 1 et 2
+  // (métadonnées, auteurs) reçoivent une ligne T.
   assert.deepStrictEqual(vu.stats.tableaux_consommes, [1, 2],
     'le tableau de contenu de la nouvelle forme n’aurait pas dû recevoir de ligne T : '
     + JSON.stringify(vu.stats.tableaux_consommes));
@@ -1089,10 +1058,8 @@ test('pronto-lire.py : ancienne forme (tableau enveloppe) toujours lue, mais ave
 
 // ---- 22. Test différentiel : même bloc logique, ancienne et nouvelle forme, même sortie ---
 //
-// C'est le contrôle demandé par le contrat (§5.3, révision du 21.09.2026) : la fiche, les
-// lignes B/BT et stats.blocs doivent être IDENTIQUES pour le même bloc logique, quelle que
-// soit la forme d'entrée — SAUF la ligne T (voir le test 25 ci-dessus : la nouvelle forme n'a
-// justement plus de tableau enveloppe à faire sauter, une différence assumée et documentée).
+// La fiche, les lignes B/BT et stats.blocs sont identiques pour le même bloc logique, quelle
+// que soit la forme d'entrée.
 
 test('pronto-lire.py : test différentiel — même bloc, ancienne et nouvelle forme, même stats.blocs', { skip: sansPython }, () => {
   const specBase = (blocBody) => ({
@@ -1122,17 +1089,14 @@ test('pronto-lire.py : test différentiel — même bloc, ancienne et nouvelle f
   assert.strictEqual(sansSource(vuNouvelle.fiche), sansSource(vuAncienne.fiche),
     'la fiche (hors ligne source:) diffère entre l’ancienne et la nouvelle forme');
 
-  // Depuis le 22.09.2026, plus aucune divergence de lignes T : ni l'une ni l'autre forme ne
-  // consomme de tableau de bloc — seuls les deux tableaux fixes de la tête s'en vont. C'est ce
-  // qui rend impossible la perte du tableau interne d'un bloc tableau à l'ancienne forme.
+  // Aucune forme ne consomme de tableau de bloc : seuls les deux tableaux fixes de la tête
+  // s'en vont. Ainsi le tableau interne d'un bloc à l'ancienne forme ne peut pas se perdre.
   assert.deepStrictEqual(vuAncienne.stats.tableaux_consommes, [1, 2]);
   assert.deepStrictEqual(vuNouvelle.stats.tableaux_consommes, [1, 2]);
 
-  // Ce qui, lui, diverge toujours et doit diverger : la nouvelle forme fait retirer du corps
-  // ses quatre paragraphes de clé et pose ses champs sur le contenu (ligne FT), quand
-  // l'ancienne laisse son tableau enveloppe s'imprimer tel quel. Depuis le 29.09.2026, les
-  // clés voyagent en queue de la ligne FT (szh-legendes.lua les retire juste devant le
-  // tableau), plus en lignes P : voir le contrôle 33.
+  // Ce qui diverge : la nouvelle forme fait retirer du corps ses paragraphes de clé et pose ses
+  // champs sur le contenu (ligne FT, clés en queue de ligne, retirées par szh-legendes.lua :
+  // voir le contrôle 33), alors que l'ancienne laisse son tableau enveloppe s'imprimer.
   const ft = (vuNouvelle.instructions.match(/^FT\t3\t.*$/m) || [''])[0];
   assert.ok(ft, 'la nouvelle forme doit poser ses champs sur son tableau');
   assert.strictEqual(ft.split('\t').length, 7 + 5,
@@ -1162,13 +1126,11 @@ test('pronto-lire.py : un bloc bien formé (2 rangées) ne déclenche jamais blo
 });
 
 // ---- 29. Clés tolérantes : une étiquette mal tapée est reconnue avec un score de proximité,
-//          jamais en silence -----------------------------------------------------------------
+//          et le lecteur le signale -----------------------------------------------------
 //
-// aplatir() (déjà dans ce module, utilisé pour les VALEURS) retire tous les accents : avant ce
-// mécanisme, « Resumé » et « Résumé » lui donnaient déjà la même clé, sans avertissement — le
-// silence que la demande vise à remplacer par un avertissement `cle-approximee` (ou
-// `cle-ambigue` en cas d'égalité entre deux clés). Voir identifier_cle()/CANON_* dans
-// pronto_modele.py.
+// aplatir() retire les accents : « Resumé » et « Résumé » donnent la même clé. Une étiquette
+// qui n'est pas exacte produit `cle-approximee` (ou `cle-ambigue` en cas d'égalité entre deux
+// clés). Voir identifier_cle()/CANON_* dans pronto_modele.py.
 
 function cleApproximee(vu) {
   return vu.avertissements.filter((l) => l.indexOf('cle-approximee') !== -1);
@@ -1227,8 +1189,8 @@ test('pronto-lire.py : « Prenom : » (accent oublié) est reconnu comme Prénom
   assert.ok(lignes[0].indexOf('Prenom') !== -1 && lignes[0].indexOf('Prénom') !== -1, lignes[0]);
 });
 
-// « E-mail » n'est plus une variante depuis le 29.09.2026 : c'est la forme du gabarit
-// allemand (« E-Mail: »), donc lue sans avertissement. « Courriel » reste un alias.
+// « E-mail » est la forme du gabarit allemand (« E-Mail: »), lue sans avertissement.
+// « Courriel » est un alias.
 test('pronto-lire.py : « Courriel : » (alias) est reconnu comme Email, avec un avertissement', { skip: sansPython }, () => {
   const vu = importer('32-e-mail', {
     styles: STYLES_BASE,
@@ -1244,9 +1206,8 @@ test('pronto-lire.py : « Courriel : » (alias) est reconnu comme Email, avec un
   assert.ok(lignes[0].indexOf('Courriel') !== -1 && lignes[0].indexOf('Email') !== -1, lignes[0]);
 });
 
-// Le gabarit allemand, rempli avec SES étiquettes : tout est lu, rien n'avertit. Sans la
-// forme allemande en position 1 des tables CANON_*, chaque étiquette partait en
-// cle-approximee ; sans ENTETES_TABLE_AUTEURS, « Autor:in » refusait l'import.
+// Le gabarit allemand, rempli avec ses étiquettes : tout est lu, rien n'avertit. Cela suppose
+// la forme allemande dans les tables CANON_* et « Autor:in » dans ENTETES_TABLE_AUTEURS.
 test('pronto-lire.py : un document au gabarit allemand se lit sans un avertissement', { skip: sansPython }, () => {
   const vu = importer('32-de', {
     styles: STYLES_BASE,
@@ -1295,14 +1256,14 @@ test('pronto-lire.py : « Mots clefs / Keywords / Motsclés / Schlagwörter » s
       + vu.avertissements.join(' / '));
     assert.ok(approx[0].indexOf('Mots-clés') !== -1,
       '« ' + libelle + ' » : la clé reconnue « Mots-clés » n’est pas citée : ' + approx[0]);
-    // Mots-clés reste un champ SANS destination (voir CANON_METADONNEES) : la ligne est
-    // signalée hors gabarit — et n'écrit JAMAIS de mot-clé dans la fiche.
+    // Mots-clés est un champ sans destination (voir CANON_METADONNEES) : la ligne est
+    // signalée hors gabarit, et aucun mot-clé n'est écrit dans la fiche.
     const inconnue = vu.avertissements.filter((l) => l.indexOf('metadonnees-champ-hors-gabarit') !== -1);
     assert.strictEqual(inconnue.length, 1,
       '« ' + libelle + ' » devrait aussi rester un champ hors gabarit : '
       + vu.avertissements.join(' / '));
-    // Reconnue (score 1,0) mais sans destination + une valeur réelle ("inclusion, école") :
-    // c'est justement le contenu qui serait perdu si l'import continuait — ça bloque tout.
+    // Reconnue mais sans destination, avec une valeur réelle : ce contenu serait perdu, donc
+    // l'import est bloqué.
     assert.strictEqual(vu.bloquant, true, '« ' + libelle + ' », à valeur réelle, aurait dû bloquer l’import');
     assert.strictEqual(vu.fiche, null, '« ' + libelle + ' » : rien n’aurait dû être écrit : ' + vu.fiche);
   }
@@ -1324,8 +1285,8 @@ test('pronto-lire.py : « Résultats : » ne devient jamais Résumé — score m
   const inconnue = vu.avertissements.find((l) => l.indexOf('etiquette-metadonnees-inconnue') !== -1);
   assert.ok(inconnue, '« Résultats » devrait rester une étiquette inconnue : '
     + vu.avertissements.join(' / '));
-  // Non reconnue, ET porteuse d'un contenu réel : bloque tout l'import (rien n'est écrit —
-  // « Résultats » ne devient donc, entre autres, jamais un résumé).
+  // Non reconnue et porteuse d'un contenu réel : tout l'import est bloqué, rien n'est écrit
+  // (« Résultats » ne devient donc pas un résumé).
   assert.strictEqual(vu.bloquant, true, '« Résultats », à valeur réelle, aurait dû bloquer l’import');
   assert.strictEqual(vu.fiche, null, 'rien n’aurait dû être écrit : ' + vu.fiche);
   const cles = vu.stats.cles_non_reconnues || [];
@@ -1343,9 +1304,8 @@ test('pronto-lire.py : « Nom de la revue : » ne devient jamais Nom — et, por
   });
   assert.deepStrictEqual(cleApproximee(vu), [], '« Nom de la revue » n’aurait dû reconnaître aucune clé : '
     + vu.avertissements.join(' / '));
-  // Une clé présente avec un contenu réel (« Revue suisse ») qu'on ne saurait où ranger bloque
-  // tout l'import — même la ligne d'à côté, parfaitement renseignée (Ida Keller), n'est donc
-  // PAS écrite : rien n'est importé à moitié.
+  // Une clé à contenu réel (« Revue suisse ») qu'on ne sait pas ranger bloque tout l'import :
+  // la ligne voisine, bien renseignée (Ida Keller), n'est pas écrite non plus.
   assert.strictEqual(vu.bloquant, true, '« Nom de la revue », à valeur réelle, aurait dû bloquer l’import');
   assert.strictEqual(vu.fiche, null, 'rien n’aurait dû être écrit : ' + vu.fiche);
   const cles = vu.stats.cles_non_reconnues || [];
@@ -1354,10 +1314,9 @@ test('pronto-lire.py : « Nom de la revue : » ne devient jamais Nom — et, por
 });
 
 test('pronto-lire.py : « Légende » (insécable) et « Texte  alternatif » (double espace) sont déjà exacts au passage par normaliser() — aucun avertissement', { skip: sansPython }, () => {
-  // L'insécable et le double espace sont déjà écrasés par pm.normaliser(), appliqué par
-  // pronto_docx.py à CHAQUE paragraphe avant que ce module ne le voie (voir l'en-tête de
-  // pronto_modele.py) : du point de vue des clés tolérantes, ces deux étiquettes arrivent
-  // donc déjà identiques au gabarit — les « sauf pour l'exact » de la demande.
+  // L'insécable et le double espace sont déjà normalisés par pm.normaliser(), que
+  // pronto_docx.py applique à chaque paragraphe (voir l'en-tête de pronto_modele.py) : ces
+  // deux étiquettes arrivent identiques à celles du gabarit, donc exactes.
   const champs = ['Légende : Une figure de test', 'Texte  alternatif : Un texte alternatif',
     'Crédit : Photographe X', 'Source : Archives Y'];
   const vu = importer('36-legende-nbsp', {
@@ -1400,14 +1359,11 @@ test('pronto-lire.py : une clé beaucoup trop longue (> 40 signes avant les deux
   assert.strictEqual(vu.fiche, null, 'rien n’aurait dû être écrit : ' + vu.fiche);
 });
 
-// Le test ci-dessus passe déjà SANS le garde-fou de longueur : une phrase de corps aussi
-// longue n'atteint de toute façon jamais SEUIL_CLE contre une clé attendue courte (mesuré :
-// le ratio de SequenceMatcher est plafonné par 2*min(longueurs)/(somme des longueurs), qui ne
-// peut pas dépasser ~0,45 dès que le candidat fait deux fois la longueur de la clé la plus
-// longue du vocabulaire réel). Le garde-fou de LONGUEUR_ETIQUETTE_SCORE est donc une défense
-// en profondeur pour le jour où un alias plus long serait ajouté — il faut l'éprouver seul,
-// avec une table jetable, pour prouver qu'il coupe AVANT le score et pas seulement grâce à
-// lui (patron identique au test d'ambiguïté ci-dessous).
+// Le test ci-dessus passe aussi sans le garde-fou de longueur : le ratio de SequenceMatcher
+// est plafonné par 2*min(longueurs)/(somme des longueurs), soit environ 0,45 quand le
+// candidat fait deux fois la longueur de la plus longue clé, loin de SEUIL_CLE. Le garde-fou
+// LONGUEUR_ETIQUETTE_SCORE protège contre un futur alias plus long : ce test l'éprouve seul,
+// sur une table jetable, pour montrer qu'il coupe avant le calcul du score.
 test('identifier_cle() : une étiquette de plus de 40 signes est jamais scorée, même contre une clé qui lui ressemblerait', { skip: sansPython }, () => {
   const script = [
     'import sys',
@@ -1441,11 +1397,9 @@ test('pronto-lire.py : un paragraphe SZH Cle Abb/Tab sans aucun deux-points n’
   assert.deepStrictEqual(cleAmbigue(vu), []);
 });
 
-// La clé ambiguë n'a pas de paire naturelle dans le vocabulaire réel du gabarit au-dessus de
-// SEUIL_CLE (mesuré : les deux meilleures clés restent toujours loin l'une de l'autre — voir
-// le rapport) ; ce test appelle donc identifier_cle() directement, sur une table jetable, pour
-// prouver le MÉCANISME général d'ambiguïté (le même qui protège CANON_METADONNEES /
-// CANON_AUTEUR / CANON_FIGURE) — c'est le même patron que le test decoder_nom_style() plus haut.
+// Le vocabulaire réel du gabarit n'a pas deux clés assez proches pour être ambiguës au-dessus
+// de SEUIL_CLE : ce test appelle identifier_cle() sur une table jetable pour éprouver le
+// mécanisme d'ambiguïté (celui qui protège CANON_METADONNEES, CANON_AUTEUR et CANON_FIGURE).
 test('identifier_cle() : deux clés à égale distance ne sont jamais retenues — ambiguïté', { skip: sansPython }, () => {
   const script = [
     'import sys',
@@ -1463,15 +1417,12 @@ test('identifier_cle() : deux clés à égale distance ne sont jamais retenues �
   assert.strictEqual(r.stdout.trim(), 'OK');
 });
 
-// ---- 30. Clé attendue absente / clé présente mais vide — informations, jamais bloquant -----
+// ---- 30. Clé attendue absente / clé présente mais vide : informations, non bloquantes ----
 //
-// Précision de Robin (22.09.2026), en plus des clés tolérantes : une clé PRÉSENTE mais NON
-// reconnue (score sous le seuil, ou ambiguë) bloque tout l'import (voir les tests plus haut qui
-// vérifient déjà vu.bloquant). Une clé ATTENDUE mais ABSENTE du document, ou présente mais VIDE
-// (rien ou seulement des espaces après le deux-points), est une simple information
-// (`cle-attendue-absente`) : jamais bloquante, sa valeur n'est jamais écrite. Ces informations
-// sont mises à part dans vu.info par importer() (voir sa définition), pour ne pas casser les
-// tests plus anciens qui ne les attendaient pas.
+// Une clé présente mais non reconnue (score sous le seuil, ou ambiguë) bloque tout l'import.
+// Une clé attendue mais absente, ou présente mais vide (rien ou des espaces après le
+// deux-points), produit l'information `cle-attendue-absente` : non bloquante, sans valeur
+// écrite. importer() range ces informations à part, dans vu.info.
 
 test('pronto-lire.py : une clé attendue absente du document est une simple information, jamais bloquante', { skip: sansPython }, () => {
   const vu = importer('40-absente', {
@@ -1487,7 +1438,7 @@ test('pronto-lire.py : une clé attendue absente du document est une simple info
     assert.ok(ligne, '« ' + canon + ' » absent aurait dû produire une information : '
       + vu.info.join(' / '));
   }
-  // « Langue de l'article », elle, a été renseignée : elle ne doit PAS apparaître comme absente.
+  // « Langue de l'article », renseignée, n'apparaît pas comme absente.
   assert.ok(!vu.info.some((l) => l.indexOf('Langue') !== -1),
     '« Langue de l\'article », pourtant renseignée, apparaît comme absente : ' + vu.info.join(' / '));
 });
@@ -1543,17 +1494,13 @@ test('pronto-lire.py : un bloc — un champ laissé vide est une information, ja
   assert.ok(ligne, 'la source laissée vide aurait dû apparaître comme absente : ' + vu.info.join(' / '));
 });
 
-// ---- 31. Garde-fou mesuré sur le corpus réel : un tableau de contenu ORDINAIRE (style
-//          Normal, jamais au gabarit) pris pour celui des métadonnées par la seule position ---
+// ---- 31. Un tableau de contenu ordinaire (style Normal) placé en premier n'est pas pris
+//          pour celui des métadonnées --------------------------------------------------
 //
-// Mesuré sur tmp/corpus-relecture/lot-A (11 manuscrits réels, aucun au gabarit) : 3 documents
-// sur 11 ont un tableau de données comme PREMIER tableau du document (ex. « Enregistrement des
-// cours | 49 ») — pris pour le tableau des métadonnées par la seule position (piège déjà
-// documenté dans docs/TODO/parser-v2.md). Avant la correction de _etiquette_szh_cle()
-// (22.09.2026), chaque rangée de ce tableau ORDINAIRE était comparée comme une étiquette — et,
-// portant un contenu réel non reconnu, bloquait tout l'import. _etiquette_szh_cle() (et les
-// mêmes lieux dans extraire_table_auteurs()/_champs_bloc_meta()) n'acceptent plus qu'un
-// paragraphe de style SZH Cle comme candidat.
+// Des manuscrits réels hors gabarit commencent par un tableau de données (ex.
+// « Enregistrement des cours | 49 »), que sa position seule ferait prendre pour le tableau des
+// métadonnées. _etiquette_szh_cle() (et de même extraire_table_auteurs() et
+// _champs_bloc_meta()) n'accepte comme étiquette qu'un paragraphe de style SZH Cle.
 
 test('pronto-lire.py : un tableau de contenu ORDINAIRE (style Normal, pas au gabarit) pris pour celui des métadonnées ne bloque jamais l’import', { skip: sansPython }, () => {
   const tableOrdinaire = {
@@ -1573,19 +1520,19 @@ test('pronto-lire.py : un tableau de contenu ORDINAIRE (style Normal, pas au gab
     + vu.avertissements.join(' / '));
 });
 
-// ---- 32. La langue vient du PRODUIT du numéro, plus jamais du document (22.09.2026) ------
+// ---- 32. La langue vient du produit du numéro ------------------------------------------
 //
-// Décision de la rédaction : le champ « Langue de l'article » a quitté le gabarit. La langue
-// se déduit de la revue du numéro — Revue = français, Zeitschrift = allemand — et un article
-// italien se corrige à la main dans la fiche après l'import. La chaîne pose le jeton dans
-// $SZH_PRODUIT (import-docx.sh le lit dans ausgabe.yaml, à la racine du numéro).
+// Le gabarit n'a pas de champ « Langue de l'article ». La langue se déduit de la revue du
+// numéro (Revue = français, Zeitschrift = allemand) ; un article italien se corrige à la main
+// dans la fiche après l'import. La chaîne pose le jeton dans $SZH_PRODUIT (import-docx.sh le
+// lit dans ausgabe.yaml, à la racine du numéro).
 
 const SPEC_NUE = { styles: STYLES_BASE, body: [tableMeta([]), tableAuteurs([])] };
 
 test('pronto-lire.py : la langue de l’article vient de la revue du numéro', { skip: sansPython }, () => {
   for (const [produit, attendue] of [['revue', 'fr'], ['zeitschrift', 'de'],
-    // Le jeton canonique comme le nom complet de l'ancien ausgabe.yaml, même règle que
-    // derive_revue() de szh-maquette.lua.
+    // Le jeton canonique et le nom complet d'un ancien ausgabe.yaml, comme derive_revue() de
+    // szh-maquette.lua.
     ['Schweizerische Zeitschrift für Heilpädagogik', 'de'],
     ['Revue suisse de pédagogie spécialisée', 'fr']]) {
     const vu = importer('45-langue-' + attendue, SPEC_NUE, produit);
@@ -1610,10 +1557,9 @@ test('pronto-lire.py : sans produit (hors numéro), le français est posé — e
 });
 
 test('pronto-lire.py : un champ « Langue de l’article » resté dans le document avertit, ne bloque pas, et n’impose pas sa langue', { skip: sansPython }, () => {
-  // Un document rempli avant le 22.09.2026 porte encore la ligne. Elle ne doit NI bloquer
-  // l'import (une clé présente non reconnue le ferait), NI décider de la langue — mais elle
-  // doit se dire, sans quoi un article italien sortirait en français sans que personne ne
-  // l'apprenne.
+  // Un document ancien porte encore la ligne « Langue de l'article ». Elle ne bloque pas
+  // l'import et ne décide pas de la langue, mais elle est signalée : sinon un article italien
+  // sortirait en français sans que personne le sache.
   const vu = importer('47-langue-heritee', {
     styles: STYLES_BASE,
     body: [
@@ -1636,16 +1582,13 @@ test('pronto-lire.py : un champ « Langue de l’article » resté dans le docum
 
 // ---- 33. Les champs d'un bloc atteignent l'image et le tableau ---------------------------
 //
-// Sans ces instructions, les quatre paragraphes « Légende : », « Texte alternatif : »,
-// « Crédit : », « Source : » s'impriment tels quels au milieu de l'article et le texte
-// alternatif est perdu — mesuré sur le gabarit réel, chaîne complète, avant le branchement.
+// Sans ces instructions, les paragraphes « Légende : », « Texte alternatif : », « Crédit : »,
+// « Source : » s'imprimeraient au milieu de l'article et le texte alternatif serait perdu.
 // FI (figure) est consommée par szh-legendes.lua, FT (tableau) par docx-tables.py.
-
-// Contrat révisé le 29.09.2026 (garantie « rien ne disparaît », décision de Robin) : les clés
-// d'un bloc FIGURE ne partent plus en lignes P, que szh-meta.lua retirait d'avance — le jour
-// où szh-legendes.lua ne trouvait pas l'image, légende, texte alternatif et crédit
-// disparaissaient sans un mot. Elles voyagent en queue de la ligne FI, et c'est
-// szh-legendes.lua qui les retire, au moment où il pose les valeurs, et seulement alors.
+//
+// Les clés d'un bloc figure voyagent en queue de la ligne FI. szh-legendes.lua les retire au
+// moment où il pose les valeurs sur l'image : si l'image n'est pas trouvée, les clés restent
+// visibles dans l'article au lieu de disparaître.
 test('pronto-lire.py : un bloc figure confie ses clés à la ligne FI, qui pose ses champs sur l’image', { skip: sansPython }, () => {
   const vu = importer('48-bloc-figure-instructions', {
     styles: STYLES_BASE,
@@ -1663,7 +1606,7 @@ test('pronto-lire.py : un bloc figure confie ses clés à la ligne FI, qui pose 
     'la ligne FI ne porte pas les cinq champs puis les cinq clés, dans l’ordre du contrat');
 });
 
-// La clé Note (30.09.2026) : cinquième champ de valeur des lignes FI/FG/FT, après la source.
+// La clé Note : cinquième champ de valeur des lignes FI/FG/FT, après la source.
 test('pronto-lire.py : la note d’un bloc tableau voyage en 7e champ de la ligne FT', { skip: sansPython }, () => {
   const vu = importer('48b-bloc-tableau-note', {
     styles: STYLES_BASE,
@@ -1709,8 +1652,8 @@ test('pronto-lire.py : la clé Note se lit sous ses variantes (Notiz, Remarque, 
 
 test('pronto-lire.py : l’image d’un bloc est nommée par TOUTES ses variantes (aperçu PNG et SVG)', { skip: sansPython }, () => {
   // Word range une image vectorielle derrière un aperçu PNG : le lecteur voit le PNG, pandoc
-  // écrit le SVG. Un seul nom ferait manquer l'appariement — mesuré sur le gabarit réel, dont
-  // la figure sort en media/image2.svg alors que le a:blip pointe media/image1.png.
+  // écrit le SVG. Un seul nom ferait manquer l'appariement (sur le gabarit réel, la figure
+  // sort en media/image2.svg alors que le a:blip pointe media/image1.png).
   const vu = importer('49-bloc-figure-svg', {
     styles: STYLES_BASE,
     body: [tableMeta([]), tableAuteurs([]), ...clesAbbTab(CHAMPS_TEST),
@@ -1723,11 +1666,11 @@ test('pronto-lire.py : l’image d’un bloc est nommée par TOUTES ses variante
 
 // ---- 34. Le contrat entre le lecteur et docx-tables.py, de bout en bout ------------------
 //
-// Le lecteur écrit la ligne FT, docx-tables.py la lit et bake les quatre champs dans
-// tables/table-NN.html — sous la forme que szh-numerotation.lua attend à la compilation :
-// <caption> pour la légende, data-alt / data-copyright / data-source sur la balise <table>.
-// Les deux programmes sont exercés ensemble, sur le MÊME document et le MÊME fichier
-// d'instructions : c'est le seul moyen de voir la ligne FT telle qu'elle voyage vraiment.
+// Le lecteur écrit la ligne FT ; docx-tables.py la lit et écrit les quatre champs dans
+// tables/table-NN.html sous la forme que szh-numerotation.lua attend : <caption> pour la
+// légende, data-alt / data-copyright / data-source sur <table>. Les deux programmes tournent
+// sur le même document et le même fichier d'instructions, pour voir la ligne FT telle qu'elle
+// voyage vraiment.
 
 const DOCX_TABLES = path.join(RACINE, 'pipeline', 'docx-tables.py');
 
@@ -1755,8 +1698,7 @@ test('pronto-lire.py + docx-tables.py : les champs d’un bloc tableau arrivent 
     assert.strictEqual(rendu.status, 0, 'docx-tables.py a échoué : ' + rendu.stderr);
 
     // Les deux tableaux fixes de la tête sont consommés (lignes T) : le tableau du bloc est
-    // donc le PREMIER rendu, et il est bien rendu — ne pas le rendre du tout serait la perte
-    // silencieuse que tout ce mécanisme existe pour empêcher.
+    // donc le premier rendu, et il doit être rendu.
     const html = fs.readFileSync(path.join(dossierTables, 'table-01.html'), 'utf8');
     assert.match(html, /<caption>Une figure de test<\/caption>/,
       'la légende du bloc n’a pas été bakée dans le <caption> : ' + html);
@@ -1772,17 +1714,16 @@ test('pronto-lire.py + docx-tables.py : les champs d’un bloc tableau arrivent 
   }
 });
 
-// ---- 35. Les rangs de titre au-delà du troisième (gabarit v3, 22.09.2026) ----------------
+// ---- 35. Les rangs de titre au-delà du troisième ---------------------------------------
 //
-// Le gabarit porte un « Titre niveau 4 » depuis sa v3. Le lecteur ne s'en servait pas : son
-// motif de rang s'arrêtait à 3, alors que famille() classait DÉJÀ « Titre 4 » en 'heading' —
-// les deux se contredisaient. Ce que ça coûtait : une bibliographie intitulée en rang 4
-// n'était pas détachée, sa liste restait dans le corps et l'export OJS partait sans
-// références. C'est le LEXIQUE des titres qui doit trancher, jamais le rang.
+// Le gabarit porte un « Titre niveau 4 », et famille() classe « Titre 4 » en 'heading'. Une
+// bibliographie intitulée au rang 4 doit donc être détachée, sinon sa liste reste dans le
+// corps et l'export OJS part sans références. C'est le lexique des titres qui décide, pas le
+// rang.
 //
-// (Le rang lui-même ne voyage pas dans les instructions : c'est pandoc qui lit le style Word
-// et écrit « #### » dans le .md, puis szh-niveaux.lua qui compacte le corps entre <h2> et
-// <h6>. Ce contrôle vise donc le seul endroit où le lecteur, lui, regarde le rang.)
+// Le rang lui-même ne voyage pas dans les instructions : pandoc lit le style Word et écrit
+// « #### » dans le .md, puis szh-niveaux.lua ramène le corps entre <h2> et <h6>. Ce contrôle
+// vise le seul endroit où le lecteur regarde le rang.
 
 test('pronto-lire.py : une bibliographie intitulée en rang 4 est détachée comme les autres', { skip: sansPython }, () => {
   const stylesH4 = STYLES_BASE.concat([['H4', 'heading 4']]);
@@ -1805,17 +1746,16 @@ test('pronto-lire.py : une bibliographie intitulée en rang 4 est détachée com
 
 // ---- 36. Clés tolérantes : ce que le gabarit admet, et ce qu'il doit refuser -------------
 //
-// Deux mécanismes travaillent ensemble, et il ne faut pas les confondre :
+// Deux mécanismes travaillent ensemble :
 //
-//   * les ALIAS (CANON_*) reconnaissent à coup sûr les formes qu'on sait que la rédaction
-//     tape — la forme sans accent, les synonymes, l'italien. C'est eux qui font le gros du
-//     travail, et c'est là qu'on ajoute un cas nouveau ;
-//   * le SEUIL de proximité (SEUIL_CLE, 0,75 depuis le 22.09.2026) rattrape ce que personne
-//     n'avait prévu — une lettre en trop, deux lettres inversées.
+//   * les alias (CANON_*) reconnaissent les formes connues : sans accent, synonymes,
+//     italien. C'est là qu'on ajoute un cas nouveau ;
+//   * le seuil de proximité (SEUIL_CLE, 0,75) rattrape l'imprévu : une lettre en trop, deux
+//     lettres inversées.
 //
-// Ce qui est en jeu : une clé PRÉSENTE non reconnue REFUSE l'import en entier. Un faux négatif
-// coûte donc un aller-retour à l'autrice ; un faux POSITIF, lui, range une valeur dans le
-// mauvais champ, et ça ne se voit pas. Les deux contrôles ci-dessous tiennent les deux bouts.
+// Une clé présente non reconnue refuse tout l'import. Un faux négatif coûte un aller-retour à
+// l'autrice ; un faux positif range une valeur dans le mauvais champ sans que ça se voie. Les
+// deux contrôles ci-dessous tiennent les deux bouts.
 
 function mesurerCle(etiquette, table) {
   const script = [
@@ -1825,10 +1765,10 @@ function mesurerCle(etiquette, table) {
     'seuil = pm.SEUIL_CLE',
     'pm.SEUIL_CLE = 0.0',   // 0 : on veut le score brut, pas le verdict
     'r = pm.identifier_cle(sys.argv[2], getattr(pm, sys.argv[1]))',
-    // ⚠ identifier_cle() rend DEUX formes : (jeton, score, exact), et
-    //   ('__ambigu__', jeton1, jeton2, score1, score2) quand les deux meilleures clés se
-    //   tiennent. Lire r[1] comme un score dans le second cas rend un JETON — une chaîne, qui
-    //   fait passer toute comparaison numérique à NaN, donc au vert par accident.
+    // identifier_cle() rend deux formes : (jeton, score, exact), et
+    // ('__ambigu__', jeton1, jeton2, score1, score2) quand les deux meilleures clés se
+    // tiennent. Dans le second cas r[1] est un jeton : une comparaison numérique donnerait
+    // NaN et passerait au vert par accident.
     'if r is None:',
     '    sortie = {"jeton": None, "score": 0.0}',
     'elif r[0] == "__ambigu__":',
@@ -1844,14 +1784,14 @@ function mesurerCle(etiquette, table) {
 }
 
 test('clés tolérantes : tout ce que la rédaction tape vraiment est reconnu, sur la bonne clé', { skip: sansPython }, () => {
-  // Trois familles : la forme sans accent (c'est celle qui tombait sous le seuil — perdre deux
-  // accents suffit), les synonymes de réflexe, et les fautes de frappe. « Legandes » est la
-  // faute qu'a réellement portée la v3 du gabarit.
+  // Trois familles : la forme sans accent (perdre deux accents suffit à tomber sous le
+  // seuil), les synonymes courants et les fautes de frappe. « Legandes » figurait dans une
+  // version du gabarit.
   const attendus = [
     // sans accent
     ['CANON_METADONNEES', 'Resume', 'resume'], ['CANON_FIGURE', 'Legende', 'legende'],
     ['CANON_AUTEUR', 'Prenom', 'prenom'], ['CANON_FIGURE', 'Credit', 'credit'],
-    // synonymes de réflexe
+    // synonymes courants
     ['CANON_FIGURE', 'Copyright', 'credit'], ['CANON_FIGURE', 'Description', 'alt'],
     ['CANON_FIGURE', 'Provenance', 'source'], ['CANON_AUTEUR', 'Poste', 'fonction'],
     ['CANON_AUTEUR', 'Adresse e-mail', 'email'], ['CANON_AUTEUR', 'Nom de famille', 'nom'],
@@ -1861,7 +1801,7 @@ test('clés tolérantes : tout ce que la rédaction tape vraiment est reconnu, s
     ['CANON_AUTEUR', 'Prenoom', 'prenom'], ['CANON_AUTEUR', 'Fontion', 'fonction'],
     ['CANON_AUTEUR', 'Instituion', 'affiliation'], ['CANON_FIGURE', 'Sourse', 'source'],
     ['CANON_FIGURE', 'Legandes', 'legende'], ['CANON_METADONNEES', 'Resumé', 'resume'],
-    // la clé Note (30.09.2026) : les deux libellés du gabarit et les variantes de réflexe
+    // la clé Note : les deux libellés du gabarit et les variantes courantes
     ['CANON_FIGURE', 'Note', 'note'], ['CANON_FIGURE', 'Notiz', 'note'],
     ['CANON_FIGURE', 'Notes', 'note'], ['CANON_FIGURE', 'Anmerkung', 'note'],
     ['CANON_FIGURE', 'Hinweis', 'note'], ['CANON_FIGURE', 'Remarque', 'note'],
@@ -1878,13 +1818,12 @@ test('clés tolérantes : tout ce que la rédaction tape vraiment est reconnu, s
 });
 
 test('clés tolérantes : une étiquette étrangère au gabarit reste sous le seuil, avec de la marge', { skip: sansPython }, () => {
-  // Des étiquettes qu'on rencontre pour de vrai — dans un tableau de contenu, dans la fiche
-  // d'un autre gabarit — et qui ne doivent JAMAIS être prises pour un champ Pronto.
+  // Des étiquettes rencontrées pour de vrai (tableau de contenu, fiche d'un autre gabarit),
+  // qui ne doivent pas être prises pour un champ Pronto.
   const etrangeres = [
-    // Adresse, Biographie, Téléphone et Photo ne sont PLUS ici : elles sont déclarées dans
-    // CANON_AUTEUR comme des champs sans destination (section 37 plus bas), donc reconnues à
-    // 1,000 et hors de toute concurrence de proximité. C'est leur départ qui rend la marge
-    // ci-dessous confortable : la plus proche était « Adresse » à 0,737.
+    // Adresse, Biographie, Téléphone et Photo n'y figurent pas : déclarées dans CANON_AUTEUR
+  // sans destination (section 37), elles se reconnaissent à 1,000 et n'entrent pas en
+  // concurrence de proximité.
     ['CANON_AUTEUR', 'Ville'], ['CANON_AUTEUR', 'Pays'],
     ['CANON_METADONNEES', 'Résultats'], ['CANON_METADONNEES', 'Nom de la revue'],
     ['CANON_METADONNEES', 'DOI'], ['CANON_METADONNEES', 'Volume'],
@@ -1902,10 +1841,8 @@ test('clés tolérantes : une étiquette étrangère au gabarit reste sous le se
       + ' ≥ ' + mesure.seuil + ') : sa valeur partirait dans le mauvais champ, en silence');
     if (mesure.score > pire) { pire = mesure.score; pireNom = etiquette; }
   }
-  // La plus proche mesurée est « Adresse » à 0,737 — tirée par l'alias allemand
-  // « e-mail-adresse », qui est légitime et qu'on garde. 0,013 de marge sous un seuil à 0,75 :
-  // c'est peu, et c'est exactement ce que ce contrôle est là pour surveiller. Le jour où
-  // quelqu'un rebaisse le seuil, ce message doit tomber avant la production.
+  // La marge sous le seuil (0,75) est faible : ce contrôle échoue si le seuil est abaissé au
+  // point qu'une étiquette étrangère soit prise pour un champ.
   assert.ok(pire < seuil,
     'plus aucune marge : « ' + pireNom + ' » atteint ' + pire.toFixed(3) + ' pour un seuil à '
     + seuil);
@@ -1916,18 +1853,16 @@ test('clés tolérantes : une étiquette étrangère au gabarit reste sous le se
     + 'CLES_AUTEUR_SANS_DESTINATION), ou poser un alias. Jamais baisser le seuil.');
 });
 
-// ---- 37. Les champs que le gabarit NE PORTE PAS, déclarés exprès ------------------------
+// ---- 37. Les champs que le gabarit ne porte pas, déclarés exprès -----------------------
 //
-// Adresse, biographie, téléphone, photo : la rédaction les tape par réflexe, le schéma d'auteur
-// n'en a aucun. Ils sont déclarés dans CANON_AUTEUR sans destination — même procédé que
-// « Mots-clés » côté métadonnées — pour deux raisons, dans cet ordre :
+// Adresse, biographie, téléphone, photo : la rédaction les tape par réflexe, le schéma
+// d'auteur n'en a aucun. Ils sont déclarés dans CANON_AUTEUR sans destination, comme
+// « Mots-clés » côté métadonnées, pour deux raisons :
 //
-//   1. la VALEUR ne doit pas se perdre : une ligne remplie qu'on ne sait pas ranger refuse
-//      l'import, elle ne s'évapore pas ;
-//   2. la clé ne doit plus JAMAIS entrer en concurrence de proximité avec un vrai champ.
-//      Mesuré avant cette déclaration : « Adresse » arrivait à 0,737 contre Email — tirée par
-//      l'alias allemand « e-mail-adresse » — soit 0,013 sous le seuil. Une adresse postale à
-//      0,013 de finir dans le champ e-mail. Déclarée, elle se reconnaît elle-même à 1,000.
+//   1. la valeur ne se perd pas : une ligne remplie qu'on ne sait pas ranger refuse l'import ;
+//   2. la clé n'entre pas en concurrence de proximité avec un vrai champ. Non déclarée,
+//      « Adresse » obtenait 0,737 contre Email (via l'alias allemand « e-mail-adresse »),
+//      juste sous le seuil de 0,75. Déclarée, elle se reconnaît elle-même à 1,000.
 
 test('champs hors gabarit : une adresse ne peut plus être confondue avec un e-mail', { skip: sansPython }, () => {
   const { jeton, score } = mesurerCle('Adresse', 'CANON_AUTEUR');
@@ -1939,7 +1874,7 @@ test('champs hors gabarit : une adresse ne peut plus être confondue avec un e-m
 });
 
 test('champs hors gabarit : la ligne refuse l’import, et le message dit où va l’information', { skip: sansPython }, () => {
-  // Un cas par champ : le geste à faire diffère, et c'est tout l'intérêt de les avoir nommés.
+  // Un cas par champ : la correction à faire diffère d'un champ à l'autre.
   const cas = [
     ['Adresse : Bergstrasse 12, 3007 Berne', 'Adresse', /retirez cette ligne/i],
     ['Biographie : Chercheuse en pédagogie depuis 2009.', 'Biographie', /biographique/i],
@@ -1962,8 +1897,8 @@ test('champs hors gabarit : la ligne refuse l’import, et le message dit où va
       + vu.avertissements.join(' / '));
     assert.match(avert, motifGeste,
       'le message ne dit pas quoi faire de « ' + nom + ' » : ' + avert);
-    // Et surtout : pas « étiquette inconnue ». Elle est parfaitement reconnue — le dire
-    // autrement serait un mensonge, et enverrait corriger une orthographe qui est juste.
+    // L'étiquette est reconnue : le message ne doit pas dire « étiquette inconnue », ce qui
+    // enverrait corriger une orthographe juste.
     assert.deepStrictEqual(
       vu.avertissements.filter((l) => l.indexOf('auteur-etiquette-inconnue') !== -1), [],
       '« ' + nom + ' » est annoncée comme une étiquette inconnue, alors qu’elle est reconnue');
@@ -1971,8 +1906,8 @@ test('champs hors gabarit : la ligne refuse l’import, et le message dit où va
 });
 
 test('champs hors gabarit : les vrais champs de la même rangée restent lus', { skip: sansPython }, () => {
-  // L'import est refusé, donc rien n'est écrit — mais le lecteur doit avoir compris le reste
-  // de la rangée, sans quoi le rapport nommerait des fautes qui n'existent pas.
+  // L'import est refusé, rien n'est écrit, mais le reste de la rangée doit être compris, sinon
+  // le rapport nommerait des fautes qui n'existent pas.
   const vu = importer('52-hors-gabarit-reste', {
     styles: STYLES_BASE,
     body: [

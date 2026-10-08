@@ -1,33 +1,31 @@
-// Les réglages Shlink/OJS que l'ancien lanceur rangeait dans etat-utilisateur.json :
-// Get-SzhShlinkUrl, Get-SzhShlinkCle, Get-SzhOjsCle, et Set-SzhEnvironnementSecrets
-// / Set-SzhWslEnvSecrets (tous dans windows/szh-common.ps1), qui posent SZH_SHLINK_URL,
-// SZH_SHLINK_CLE, SZH_OJS_CLE dans l'environnement du processus enfant au lancement de
-// VSCodium et les ajoutent à WSLENV pour que wsl.exe les transmette aux tâches du cockpit
-// (vscodium-user/tasks.json, `wsl.exe -d SZH-Publishing`). DEUX lanceurs appellent
-// Set-SzhEnvironnementSecrets : Start-SzhCodium (windows/szh-shell.ps1, le lanceur principal)
-// et Start-SzhCodiumFichier (windows/open-md.ps1, l'ouverture d'un .md par double-clic) --
-// d'où ces fonctions dans szh-common.ps1 et non dans szh-shell.ps1 : open-md.ps1 ne
-// dot-source QUE szh-common.ps1.
+// Les réglages Shlink/OJS rangés dans etat-utilisateur.json : Get-SzhShlinkUrl,
+// Get-SzhShlinkCle, Get-SzhOjsCle, et Set-SzhEnvironnementSecrets / Set-SzhWslEnvSecrets
+// (windows/szh-common.ps1). Ces deux dernières posent SZH_SHLINK_URL, SZH_SHLINK_CLE et
+// SZH_OJS_CLE dans l'environnement de VSCodium au lancement, et les ajoutent à WSLENV pour
+// que wsl.exe les transmette aux tâches du cockpit (vscodium-user/tasks.json,
+// `wsl.exe -d SZH-Publishing`). Deux lanceurs appellent Set-SzhEnvironnementSecrets :
+// Start-SzhCodium (windows/szh-shell.ps1) et Start-SzhCodiumFichier (windows/open-md.ps1,
+// ouverture d'un .md par double-clic). Les fonctions vivent dans szh-common.ps1 parce
+// qu'open-md.ps1 ne charge que ce fichier.
 //
-// Ce que ce fichier prouve, dans l'ordre :
+// Ce que ce fichier vérifie :
 //   1. une clé se relit depuis son chiffrement DPAPI du compte (ConvertFrom-SecureString sans
-//      -Key, la forme où l'ancien lanceur la rangeait), et une valeur en clair n'en est pas une ;
+//      -Key), et une valeur en clair est refusée ;
 //   2. un champ vide ne rend aucune clé ;
-//   3. Set-SzhWslEnvSecrets construit WSLENV correctement dans les quatre cas -- vide,
-//      valeur existante préservée, appel répété sans doublon, retrait ;
-//   4. Start-SzhCodium ne pose les trois variables que si un réglage existe, jamais à vide,
-//      et le journal ne porte jamais la clé en clair -- même sans VSCodium installé sur ce
-//      poste, puisque Set-SzhEnvironnementSecrets s'exécute AVANT la vérification de
-//      Get-VSCodiumExe (voir le commentaire d'en-tête de Start-SzhCodium) ;
+//   3. Set-SzhWslEnvSecrets construit WSLENV dans les quatre cas : vide, valeur existante
+//      préservée, appel répété sans doublon, retrait ;
+//   4. Start-SzhCodium ne pose les trois variables que si un réglage existe, et le journal ne
+//      porte pas la clé en clair. Le test tourne sans VSCodium installé, car
+//      Set-SzhEnvironnementSecrets s'exécute avant la vérification de Get-VSCodiumExe (voir
+//      l'en-tête de Start-SzhCodium) ;
 //   5. aucune source (diagnostic.ps1, szh-rapport.ps1) ne recopie etat-utilisateur.json tel
-//      quel, et aucune des deux ne porte les noms de champs shlinkCle/ojsCle ;
-//   7. Start-SzhCodiumFichier (open-md.ps1) pose le même pont -- même garantie qu'au 4,
-//      via le vrai open-md.ps1 en SZH_OPENMD_SIMULE=1 (sauté si VSCodium n'est pas installé
-//      sur ce poste : Get-VSCodiumExe est vérifié par open-md.ps1 AVANT d'appeler
-//      Start-SzhCodiumFichier, à la différence de Start-SzhCodium).
+//      quel, ni ne nomme les champs shlinkCle/ojsCle ;
+//   7. Start-SzhCodiumFichier (open-md.ps1) pose le même pont, vérifié par le vrai open-md.ps1
+//      en SZH_OPENMD_SIMULE=1. Sauté si VSCodium n'est pas installé : open-md.ps1 vérifie
+//      Get-VSCodiumExe avant d'appeler Start-SzhCodiumFichier.
 //
-// Chaque scénario isole SON PROPRE %LOCALAPPDATA% et SZH_BASE jetables : jamais le vrai
-// profil de qui lance cette suite, dont etat-utilisateur.json peut porter une vraie clé.
+// Chaque scénario a son propre %LOCALAPPDATA% et son SZH_BASE jetables : le vrai
+// etat-utilisateur.json peut porter une vraie clé.
 'use strict';
 
 const test = require('node:test');
@@ -46,9 +44,8 @@ const OPENMD_PS1 = path.join(RACINE, 'windows', 'open-md.ps1');
 const DIAGNOSTIC_PS1 = path.join(RACINE, 'windows', 'diagnostic.ps1');
 const RAPPORT_PS1 = path.join(RACINE, 'windows', 'szh-rapport.ps1');
 
-// Même détection et même motif de saut que dev-lanceur.test.js (Groupe 5) : le runner
-// windows-latest n'a pas VSCodium, et Get-VSCodiumExe (szh-common.ps1) ne regarde que ces
-// deux chemins.
+// Même détection et même motif de saut que dev-lanceur.test.js : le runner windows-latest
+// n'a pas VSCodium, et Get-VSCodiumExe (szh-common.ps1) ne regarde que ces deux chemins.
 const sansVSCodiumExe = (function () {
   if (process.platform !== 'win32') { return 'pas Windows'; }
   const candidats = [
@@ -60,7 +57,7 @@ const sansVSCodiumExe = (function () {
 })();
 
 // Dossiers jetables par appel : SZH_BASE (state.json, logs) et LOCALAPPDATA
-// (etat-utilisateur.json) -- jamais le vrai profil de qui lance cette suite.
+// (etat-utilisateur.json).
 function nouveauxDossiers(prefixe) {
   const travail = fs.mkdtempSync(path.join(os.tmpdir(), prefixe));
   const base = path.join(travail, 'ProgramData');
@@ -71,7 +68,7 @@ function nouveauxDossiers(prefixe) {
 }
 
 // process.env recopié sans les variables sensibles à l'isolement, puis les surcharges
-// demandées -- même discipline que envIsole() dans dev-lanceur.test.js.
+// demandées, comme envIsole() dans dev-lanceur.test.js.
 function envIsole(surcharges) {
   const env = Object.assign({}, process.env);
   delete env.SZH_BASE;
@@ -85,10 +82,9 @@ function envIsole(surcharges) {
   return Object.assign(env, surcharges || {});
 }
 
-// Dot-source szh-common.ps1 puis szh-shell.ps1, exécute les lignes fournies (qui doivent
-// construire $r), et rend $r sérialisé en JSON -- même patron qu'executerFonctionShell()
-// dans dev-lanceur.test.js, avec un environnement personnalisable en plus (indispensable
-// ici : les fonctions visées lisent et écrivent etat-utilisateur.json).
+// Charge szh-common.ps1 puis szh-shell.ps1, exécute les lignes fournies (qui construisent
+// $r), et rend $r en JSON. Comme executerFonctionShell() de dev-lanceur.test.js, avec un
+// environnement réglable : les fonctions visées lisent et écrivent etat-utilisateur.json.
 function executerFonctionShell(lignesCorps, env) {
   if (!POWERSHELL) { return null; }
   const travail = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-secrets-fn-'));
@@ -108,8 +104,8 @@ function executerFonctionShell(lignesCorps, env) {
   return { status: run.status, stderr: run.stderr || '', stdout: run.stdout || '', r: lu };
 }
 
-// Dot-source, puis Start-SzhCodium -Dossier <dossierCible> -- un script jetable plutôt qu'un
-// -Command à échapper, même patron qu'executerStartSzhCodium() dans dev-lanceur.test.js.
+// Charge le socle puis lance Start-SzhCodium -Dossier <dossierCible>, depuis un script jetable
+// plutôt qu'un -Command à échapper.
 function executerStartSzhCodium(env, dossierCible) {
   if (!POWERSHELL) { return null; }
   const script = path.join(os.tmpdir(), 'szh-secrets-codium-' + process.pid + '-' + Date.now() + '.ps1');
@@ -140,9 +136,8 @@ function lireJournal(base) {
   return fs.readFileSync(fichier, 'utf8');
 }
 
-// Range des champs dans etat-utilisateur.json sous la forme où l'ancien lanceur les écrivait :
-// l'adresse en clair, chaque clé chiffrée par DPAPI pour ce compte. { clair: true } range une
-// clé en clair, ce que rien n'a jamais écrit.
+// Range des champs dans etat-utilisateur.json : l'adresse en clair, chaque clé chiffrée par
+// DPAPI pour ce compte. { clair: true } range une clé en clair, forme invalide.
 function ranger(champs, opts) {
   const lignes = ['$etat = Get-SzhEtatUtilisateur', 'if (-not $etat) { $etat = New-Object psobject }'];
   for (const [nom, valeur] of Object.entries(champs)) {
@@ -156,7 +151,7 @@ function ranger(champs, opts) {
   return lignes;
 }
 
-// ---- 1. Lecture chiffrée : la clé rangée se relit, une valeur en clair ne vaut rien
+// ---- 1. Lecture chiffrée : la clé rangée se relit, une valeur en clair est refusée
 
 test('Get-SzhShlinkCle : relit la clé chiffrée pour ce compte, jamais une valeur en clair',
   { skip: sansPowerShell }, () => {
@@ -280,8 +275,8 @@ test('Set-SzhWslEnvSecrets : aucun nom a poser retire nos entrees et garde le re
       'nos entrees n\'ont pas ete proprement retirees, ou le reste a disparu');
   });
 
-// ---- 4. Start-SzhCodium : variables posees seulement si reglees, jamais a vide, jamais
-// ---- dans le journal -- meme sans VSCodium installe (voir le commentaire d'en-tete)
+// ---- 4. Start-SzhCodium : variables posées seulement si réglées, jamais vides, jamais
+// ---- dans le journal, même sans VSCodium installé
 
 test('Start-SzhCodium : rien de regle -> aucune des trois variables n\'est posee, pas de WSLENV',
   { skip: sansPowerShell }, () => {
@@ -306,9 +301,8 @@ test('Start-SzhCodium : Shlink URL+cle regles, OJS vide -> seules les deux premi
       .concat(['$r = [ordered]@{ ok = $true }']), envReglage);
     assert.ok(reglage && reglage.status === 0, 'le reglage prealable a echoue - ' + (reglage ? reglage.stderr : ''));
 
-    // Environnement isole pour Start-SzhCodium : sans SZH_SHLINK_CLE/URL herites de CE
-    // processus-ci (envIsole les retire deja), pour ne mesurer que ce que Start-SzhCodium
-    // pose lui-meme a partir d'etat-utilisateur.json.
+    // Environnement isolé : envIsole retire SZH_SHLINK_CLE/URL hérités de ce processus, pour
+    // ne mesurer que ce que Start-SzhCodium pose à partir d'etat-utilisateur.json.
     const env = envIsole({ SZH_BASE: base, LOCALAPPDATA: local, SZH_LANCEUR_SIMULE: '1' });
     const res = executerStartSzhCodium(env, base);
     const journal = lireJournal(base);
@@ -321,7 +315,7 @@ test('Start-SzhCodium : Shlink URL+cle regles, OJS vide -> seules les deux premi
       'le journal nomme SZH_OJS_CLE alors qu\'aucune cle OJS n\'est reglee - ' + journal);
     assert.ok(journal.indexOf('WSLENV=SZH_SHLINK_URL/u:SZH_SHLINK_CLE/u') !== -1,
       'la trace WSLENV n\'est pas celle attendue - ' + journal);
-    // Et surtout : la cle elle-meme n'apparait JAMAIS dans le journal, meme partiellement.
+    // La clé n'apparaît pas dans le journal, même partiellement.
     assert.ok(journal.indexOf(secret) === -1,
       'LA CLE EN CLAIR EST DANS LE JOURNAL -- ' + journal);
   });
@@ -332,11 +326,9 @@ test('diagnostic.ps1 et szh-rapport.ps1 ne recopient jamais etat-utilisateur.jso
   + 'et ne portent ni "shlinkCle" ni "ojsCle"', () => {
     for (const fichier of [DIAGNOSTIC_PS1, RAPPORT_PS1]) {
       const source = fs.readFileSync(fichier, 'utf8');
-      // Aucune sérialisation brute d'une variable issue de Get-SzhEtatUtilisateur : le
-      // motif visé est `$xxx | ConvertTo-Json` ou une interpolation directe où $xxx a été
-      // affecté par un appel à Get-SzhEtatUtilisateur -- recherché ici par les deux noms de
-      // champ eux-memes, la preuve la plus directe qu'aucune clé ne peut fuiter par ce
-      // fichier : un fichier qui ne nomme jamais ces deux champs ne peut pas les afficher.
+      // Aucune sérialisation brute d'une variable issue de Get-SzhEtatUtilisateur. La
+      // recherche porte sur les deux noms de champ : un fichier qui ne les nomme pas ne peut
+      // pas les afficher.
       assert.ok(source.indexOf('shlinkCle') === -1,
         path.basename(fichier) + ' porte le champ shlinkCle -- vérifier qu\'il ne l\'affiche jamais en clair');
       assert.ok(source.indexOf('ojsCle') === -1,
@@ -356,24 +348,22 @@ test('le pont des secrets vit dans szh-common.ps1, pas dans szh-shell.ps1 -- '
     const openMd = fs.readFileSync(OPENMD_PS1, 'utf8');
     assert.ok(openMd.indexOf('Set-SzhEnvironnementSecrets') !== -1,
       'open-md.ps1 n\'appelle plus Set-SzhEnvironnementSecrets dans Start-SzhCodiumFichier');
-    // Le contrat que tout ceci protège : open-md.ps1 ne dot-source que szh-common.ps1 (jamais
-    // szh-shell.ps1) -- sinon les fonctions n'existeraient pas dans sa portée.
+    // open-md.ps1 ne charge que szh-common.ps1 (pas szh-shell.ps1) : les fonctions doivent
+    // donc y vivre.
     const dotSources = [...openMd.matchAll(/^\.\s+"\$PSScriptRoot\\([^"]+)"/gm)].map((m) => m[1]);
     assert.deepStrictEqual(dotSources, ['szh-common.ps1'],
       'open-md.ps1 dot-source autre chose que szh-common.ps1 seul : ' + JSON.stringify(dotSources));
   });
 
 // ---- 7. Start-SzhCodiumFichier (open-md.ps1) : le même pont, pour un article ouvert par
-// ---- double-clic -- sauté sans VSCodium installé (Get-VSCodiumExe y est vérifié AVANT
-// ---- Start-SzhCodiumFichier, à la différence de Start-SzhCodium)
+// ---- double-clic. Sauté sans VSCodium installé (Get-VSCodiumExe est vérifié avant
+// ---- Start-SzhCodiumFichier).
 
-// Get-VSCodiumExe (szh-common.ps1) regarde $env:LOCALAPPDATA\Programs\VSCodium en second
-// recours -- exactement le LOCALAPPDATA que ces tests isolent pour ne jamais toucher le vrai
-// etat-utilisateur.json. Sur un poste où VSCodium n'est installé que là (ce poste de dev),
-// un LOCALAPPDATA jetable le rendrait introuvable et open-md.ps1 sortirait avant même
-// d'atteindre Start-SzhCodiumFichier. Un lien de jonction ponte le vrai dossier dans
-// l'arborescence jetable, sans rien copier -- aucun droit administrateur requis pour une
-// jonction (à la différence d'un lien symbolique).
+// Get-VSCodiumExe (szh-common.ps1) regarde aussi $env:LOCALAPPDATA\Programs\VSCodium, le
+// LOCALAPPDATA que ces tests isolent. Sur un poste où VSCodium n'est installé que là, un
+// LOCALAPPDATA jetable le rendrait introuvable et open-md.ps1 sortirait avant
+// Start-SzhCodiumFichier. Une jonction relie le vrai dossier dans l'arborescence jetable,
+// sans copie ni droit administrateur (à la différence d'un lien symbolique).
 function ponterVSCodiumSiBesoin(localJetable) {
   const reel = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'VSCodium');
   if (!fs.existsSync(reel)) { return; }
@@ -382,8 +372,8 @@ function ponterVSCodiumSiBesoin(localJetable) {
   fs.symlinkSync(reel, path.join(programsDir, 'VSCodium'), 'junction');
 }
 
-// Un .md hors de toute revue/livre (aucun ausgabe.yaml/buch.yaml au-dessus) : la branche la
-// plus simple d'open-md.ps1, celle qui appelle Start-SzhCodiumFichier avec un seul chemin.
+// Un .md hors de toute revue ou livre (aucun ausgabe.yaml/buch.yaml au-dessus) : la branche
+// d'open-md.ps1 qui appelle Start-SzhCodiumFichier avec un seul chemin.
 function executerOpenMd(env, mdPath) {
   if (!POWERSHELL) { return null; }
   const run = spawnSync(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', OPENMD_PS1, mdPath],

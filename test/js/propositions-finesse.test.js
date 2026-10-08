@@ -518,7 +518,7 @@ test('libellés : les bouts du curseur et le cran par défaut, en fr et en de', 
   assert.ok(/Stufe 2/.test(r(de['accueil.regl.moiss.regleAucun'], [2])));
 });
 
-// Le « Pourquoi » ne montre jamais un jeton brut : texte-large a son libellé, un jeton inconnu un libellé générique.
+// Le « Pourquoi » montre un libellé : texte-large a le sien, un jeton inconnu un libellé générique.
 test('page : « Pourquoi » nomme texte-large, et un jeton inconnu par un libellé générique, jamais brut', async () => {
   const avec = (id, cat) => intervention(id, 'Catégorie ' + id, 3, { pertinence: { verdict: 'retenu', raison: 'ancrage', score: 3, categorie: cat, termes: [] } });
   repartir({ lot: [avec('L', 'texte-large'), avec('M', 'jeton-mystere')] });

@@ -1,9 +1,8 @@
 // pipeline/szh_commun.py : docx-meta.py, docx-tables.py, livre-scinder.py et reimporter.py
-// recopiaient chacun la même fonction avertir() (préfixe propre à l'appelant, sinon
-// identique). Ce fichier fixe ce que ces quatre points d'appel rendent AVANT le refactor
-// (capturé en exécutant le code d'origine) et vérifie qu'ils rendent EXACTEMENT la même
-// chose une fois qu'ils délèguent à szh_commun.avertir() : mêmes octets sur stderr, même
-// contenu de journal, même comportement quand SZH_IMPORT_LOG est absente ou illisible.
+// délèguent leur avertir() à szh_commun.avertir(), chacun avec son préfixe. Ce fichier
+// vérifie que les quatre points d'appel rendent la sortie de référence : mêmes octets sur
+// stderr, même contenu de journal, même comportement quand SZH_IMPORT_LOG est absente ou
+// illisible.
 //
 //   node --test "test/js/*.test.js"
 'use strict';
@@ -17,9 +16,8 @@ const os = require('os');
 const RACINE = path.resolve(__dirname, '..', '..');
 const PIPELINE = path.join(RACINE, 'pipeline');
 
-// Abstention nommée et comptée, plutôt qu'un simple `return` : un `return` précoce se
-// compte PASS dans le rapport `node --test`, comme n'importe quel test qui a réellement
-// tourné — `{ skip: sansPython }` le distingue.
+// Un test sauté par `{ skip: sansPython }` est compté comme tel ; un `return` précoce
+// compterait PASS dans le rapport de `node --test`.
 const { python, sansPython, cheminPython, VERSION_PYTHON } = require('./gardes');
 
 // Arguments fixes, mêmes pour les quatre appelants : guillemets français, accents,
@@ -29,11 +27,9 @@ const CHAMPS = ['article « essai »', 'champ « x »'];
 const FR = 'Message français avec « guillemets » et accent éàü.';
 const DE = 'Deutsche Meldung mit Anführungszeichen «» und Umlaut ÄÖÜ.';
 
-// Capturé en exécutant, AVANT ce lot, la fonction avertir() propre à chaque fichier (recopiée
-// trois fois à l'identique, préfixe [import-avertissement], plus la version scission de
-// livre-scinder.py) sur les arguments ci-dessus. Toute divergence après refactor est un
-// changement d'octets que l'interface du cockpit reçoit — voir la note de non-régression
-// du lot.
+// Sortie de référence de avertir() sur les arguments ci-dessus, avec le préfixe
+// [import-avertissement] (et la variante de livre-scinder.py plus bas). Toute divergence
+// change les octets que reçoit l'interface du cockpit.
 const LIGNE_IMPORT = "[import-avertissement] test-code | article « essai » | champ « x » | "
   + "Message français avec « guillemets » et accent éàü. | [de] Deutsche Meldung mit "
   + "Anführungszeichen «» und Umlaut ÄÖÜ.";
@@ -45,8 +41,8 @@ function dossierJetable() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'szh-commun-'));
 }
 
-// Charge <nom_fichier> par CHEMIN (comme couverture.py le fait pour livre-assembler.py) et
-// appelle avertir(CODE, CHAMPS, FR, DE) dessus, avec SZH_IMPORT_LOG posée sur `journal` (ou
+// Charge <nom_fichier> par son chemin (comme couverture.py le fait pour livre-assembler.py)
+// et appelle avertir(CODE, CHAMPS, FR, DE), avec SZH_IMPORT_LOG posée sur `journal` (ou
 // absente si `journal` est null). Rend { status, stdout, stderr }.
 function appelerAvertirModule(nomFichier, journal) {
   const env = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
@@ -63,8 +59,8 @@ function appelerAvertirModule(nomFichier, journal) {
   return normaliser(python(['-c', code], { env: env }));
 }
 
-// Fins de ligne uniformisées, comme le fait déjà test/filtres-pandoc.test.js pour pandoc,
-// pour que les comparaisons ne dépendent pas de la plateforme qui exécute ce fichier.
+// Fins de ligne uniformisées, comme test/filtres-pandoc.test.js pour pandoc : les
+// comparaisons ne dépendent pas de la plateforme.
 function normaliser(r) {
   r.stdout = (r.stdout || '').replace(/\r\n/g, '\n');
   r.stderr = (r.stderr || '').replace(/\r\n/g, '\n');
@@ -72,9 +68,8 @@ function normaliser(r) {
 }
 
 // reimporter.py : avertir() est une méthode de Voix, et son journal est un chemin passé au
-// CONSTRUCTEUR — jamais lu depuis SZH_IMPORT_LOG. On le vérifie explicitement : c'est la
-// seule des quatre implémentations à diverger sur ce point, et le refactor ne doit pas
-// gommer cette différence.
+// constructeur, pas lu dans SZH_IMPORT_LOG. C'est la seule des quatre implémentations à
+// différer sur ce point, et la différence doit rester.
 function appelerAvertirVoix(journal) {
   const env = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
   delete env.SZH_IMPORT_LOG;
@@ -130,8 +125,8 @@ for (const [nomFichier, ligneAttendue] of [
 
   test('szh_commun : ' + nomFichier + ' — un journal illisible n’interrompt pas l’appel',
     { skip: sansPython }, () => {
-    // Dossier inexistant : l'écriture échoue (OSError), avalée — l'appelant ne doit
-    // jamais planter pour un journal qu'il ne peut pas écrire.
+    // Dossier inexistant : l'écriture échoue (OSError), erreur avalée : l'appelant ne plante
+    // pas pour un journal qu'il ne peut pas écrire.
     const journalImpossible = path.join(dossierJetable(), 'dossier-absent', 'journal.log');
     const r = appelerAvertirModule(nomFichier, journalImpossible);
     assert.strictEqual(r.status, 0,
@@ -154,8 +149,8 @@ test('szh_commun : reimporter.py — la ligne sur stderr n’a pas bougé d’un
       'reimporter.py n’écrit plus la même ligne sur stderr');
     assert.strictEqual(fs.readFileSync(journal, 'utf8'), LIGNE_IMPORT + '\n',
       'reimporter.py n’écrit plus la même ligne dans le journal du constructeur');
-    // Bilan interne (Voix.lignes / Voix.avertissements) : ce que rendre() lit pour la
-    // ligne JSON du cockpit ne doit pas non plus bouger.
+    // Bilan interne (Voix.lignes / Voix.avertissements) : ce que rendre() lit pour la ligne
+    // JSON du cockpit ne bouge pas non plus.
     const ligneLignes = r.stdout.split('\n').find((l) => l.startsWith('LIGNES='));
     const ligneAvert = r.stdout.split('\n').find((l) => l.startsWith('AVERTISSEMENTS='));
     assert.deepStrictEqual(JSON.parse(ligneLignes.slice('LIGNES='.length)), [LIGNE_IMPORT],
@@ -204,7 +199,7 @@ test('szh_commun : reimporter.py — journal vide (constructeur) : aucune écrit
   assert.strictEqual(premiereLigne, LIGNE_IMPORT);
 });
 
-// ---- Les préfixes des quatre appelants restent DISTINCTS où ils doivent l'être ----
+// ---- Les préfixes des quatre appelants restent distincts où ils doivent l'être ----
 
 test('szh_commun : docx-meta.py et docx-tables.py partagent le même préfixe que reimporter.py',
   { skip: sansPython }, () => {

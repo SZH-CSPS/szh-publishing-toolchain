@@ -2,10 +2,9 @@
 //
 //   node --test "test/js/*.test.js"
 //
-// Le plan lui-même est éprouvé sans disque (renumerotation.test.js). Ici on éprouve ce qui
-// ne se simule pas : des dossiers réellement renommés, un lot interrompu au milieu, et
-// l'ordre du numéro réécrit APRÈS que tout soit passé — jamais avant, sinon ausgabe.yaml
-// désignerait des dossiers qui n'existent pas.
+// Le plan lui-même est éprouvé sans disque (renumerotation.test.js). Ici : des dossiers
+// réellement renommés, un lot interrompu au milieu, et l'ordre du numéro réécrit après tous
+// les renommages, sinon ausgabe.yaml désignerait des dossiers qui n'existent pas.
 'use strict';
 
 const test = require('node:test');
@@ -24,9 +23,8 @@ const LF = String.fromCharCode(10);
 // l'ordre, et de quoi vérifier que le reste ne bouge pas.
 function numero(slugs) {
   const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-renum-'));
-  // L'ordre s'écrit en séquence EN LIGNE, comme le sérialiseur du cockpit la pose :
-  // ordre-articles: ["01-a", "02-b"]. Le corpus d'essai doit parler la même langue que
-  // lui, sinon le contrôle prouve autre chose que ce qu'il croit.
+  // L'ordre s'écrit en séquence en ligne, comme le pose le sérialiseur du cockpit :
+  // ordre-articles: ["01-a", "02-b"].
   fs.writeFileSync(path.join(racine, 'ausgabe.yaml'),
     ['revue: revue',
      'ordre-articles: [' + slugs.map((s) => '"' + s + '"').join(', ') + ']'].join(LF) + LF);
@@ -47,8 +45,8 @@ const ordreEcrit = (racine) => ((fs.readFileSync(path.join(racine, 'ausgabe.yaml
   .split(',').map((x) => x.trim().replace(/^"|"$/g, '')).filter((x) => x !== '');
 
 // Ajoute au numéro un article de Documentation Kirby (lib/kirby-contenu.js) : pas de
-// <slug>.md du tout, seulement sa fiche, sa page (documentation.<lang>.txt) et un dossier
-// de fiche par entrée de `fichesDossiers` — la même forme qu'écrit le cockpit
+// <slug>.md, seulement sa fiche, sa page (documentation.<lang>.txt) et un dossier de fiche
+// par entrée de `fichesDossiers`, sous la forme qu'écrit le cockpit
 // (<n>_<slug-fiche>/<type>.<lang>.txt). ausgabe.yaml doit déjà exister (numero() l'écrit).
 function ajouterDocumentation(racine, slug, fichesDossiers) {
   const d = path.join(racine, 'articles', slug);
@@ -64,11 +62,11 @@ function ajouterDocumentation(racine, slug, fichesDossiers) {
   }
 }
 
-// Pose une bibliographie détachée sur un article déjà écrit par numero() : le fichier à
-// part, et le marqueur qui l'y renvoie dans le .md — la forme exacte que laisse l'import
-// (pipeline/filters/szh-biblio-detacher.lua). `phraseCorps`, si fournie, s'ajoute dans le
-// corps de l'article — pour éprouver qu'un ancien slug qui y traînerait par hasard
-// (légende, URL) n'est jamais touché par la réparation du marqueur.
+// Pose une bibliographie détachée sur un article écrit par numero() : le fichier à part, et
+// le marqueur qui y renvoie dans le .md, sous la forme que laisse l'import
+// (pipeline/filters/szh-biblio-detacher.lua). `phraseCorps`, si fournie, s'ajoute au corps,
+// pour vérifier qu'un ancien slug présent dans le texte (légende, URL) n'est pas touché par
+// la réparation du marqueur.
 function ajouterBiblio(racine, slug, phraseCorps) {
   const d = path.join(racine, 'articles', slug);
   fs.writeFileSync(path.join(d, slug + '.biblio.md'), 'Dupont, A. (2024). Un titre.' + LF);
@@ -98,15 +96,15 @@ test('exécution : un échange de rangs renomme les deux dossiers et leurs fichi
   assert.strictEqual(
     fs.readFileSync(path.join(racine, 'articles', '00-inclusion', '00-inclusion.md'), 'utf8')
       .indexOf('![](media/fig.png)') !== -1, true, 'le texte de l’article a été touché');
-  // Et le fichier étranger au slug reste tranquille.
+  // Le fichier étranger au slug ne bouge pas.
   assert.ok(fs.existsSync(path.join(racine, 'articles', '00-inclusion', 'notes.txt')));
   // L'ordre du numéro parle des nouveaux noms.
   assert.deepStrictEqual(ordreEcrit(racine), ['00-inclusion', '01-edito']);
   fs.rmSync(racine, { recursive: true, force: true });
 });
 
-// La règle métier : le premier article de l'ordre écran (prefixeOrdre(0),
-// lib/articles.js) doit porter « 00- » sur le disque, jamais « 01- ».
+// Le premier article de l'ordre écran (prefixeOrdre(0), lib/articles.js) porte « 00- » sur
+// le disque.
 test('exécution : le premier article de l’ordre prend « 00 » sur le disque', () => {
   const racine = numero(['edito', 'inclusion']);
   const r = hote.renumeroter(racine, ['edito', 'inclusion']);
@@ -129,7 +127,7 @@ test('exécution : rien à faire ne touche rien, pas même ausgabe.yaml', () => 
 });
 
 test('exécution : les documents produits des articles renommés sont retirés', () => {
-  // out/<slug>/ porte le nom d'avant : le laisser ferait cohabiter deux PDF pour un même
+  // out/<slug>/ porte le nom d'avant : le garder ferait cohabiter deux PDF pour un même
   // article, dont un périmé que l'export pourrait reprendre.
   const racine = numero(['00-edito', '01-inclusion']);
   for (const slug of ['00-edito', '01-inclusion']) {
@@ -152,8 +150,8 @@ test('exécution : un ordre qui ne parle pas des mêmes articles est refusé, sa
 });
 
 test('reprise : un lot interrompu se termine, et l’ordre s’écrit alors seulement', () => {
-  // On simule l'interruption : les dossiers sont passés par leur nom temporaire, et la
-  // seconde passe n'a pas eu lieu. C'est l'état que laisse une fermeture de fenêtre.
+  // Interruption simulée : les dossiers sont sous leur nom temporaire et la seconde passe n'a
+  // pas eu lieu, l'état que laisse une fermeture de fenêtre.
   const racine = numero(['00-edito', '01-inclusion']);
   const base = path.join(racine, 'articles');
   fs.renameSync(path.join(base, '00-edito'), path.join(base, '~ordre-01-edito'));
@@ -191,8 +189,7 @@ test('reprise : une destination occupée est refusée, et rien ne s’écrase', 
 });
 
 test('état : on sait dire qu’un lot a été interrompu', () => {
-  // Ce que l'interface lira pour proposer la reprise plutôt que de laisser un numéro
-  // dans un état que personne ne sait nommer.
+  // Ce que l'interface lit pour proposer la reprise.
   const racine = numero(['00-edito']);
   assert.strictEqual(hote.repriseEnAttente(racine), false);
   fs.renameSync(path.join(racine, 'articles', '00-edito'),
@@ -203,38 +200,35 @@ test('état : on sait dire qu’un lot a été interrompu', () => {
 
 // ---- le marqueur de bibliographie suit le renommage -----------------------------------
 //
-// Le défaut constaté sur le poste du propriétaire : un article renommé garde un marqueur
-// « ::: {.szh-biblio src=…} » qui nomme l'ANCIEN fichier, alors que celui-ci vient d'être
-// renommé sous les yeux d'alignerFichiers(). Les trois chemins qui renomment (Terminer,
-// la reprise, l'import — ce dernier via prefixerNouveauxArticles, éprouvé à part dans
-// test/js/import-prefixe.test.js) passent tous par alignerFichiers() : un seul contrôle
-// ici couvre « Terminer » et la reprise.
+// Un article renommé doit voir son marqueur « ::: {.szh-biblio src=…} » nommer le nouveau
+// fichier, renommé par alignerFichiers(). Les trois chemins qui renomment (Terminer, la
+// reprise, l'import via prefixerNouveauxArticles, éprouvé dans
+// test/js/import-prefixe.test.js) passent par alignerFichiers() : un contrôle ici couvre
+// « Terminer » et la reprise.
 
 test('renumeroter : le marqueur de bibliographie suit le dossier renommé', () => {
   const racine = numero(['00-edito', '01-inclusion']);
   ajouterBiblio(racine, '01-inclusion');
   const r = hote.renumeroter(racine, ['01-inclusion', '00-edito']);
   assert.strictEqual(r.erreur, null, 'renumérotation refusée : ' + r.erreur);
-  // « 01-inclusion » devient « 00-inclusion » : son fichier de bibliographie suit (comme
-  // n'importe quel sidecar), et le marqueur doit désormais le nommer, lui.
+  // « 01-inclusion » devient « 00-inclusion » : son fichier de bibliographie suit, comme tout
+  // sidecar, et le marqueur le nomme.
   assert.ok(fs.existsSync(path.join(racine, 'articles', '00-inclusion', '00-inclusion.biblio.md')));
   assert.strictEqual(marqueurSrc(racine, '00-inclusion'), '00-inclusion.biblio.md',
     'le marqueur désigne encore l’ancien fichier : la bibliographie ne se résout plus');
   fs.rmSync(racine, { recursive: true, force: true });
 });
 
-// Le chemin réel renumeroter() -> alignerFichiers() -> reparerMarqueurApresAlignement() ->
-// reecrireMarqueurBiblio() n'exerçait jusqu'ici que le cas d'un marqueur PÉRIMÉ (le test
-// ci-dessus) : reecrireMarqueurBiblio() a pourtant sa propre garde contre un marqueur DÉJÀ
-// juste (ligne « m[2] === versNom »), pour ne pas dater le .md à chaque renumérotation. Ce
-// cas — rare mais réel (une retouche à la main juste avant « Terminer ») — n'était exercé
-// nulle part par ce chemin.
+// Le chemin renumeroter() -> alignerFichiers() -> reparerMarqueurApresAlignement() ->
+// reecrireMarqueurBiblio(), avec un marqueur déjà juste (retouché à la main juste avant
+// « Terminer ») : la garde « m[2] === versNom » évite de réécrire le .md et de changer sa
+// date à chaque renumérotation.
 test('renumeroter : un marqueur déjà pointé sur sa future place n’est pas réécrit', () => {
   const racine = numero(['00-edito', '01-inclusion']);
   ajouterBiblio(racine, '01-inclusion');
   const md = path.join(racine, 'articles', '01-inclusion', '01-inclusion.md');
-  // Le marqueur porte déjà le nom que le fichier de bibliographie prendra APRÈS le
-  // renommage à venir — le fichier lui-même, lui, n'a pas encore bougé.
+  // Le marqueur porte déjà le nom que le fichier de bibliographie prendra après le
+  // renommage ; le fichier lui-même n'a pas encore bougé.
   fs.writeFileSync(md, fs.readFileSync(md, 'utf8')
     .replace('01-inclusion.biblio.md', '00-inclusion.biblio.md'));
   const avant = fs.statSync(md).mtimeMs;
@@ -252,8 +246,8 @@ test('reprise : le marqueur de bibliographie suit aussi', () => {
   const racine = numero(['00-edito', '01-inclusion']);
   ajouterBiblio(racine, '01-inclusion');
   const base = path.join(racine, 'articles');
-  // Lot interrompu à mi-chemin, comme le test de reprise plus haut : les dossiers sont
-  // déjà sous leur nom temporaire, portant leur destination.
+  // Lot interrompu à mi-chemin, comme le test de reprise plus haut : les dossiers sont sous
+  // leur nom temporaire, qui porte leur destination.
   fs.renameSync(path.join(base, '00-edito'), path.join(base, '~ordre-01-edito'));
   fs.renameSync(path.join(base, '01-inclusion'), path.join(base, '~ordre-00-inclusion'));
   const r = hote.reprendre(racine);
@@ -289,13 +283,12 @@ test('renumeroter : un ancien slug resté dans le corps du texte n’est jamais 
   fs.rmSync(racine, { recursive: true, force: true });
 });
 
-// ---- guérison des marqueurs déjà périmés, sans aucun renommage -----------------------
+// ---- réparation des marqueurs périmés, sans renommage ---------------------------------
 
 test('reparerMarqueursOrphelins : un marqueur périmé guérit quand un seul candidat existe', () => {
   const racine = numero(['00-edito']);
   ajouterBiblio(racine, '00-edito');
-  // Le marqueur pointe vers un fichier qui n'existe plus — exactement le défaut constaté :
-  // un renommage antérieur à ce correctif, jamais réparé.
+  // Le marqueur pointe vers un fichier qui n'existe plus (renommage ancien, jamais réparé).
   const md = path.join(racine, 'articles', '00-edito', '00-edito.md');
   fs.writeFileSync(md, fs.readFileSync(md, 'utf8')
     .replace('00-edito.biblio.md', 'ancien-nom.biblio.md'));
@@ -325,8 +318,7 @@ test('reparerMarqueursOrphelins : plusieurs candidats, on ne devine pas non plus
   const md = path.join(dossier, '00-edito.md');
   fs.writeFileSync(md, fs.readFileSync(md, 'utf8')
     .replace('00-edito.biblio.md', 'ancien-nom.biblio.md'));
-  // Un second fichier *.biblio.md apparaît : deux candidats, on ne choisit pas pour le
-  // rédacteur.
+  // Un second fichier *.biblio.md : deux candidats, le choix revient au rédacteur.
   fs.writeFileSync(path.join(dossier, 'autre.biblio.md'), 'Une autre liste.' + LF);
   const n = hote.reparerMarqueursOrphelins(racine);
   assert.strictEqual(n, 0);
@@ -336,14 +328,12 @@ test('reparerMarqueursOrphelins : plusieurs candidats, on ne devine pas non plus
 
 // ---- Un numéro qui porte une Documentation Kirby -------------------------------------
 //
-// Un dossier de Documentation n'a plus de <slug>.md (lib/kirby-contenu.js) : son fichier de
-// page (documentation.<lang>.txt) porte un nom FIXE, pas celui du dossier — à la différence
-// de <slug>.meta.yaml, qui le suit toujours. Défaut réel, reproduit avant correctif : quand
-// ce dossier s'appelle « documentation » (le nom par défaut, SLUG_DOCUMENTATION côté
-// cockpit), la tige de son nom de dossier ET le nom du fichier de page coïncident
-// (« documentation ») — la règle générale d'alignement des sidecars (alignerFichiers)
-// prenait alors le fichier de page pour un sidecar du dossier et le renommait en
-// « 0X-documentation.fr.txt », un nom que plus rien ne sait relire.
+// Un dossier de Documentation n'a pas de <slug>.md (lib/kirby-contenu.js) : son fichier de
+// page (documentation.<lang>.txt) porte un nom fixe, alors que <slug>.meta.yaml suit le
+// dossier. Quand le dossier s'appelle « documentation » (SLUG_DOCUMENTATION, nom par défaut
+// côté cockpit), le nom du dossier et celui du fichier de page coïncident : la règle
+// d'alignement des sidecars (alignerFichiers) ne doit pas prendre le fichier de page pour un
+// sidecar et le renommer en « 0X-documentation.fr.txt », nom que rien ne relit.
 test('exécution : une Documentation Kirby présente — son fichier de page n’est jamais pris pour un sidecar', () => {
   const racine = numero(['00-edito']);
   ajouterDocumentation(racine, '01-documentation', ['1_un-livre', '2_un-film']);
@@ -353,7 +343,7 @@ test('exécution : une Documentation Kirby présente — son fichier de page n�
   assert.deepStrictEqual(dossiers(racine), ['00-documentation', '01-edito']);
 
   const docApres = path.join(racine, 'articles', '00-documentation');
-  // Le fichier de page garde son nom fixe — jamais « 00-documentation.fr.txt ».
+  // Le fichier de page garde son nom fixe.
   assert.ok(fs.existsSync(path.join(docApres, 'documentation.fr.txt')),
     'le fichier de page a disparu ou a été renommé');
   assert.ok(!fs.existsSync(path.join(docApres, '00-documentation.fr.txt')),
@@ -361,7 +351,7 @@ test('exécution : une Documentation Kirby présente — son fichier de page n�
   assert.strictEqual(
     fs.readFileSync(path.join(docApres, 'documentation.fr.txt'), 'utf8').indexOf('Uuid: pageuuid0000001') !== -1,
     true, 'le contenu de la page a été touché');
-  // La fiche de métadonnées, elle, suit bien le dossier — c'est la règle normale.
+  // La fiche de métadonnées suit le dossier, selon la règle normale.
   assert.ok(fs.existsSync(path.join(docApres, '00-documentation.meta.yaml')),
     'la fiche de métadonnées n’a pas suivi le renommage du dossier');
   // Les dossiers de fiches ne sont pas des articles : ni renommés, ni vidés.
@@ -378,9 +368,9 @@ test('exécution : une Documentation Kirby présente — son fichier de page n�
   fs.rmSync(racine, { recursive: true, force: true });
 });
 
-// Le même défaut, vu depuis reparerMarqueursOrphelins : un balayage qui lirait le fichier de
-// page comme un .md d'article planterait sur un dossier de Documentation. Il ne doit ni
-// lever, ni y toucher.
+// Même cas vu depuis reparerMarqueursOrphelins : un balayage qui lirait le fichier de page
+// comme le .md d'un article planterait sur un dossier de Documentation. Il ne doit ni lever
+// ni y toucher.
 test('reparerMarqueursOrphelins : une Documentation Kirby dans le lot ne le fait pas lever, et n’y touche pas', () => {
   const racine = numero(['00-edito']);
   ajouterDocumentation(racine, '01-documentation', ['1_un-livre']);
@@ -404,11 +394,9 @@ test('reparerMarqueursOrphelins : un marqueur déjà juste n’est pas réécrit
 
 // ---- options.config / options.cle : le profil livre --------------------------------
 //
-// ecrireOrdre() (dans hote, ci-dessus) écrivait ausgabe.yaml/ordre-articles en dur : un
-// livre passé par ce même chemin (« Terminer », extension.js) aurait créé un ausgabe.yaml
-// parasite au lieu d'écrire dans son buch.yaml. Fixture minimale, à la forme d'un livre
-// (chapitres/, buch.yaml, ordre-chapitres) plutôt que numero() ci-dessus, qui est câblée
-// sur celle d'une revue.
+// Un livre passé par « Terminer » (extension.js) écrit son ordre dans buch.yaml, sans créer
+// d'ausgabe.yaml parasite. La fixture a la forme d'un livre (chapitres/, buch.yaml,
+// ordre-chapitres) ; numero() ci-dessus a celle d'une revue.
 function livre(slugs) {
   const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-renum-livre-'));
   fs.writeFileSync(path.join(racine, 'buch.yaml'),

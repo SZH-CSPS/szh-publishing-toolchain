@@ -1,24 +1,22 @@
-// La bibliographie détachée face au réimport : « l'auteur renvoie son Word, ses références
-// ont changé ».
+// La bibliographie détachée face au réimport : l'auteur renvoie son Word, et ses références
+// ont changé.
 //
 //   node --test "test/js/*.test.js"
 //
-// LE DÉFAUT RÉPARÉ ICI, mesuré avant de l'écrire : depuis que l'import détache les
-// références dans <slug>.biblio.md, un Word dont SEULE la bibliographie changeait était
-// jugé « rien à faire » (code 3), son fichier consommé, et la correction de l'auteur jetée
-// sans un mot. C'est exactement la perte silencieuse que le réimport existe pour empêcher.
+// L'import détache les références dans <slug>.biblio.md. Un Word dont seule la bibliographie
+// change doit être réimporté, pas jugé « rien à faire » (code 3) avec la correction jetée.
 //
-// Ce fichier surveille les endroits où elle redeviendrait possible :
-//   * « rien à faire » cesserait de comparer le fichier de bibliographie ;
-//   * la liste blanche de ce que le Word possède l'oublierait — la bibliographie vient des
-//     styles du Word, donc du Word, et c'est cette liste qui décide de ce qui est remplacé ;
-//   * les empreintes noteraient la version INSTALLÉE et non celle que le Word a livrée :
+// Ce fichier surveille les endroits où cette perte deviendrait possible :
+//   * « rien à faire » doit comparer le fichier de bibliographie ;
+//   * la liste blanche de ce que le Word possède (ce qui est remplacé) doit inclure la
+//     bibliographie, qui vient des styles du Word ;
+//   * les empreintes notent la version livrée par le Word, pas la version installée : sinon
 //     une bibliographie gardée passerait au réimport suivant pour une correction de
 //     l'auteur, et le même faux conflit se rouvrirait à chaque fois ;
-//   * un conflit serait résolu en silence, alors que l'arborescence du cockpit invite
-//     désormais à corriger ce fichier à la main ;
-//   * l'encadré rouge de « bibliographie introuvable » perdrait son style, la règle de
-//     print.css ne connaissant plus la classe que le filtre pose.
+//   * un conflit n'est pas résolu en silence, car l'arborescence du cockpit invite à
+//     corriger ce fichier à la main ;
+//   * l'encadré rouge « bibliographie introuvable » garde son style : la règle CSS connaît la
+//     classe que le filtre pose.
 'use strict';
 
 const test = require('node:test');
@@ -32,8 +30,8 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
 
 const PY = lire('pipeline', 'reimporter.py');
-// L'encadré « fichier introuvable » vit désormais dans partage-filtres.css (commune au
-// livre) ; on lit les deux feuilles comme une seule, dans l'ordre où le Makefile les empile.
+// L'encadré « fichier introuvable » vit dans partage-filtres.css (commune au livre) : les deux
+// feuilles se lisent comme une seule, dans l'ordre où le Makefile les empile.
 const CSS = lire('pipeline', 'styles', 'partage-filtres.css') + lire('pipeline', 'styles', 'print.css');
 const CITATIONS = lire('pipeline', 'filters', 'szh-citations.lua');
 const SH = lire('pipeline', 'import-docx.sh');
@@ -47,16 +45,15 @@ const SLUG = '01-essai';
 test('bibliographie : « rien à faire » la compare, sans quoi la correction est jetée', () => {
   const bloc = PY.slice(PY.indexOf('def rien_a_faire('), PY.indexOf('def pause_eventuelle('));
   assert.ok(bloc.length > 0, 'la comparaison « rien à faire » a disparu');
-  // biblio_inchangee(), pas memes_octets() : depuis que l'import pose toujours
-  // <slug>.biblio.md, même sans bibliographie dans le Word, absent et vide doivent
-  // compter pour la même chose des deux côtés (voir son commentaire), sans quoi ce
-  // fichier toujours créé ferait échouer « rien à faire » pour rien.
+  // biblio_inchangee(), pas memes_octets() : l'import pose toujours <slug>.biblio.md, même
+  // sans bibliographie dans le Word. Absent et vide comptent donc pareil des deux côtés (voir
+  // son commentaire), sinon ce fichier toujours créé ferait échouer « rien à faire ».
   assert.match(bloc, /biblio_inchangee\(vivant, temp, slug\)/,
     'la bibliographie n’est plus comparée : un Word dont seules les références changent '
     + 'serait jugé sans effet, consommé, et la correction de l’auteur jetée — c’est le '
     + 'défaut mesuré, il ne doit pas revenir');
-  // Le fichier est nommé à un seul endroit, comme szh-biblio-detacher.lua le nomme à
-  // l'import : deux formations du nom finiraient par diverger.
+  // Le nom du fichier est formé à un seul endroit, comme szh-biblio-detacher.lua le forme à
+  // l'import.
   assert.match(PY, /def nom_biblio\(slug\):\s*\n\s*return slug \+ '\.biblio\.md'/,
     'le nom du fichier de bibliographie n’est plus formé en un seul endroit');
   assert.match(SH, /<slug>\.biblio\.md/,
@@ -64,8 +61,8 @@ test('bibliographie : « rien à faire » la compare, sans quoi la correction es
 });
 
 test('bibliographie : les empreintes notent ce que le Word a livré', () => {
-  // La subtilité qui évite un faux conflit perpétuel : l'empreinte décrit la version du
-  // Word, jamais celle qui est installée quand la rédaction a gagné l'arbitrage.
+  // Pour éviter un faux conflit perpétuel, l'empreinte décrit la version du Word, pas celle
+  // installée quand la rédaction a gagné l'arbitrage.
   assert.match(PY, /def fusionner_biblio\(vivant, temp, empreintes, slug\)/,
     'la décision sur la bibliographie a disparu');
   assert.match(PY, /lignes\.append\('biblio\\t%s\\t%s' % \(biblio, nom_biblio\(slug\)\)\)/,
@@ -73,7 +70,7 @@ test('bibliographie : les empreintes notent ce que le Word a livré', () => {
     + 'distinguer une correction de la rédaction d’une correction de l’auteur');
   assert.match(PY, /elif champs\[0\] == 'biblio' and len\(champs\) >= 2:/,
     'l’empreinte de la bibliographie n’est plus relue');
-  // Sans empreinte, on ne peut pas savoir : toute différence est un conflit, et on le dit.
+  // Sans empreinte, toute différence est un conflit, et il est signalé.
   assert.match(PY, /retravaillee = emp is None or emp != sha_ancien/,
     'sans empreinte, une bibliographie différente n’est plus comptée comme retravaillée : '
     + 'le travail de la rédaction disparaîtrait sans un mot');
@@ -85,8 +82,8 @@ test('bibliographie : les empreintes notent ce que le Word a livré', () => {
 test('bibliographie : les trois états sont écrits, et le conflit est nommé', () => {
   const bloc = PY.slice(PY.indexOf('def fusionner_biblio('),
     PY.indexOf('def copier_preserves('));
-  // Gardée : la version d'ici est recopiée dans le chantier. Sans cette copie, la
-  // bibliographie disparaîtrait de l'article — la liste blanche l'exclut de la recopie.
+  // Gardée : la version d'ici est recopiée dans le chantier, car la liste blanche l'exclut de
+  // la recopie et la bibliographie disparaîtrait de l'article.
   assert.match(bloc, /shutil\.copyfile\(ancien, neuf\)/,
     'la version de la rédaction n’est plus réinstallée dans le chantier : l’article '
     + 'perdrait sa bibliographie');
@@ -103,14 +100,14 @@ test('bibliographie : les trois états sont écrits, et le conflit est nommé', 
 });
 
 test('bibliographie : aucun message du réimport ne part sans son allemand', () => {
-  // Les trois codes neufs passent par avertir(code, champs, fr, de) : la signature exige
-  // les deux langues. On vérifie ici l'orthographe suisse et le format à codes.
+  // Les trois codes passent par avertir(code, champs, fr, de), qui exige les deux langues. On
+  // vérifie ici l'orthographe suisse et le format à codes.
   const bloc = PY.slice(PY.indexOf("biblio_avant = resultat['rebut']"),
     PY.indexOf('# 6. Tout ce que le Word ne possède pas revient'));
   assert.ok(bloc.length > 0, 'les messages de la bibliographie ont disparu');
   assert.strictEqual((bloc.match(/\[de\] |voix\.dire\(|voix\.avertir\(/g) || []).length > 0, true);
   assert.strictEqual(bloc.indexOf('ß'), -1, 'orthographe allemande : « ss », jamais « ß »');
-  // Un message qui nomme un chemin de venv, un filtre .lua ou un code de sortie a échoué.
+  // Un message ne nomme ni chemin de venv, ni filtre .lua, ni code de sortie.
   for (const bruit of ['.lua', 'sha256', 'SZH_', 'code 3', 'venv']) {
     assert.strictEqual(bloc.indexOf(bruit), -1,
       'un message destiné au rédacteur nomme « ' + bruit + ' »');
@@ -118,8 +115,7 @@ test('bibliographie : aucun message du réimport ne part sans son allemand', () 
 });
 
 test('bibliographie introuvable : l’encadré rouge est bien celui de print.css', () => {
-  // Le filtre pose les classes ; print.css doit les habiller. Sans ce contrôle, la classe
-  // juste (szh-biblio-manquante) pouvait rester sans style, et l'avertissement se lisait
+  // Le filtre pose les classes ; print.css doit les habiller, sinon l'avertissement se lirait
   // comme une phrase de l'article.
   const marqueur = /pandoc\.Attr\('',\s*\{([^}]*)\},\s*\{\}\)\s*\)\s*\nend/.exec(
     CITATIONS.slice(CITATIONS.indexOf('local function bloc_manquant')));
@@ -139,33 +135,29 @@ test('bibliographie introuvable : l’encadré rouge est bien celui de print.css
       + 'introuvable » passerait pour du texte courant');
   }
   // Les couleurs de la paire d'alerte sont mesurées par test/apca-check.py : la règle les
-  // garde, on ne fait que lui joindre un sélecteur.
+  // garde, on lui joint seulement un sélecteur.
   assert.match(CSS, /background: #fdecea;/,
     'la paire d’alerte a changé de couleur : test/apca-check.py la mesure');
 });
 
-// ---- Les états, mesurés en EXÉCUTANT le script ----
+// ---- Les états, mesurés en exécutant le script ----
 //
 // Une conversion factice joue le Word corrigé : elle recopie un corps et une bibliographie
-// depuis un dossier de fixtures. --pipeline permet de la substituer sans toucher à la
-// chaîne réelle, et $SZH_IMPORT_DIR est la seule couture nécessaire.
+// depuis un dossier de fixtures. --pipeline la substitue à la chaîne réelle, et
+// $SZH_IMPORT_DIR suffit à l'aiguiller.
 
 
-// Un bash qui comprend les chemins que Python lui passera : sous Windows, `bash` est
-// souvent la passerelle WSL, qui ne sait rien d'un chemin « C:\… ». Sondé depuis Python,
-// jamais depuis Node, qui ne trouve pas le même bash (voir bashDuPython, test/js/gardes.js).
+// Un bash qui comprend les chemins que Python lui passera : sous Windows, `bash` est souvent
+// la passerelle WSL, qui ignore les chemins « C:\… ». Sondé depuis Python, car Node ne trouve
+// pas le même bash (voir bashDuPython, test/js/gardes.js).
 function bashCompatible() {
   return bashDuPython();
 }
 
-// Pandoc, mesuré directement (jamais via wsl.exe : ces tests lancent bash localement, pas
-// une distribution). Un poste « bash sans pandoc » (le runner CI windows-latest, sans
-// pandoc ni WSL, en est un exemple réel) passerait bashCompatible() puis ferait échouer
-// reimporter.py --pipeline, dont le faux import-docx.sh de ce fichier n'a pas besoin de
-// pandoc lui-même, mais dont la chaîne réelle en amont (import-docx.sh non simulé, appelé
-// ailleurs par le même reimporter.py) en a besoin. Détection centralisée dans
-// test/js/gardes.js (sansPandoc) : un saut bruyant par sauter.pandoc(t), jamais un vert par
-// défaut.
+// Pandoc, détecté directement (pas via wsl.exe : ces tests lancent bash localement). Un poste
+// avec bash sans pandoc (le runner windows-latest) passerait bashCompatible() puis ferait
+// échouer reimporter.py --pipeline, dont la chaîne réelle en amont a besoin de pandoc.
+// Détection dans test/js/gardes.js (sansPandoc) : sauter.pandoc(t) saute en le disant.
 
 
 const REFS_IMPORT = ['Aeschlimann, B. (2020). Un titre.', '',
@@ -188,8 +180,8 @@ function jsonDeLaSortie(sortie) {
   return lignes.length === 1 ? JSON.parse(lignes[0]) : null;
 }
 
-// Une revue jetable dont l'article a été importé : c'est le script lui-même qui note les
-// empreintes, comme la conversion le fait en fin d'import.
+// Une revue jetable dont l'article a été importé : le script lui-même note les empreintes,
+// comme la conversion le fait en fin d'import.
 function revueImportee(bibliolivree, bibliolInstallee) {
   const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-biblio-'));
   fs.writeFileSync(path.join(racine, 'ausgabe.yaml'), 'nummer: "2026-03"' + LF);
@@ -315,8 +307,8 @@ test('bibliographie gardée : le Word livre les mêmes références qu’à l’
       'la référence ajoutée à la main a disparu alors que l’auteur n’avait rien changé');
     assert.deepStrictEqual(j.avertissements, [],
       'une bibliographie gardée n’a rien à signaler');
-    // ⚠ Le point qui compte : l'empreinte notée est celle du WORD, pas celle du fichier
-    // installé. Sinon le réimport suivant croirait à une correction de l'auteur.
+    // L'empreinte notée est celle du Word, pas celle du fichier installé : sinon le réimport
+    // suivant croirait à une correction de l'auteur.
     assert.strictEqual(shaBiblioNote(racine), shaImport,
       'l’empreinte notée est celle du fichier installé : le prochain réimport rouvrirait '
       + 'le même faux conflit, et à chaque fois');
@@ -395,23 +387,20 @@ test('bibliographie : « Annuler le réimport » la remet avec le reste', { skip
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }
 });
 
-// ---- Depuis que l'import pose TOUJOURS <slug>.biblio.md, même vide -------------------
+// ---- L'import pose toujours <slug>.biblio.md, même vide --------------------------------
 //
-// szh-biblio-detacher.lua ne se contente plus de ne rien faire quand le Word n'a pas de
-// bibliographie : il crée le fichier quand même, vide, pour que la rédaction puisse
-// l'écrire après coup. Ce que ces contrôles-ci mesurent : que ce changement ne rend PAS
-// bruyant un cas qui était muet. Un article qui n'a jamais eu de bibliographie, réimporté
-// par un Word qui n'en a toujours pas, ne doit recevoir NI message « nouvelle
-// bibliographie », NI conflit, NI retrait — exactement comme avant, quand le fichier
-// n'existait pas du tout. `biblio: ''` dans les fixtures simule ce que la chaîne réelle
-// produit désormais (fichier vide) sans faire tourner pandoc pour de vrai.
+// szh-biblio-detacher.lua crée le fichier vide quand le Word n'a pas de bibliographie, pour
+// que la rédaction puisse l'écrire après coup. Un article sans bibliographie, réimporté par
+// un Word qui n'en a toujours pas, ne reçoit ni message « nouvelle bibliographie », ni
+// conflit, ni retrait. `biblio: ''` dans les fixtures simule ce fichier vide sans faire
+// tourner pandoc.
 test('bibliographie : vide comme absent, un Word sans bibliographie reste « rien à faire »', { skip: sansPython },
   (t) => {
     if (!bashCompatible()) { return; }
     const absent = sansPandoc;
     if (absent) { return sauter.pandoc(t); }
     // L'article n'a jamais eu de bibliographie : pas de fichier vivant (bibliolInstallee
-    // absent), comme le veut « pas de création rétroactive ».
+    // absent), pas de création rétroactive.
     const racine = revueImportee(null, null);
     try {
       const { r, j } = reimporter(racine, CORPS, '');
@@ -422,10 +411,9 @@ test('bibliographie : vide comme absent, un Word sans bibliographie reste « rie
     } finally { fs.rmSync(racine, { recursive: true, force: true }); }
   });
 
-// Même contrôle que « bibliographie retirée » plus haut, mais avec le fichier vide du
-// nouveau Word plutôt qu'absent : la même perte doit être nommée de la même façon,
-// biblio_absente_ou_vide() effaçant la différence entre les deux avant que la décision ne
-// se prenne.
+// Comme « bibliographie retirée » plus haut, mais avec un fichier vide livré par le nouveau
+// Word : la perte est nommée de la même façon, car biblio_absente_ou_vide() efface la
+// différence avant la décision.
 test('bibliographie : un Word qui livre un fichier vide retire la bibliographie, comme absent', { skip: sansPython },
   (t) => {
     if (!bashCompatible()) { return; }

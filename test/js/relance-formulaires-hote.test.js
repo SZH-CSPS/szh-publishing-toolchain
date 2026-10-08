@@ -1,9 +1,9 @@
 // Les formulaires « Médias de l'article » et l'éditeur de tableaux relancent la compilation
-// de l'article qu'ils viennent d'enregistrer — comme les métadonnées
-// (focus-recompilation.test.js, A3) — sur l'hôte réellement activé : UNE compilation, du bon
-// article, seulement quand quelque chose a changé, après l'anti-rebond (raccourci ici à
-// 40 ms), à la fermeture du panneau si elle attendait encore, et jamais sur un numéro gelé.
-// La mécanique de l'anti-rebond elle-même est éprouvée à froid (relance-compilation.test.js).
+// de l'article qu'ils viennent d'enregistrer, comme les métadonnées
+// (focus-recompilation.test.js), sur l'hôte réellement activé : une compilation, du bon
+// article, seulement si quelque chose a changé, après l'anti-rebond (40 ms ici), à la
+// fermeture du panneau si elle attendait encore, et jamais sur un numéro gelé. La mécanique
+// de l'anti-rebond est éprouvée à froid dans relance-compilation.test.js.
 //
 //   node --test "test/js/relance-formulaires-hote.test.js"
 //
@@ -166,7 +166,7 @@ test('Numéro verrouillé (compilation automatique coupée) : ni Médias ni Tabl
   async () => {
     fs.writeFileSync(TABLE, TABLE_HTML('a'));
     // Les panneaux s'ouvrent avant le verrou (cmdEcriture le refuserait) : un panneau resté
-    // ouvert survit au verrouillage, c'est justement le cas à couvrir.
+    // ouvert survit au verrouillage, et c'est le cas à couvrir.
     const medias = await panneauMedias();
     const table = await panneauTable();
     const etatAvant = session.etatNumero();

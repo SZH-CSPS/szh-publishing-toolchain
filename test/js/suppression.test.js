@@ -2,17 +2,15 @@
 //
 //   node --test "test/js/*.test.js"
 //
-// Le cas vu sur un poste : l'article part, puis fs.rmSync bute sur un EPERM au moment
-// d'effacer le dossier lui-même — OneDrive le synchronisait encore. Deux dégâts, tous
-// deux invisibles depuis l'interface :
+// fs.rmSync peut buter sur un EPERM en effaçant le dossier lui-même, quand OneDrive le
+// synchronise encore. Le verrou tombe seul en quelques secondes. Ce qui est vérifié :
 //
-//  1. L'échec était définitif à la première tentative, alors que le verrou tombe seul en
-//     quelques secondes.
-//  2. Le lever d'exception sautait l'effacement de out/<slug>, qui pèse le plus lourd
-//     (PDF + HTML), et l'article disparaissait quand même de l'arbre (il n'y a plus de
-//     .md) : plus aucun geste ne permettait de rattraper les documents restés là.
+//  1. la suppression réessaie au lieu d'échouer à la première tentative ;
+//  2. l'effacement de out/<slug> (PDF + HTML, le plus lourd) a lieu même si le dossier
+//     résiste : l'article disparaît de l'arbre dès que son .md est parti, et plus aucun
+//     geste ne permettrait de rattraper ces fichiers.
 //
-// D'où ce contrôle, qui simule le verrou en détournant fs.rmSync.
+// Le verrou est simulé en détournant fs.rmSync.
 'use strict';
 
 const test = require('node:test');
@@ -24,7 +22,7 @@ const { revueDEssai, activerHote } = require('./hote-factice');
 const REVUE = revueDEssai();
 const HOTE = activerHote(REVUE);
 
-// out/<slug> n'existe pas dans la revue d'essai : la suppression doit l'emporter aussi.
+// out/<slug> n'existe pas dans la revue d'essai : on le crée, la suppression doit l'emporter.
 function poserSortie(slug) {
   const dossier = path.join(REVUE, 'out', slug);
   fs.mkdirSync(dossier, { recursive: true });
@@ -68,19 +66,16 @@ test('un verrou passager ne fait plus échouer la suppression', async () => {
 });
 
 test('un dossier d’article qui résiste n’emporte pas les documents produits', async () => {
-  // Le fixture nommait ce dossier « 01-essai », mais le contrôle précédent a supprimé
-  // « 02-sans-fiche » et alignerDossiersSurOrdre() a depuis réaligné les rangs restants
-  // (base 0 : lib/renumerotation.js) — il porte maintenant « 00-essai ». On lit le nom
-  // réel sur l'arbre plutôt que de supposer un nom figé, sans quoi ce test casserait à
-  // chaque réalignement amont, sans rapport avec ce qu'il éprouve.
+  // Les rangs ont été réalignés après le contrôle précédent (base 0, lib/renumerotation.js) :
+  // on lit le nom réel sur l'arbre plutôt que de supposer un nom figé.
   const [slug] = HOTE.arbre().listerArticles();
   assert.ok(slug, 'aucun article sur lequel jouer ce contrôle');
   const dossier = path.join(REVUE, 'articles', slug);
   const sortie = poserSortie(slug);
   const nErreurs = HOTE.erreurs.length;
 
-  // Sans code de verrou : la fonction rend la main tout de suite, sans les dix secondes
-  // de reprises — ce qui vaut aussi pour un vrai échec définitif.
+  // Sans code de verrou : la fonction rend la main tout de suite, sans les dix secondes de
+  // reprises, comme pour un vrai échec définitif.
   const rendre = verrouiller(dossier, () => new Error('verrou d’essai'), 99);
   try {
     HOTE.repondreModale('Supprimer');
@@ -95,9 +90,9 @@ test('un dossier d’article qui résiste n’emporte pas les documents produits
     'le message ne nomme pas l’article : ' + HOTE.erreurs[nErreurs]);
 });
 
-// La seconde chance, une minute plus tard : c'est elle qui évite le cul-de-sac. Un
-// article dont le .md est parti n'a plus de ligne dans l'arbre, donc plus de clic droit
-// « Supprimer » — sans ce rattrapage, son dossier resterait là pour de bon.
+// La seconde chance, une minute plus tard : un article dont le .md est parti n'a plus de
+// ligne dans l'arbre, donc plus de « Supprimer » au clic droit. Sans ce rattrapage, son
+// dossier resterait.
 test('ce qui résistait est repris une minute plus tard, sans rien dire', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const slug = '03-tardif';

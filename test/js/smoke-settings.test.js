@@ -1,22 +1,20 @@
-// Smoke test S3 : l'onglet Paramètres de l'Accueil restaure le bon bouton radio depuis les valeurs
+// Smoke test : l'onglet Paramètres de l'Accueil coche le bon bouton radio depuis les valeurs
 // que l'hôte envoie.
 //
 //   node --test test/js/smoke-settings.test.js
 //
-// Pourquoi : c'est le trou de harnais nommé par la revue de l'infrastructure de test — la page
-// retrouve ses radios par `panneau.querySelector('input[name="…"][value="…"]')`, que le DOM
-// minimal (dom-minimal.js, `correspond`/`correspondAttribut`) a dû apprendre à reconnaître :
-// attribut posé par setAttribute puis, à défaut, propriété de même nom (`radio.name = …`).
+// La page retrouve ses radios par `panneau.querySelector('input[name="…"][value="…"]')`. Le
+// DOM minimal (dom-minimal.js, `correspond`/`correspondAttribut`) reconnaît l'attribut posé
+// par setAttribute puis, à défaut, la propriété de même nom (`radio.name = …`).
 'use strict';
 
 const test = require('node:test');
 const assert = require('node:assert');
 const { ouvrirReglages, MSG } = require('./page-reglages');
 
-// Un radio par groupe, tel que media/accueil.js (choix()) les nomme : `name` est la clé du
-// réglage, `value` la valeur de l'option — la même forme que le message « valeurs » de l'hôte,
-// réduite aux groupes qui suffisent au contrôle : plusieurs clés, pour prouver que cocher() ne
-// s'arrête pas à la première.
+// Un radio par groupe, nommé comme dans media/accueil.js (choix()) : `name` est la clé du
+// réglage, `value` la valeur de l'option, comme dans le message « valeurs » de l'hôte.
+// Plusieurs clés, pour vérifier que cocher() ne s'arrête pas à la première.
 const VALEURS_ENVOYEES = {
   theme: 'sombre', zoom: '1', policeMd: '16', apercu: 'pdf', assets: 'oui', cmyk: 'non',
   warnings: 'reduits', liensReferences: 'desactives', langue: 'de',
@@ -36,8 +34,8 @@ test('smoke S3 : les réglages sauvegardés cochent le bon bouton radio', () => 
       'le bouton ' + cle + '=' + valeur + ' n’a pas été coché par les valeurs sauvegardées');
   }
 
-  // Un bouton voisin, non désigné par le message, doit rester décoché : cocher() ne doit pas
-  // cocher tout un groupe, seulement l'option reçue.
+  // Un bouton voisin, non désigné par le message, reste décoché : cocher() ne coche que
+  // l'option reçue.
   const voisin = p.un('input[name="theme"][value="clair"]');
   assert.ok(voisin, 'l’option voisine n’existe pas : le contrôle ne prouverait rien');
   assert.strictEqual(voisin.checked, false, 'une option non envoyée s’est retrouvée cochée');

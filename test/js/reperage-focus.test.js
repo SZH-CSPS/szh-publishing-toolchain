@@ -23,7 +23,7 @@ test('trouverPlageFocus : appel présent tel quel', () => {
 });
 
 test('trouverPlageFocus : espace insécable dans le .md, espace simple dans le focus', () => {
-  //   entre « al., » et « 2023) » — ce que Word/pandoc laissent, jamais un simple espace.
+  // L'espace insécable est entre « al., » et « 2023) », comme le laissent Word et pandoc.
   const doc = 'Comme le montre (Shaw et al., 2023), le constat est clair.';
   assert.strictEqual(extrait(doc, '(Shaw et al., 2023)'), '(Shaw et al., 2023)');
 });
@@ -61,7 +61,7 @@ test('trouverPlageFocus : focus vide ou document vide — rien', () => {
   assert.strictEqual(trouverPlageFocus('', ''), null);
 });
 
-// ---- Les cas réels où la flèche ouvrait l'article sans rien sélectionner (29.09.2026) ----
+// ---- Passages que la normalisation du filtre rend difficiles à retrouver ----
 
 test('trouverPlageFocus : une référence en italique dans le .md, aplatie dans le constat', () => {
   // utils.stringify() retire l'emphase : le constat dit « Soi-même comme un autre », le
