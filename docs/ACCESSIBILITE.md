@@ -116,12 +116,27 @@ demandent un essai avec un lecteur d'écran (NVDA, par exemple). Sans cet essai,
   `media/table-editor.js` du cockpit. Ces règles valent à l'enregistrement : un tableau
   déjà écrit les reçoit à sa prochaine modification dans l'éditeur.
 - **Images.** Une image à `alt=""` est décorative : elle sort en fond CSS, donc hors de
-  l'arbre de structure (`en_decor()` dans `szh-numerotation.lua`). Le portrait d'un auteur
-  est aussi un fond CSS. Une `<img alt="" role="presentation">` qui resterait sort en
-  artefact grâce au correctif WeasyPrint `15-images-decoratives`.
-- **Exergue.** `szh-exergue.lua` met l'exergue en `aria-hidden` dans le HTML publié,
-  puisqu'elle répète le texte. WeasyPrint ignore `aria-hidden` : dans le PDF, elle reste
-  lue. L'aperçu ne passe pas par ce filtre.
+  l'arbre de structure (`en_decor()` dans `szh-numerotation.lua`). Seule dans son
+  paragraphe, elle est posée dans un `<div class="szh-decor-seul">` et non un `<p>`, qui
+  serait un `/P` sans texte. Le portrait d'un auteur est aussi un fond CSS. Une
+  `<img alt="" role="presentation">` qui resterait sort en artefact grâce au correctif
+  WeasyPrint `15-images-decoratives`.
+- **Figures.** La `<figcaption>` d'une figure à légende porte un id, et la `<figure>` un
+  `aria-labelledby` vers elle (`szh-legende-avant.lua`) : Edge et Chrome ne tirent pas le
+  nom d'une figure de sa légende.
+- **Exergue.** `szh-exergue.lua` met l'exergue en `aria-hidden` dans le HTML publié quand
+  son texte figure aussi dans le corps (comparé mot à mot, sans casse ni ponctuation). Une
+  exergue dont le texte n'existe nulle part ailleurs reste lue. WeasyPrint ignore
+  `aria-hidden` : dans le PDF, elle reste lue. L'aperçu ne passe pas par ce filtre.
+- **Encadrés.** Le titre d'un encadré `.important` (« Information » ou son `data-titre`) et
+  celui d'une `.question` qui a un `data-titre` sont un `<p class="szh-encadre-titre">` posé
+  par `szh-encadres.lua` : un texte réel, lu et balisé `/P`. Celui d'une `.question` est
+  masqué visuellement, comme une description de tableau.
+- **Bibliographie.** Une URL ou un DOI écrit en clair dans `<slug>.biblio.md` devient un
+  lien (`szh-citations.lua`, classe `szh-lien-brut`), avec l'aspect du texte dans le PDF
+  et souligné à l'écran.
+- **ORCID.** Le nom accessible du lien ORCID nomme la personne : « ORCID de Prénom Nom »,
+  « ORCID von Vorname Nachname » (`szh-auteurs.lua`).
 - **Liens sans texte.** Le QR et l'icône ORCID sont des `<a>` vides avec un `aria-label`,
   l'image passant en fond CSS. Un `<svg>` ou un bloc dans un `<a>` casse PDF/UA.
 - **Liens dans un conteneur flex.** WeasyPrint ne crée pas d'annotation `/Link` pour un `<a>`
@@ -161,6 +176,14 @@ demandent un essai avec un lecteur d'écran (NVDA, par exemple). Sans cet essai,
   d'accessibilité de schema.org, avec un résumé dans la langue du livre ; les repères et le
   titre de chaque document sont dans cette langue ; la couverture a un nom accessible.
 
+### Le HTML à l'écran
+
+Le HTML autonome sert aussi de galley HTML. La section 9 de `print.css`, tout entière sous
+`@media screen`, l'adapte à un navigateur sans toucher au PDF : colonne centrée avec une
+marge, corps à 16 px et aucun texte sous 12 px, couverture dans la colonne (le filigrane
+passe sous le texte), en-tête et pied courants masqués, fer à gauche sous 34 rem. Le titre
+coupé en escalier garde l'espace devant son `<br>`, masqué à l'écran.
+
 ### Les correctifs de WeasyPrint
 
 WeasyPrint 70.0 est patché dans l'image WSL (`image/patches/weasyprint-70.0/`). Ceux qui
@@ -189,6 +212,9 @@ dépendent d'un correctif y sautent avec le motif « correctif WeasyPrint absent
 - Dans l'aperçu, le message `figure-sans-alt` signale une image qui n'a ni texte
   alternatif ni légende. Un `alt=""` voulu n'est pas signalé. L'export OJS refuse ces
   images.
+- Le message `figure-legendee-decorative` signale, dans les Contrôles et dans l'aperçu,
+  une figure numérotée dont toutes les images sont déclarées décoratives : la légende est
+  lue, l'image ne l'est pas. Le rendu ne change pas.
 - Le bouton « Décrire les images » de la vue Contrôles ouvre le gestionnaire des médias.
 - Sous chaque image et chaque tableau de l'aperçu, un encadré montre ce qu'un lecteur
   d'écran reçoit (`szh-apercu-lecteur-ecran.lua`).

@@ -252,12 +252,15 @@ test('import réel du gabarit Pronto : encadré, mise en évidence et question a
 
 const EXERGUE = path.join(PIPE, 'filters', 'szh-exergue.lua');
 
+// L'exergue n'est masquée que si son texte figure dans le corps : le paragraphe d'ouverture
+// répète ici les deux exergues.
 test('l\'exergue est aria-hidden, ses liens hors du clavier, les autres blocs intacts',
   { skip: sansPandoc }, () => {
     const d = jetable();
     try {
       const md = path.join(d, 'e.md');
-      fs.writeFileSync(md, '::: {.highlight}\nUne [exergue](https://x.ch).\n:::\n\n'
+      fs.writeFileSync(md, 'Le corps dit : une exergue. Puis : ancienne classe.\n\n'
+        + '::: {.highlight}\nUne [exergue](https://x.ch).\n:::\n\n'
         + '::: {.hervorhebung}\nAncienne classe.\n:::\n\n'
         + '::: {.important}\nUn [encadré](https://y.ch).\n:::\n', 'utf8');
       const r = lancerCommande('pandoc', [md, '--to=html5', '--lua-filter=' + EXERGUE]);

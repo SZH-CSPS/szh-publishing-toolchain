@@ -205,8 +205,9 @@ const CLES_LIVRE = {
 
 // « numerotation » : szh-numerotation.lua signale une image sans texte alternatif ni
 // légende, comme l'encadré « lecteur d'écran » de l'aperçu et imagesSansAlternative()
-// (lib/references.js).
-const CLES_NUMEROTATION = { 'figure-sans-alt': 'ctl.figure.sansalt' };
+// (lib/references.js), et une figure numérotée dont l'image est déclarée décorative.
+const CLES_NUMEROTATION = { 'figure-sans-alt': 'ctl.figure.sansalt',
+  'figure-legendee-decorative': 'ctl.figure.legendeedecorative' };
 
 // « rendu » : szh-image-introuvable.lua, qui remplace l'image absente par un cadre. Même
 // code et même phrase que les replis pandoc et WeasyPrint de lireRendu().
@@ -260,6 +261,7 @@ const ARGS = {
   'livre/chapitre-ecarte': (ch) => [ch('chapitre')],
   'livre/chapitre-introuvable': (ch) => [ch('chapitre')],
   'numerotation/figure-sans-alt': (ch) => [nomFichier(ch('image'))],
+  'numerotation/figure-legendee-decorative': (ch) => [nomFichier(ch('image'))],
   'rendu/image-manquante': (ch) => [nomFichier(ch('image'))]
 };
 

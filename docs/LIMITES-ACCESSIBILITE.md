@@ -27,13 +27,15 @@ La sortie `out/<slug>/<slug>.pdf`, aussi galley PDF de l'export OJS.
 |---|---|---|---|---|
 | Les notes de bas de page ne sont pas des `/Note` : le texte d'une note est balisé à l'endroit de son appel, et un lecteur d'écran le lit au milieu de la phrase. | PDF/UA-1 7.9 ; MH 19 | majeure | WeasyPrint : `float: footnote` ne produit pas de `/Note` | accepté, sans correctif |
 | La légende d'une figure est un `/Caption` voisin de la `/Figure`, et non son enfant ; la `/BBox` de la figure est en pixels CSS, et non en points. | PDF/UA-1 7.3 ; MH 13 ; ISO 32000-1, `BBox` | moyenne | WeasyPrint ([Kozea/WeasyPrint#2482](https://github.com/Kozea/WeasyPrint/issues/2482)) | attend WeasyPrint |
-| Une figure numérotée (légende non vide) mais déclarée décorative (`alt=""`) devient un fond CSS : la légende reste, l'image se tait, et aucun contrôle ne le signale. | WCAG 1.1.1 ; PDF/UA-1 7.3 | majeure pour le contenu touché | contenu, et règle de Pronto | à corriger : lever un avertissement dans les Contrôles |
+| Une figure numérotée (légende non vide) mais déclarée décorative (`alt=""`) devient un fond CSS : la légende reste, l'image se tait. | WCAG 1.1.1 ; PDF/UA-1 7.3 | majeure pour le contenu touché | contenu | signalé : message `figure-legendee-decorative` dans les Contrôles et l'aperçu |
 | Un paragraphe coupé par la page devient deux `/P` : la lecture continue, mais la navigation par paragraphe s'arrête au milieu d'une phrase. | PDF/UA-1 7.1 | mineure | WeasyPrint : un arbre de structure par page | accepté (seul `break-inside: avoid` sur les paragraphes l'éviterait, au prix de la mise en page) |
 | Un lien coupé en fin de ligne produit deux annotations et deux `/Link` : le lecteur d'écran annonce deux liens. | PDF/UA-1 7.18 ; MH 28 ; WCAG 2.4.4 | mineure | WeasyPrint : une annotation par boîte de ligne | attend WeasyPrint |
-| L'exergue est lue deux fois : à sa place dans le texte, puis dans l'exergue. | WCAG 1.3.2 | mineure | maquette ; WeasyPrint ignore `aria-hidden` | accepté |
+| Les `headers=` d'un tableau complexe sont calculés quand l'éditeur du cockpit enregistre le fichier `tables/*.html`. Un fichier qui n'a pas été réenregistré depuis peut omettre le groupe de colonnes sous un titre de section (l'année), rattacher la rangée de total à la dernière section, et garder un `/TH` vide à gauche d'un titre de section. | PDF/UA-1 7.5 ; WCAG 1.3.1 | moyenne | contenu : fichier écrit avant les règles de [`ACCESSIBILITE.md`](ACCESSIBILITE.md#le-balisage-du-pdf) | à corriger tableau par tableau, par une modification dans l'éditeur |
+| Le `/Contents` d'un lien interne est l'identifiant de sa cible (« ref-plaisance-2007 »). Le texte du lien, que le lecteur d'écran annonce d'abord, est bien dans le `/Link`. | PDF/UA-1 7.18.5 ; WCAG 2.4.4 | mineure | WeasyPrint : `add_links` (`pdf/anchors.py`) écrit la cible sans lire `aria-label`, `title` ni le texte | attend une décision : correctif possible, non écrit |
+| Une exergue qui répète une phrase du texte est lue deux fois : à sa place dans le texte, puis dans l'exergue. | WCAG 1.3.2 | mineure | maquette ; WeasyPrint ignore `aria-hidden` | accepté |
 | La puce `▸` d'une liste est un vrai `/Lbl`, mais un lecteur d'écran peut la prononcer (« triangle ») au lieu de « puce ». | PDF/UA-1 7.1 | mineure | WeasyPrint n'écrit pas d'`/ActualText` | accepté |
 | La description longue d'un tableau (`data-alt`) est un `/Div` juste après le `/Table` : elle se lit comme un paragraphe qui suit, sans lien avec le tableau. | PDF/UA-1 7.5 | mineure | WeasyPrint n'écrit ni `/Summary` ni `/Alt` sur un `/Table` | attend WeasyPrint |
-| Les `headers=` d'un tableau complexe sont calculés quand l'éditeur du cockpit enregistre le fichier `tables/*.html`. Un fichier qui n'a pas été réenregistré depuis peut omettre le groupe de colonnes sous un titre de section (l'année), rattacher la rangée de total à la dernière section, et garder un `/TH` vide à gauche d'un titre de section. | PDF/UA-1 7.5 ; WCAG 1.3.1 | moyenne | contenu : fichier écrit avant les règles de [`ACCESSIBILITE.md`](ACCESSIBILITE.md#le-balisage-du-pdf) | à corriger tableau par tableau, par une modification dans l'éditeur |
+| `/Info /Author` joint les auteurs par une virgule, alors que chacun s'écrit « Nom, Prénom » : « Dupont, Anne, Muller, Jean ». Le XMP (`dc:creator`) garde un auteur par entrée. | PDF/UA-1 7.1 (métadonnées) | mineure | WeasyPrint : `', '.join(metadata.authors)` (`pdf/__init__.py`) | attend une décision : correctif possible, non écrit |
 | Le « N° » et le point médian de la ligne « VOL. 7 · N° 4/2017 » de la couverture sont lus tels quels. | WCAG 1.3.1 | mineure | maquette | accepté |
 
 Non visés : les profils plus stricts que PDF/UA-1 (PDF/UA-2, WTPDF). veraPDF y relève
@@ -52,12 +54,12 @@ La sortie `out/<slug>/<slug>.html` : source de WeasyPrint, et galley HTML de l'e
 | Limite | Norme | Gravité | Cause | État |
 |---|---|---|---|---|
 | Une note est un `<span class="szh-note">` à l'endroit de son appel, sans rôle ni lien : elle est lue au milieu de la phrase. | WCAG 1.3.1 | majeure | maquette : le balisage des notes sert le `float: footnote` du PDF | à corriger avec une sortie web propre ([`A-FAIRE.md`](A-FAIRE.md#sortie-web-de-la-revue)) |
-| Une figure numérotée déclarée décorative est un fond CSS, sans texte alternatif (même cas que dans le PDF). | WCAG 1.1.1 | majeure pour le contenu touché | contenu, et règle de Pronto | à corriger |
+| Une figure numérotée déclarée décorative est un fond CSS, sans texte alternatif (même cas que dans le PDF). | WCAG 1.1.1 | majeure pour le contenu touché | contenu | signalé : message `figure-legendee-decorative` |
 | Pas de repère `<main>`. | WCAG 1.3.1 | mineure | maquette | sans objet tant que le site intègre le contenu dans sa propre page |
 
-Non vérifié : rendu et contraste à l'écran (la feuille est `print.css`, pensée pour l'A4),
-zoom et redistribution à 400 % (WCAG 1.4.10), navigation au clavier, validateurs
-automatiques (axe, WAVE, Nu Html Checker), lecteur d'écran.
+Vérifié dans Edge, sur les articles d'essai : aucun défilement horizontal à 320, 768 et
+1280 px ni à 400 % (WCAG 1.4.10), aucun texte sous 12 px hors exposant. Non vérifié :
+navigation au clavier, lecteur d'écran.
 
 ## Galley Word (DOCX)
 

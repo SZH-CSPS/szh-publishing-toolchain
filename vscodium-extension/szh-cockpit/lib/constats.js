@@ -173,6 +173,10 @@ const TABLE = Object.freeze({
   // donc l'export. Ambre sur un poste où cette validation est éteinte.
   'numerotation/figure-sans-alt': { barrage: 'pdfua', nature: D, lieu: 'medias',
     focusChamp: 'image', defaut: 'defaut.figure-sans-alt' },
+  // Ambre : le PDF reste conforme (l'image est un fond), mais la figure numérotée n'est
+  // pas décrite.
+  'numerotation/figure-legendee-decorative': { barrage: null, nature: D, lieu: 'medias',
+    focusChamp: 'image', defaut: 'defaut.figure-legendee-decorative' },
   // ---- L'accessibilité du PDF ----------------------------------------------------
   'pdfua/aucun-pdf': { barrage: null, nature: A, lieu: '', defaut: 'defaut.aucun-pdf' },
   'pdfua/non-conforme': { barrage: 'pdfua', nature: D, lieu: '',
@@ -483,6 +487,7 @@ const SECOND_ETAGE = Object.freeze({
   'meta/langue-inconnue': { consigne: 'consigne.langue-inconnue' },
   'numerotation/figure-sans-alt': { consigne: 'consigne.images-sans-description',
     infobulle: 'infobulle.images-sans-description' },
+  'numerotation/figure-legendee-decorative': { consigne: 'consigne.figure-legendee-decorative' },
   'pdfua/aucun-pdf': { consigne: 'consigne.aucun-pdf' },
   'pdfua/non-conforme': { consigne: 'consigne.pdfua-non-conforme' },
   'pdfua/outillage': { consigne: 'consigne.signaler' },

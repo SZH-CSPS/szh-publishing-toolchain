@@ -249,15 +249,16 @@ sont acceptés.
 | `szh-metafichier.lua` | remplace une image Word `.emf` ou `.wmf` par un repère visible |
 | `szh-grille.lua` | regroupe plusieurs images en une figure |
 | `szh-figure.lua` | construit les figures pour l'aperçu |
-| `szh-numerotation.lua` | numérote figures et tableaux, pose textes alternatifs et crédits, signale une image sans texte alternatif |
+| `szh-numerotation.lua` | numérote figures et tableaux, pose textes alternatifs et crédits, signale une image sans texte alternatif et une figure à légende déclarée décorative |
 | `szh-tableau-boite.lua` | empêche un tableau d'être coupé d'une façon qui casserait son balisage |
-| `szh-legende-avant.lua` | place la légende avant l'image dans l'ordre de lecture |
+| `szh-legende-avant.lua` | place la légende avant l'image dans l'ordre de lecture, et en fait le nom de la figure |
 | `szh-sections.lua` | numérote les titres |
 | `szh-citations.lua` | insère la bibliographie et relie chaque appel de citation à sa référence |
 | `szh-cesure.lua` | empêche la césure des noms propres, en français |
-| `szh-exergue.lua` | cache l'exergue au lecteur d'écran dans la version publiée |
+| `szh-exergue.lua` | cache au lecteur d'écran, dans la version publiée, l'exergue dont le texte figure dans le corps |
 | `szh-notes.lua` | place les notes en bas de page |
 | `szh-maquette.lua` | revue : couverture, en-têtes de page, nom et ISSN |
+| `szh-encadres.lua` | revue : pose dans le texte le titre des encadrés `.important` et `.question` |
 | `szh-titre-lignes.lua`, `szh-titre-metriques.lua` | revue : coupe le titre de couverture en lignes, à l'aide d'une table de largeurs |
 | `szh-auteurs.lua` | revue : le bloc des auteurs et autrices |
 | `szh-ressource.lua`, `szh-rubrique.lua` | revue : fiches et rubriques de la Documentation |

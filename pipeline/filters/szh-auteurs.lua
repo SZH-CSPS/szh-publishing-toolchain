@@ -50,7 +50,11 @@ local function nom_affiche(a)
   return ech(a)
 end
 
-local function bloc_auteur(a, rang)
+-- Nom accessible du lien ORCID, qui n'a pas de texte : il nomme la personne, pour que la
+-- liste des liens ne dise pas « ORCID » une fois par auteur.
+local ORCID_DE = { fr = 'ORCID de ', de = 'ORCID von ', it = 'ORCID di ' }
+
+local function bloc_auteur(a, rang, lang)
   local h = {}
   local ins = function(x) h[#h + 1] = x end
 
@@ -69,7 +73,8 @@ local function bloc_auteur(a, rang)
 
   local orcid = texte(a['orcid-url'])
   local lien_orcid = orcid ~= ''
-    and string.format(' <a class="szh-orcid" href="%s" title="ORCID" aria-label="ORCID"></a>', ech(orcid))
+    and string.format(' <a class="szh-orcid" href="%s" title="ORCID" aria-label="%s%s"></a>',
+      ech(orcid), ORCID_DE[lang] or ORCID_DE.fr, nom_affiche(a))
     or ''
   ins(string.format('      <p class="szh-auteur-nom">%s%s</p>', nom_affiche(a), lien_orcid))
 
@@ -103,7 +108,8 @@ local function section_auteurs(meta)
   if titre ~= '' then
     h[#h + 1] = string.format('  <h2 class="szh-auteurs-titre">%s</h2>', ech(titre))
   end
-  for i, a in ipairs(auteurs) do h[#h + 1] = bloc_auteur(a, i) end
+  local lang = commun.contexte(meta).lang
+  for i, a in ipairs(auteurs) do h[#h + 1] = bloc_auteur(a, i, lang) end
   h[#h + 1] = '</section>'
   return pandoc.RawBlock('html', table.concat(h, '\n'))
 end

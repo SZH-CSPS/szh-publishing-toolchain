@@ -222,7 +222,9 @@ end
 --
 -- La coupure est un <br> : il ne crée aucun élément dans l'arbre de structure du PDF.
 -- Sa classe permet à print.css de l'annuler sous @media screen (que WeasyPrint
--- n'applique pas) : la coupure ne vaut que pour la colonne du PDF.
+-- n'applique pas) : la coupure ne vaut que pour la colonne du PDF. L'espace qu'il remplace
+-- reste écrit devant lui : sans elle, le nom accessible du titre et le titre affiché à
+-- l'écran colleraient les deux mots. En fin de ligne, WeasyPrint ne la dessine pas.
 --
 -- `titre-signet` : le titre à plat, échappé pour un attribut. Le gabarit en fait le
 -- data-signet du <h1>, que print.css donne au signet du PDF (content(text) collerait les
@@ -239,6 +241,7 @@ local function poser(meta, rang, gr)
   for i = rang + 1, #gr do apres[#apres + 1] = gr[i] end
   meta['titre-lignes'] = pandoc.MetaInlines({
     pandoc.Str(table.concat(avant, ESPACE)),
+    pandoc.Space(),
     pandoc.RawInline('html', '<br class="szh-titre-ligne" />'),
     pandoc.Str(table.concat(apres, ESPACE)),
   })
