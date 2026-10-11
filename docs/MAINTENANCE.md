@@ -332,7 +332,7 @@ texte avant son paragraphe d'ancrage, et beaucoup de manuscrits réels ont des z
 2. **Monter au besoin une ligne `ARG` du `Containerfile`** (Debian, pandoc, veraPDF, Vale),
    avec la nouvelle empreinte sha256 et une URL versionnée. Pour pandoc, changer aussi
    `PANDOC_VERSION` dans `image/build-rootfs.sh`.
-3. **Si WeasyPrint change de version**, rejuger les correctifs (voir plus bas).
+3. **Si WeasyPrint change de version**, suivre [Monter WeasyPrint de version](#monter-weasyprint-de-version).
 4. **Construire l'image en local**, dans la WSL de développement (podman) :
 
    ```sh
@@ -366,26 +366,123 @@ de `/Info /Author`, notes balisées après leur appel, listes imbriquées et de 
 Chacun a son dossier dans `image/patches/amont/` (description du défaut, démonstration) et
 son cas dans `test/weasyprint-patch-check.py`.
 
-À chaque nouvelle version de WeasyPrint :
+Deux contrôles les gardent, tous deux joués par la CI :
 
-1. créer `image/patches/weasyprint-<nouvelle version>/` : sans lui, `image/patch-weasyprint.sh`
-   refuse de construire ;
-2. pour chaque correctif, vérifier si WeasyPrint a corrigé le défaut lui-même. Retirer ceux
-   qui ne servent plus (ou les renommer en `.patch.off`) ;
-3. chaque correctif restant doit s'appliquer seul, sans décalage (`--fuzz=0`) ;
-4. lancer `test/weasyprint-patch-check.py` dans la WSL ;
-5. après la construction, compiler et vérifier que le journal ne dit pas
-   « PDF/UA-1 indisponible → PDF balisé simple » ;
-6. vérifier que la langue d'un passage arrive dans le PDF : compiler un article qui a un
-   résumé dans l'autre langue, et chercher `Lang=` sur cet élément dans l'arbre de
-   structure :
+| Contrôle | Question | Sur quoi |
+|---|---|---|
+| `test/weasyprint-patch-check.py` | chaque correctif fait-il son travail ? | le WeasyPrint installé et patché |
+| `test/weasyprint-banc/banc.py` | un correctif, seul ou combiné, casse-t-il autre chose ? | 27 petits HTML, rendus avec plusieurs combinaisons de correctifs |
+
+Le banc se lance dans la WSL, depuis la racine du dépôt :
+
+```sh
+python3 test/weasyprint-banc/banc.py --mode rapide                       # 25 s à 2,5 min
+python3 test/weasyprint-banc/banc.py --mode complet --travail ~/banc     # environ 6 min
+```
+
+On le lance après toute modification d'un correctif, avant une release lourde, et en mode
+complet à chaque montée de WeasyPrint. Il compare les correctifs de la dernière version
+publiée (lus dans `origin/main`) à ceux du dépôt. Son rapport est `BANC.html` dans son
+dossier de travail (`tmp/banc/` par défaut ; `~/banc`, sur le disque Linux de la WSL, va
+plus vite) ; en CI, l'artefact `banc-weasyprint` du job `pdf-ua`. Code de sortie : 0 rien
+à signaler, 1 régression, 2 panne d'outillage.
+
+Le rapport se lit de haut en bas :
+
+1. **Régressions** : un invariant qui tenait en production et casse avec les nouveaux
+   correctifs. La colonne « correctif responsable » donne le correctif dont le retrait le
+   répare. Un invariant est une propriété attendue du PDF : ordre de lecture, langue d'un
+   passage, verdict de veraPDF, texte extrait sans perte ni doublon…
+2. **Autres invariants en échec** avec tous les correctifs.
+3. **Ce qui change** de la production au dépôt, cas par cas, avec les correctifs qui en
+   sont la cause.
+4. **La matrice cas × correctif** : ce que change le retrait de chaque correctif (pixels,
+   arbre de structure, texte, liens…). Une colonne vide partout signale un correctif qui
+   ne change plus rien : WeasyPrint a peut-être corrigé le défaut lui-même.
+5. Les verdicts par pile, les limites admises, et le détail de chaque cas (pages dont les
+   pixels changent, diff de l'arbre de structure).
+
+Ajouter un cas, choisir ses invariants et déclarer une limite admise : voir
+[`test/weasyprint-banc/README.md`](../test/weasyprint-banc/README.md).
+
+### Monter WeasyPrint de version
+
+But : passer à une nouvelle version de WeasyPrint en gardant tout ce que les correctifs
+garantissent. Tout se fait dans la WSL de développement, entre deux numéros.
+
+1. **Garder le rapport de la version actuelle.** Sur `main`, lancer le banc en mode
+   complet et mettre son `BANC.html` de côté. Il sert de référence pour la matrice.
+2. **Installer la nouvelle version dans un venv vierge**, puis recopier les versions
+   dans `image/requirements.txt` (commande en tête du fichier) :
 
    ```sh
-   /opt/weasyprint/bin/python image/patches/amont/inspecter.py arbre <article>.pdf
+   python3 -m venv /tmp/wp && /tmp/wp/bin/pip install weasyprint==<version> pypdf==<version>
+   /tmp/wp/bin/pip freeze
    ```
 
-   C'est le correctif `60-langue-element` qui pose ce `/Lang`. Si WeasyPrint le fait
-   lui-même, retirer le correctif.
+3. **Créer `image/patches/weasyprint-<version>/`** et y copier les correctifs de la
+   version précédente. Sans ce dossier, `image/patch-weasyprint.sh` refuse de construire.
+4. **Retirer ce que WeasyPrint corrige lui-même.** Pour chaque correctif, lire les notes
+   de version et rejouer sa démonstration (`image/patches/amont/<NN-nom>/demo/`) avec le
+   venv vierge. Un défaut disparu : supprimer le correctif, ou le renommer en
+   `.patch.off`.
+5. **Porter chaque correctif restant**, pour qu'il s'applique seul et sans décalage :
+
+   ```sh
+   site=$(/tmp/wp/bin/python -c 'import os, weasyprint; print(os.path.dirname(os.path.dirname(weasyprint.__file__)))')
+   patch --dry-run -d "$site" -p1 --forward --fuzz=0 < image/patches/weasyprint-<version>/<NN-nom>.patch
+   ```
+
+   Un correctif qui ne s'applique plus se refait à la main sur une copie du paquet
+   `weasyprint`, puis son diff se regénère (`diff -ru`) sous l'en-tête de texte du
+   fichier. Le banc signale aussi un correctif qui ne s'applique plus : il sort en code 2
+   et le nomme.
+6. **Lancer le banc complet** :
+
+   ```sh
+   python3 test/weasyprint-banc/banc.py --mode complet --travail ~/banc
+   ```
+
+   Il refait son venv vierge à partir d'`image/requirements.txt`. Comme `origin/main`
+   n'a pas encore de correctif pour la nouvelle version, la production est ici WeasyPrint
+   sans correctif : une régression est un invariant que WeasyPrint seul tenait et que les
+   correctifs cassent. Attendu : code 0, aucune régression, aucun invariant en échec hors
+   des limites admises.
+7. **Relire la matrice** en la comparant au rapport de l'étape 1. Un correctif dont la
+   colonne est vide ne sert peut-être plus (retour à l'étape 4). Une limite admise que le
+   rapport dit tenue se retire de `connus` dans `test/weasyprint-banc/cas/cas.toml`.
+8. **Vérifier que chaque correctif fait son travail** :
+
+   ```sh
+   sh image/patch-weasyprint.sh /tmp/wp/bin/python image/patches
+   /tmp/wp/bin/python test/weasyprint-patch-check.py
+   ```
+
+9. **Construire l'image et passer le banc de rendu au pixel**
+   ([la procédure](#la-procédure), étapes 4 et 5), puis vérifier :
+   - que le journal d'une compilation ne dit pas « PDF/UA-1 indisponible → PDF balisé
+     simple » ;
+   - que la langue d'un passage arrive dans le PDF : compiler un article qui a un résumé
+     dans l'autre langue, et chercher `Lang=` sur cet élément dans l'arbre de structure.
+     C'est le correctif `60-langue-element` qui pose ce `/Lang`.
+
+     ```sh
+     /opt/weasyprint/bin/python image/patches/amont/inspecter.py arbre <article>.pdf
+     ```
+
+10. **Publier** une version lourde, qui reconstruit l'image.
+
+Quand le banc sort en 1 :
+
+- **Une régression désigne un correctif.** Regarder le rendu
+  (`python3 test/weasyprint-banc/voir.py toutes <cas> ua1 --diff toutes-<NN>`), puis
+  corriger le correctif. Si le nouveau comportement est le bon, corriger l'invariant du
+  cas dans `cas.toml`.
+- **Aucun correctif n'est désigné.** Relancer avec `--paires` : le banc retire alors les
+  correctifs deux à deux. Si rien ne l'explique non plus, c'est WeasyPrint lui-même qui a
+  changé.
+- **Le défaut est connu et accepté.** Le déclarer dans `connus` du cas, et le noter dans
+  [`LIMITES-ACCESSIBILITE.md`](LIMITES-ACCESSIBILITE.md) s'il touche les PDF produits.
 
 Après une montée de veraPDF ou de son Java, vérifier que la porte PDF/UA distingue toujours
 ses trois issues : 0 conforme, 1 non conforme, 2 panne d'outillage (validateur absent, Java
@@ -666,6 +763,13 @@ différentes.**
 - Que faire : lire le journal de l'étape ; figer la version qui marchait dans
   `.github/workflows/release.yml`. Une extension retirée d'Open VSX se remplace, ou son
   `.vsix` se place dans le dépôt ([`windows/VSIX.md`](../windows/VSIX.md)).
+
+**Le job `pdf-ua` échoue à l'étape « Banc des correctifs WeasyPrint ».**
+- Cause : un correctif de `image/patches/` casse un invariant (code 1), ou l'outillage
+  manque (code 2 : veraPDF, venv, correctif qui ne s'applique plus).
+- Que faire : télécharger l'artefact `banc-weasyprint` du job et lire la section
+  « Régressions » de `BANC.html`, qui nomme le correctif. Puis voir
+  [Monter WeasyPrint de version](#monter-weasyprint-de-version), « Quand le banc sort en 1 ».
 
 **Le pack de langue allemand refuse de s'installer.**
 - Cause : un pack de langue exige une version de VSCodium au moins égale à la sienne.

@@ -407,7 +407,8 @@ même PDF.
 WeasyPrint est corrigé par quelques patchs, un par fonctionnalité, dans
 `image/patches/weasyprint-<version>/`. On ne patche qu'en dernier recours, après avoir essayé
 le CSS et le HTML. `image/patches/amont/` documente chaque patch pour le proposer aux auteurs
-de WeasyPrint.
+de WeasyPrint. `test/weasyprint-patch-check.py` vérifie que chaque patch fait son travail, et
+le banc `test/weasyprint-banc/` qu'aucun, seul ou combiné, ne casse le reste.
 
 Changer quoi que ce soit dans `image/` reconstruit l'image à la version suivante. La
 procédure est dans [`MAINTENANCE.md`](MAINTENANCE.md).

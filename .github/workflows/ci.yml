@@ -5,7 +5,8 @@ name: ci
 # Ici, deux choses se vérifient à chaque push :
 #   contrats   node --test test/js/*.test.js — les contrats du cockpit, comme release.yml
 #   pdf-ua     le banc test/ recompilé de zéro (test/out/ n'est pas versionné), puis
-#              `make verifier-ua` : veraPDF rend un verdict PDF/UA-1 sur chaque PDF
+#              `make verifier-ua` : veraPDF rend un verdict PDF/UA-1 sur chaque PDF ;
+#              les correctifs WeasyPrint, chacun seul puis tous ensemble (banc rapide)
 #
 # La toolchain est épinglée comme dans image/Containerfile (pandoc 3.7.0.2, WeasyPrint 70 via
 # image/requirements.txt) : sans cela, le verdict de la CI ne serait pas celui de la flotte.
@@ -421,6 +422,28 @@ jobs:
       # ne ferait tomber aucune porte.
       - name: Vérifier les correctifs WeasyPrint (tableaux et images, fins de ligne, marges)
         run: PYTHONIOENCODING=utf-8 "$RUNNER_TEMP/weasyprint/bin/python" test/weasyprint-patch-check.py
+
+      # Le banc des correctifs (test/weasyprint-banc/README.md) : aucun correctif, seul ou
+      # combiné, ne casse ce qui marchait. Il crée son propre venv sans correctif, aux
+      # versions d'image/requirements.txt, et compare la pile du dépôt à celle de main,
+      # que le checkout d'une pull request n'apporte pas. Code 1 : régression ou invariant
+      # en échec ; code 2 : panne d'outillage. Les deux font échouer le job.
+      - name: Banc des correctifs WeasyPrint (mode rapide)
+        run: |
+          git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+          PYTHONIOENCODING=utf-8 python3 test/weasyprint-banc/banc.py --mode rapide \
+            --travail "$RUNNER_TEMP/banc"
+
+      - name: Publier le rapport du banc des correctifs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: banc-weasyprint
+          path: |
+            ${{ runner.temp }}/banc/BANC.html
+            ${{ runner.temp }}/banc/BANC.md
+          if-no-files-found: ignore
+          retention-days: 14
 
       # Une étiquette courte ne se coupe pas (« Punk-te »), et un tableau de 9 colonnes
       # allemandes tient encore dans la page : les deux bords du réglage de césure.

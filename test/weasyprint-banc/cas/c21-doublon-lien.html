@@ -1,0 +1,5 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><title>Note reportée et repagination</title><style>@page{size:100mm 80mm;margin:10mm;@footnote{margin-top:1mm}} body{font:4mm/5mm sans-serif;margin:0;orphans:2;widows:2} p{margin:0} ul{margin:0} .note{float:footnote} ::footnote-call{line-height:0;vertical-align:super;font-size:70%} a.ref::after{content:" S. " target-counter(attr(href), page)} .saut{break-before:page}</style></head><body>
+<p style="orphans:1;widows:1">Q01 <a class="ref" href="#fin">Q02 Verweis</a><br>a2<br>a3<br>a4<br>a5<br>a6<br>a7<br>a8<br>a9<br>a10<br>Q03 Aufruf<span class="note">Q04 Fussnote <a href="https://exemple.org/d">Q05 Link</a> <span lang="fr">Q06 mot</span><br>Q07 Zeile</span></p><p>Q08 b1</p>
+<p class="saut">Q90 <a class="ref" href="#fin">Q91 Verweis</a></p><p class="saut" id="fin">Q92 Ende</p>
+</body></html>

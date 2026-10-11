@@ -1,0 +1,41 @@
+/* Maquette réduite de Pronto (pipeline/styles/print.css) : notes float: footnote, en-tête
+   et pied courants en flex dans les boîtes de marge, texte justifié à césure, listes à
+   ::marker extérieur, tableaux à filets. Pages de 120 × 90 mm pour couper vite. */
+@page {
+  size: 120mm 90mm; margin: 12mm 10mm 12mm 10mm;
+  @top-center { content: element(entete); vertical-align: bottom; width: 100%; }
+  @bottom-center { content: element(pied); vertical-align: top; width: 100%; }
+  @footnote { margin-top: 2mm; padding-top: 1mm; border-top: 0.5pt solid #777; }
+}
+@page :first { @top-center { content: none; } }
+html { font: 9pt/12pt "DejaVu Sans", sans-serif; }
+body { margin: 0; }
+p { margin: 0 0 4pt; text-align: justify; hyphens: auto; overflow-wrap: break-word; }
+p, li, blockquote p { orphans: 2; widows: 2; }
+.entete { position: running(entete); display: flex; justify-content: space-between;
+  font-size: 7pt; border-bottom: 0.5pt solid #777; text-transform: uppercase;
+  letter-spacing: 0.14em; }
+.pied { position: running(pied); display: flex; justify-content: space-between;
+  font-size: 7pt; border-top: 0.5pt solid #777; }
+.pied .folio::after { content: counter(page); }
+.note { float: footnote; font-size: 7pt; line-height: 9pt; text-align: left;
+  hyphens: auto; padding-left: 1.6em; text-indent: -1.6em; }
+.note p { margin: 0; }
+::footnote-call { font-size: 6pt; vertical-align: 3pt; line-height: 0; font-weight: 700; }
+::footnote-marker { font-weight: 700; padding-right: 3pt; }
+ul, ol { margin: 4pt 0; padding: 0; }
+ul { list-style: disc outside; padding-left: 0.6em; }
+ol { list-style: decimal outside; padding-left: 0.8em; }
+li { padding-left: 0.9em; margin: 2pt 0; text-align: justify; hyphens: auto; }
+table { border-collapse: collapse; width: 100%; margin: 4pt 0; }
+th, td { border: 0.5pt solid #777; padding: 1pt 2pt; text-align: left; hyphens: auto; }
+blockquote { margin: 4pt 0 4pt 8mm; font-style: italic; }
+.exergue { margin: 0 0 6pt 30mm; font-size: 8pt; }
+.important { border: 1pt solid #345; padding: 3pt; margin: 4pt 0; }
+figure { margin: 4pt 0; }
+figcaption { font-size: 8pt; }
+img { width: 20mm; height: 12mm; }
+a { color: #1a4f8b; }
+a.icone { display: inline-block; width: 3mm; height: 3mm; background: #a6ce39; }
+.auteur { display: flex; gap: 4mm; align-items: flex-start; }
+.saut { break-before: page; }

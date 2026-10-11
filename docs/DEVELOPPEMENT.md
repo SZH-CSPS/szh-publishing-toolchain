@@ -125,7 +125,7 @@ Les règles sont dans [`TYPOGRAPHIE.md`](TYPOGRAPHIE.md).
 |---|---|---|
 | `contrats` | Ubuntu, Python 3.13 du runner | `test/js/*.test.js`, contrastes (`apca-check.py`), typographie (`typo-check.py`) |
 | `contrats-windows` | Windows | `test/js/*.test.js` avec PowerShell ; les tests Python y sautent |
-| `pdf-ua` | Ubuntu, pandoc 3.7.0.2 et WeasyPrint patché | compilation du banc, PDF/UA-1 par veraPDF, corpus d'accessibilité, livres, polices, correctifs WeasyPrint, largeur des tableaux, tests des filtres pandoc |
+| `pdf-ua` | Ubuntu, pandoc 3.7.0.2 et WeasyPrint patché | compilation du banc, PDF/UA-1 par veraPDF, corpus d'accessibilité, livres, polices, correctifs WeasyPrint et leur banc de non-régression (rapport `banc-weasyprint` en artefact), largeur des tableaux, tests des filtres pandoc |
 
 Pour les deux premiers jobs, `test/js/verifier-tap.js` relit la sortie des tests et refuse :
 un échec, un test annulé, plus de la moitié des tests sautés, ou un saut dont le motif n'est
@@ -430,7 +430,27 @@ essaie d'abord le CSS, le HTML produit par la chaîne et les options officielles
 | un patch par fonctionnalité | `image/patches/weasyprint-<version>/NN-nom.patch` |
 | le script qui les applique | `image/patch-weasyprint.sh`, appelé par `image/Containerfile` et par la CI |
 | un cas de test par patch | `test/weasyprint-patch-check.py` |
+| le banc de non-régression des patchs | `test/weasyprint-banc/`, mode d'emploi dans [`test/weasyprint-banc/README.md`](../test/weasyprint-banc/README.md) |
 | le dossier pour l'équipe de WeasyPrint (rapport, démo, texte d'issue) | `image/patches/amont/<NN-nom>/`, résumé dans [`image/patches/amont/README.md`](../image/patches/amont/README.md) |
+
+Les deux contrôles se complètent :
+
+- `test/weasyprint-patch-check.py` vérifie que chaque patch fait son travail, sur le
+  WeasyPrint installé (celui de l'image, ou celui de la CI) ;
+- le banc vérifie qu'aucun patch, seul ou combiné aux autres, ne casse ce qui marchait. Il
+  rend 27 petits HTML avec les patchs de la dernière version publiée, puis avec ceux du
+  dépôt, compare les PDF et désigne le patch responsable de chaque changement.
+
+Lancer le banc, dans la WSL, depuis la racine du dépôt :
+
+```sh
+python3 test/weasyprint-banc/banc.py --mode rapide
+```
+
+Il crée son propre WeasyPrint sans patch dans `tmp/banc/venvs/` et écrit son rapport dans
+`tmp/banc/BANC.html`. Il sort en 0 s'il n'y a rien à signaler, en 1 s'il trouve une
+régression, en 2 si l'outillage manque. Le mode rapide prend de 25 secondes (aucun patch
+changé) à 2 minutes et demie. La CI le joue dans le job `pdf-ua`.
 
 Règles :
 
@@ -438,13 +458,16 @@ Règles :
   ne s'applique pas, ou s'il n'existe pas de dossier pour la version installée.
 - Pour désactiver un patch, le renommer en `.patch.off`.
 - Le cas de test doit échouer sur WeasyPrint sans patch et passer sur l'image patchée.
-- Preuves avant de fusionner : démo minimale avant/après, empreintes et pixels du banc,
-  veraPDF sans `FAIL`.
+- Preuves avant de fusionner : démo minimale avant/après, banc des patchs sans régression,
+  empreintes et pixels du banc de rendu, veraPDF sans `FAIL`.
+- Un défaut que le patch doit garder signalé (par exemple une image sans description) se
+  déclare aussi dans le banc, avec un cas et l'invariant `vera_ua1_exige`.
 - Rien ne se publie chez WeasyPrint sans l'accord du responsable du dépôt.
 - Un patch n'arrive sur les postes qu'à la reconstruction de l'image. D'ici là, les tests
   qui en dépendent sautent sous le motif « correctif WeasyPrint absent ».
 - À chaque montée de WeasyPrint, on vérifie d'abord si l'amont a corrigé chaque défaut, et on
-  retire le patch devenu inutile.
+  retire le patch devenu inutile. La procédure complète est dans
+  [`MAINTENANCE.md`](MAINTENANCE.md#monter-weasyprint-de-version).
 
 ---
 

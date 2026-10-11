@@ -61,6 +61,7 @@ vocabulaire. La documentation des rédactions est [`../userdoc.md`](../userdoc.m
 | [`../vscodium-extension/szh-cockpit/mail-templates/README.md`](../vscodium-extension/szh-cockpit/mail-templates/README.md), [`../windows/mail-templates/README.md`](../windows/mail-templates/README.md) | les gabarits de courriel |
 | [`../windows/APPS.md`](../windows/APPS.md), [`../windows/VSIX.md`](../windows/VSIX.md) | les applications et extensions épinglées |
 | [`../image/patches/amont/README.md`](../image/patches/amont/README.md) | les correctifs de WeasyPrint |
+| [`../test/weasyprint-banc/README.md`](../test/weasyprint-banc/README.md) | le banc de non-régression des correctifs de WeasyPrint |
 | [`../pipeline/fonts/README.md`](../pipeline/fonts/README.md) | les polices |
 | [`../pipeline/vale/LISEZMOI.md`](../pipeline/vale/LISEZMOI.md) | les règles Vale du nettoyeur |
 | [`../kirby/LISEZMOI.md`](../kirby/LISEZMOI.md) | les blueprints Kirby |
