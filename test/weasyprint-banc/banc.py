@@ -481,6 +481,11 @@ def invariants(c, v, rec, pixels_autres):
         if k in c.get('tolere', []):
             continue
         ko[f'arbre-{k}'] = '; '.join(map(str, detail[:4])) + (' …' if len(detail) > 4 else '')
+    # Texte brut des contenus marqués, lu à la suite sans tenir compte de la position :
+    # un jeton collé au mot qui le précède. Jamais toléré.
+    colles = re.findall(r'[^\W_]+Q\d\d(?!\d)', m.get('texte_arbre_brut', ''))
+    if colles:
+        ko['colle-brut'] = ' '.join(colles[:6])
     arbre = JETON.findall(m['texte_arbre'])
     for i, ordre in enumerate(c.get('ordres', []), 1):
         vu = [j for j in arbre if j in ordre]
@@ -763,7 +768,8 @@ def coupables(R, k, inv, tous):
 
 
 def connus_de(cas, k):
-    return cas[k[0]].get('connus', {}).get(k[1], [])
+    # Des mots collés dans le texte brut ne sont jamais une limite admise.
+    return [i for i in cas[k[0]].get('connus', {}).get(k[1], []) if i != 'colle-brut']
 
 
 def analyser(R, E, cas, ecarts, attribution, regressions, tous):

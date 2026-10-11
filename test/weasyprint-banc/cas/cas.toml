@@ -13,6 +13,9 @@
 #                       /Lbl et /LBody, élément vide, jeton présent deux fois dans l'arbre
 #                       (sauf ce que liste `tolere`) ;
 #   arbre-perte         chaque jeton du texte du HTML est dans l'arbre ;
+#   colle-brut          dans le texte des contenus marqués lu à la suite, sans tenir compte
+#                       de la position, aucun jeton n'est collé au mot qui le précède ;
+#                       jamais admis dans `connus` ;
 #   lien-sans-contents  toute annotation /Link a un /Contents.
 #
 # Déclarés par cas :
@@ -214,3 +217,65 @@ ordres = [["Q01", "Q02", "Q03", "Q04", "Q05", "Q06", "Q07"]]
 meme_contenu = [["Q01", "Q02"]]
 contenus_distincts = [["Q02", "Q03"], ["Q04", "Q05"], ["Q06", "Q07"]]
 tolere = ["element_vide"]
+
+[c33-mcid-img-alt-colle]
+titre = "Image décrite collée au texte, puis image décorative : le texte qui suit l'image ne rejoint pas celui qui la précède."
+ordres = [["Q01", "Q03", "Q04", "Q05", "Q06"]]
+contenus_distincts = [["Q01", "Q03"]]
+
+[c34-mcid-float]
+connus = { ua1 = ["extraction-pypdf-perte"], tags = ["extraction-pypdf-perte"], nu = ["extraction-pypdf-perte"], a3u = ["extraction-pypdf-perte"] }
+titre = "Flottant au milieu d'un paragraphe de plusieurs lignes, peint après le texte."
+ordres = [["Q01", "Q02", "Q03", "Q04"]]
+contenus_distincts = [["Q01", "Q03"]]
+
+[c35-mcid-abs]
+titre = "Élément positionné en absolu au milieu d'un paragraphe de plusieurs lignes."
+ordres = [["Q01", "Q02", "Q03", "Q04"]]
+contenus_distincts = [["Q01", "Q03"]]
+
+[c36-mcid-relatif]
+titre = "Élément en position relative, inline-block à z-index au milieu d'un paragraphe."
+ordres = [["Q01", "Q02", "Q03", "Q04", "Q05", "Q06", "Q07", "Q08"]]
+contenus_distincts = [["Q01", "Q03"], ["Q05", "Q07"]]
+
+[c37-mcid-lien-vide]
+vera_ua1 = ["7.18.5-1"]
+titre = "Lien vide à aria-label, lien à élément vide, au milieu d'un paragraphe."
+ordres = [["Q01", "Q03", "Q04", "Q05", "Q07", "Q08"]]
+contenus_distincts = [["Q01", "Q03"], ["Q05", "Q07"]]
+
+[c38-mcid-images]
+vera_ua1 = ["7.3-1"]
+titre = "Image à alt vide et image décrite au milieu d'un paragraphe de plusieurs lignes."
+ordres = [["Q01", "Q02", "Q04"]]
+contenus_distincts = [["Q02", "Q04"]]
+
+[c39-mcid-svg-inline]
+titre = "SVG en ligne à <title> au milieu d'un paragraphe de plusieurs lignes."
+ordres = [["Q01", "Q03", "Q04"]]
+contenus_distincts = [["Q01", "Q03"]]
+
+[c40-mcid-echelle0-ligne]
+titre = "inline-block à transform: scale(0) : sa boîte de texte n'est jamais dessinée, WeasyPrint 70.0 échoue en balisant."
+connus = { ua1 = ["exception"], tags = ["exception"], nu = ["extraction-pypdf-perte", "extraction-pdfium-perte"], a3u = ["extraction-pypdf-perte", "extraction-pdfium-perte"] }
+
+[c41-mcid-cesure-banc]
+titre = "Mots coupés par la césure dans un paragraphe étroit : le texte brut garde les mots entiers."
+ordres = [["Q01", "Q02"]]
+
+[c42-mcid-br]
+tolere = ["element_vide"]
+titre = "Lignes séparées par <br> : chaque ligne garde son contenu marqué, sans mot collé au suivant."
+ordres = [["Q01", "Q02", "Q03", "Q04"]]
+contenus_distincts = [["Q01", "Q02", "Q03"]]
+
+[c43-mcid-indent-pre]
+titre = "Retrait de première ligne, puis pre à lignes vides et indentées : une ligne de pre par contenu marqué."
+ordres = [["Q01", "Q02", "Q03", "Q04", "Q05", "Q06"]]
+meme_contenu = [["Q01", "Q02"]]
+contenus_distincts = [["Q03", "Q04", "Q05", "Q06"]]
+
+[c44-mcid-note]
+titre = "Note de plusieurs lignes appelée au milieu d'un paragraphe, sans espace dessinée en fin de ligne."
+ordres = [["Q01", "Q02", "Q03", "Q04"]]

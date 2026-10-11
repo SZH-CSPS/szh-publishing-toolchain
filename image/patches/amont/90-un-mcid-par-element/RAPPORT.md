@@ -43,31 +43,40 @@ juste.
 
 ## Notre correctif
 
-- `draw_block_level()` déclare le bloc dont il dessine les lignes : `with
-  stream.text_block(block)`.
-- `Stream.marked()` : quand la boîte de texte est le texte propre de ce bloc (même élément,
-  même pseudo-élément, donc même langue) et que rien n'a été dessiné depuis l'`EMC` du texte
-  précédent de ce bloc, il retire cet `EMC` et n'ouvre pas de nouveau contenu marqué. La
-  boîte n'entre pas dans `_tags`. Le test « rien depuis » compare la longueur du flux à celle
-  qu'il avait après l'`EMC`.
-- `_build_box_tree()` saute une boîte de texte absente de `_tags` : son texte est déjà sous
-  le `/Span` de la ligne précédente.
+- `_text_follows(page)` (`draw/__init__.py`) relève, une fois par page, sur l'arbre de
+  mise en page d'origine et dans l'ordre où `_build_box_tree()` le parcourt (les enfants
+  d'une ligne mis à plat), chaque boîte de texte dont la voisine immédiate qui la précède
+  est une boîte de texte du même élément et du même pseudo-élément. D'une ligne à l'autre,
+  la précédente doit aussi finir par une séparation : l'espace de fin de ligne du
+  correctif 25, le trait de césure du 20, ou une espace ou un trait dans son texte.
+- `draw_block_level()` passe ce relevé à `Stream.text_block()` pendant le dessin des
+  lignes.
+- `Stream.marked()` ne fusionne une boîte que si celle qu'elle continue est la dernière
+  boîte marquée et que le flux n'a pas grandi depuis son `EMC`. Il retire cet `EMC`,
+  n'ouvre rien, et pose `box.continued_mark`.
+- `_build_box_tree()` saute les boîtes à `continued_mark` ; les autres restent exigées
+  dans `_tags` (`tags.pop(child)`), comme dans la 70.0.
+
+L'ordre de dessin ne suffit pas : WeasyPrint peint après le texte de la ligne les images en
+ligne, un `<svg>`, les flottants, les éléments positionnés, un inline-block à `z-index`. Le
+texte qui précède et celui qui suit un tel objet sont voisins dans le flux, mais l'arbre de
+structure les sépare par l'objet : les fusionner faisait lire « Q01Q03… » puis l'image.
+Le relevé dans l'ordre des boîtes l'empêche.
 
 Ce qui reste séparé :
 
-- le texte d'un élément en ligne (`em`, lien, `span lang`, appel de note) : sa boîte de
-  texte n'appartient pas à l'élément du bloc, elle garde son contenu marqué, et le texte du
-  bloc qui la suit en ouvre un nouveau. La langue (correctif 60), les `/Link` et leurs
-  `OBJR` (65), les `/Note` (80) ne bougent pas ;
+- le texte d'un élément en ligne (`em`, lien, `span lang`, appel de note) ; la langue
+  (correctif 60), les `/Link` et leurs `OBJR` (65), les `/Note` (80) ne bougent pas ;
+- tout objet en ligne, même peint plus tard, et un lien vide à `aria-label` ;
+- une ligne qui ne finit ni par une espace ni par un trait : après un `<br>`, dans un
+  `pre`, dans une note où le 25 ne pose pas l'espace. Le texte du contenu marqué n'y aurait
+  aucun séparateur, et Acrobat le lit à la suite : « Forced line breakafter » ;
 - deux pages : chaque page a son flux, un MCID ne la traverse pas ;
-- deux fragments d'un même bloc (colonnes) et deux blocs anonymes d'un même élément (texte
-  avant et après un bloc vide) : la clé est la boîte du bloc, pas l'élément ;
-- un dessin entre deux lignes (image en ligne, filet, fond) : le flux a grandi, rien n'est
-  fusionné.
+- deux fragments d'un même bloc (colonnes) et deux blocs anonymes d'un même élément : ils
+  ne sont pas voisins dans l'ordre des boîtes, ou le flux a grandi entre eux.
 
-Un `<br>` ne coupe pas le contenu marqué : la ligne qui suit est du texte du même bloc. Le
-texte du contenu marqué n'a pas d'espace à cet endroit ; pdfium (Edge) en déduit une au
-changement de ligne, comme pour tout paragraphe d'un seul tenant.
+Posé seul, sans le 20 et le 25, le correctif ne réunit presque rien : la mise en ligne
+retire l'espace de fin de ligne, et rien n'en reste dans la boîte de texte.
 
 Le rendu ne change pas : seuls des `EMC`/`BDC` disparaissent du flux, et l'`ET`/`BT` qui les
 séparait est fusionné par `begin_text()`, qui le faisait déjà sans balisage. Chaque
@@ -82,15 +91,18 @@ séparait est fusionné par `begin_text()`, qui le faisait déjà sans balisage.
 - La frontière entre le texte du bloc et un élément en ligne reste une frontière de
   contenu marqué : Edge rogne l'espace qui la précède (« le mot » + « Förderplan »). Une
   espace dessinée dans le contenu marqué de gauche ne suffit pas, Edge la retire.
+- Après un `<br>` ou dans un `pre`, chaque ligne garde son contenu marqué : Edge les colle
+  encore.
 - Indépendant de ce correctif, mais visible dans la même démo : un contenu marqué qui
   commence par la ligature « fi » perd son « f » dans Edge (« finance » se lit
   « inance »).
 
 ## Recommandation
 
-**Le proposer en amont** par une issue courte qui offre la PR : le défaut se voit dans un
-lecteur d'écran courant, la correction est petite (une vingtaine de lignes), sans effet sur
-le rendu ni sur veraPDF. **Le garder** d'ici là.
+**Signaler le défaut en amont** par une issue courte. La PR ne vaut qu'avec l'espace de fin
+de ligne dans la couche texte (correctif 25), que l'amont ne prendra sans doute pas : la
+proposer seulement si l'issue reçoit un accueil favorable, en exposant cette dépendance.
+**Le garder** d'ici là.
 
 Texte prêt : `ISSUE.md`.
 
@@ -106,21 +118,29 @@ HTML : `lignes.html` : paragraphe justifié de quatre lignes ; paragraphe avec `
 passage allemand et appel de note, coupé sur cinq lignes ; item de liste et cellules sur
 deux lignes ; `<br>`.
 
-Sortie du 11.10.2026, résumée : nu, 32 contenus marqués, un `/Span` par ligne ; patché,
-22, un `/Span` par paragraphe, item ou cellule, et toujours un par morceau du lien et de
-l'`em`. veraPDF ua1 PASS des deux côtés. Avec les quatorze autres correctifs avant et
-après : mêmes chiffres, pixels identiques à 150 et 300 dpi.
+La démo pose le 20 et le 25 sur les deux venvs. Sortie du 11.10.2026, résumée : nu, 32
+contenus marqués, un `/Span` par ligne ; patché, 24, un `/Span` par paragraphe, item ou
+cellule, et toujours un par morceau du lien et de l'`em`, par ligne du `<br>` et de la
+note. veraPDF ua1 PASS des deux côtés. Avec les quatorze autres correctifs avant et après :
+mêmes chiffres, pixels identiques à 150 et 300 dpi.
 Dans Edge (arbre MSAA, sans lecteur d'écran) : avant, le premier paragraphe est quatre
 nœuds (« …can do, and », « not by what… ») ; après, un seul nœud « …can do, and not by
-what… ». Même chose pour l'item, les cellules et les deux lignes du `<br>` (« Forced line
-break after the word break. »).
+what… ». Même chose pour l'item et les cellules ; les deux lignes du `<br>` restent deux
+nœuds.
 
 Sur le corpus d'essai de Pronto (trois articles, deux livres, 50 pages), compilé avec les
 quatorze correctifs puis avec les quinze : 0 page différente au pixel, veraPDF ua1 sans
-échec, texte extrait par pdfium et pypdf identique.
+échec, texte extrait par pdfium et pypdf identique ; 1066 contenus marqués avant, 978
+après. Dans l'arbre, mêmes mots dans le même ordre, sauf des mots coupés par la césure,
+désormais d'un seul tenant (« Seitenumbruch » au lieu de « Seite numbruch ») ; aucun mot
+collé dans le texte brut des contenus marqués, livres compris.
 
 Cas de `test/weasyprint-patch-check.py` : `y-mcid-lignes` (un mot par ligne sur deux pages :
-un MCID et un `/Span` par page) et `y-mcid-frontieres` (texte du paragraphe coupé par un
-`em`, un lien et un passage français). Cas du banc : `c28` à `c32`.
+un MCID et un `/Span` par page), `y-mcid-frontieres` (texte du paragraphe coupé par un
+`em`, un lien et un passage français), `y-mcid-ordre` (image, SVG, flottant, positionné,
+relatif, inline-block à `z-index`, lien vide : le texte qui suit n'est pas fusionné avec
+celui qui précède) et `y-mcid-sauts` (`<br>`, `pre`) ; une boîte de texte jamais dessinée
+lève toujours le `KeyError` de la 70.0. Cas du banc : `c28` à `c44`, avec l'invariant
+`colle-brut` sur le texte brut des contenus marqués.
 
 Texte de pull request, test pytest compris : `PR.md`.

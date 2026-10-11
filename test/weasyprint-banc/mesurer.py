@@ -91,7 +91,8 @@ def lire_flux(reader, page):
     Une pile est une liste de (tag, propriétés). Le texte d'un /ActualText remplace celui
     de ses glyphes, une fois par contenu marqué. Un texte dessiné sur une autre ligne que le
     précédent commence par un saut de ligne, comme le lit un outil qui suit la position :
-    un contenu marqué peut couvrir plusieurs lignes."""
+    un contenu marqué peut couvrir plusieurs lignes. Ce saut retiré, reste le texte brut,
+    celui d'un outil qui lit le contenu marqué à la suite."""
     polices = Polices()
     sortie = []
 
@@ -100,8 +101,14 @@ def lire_flux(reader, page):
         fontes = res(ressources.get('/Font', {})) if ressources else {}
         xobjets = res(ressources.get('/XObject', {})) if ressources else {}
         actual_vu = set()
-        ligne = [0.0, None]   # ordonnée courante du texte, celle du dernier texte lu
+        ligne = [0.0, None, 0.0]   # ordonnée du texte, celle du dernier texte lu, TL
         for operandes, op in ContentStream(contenu, reader).operations:
+            if op == b'BT':
+                ligne[0] = 0.0
+            elif op == b'TL':
+                ligne[2] = float(operandes[0])
+            elif op in (b'T*', b"'", b'"'):
+                ligne[0] -= ligne[2] or 1.0
             if op in (b'BDC', b'BMC'):
                 props = {}
                 if op == b'BDC':
@@ -166,7 +173,7 @@ def mesurer(chemin):
     erreurs = defaultdict(list)
 
     # Flux : texte par (page, MCID), texte hors balisage, texte d'artefact.
-    texte_mcid, ordre_flux, hors, artefact = {}, [], [], []
+    texte_mcid, texte_brut, ordre_flux, hors, artefact = {}, {}, [], [], []
     for i, page in enumerate(pages):
         for pile, texte in lire_flux(reader, page):
             if any(t == '/Artifact' for t, _ in pile):
@@ -176,7 +183,11 @@ def mesurer(chemin):
             if mcid is None:
                 hors.append(texte)
                 continue
-            texte_mcid[(i, mcid)] = texte_mcid.get((i, mcid), '') + texte
+            avant = texte_mcid.get((i, mcid), '')
+            if avant.endswith(SHY):
+                texte = texte.lstrip('\n')   # mot coupé par la césure : pas de saut
+            texte_mcid[(i, mcid)] = avant + texte
+            texte_brut[(i, mcid)] = texte_brut.get((i, mcid), '') + texte.lstrip('\n')
             if (i, mcid) not in ordre_flux:
                 ordre_flux.append((i, mcid))
     # Contenu marqué où se lit chaque jeton, la première fois : « p<page>-<MCID> ».
@@ -218,14 +229,14 @@ def mesurer(chemin):
 
     if not m['balise']:
         m['arbre'] = ''
-        m['texte_arbre'] = ''
+        m['texte_arbre'] = m['texte_arbre_brut'] = ''
         m['erreurs'] = {}
         m['jetons_chemin'] = {}
         return m
 
     # Arbre.
     str_root = res(root['/StructTreeRoot'])
-    lignes, texte_arbre = [], []
+    lignes, texte_arbre, texte_arbre_brut = [], [], []
     mcid_elem = defaultdict(list)       # (page, mcid) → [idnum élément]
     ids = defaultdict(list)             # /ID → [idnum]
     objr = {}                           # idnum annotation → idnum élément
@@ -291,6 +302,7 @@ def mesurer(chemin):
         contenu = norm(texte_sous(e, pg))
         if alt is not None and not contenu:
             texte_arbre.append(alt)
+            texte_arbre_brut.append(alt)
             for j in re.findall(r'(?<!\d)Q\d\d(?!\d)', alt):
                 jetons.setdefault(j, ('/'.join(chemin), lang))
         for k in kids(e):
@@ -310,6 +322,7 @@ def mesurer(chemin):
                     t = ''
                 lignes.append('  ' * (prof + 1) + repr(norm(t)))
                 texte_arbre.append(t)
+                texte_arbre_brut.append(texte_brut.get(cle, ''))
                 for j in re.findall(r'(?<!\d)Q\d\d(?!\d)', t):
                     if j in jetons:
                         erreurs['jeton_deux_fois_arbre'].append(j)
@@ -426,6 +439,7 @@ def mesurer(chemin):
     arbre = re.sub(r'@(\d+-\d+-\d+)', lambda mo: f'@{th_texte.get(mo.group(1), "?")!r}', arbre)
     m['arbre'] = arbre
     m['texte_arbre'] = norm(' '.join(texte_arbre))
+    m['texte_arbre_brut'] = norm(' '.join(texte_arbre_brut))
     m['jetons_chemin'] = jetons
     m['erreurs'] = {k: v for k, v in erreurs.items()}
     return m

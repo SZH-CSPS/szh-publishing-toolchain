@@ -93,9 +93,9 @@ const PATCHS = {
   '90-un-mcid-par-element': {
     cibles: ['weasyprint/draw/__init__.py', 'weasyprint/pdf/stream.py',
       'weasyprint/pdf/tags.py'],
-    reperes: [/^\+\s+with stream\.text_block\(block\):$/m,
-      /^\+\s+if continued and self\._last_text == \(block, len\(self\.stream\)\):$/m,
-      /^\+\s+kid = tags\.pop\(child, None\)$/m],
+    reperes: [/^\+\s+with stream\.text_block\(_text_follows\(page\)\):$/m,
+      /^\+\s+if box\.continued_mark:$/m,
+      /^\+\s+if getattr\(child, 'continued_mark', False\):$/m],
   },
 };
 

@@ -372,7 +372,7 @@ Deux contrôles les gardent, tous deux joués par la CI :
 | Contrôle | Question | Sur quoi |
 |---|---|---|
 | `test/weasyprint-patch-check.py` | chaque correctif fait-il son travail ? | le WeasyPrint installé et patché |
-| `test/weasyprint-banc/banc.py` | un correctif, seul ou combiné, casse-t-il autre chose ? | 32 petits HTML, rendus avec plusieurs combinaisons de correctifs |
+| `test/weasyprint-banc/banc.py` | un correctif, seul ou combiné, casse-t-il autre chose ? | 44 petits HTML, rendus avec plusieurs combinaisons de correctifs |
 
 Le banc se lance dans la WSL, depuis la racine du dépôt :
 

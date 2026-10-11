@@ -20,6 +20,6 @@ With `pdf/ua-1`, each line of a paragraph is a separate marked content, with its
 
 The PDF reader of Edge exposes each marked content as a separate text node, without its leading and trailing spaces, and NVDA reads these nodes without any separator: the last word of a line is stuck to the first word of the next one ("andnot"). With one marked content for the lines of the paragraph, as Word and LibreOffice do, Edge gives one text node and NVDA reads it correctly. Before 66.0, paragraphs had a single MCID (see the structure in #2153).
 
-Lines of the same block could share their marked content when nothing is drawn between them, while text of inline elements (`em`, links, `lang`, footnote calls) keeps its own. Rendering and veraPDF results don't change.
+Consecutive text boxes of the same element could share their marked content, in box order (images, floats and positioned elements are drawn later but stay between their text in the structure tree), while text of inline elements (`em`, links, `lang`, footnote calls) keeps its own. Across lines, this only works when the line ends with a space or a hyphen in the text layer: otherwise readers that take the marked content text as is (Acrobat does) stick the words together. As WeasyPrint removes the space at the end of a line, that would also need the space to be kept in the text layer, without ink.
 
-It's about 25 lines in `draw/__init__.py`, `pdf/stream.py` and `pdf/tags.py`. Should I open a PR?
+Would you be interested in such a change?

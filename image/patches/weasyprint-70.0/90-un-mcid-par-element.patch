@@ -1,82 +1,129 @@
 Correctif SZH de WeasyPrint 70.0 — un seul contenu marqué pour les lignes d'un bloc.
 
-Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
+Posé par image/patch-weasyprint.sh ; s'applique sans les autres patchs de
 image/patches/weasyprint-70.0/ (touche stream.py comme le 15 et le 30, tags.py comme le 10,
 le 15, le 30, le 60, le 65, le 80 et le 85, draw/__init__.py comme le 30, sans ligne de
-contexte commune ; une seule ligne de contexte dans stream.py et tags.py pour cela). Pour
-le désactiver : .patch.off.
+contexte commune ; une seule ligne de contexte dans stream.py et tags.py pour cela), mais
+d'une ligne à l'autre il ne fusionne que derrière l'espace de fin de ligne du 25 ou le
+trait de césure du 20 : posé seul, il ne réunit que des boîtes d'une même ligne. Pour le
+désactiver : .patch.off.
 
 weasyprint/draw/__init__.py, weasyprint/pdf/stream.py, weasyprint/pdf/tags.py. Chaque ligne
 de texte était un contenu marqué à part (un MCID et un /Span par ligne). Le lecteur PDF
-d'Edge (moteur Acrobat) expose chaque contenu marqué comme un nœud de texte, rogné de ses
-espaces, et NVDA enchaîne ces nœuds sans séparateur : la dernière lettre d'une ligne se
-collait à la première de la suivante (« andnot »). Désormais draw_block_level déclare le
-bloc dont il dessine les lignes (Stream.text_block) ; quand Stream.marked ouvre le texte
-propre de ce bloc (même élément, même pseudo-élément, donc même langue) et que rien n'a
-été dessiné depuis l'EMC du texte précédent de ce bloc, il retire cet EMC et n'ouvre pas
-de nouveau contenu marqué : la boîte n'entre pas dans _tags, et _build_box_tree la saute.
-Le texte d'un élément en ligne (em, a, span lang, appel de note) garde son propre contenu
-marqué, et ses frontières restent séparées. Un bloc coupé par la page garde un MCID par
-page : chaque page a son flux. Deux fragments d'un même bloc (colonnes) ou deux blocs
-anonymes d'un même élément gardent chacun le leur : la clé est la boîte du bloc.
-Rendu identique au pixel, veraPDF PDF/UA-1 inchangé ; cas y-mcid-lignes et
-y-mcid-frontieres de test/weasyprint-patch-check.py, démo
+d'Edge expose chaque contenu marqué comme un nœud de texte, rogné de ses espaces, et NVDA
+enchaîne ces nœuds sans séparateur : la dernière lettre d'une ligne se collait à la
+première de la suivante (« andnot »). Désormais _text_follows relève, une fois par page et
+dans l'ordre des boîtes de _build_box_tree (et non celui du dessin), chaque boîte de texte
+précédée immédiatement d'une boîte de texte du même élément ; d'une ligne à l'autre, la
+précédente doit finir par une espace (25), un trait de césure (20) ou une espace ou un
+trait dans son texte. draw_block_level le passe à Stream.text_block. Stream.marked ne fusionne
+que si cette précédente est la dernière boîte marquée et que rien n'a été dessiné depuis
+son EMC : il retire l'EMC, n'ouvre rien, et pose box.continued_mark, que _build_box_tree
+saute ; les autres boîtes restent exigées dans _tags. Une image, un élément en ligne ou
+positionné, un lien vide, un <br>, une ligne de pre : rien n'est fusionné au travers, et
+l'ordre de l'arbre reste celui des boîtes même quand WeasyPrint peint plus tard. Un bloc
+coupé par la page garde un MCID par page.
+Rendu identique au pixel, veraPDF PDF/UA-1 inchangé ; cas y-mcid-lignes,
+y-mcid-frontieres et y-mcid-ordre de test/weasyprint-patch-check.py, démo
 image/patches/amont/90-un-mcid-par-element/.
 
 --- a/weasyprint/draw/__init__.py
 +++ b/weasyprint/draw/__init__.py
-@@ -652,6 +652,7 @@
+@@ -652,6 +652,48 @@
                  draw_replacedbox(stream, block)
          elif block.children:
              if isinstance(block.children[-1], boxes.LineBox):
 -                for child in block.children:
 -                    draw_inline_level(stream, page, child)
-+                with stream.text_block(block):
++                with stream.text_block(_text_follows(page)):
 +                    for child in block.children:
 +                        draw_inline_level(stream, page, child)
          draw_block_level(page, stream, blocks_and_cells)
++
++
++def _text_follows(page):
++    """SZH : boîtes de texte de la page qui continuent la boîte de texte précédente.
++
++    L'ordre est celui des boîtes, à plat comme dans _build_box_tree (pdf/tags.py), et
++    non celui du dessin, qui met à part images, flottants et éléments positionnés : une
++    boîte de texte continue la précédente si c'est sa voisine immédiate et qu'elles ont
++    le même élément. D'une ligne à l'autre, la précédente doit aussi finir par une
++    espace ou un trait : sans eux (<br>, pre), un lecteur du texte du contenu marqué
++    collerait les deux mots. Calculé une fois par page, sur l'arbre d'origine, dont les
++    boîtes de texte sont celles qu'on dessine.
++
++    """
++    follows = getattr(page, 'text_follows', None)
++    if follows is not None:
++        return follows
++    follows = page.text_follows = {}
++    parents = [page]
++    while parents:
++        before = None
++        for child in getattr(parents.pop(), 'children', ()):
++            line = isinstance(child, boxes.LineBox)
++            for index, kid in enumerate(child.children if line else [child]):
++                if not isinstance(kid, boxes.TextBox):
++                    parents.append(kid)
++                elif (isinstance(before, boxes.TextBox) and
++                        kid.element is before.element and
++                        kid.element_tag == before.element_tag and
++                        (index > 0 or _ends_with_separator(before))):
++                    follows[kid] = before
++                before = kid
++    return follows
++
++
++def _ends_with_separator(box):
++    """SZH : la boîte de texte finit-elle par une espace ou un trait ?"""
++    hyphen = box.style['hyphenate_character'] or '-'
++    return bool(
++        getattr(box, 'line_end_space', False) or getattr(box, 'hyphenated', False) or
++        box.text[-1:].isspace() or box.text.endswith(('-', '‐', '\xad', hyphen)))
 --- a/weasyprint/pdf/stream.py
 +++ b/weasyprint/pdf/stream.py
 @@ -288,4 +288,14 @@
              self._tags[box] = {'tag': tag, 'mcid': mcid}
 -            property_list = pydyf.Dictionary({'MCID': mcid})
 -            super().begin_marked_content(tag, property_list)
-+            # SZH : le texte d'un bloc qui suit son texte de la ligne précédente, sans
-+            # rien dessiné entre les deux, reste dans le même contenu marqué : l'EMC
-+            # précédent est retiré, la boîte n'a pas de MCID ni de /Span (tags.py).
-+            block = self._text_block
-+            continued = block is not None and tag == 'Span' and (
-+                box.element is block.element and box.element_tag == block.element_tag)
-+            if continued and self._last_text == (block, len(self.stream)):
++            # SZH : une boîte de texte qui continue (text_block) la dernière boîte
++            # marquée, rien n'ayant été dessiné depuis son EMC, reste dans son contenu
++            # marqué : cet EMC est retiré, la boîte n'a ni MCID ni /Span (tags.py).
++            follows = self._follows.get(box)
++            box.continued_mark = tag == 'Span' and follows is not None and (
++                self._last_mark == (follows, len(self.stream)))
++            if box.continued_mark:
 +                del self._tags[box]
 +                self.stream.pop()
 +            else:
 +                property_list = pydyf.Dictionary({'MCID': mcid})
 +                super().begin_marked_content(tag, property_list)
          try:
-@@ -295,2 +305,14 @@
+@@ -295,2 +305,18 @@
                  super().end_marked_content()
-+                self._last_text = (block if continued else None, len(self.stream))
++                self._last_mark = (box, len(self.stream))
 +
-+    _text_block = _last_text = None
++    _follows, _last_mark = {}, None
 +
 +    @contextmanager
-+    def text_block(self, block):
-+        """SZH : lignes d'un bloc, dont le texte peut partager un contenu marqué."""
-+        previous, self._text_block = self._text_block, block
++    def text_block(self, follows):
++        """SZH : dessin de lignes dont le texte peut continuer un contenu marqué.
++
++        follows : boîte de texte → boîte de texte qu'elle continue (draw/__init__.py).
++
++        """
++        previous, self._follows = self._follows, follows
 +        try:
 +            yield
 +        finally:
-+            self._text_block = previous
++            self._follows = previous
  
 --- a/weasyprint/pdf/tags.py
 +++ b/weasyprint/pdf/tags.py
-@@ -275,3 +275,7 @@
+@@ -275,2 +275,6 @@
                  # Add marked element from the stream.
--                kid = tags.pop(child)
-+                kid = tags.pop(child, None)
-+                if kid is None:
-+                    # SZH : texte dessiné dans le contenu marqué de la ligne
-+                    # précédente (Stream.marked), déjà rattaché à l'arbre.
++                if getattr(child, 'continued_mark', False):
++                    # SZH : texte dessiné dans le contenu marqué de la boîte qui
++                    # le précède (Stream.marked), déjà rattaché à l'arbre.
 +                    continue
-                 assert kid['mcid'] not in nums
+                 kid = tags.pop(child)

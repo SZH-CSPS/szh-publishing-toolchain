@@ -60,7 +60,10 @@
 #   90-un-mcid-par-element : les lignes d'un paragraphe partagent un seul contenu marqué
 #      par page, un seul /Span (sinon le lecteur PDF d'Edge colle la fin d'une ligne au
 #      début de la suivante) ; le texte d'un élément en ligne (em, lien, lang) garde le
-#      sien, et le texte du paragraphe qui l'entoure reste coupé à ses frontières.
+#      sien, et le texte du paragraphe qui l'entoure reste coupé à ses frontières ; un
+#      objet en ligne peint plus tard (image, SVG, flottant, positionné, lien vide) coupe
+#      aussi le texte, un <br> et une ligne de pre aussi ; une boîte de texte jamais
+#      dessinée lève toujours le KeyError de WeasyPrint. Sans le 20 et le 25 : échec.
 # Ce qu'ils ne changent pas : alt="" seul reste une /Figure sans /Alt, signalée, car
 # l'import écrit alt="" pour toute image sans description. Le cas f doit donc échouer en
 # 7.3 ; s'il passe, le contrôle ne détecte plus rien ou le patch va trop loin. Le trait
@@ -322,7 +325,39 @@ CAS = {
                           'href="#ziel">ein Link</a> und <span lang="fr">un mot</span> '
                           'danach ein Text über mehrere Zeilen am Ende.</p>'
                           '<p id="ziel">Ziel</p>', set()),
+    # Objets en ligne que WeasyPrint peint après le texte : image décrite, SVG à <title>,
+    # flottant, positionné, relatif, inline-block à z-index, lien vide à aria-label. Le
+    # texte qui les suit ne rejoint pas celui qui les précède : chaque /P finit par son
+    # texte. Images sans description : veraPDF n'est pas jugé (None).
+    'y-mcid-ordre': (MCID_LIGNES,
+                     '<style>p{width:60mm;font:4mm/5mm sans-serif}.f{float:right;width:15mm}'
+                     '.a{position:absolute;top:60mm;left:0}.r{position:relative;top:0.5mm}'
+                     '.ib{display:inline-block;position:relative;z-index:2}</style>'
+                     '<p>Eins<img alt="Formel" src="img.png" width="10">zwei und ein Text '
+                     'über mehrere Zeilen bis zum Ende.</p>'
+                     '<p>Eins <svg width="10" height="10" xmlns="http://www.w3.org/2000/svg">'
+                     '<title>Symbol</title><rect width="10" height="10"/></svg> zwei und ein '
+                     'Text über mehrere Zeilen bis zum Ende.</p>'
+                     '<p>Eins <span class="f">Fliessend</span> zwei und ein Text über mehrere '
+                     'Zeilen bis zum Ende.</p>'
+                     '<p>Eins <span class="a">Absolut</span> zwei und ein Text über mehrere '
+                     'Zeilen bis zum Ende.</p>'
+                     '<p>Eins <span class="r">Relativ</span> zwei und ein Text über mehrere '
+                     'Zeilen bis zum Ende.</p>'
+                     '<p>Eins <span class="ib">Block</span> zwei und ein Text über mehrere '
+                     'Zeilen bis zum Ende.</p>'
+                     '<p>Eins <a href="https://www.szh.ch/" aria-label="Profil"></a> zwei und '
+                     'ein Text über mehrere Zeilen bis zum Ende.</p>', None),
+    # Lignes sans espace ni trait à leur fin : <br>, pre. Le texte du contenu marqué n'y
+    # aurait pas de séparateur : chaque ligne garde le sien.
+    'y-mcid-sauts': (MCID_LIGNES,
+                     '<p>Eins<br>zwei<br><br>drei</p><pre>vier\nfünf\n\nsechs</pre>', set()),
 }
+
+# Une boîte de texte jamais dessinée (inline-block à transform: scale(0)) : WeasyPrint
+# 70.0 échoue (KeyError dans tags.py) ; le correctif ne doit pas la passer sous silence.
+NON_DESSINEE = ('<style>.s{display:inline-block;transform:scale(0)}</style>'
+                '<p>Eins <span class="s">versteckt</span> zwei</p>')
 
 
 def _res(o):
@@ -846,7 +881,37 @@ def _mcid_de(e):
     return [int(k) for k in _enfants(e) if isinstance(k, (int, NumberObject))]
 
 
+def _propre(e):
+    """Texte propre d'un bloc : un /Span qui ne cite que des MCID."""
+    return str(e['/S']) == '/Span' and len(_mcid_de(e)) == len(_enfants(e))
+
+
 def _verifier_mcid_lignes(pdfs, erreurs):
+    # D'une ligne à l'autre, le 90 ne fusionne que derrière l'espace du 25 (dessinée par
+    # le 20) ou un trait : posé sans eux, il ne réunit rien et ses cas échouent.
+    if 'j-espace' not in pdfs or 'h-cesure' not in pdfs:
+        erreurs.append('90-un-mcid-par-element : posé sans le 20 et le 25, dont il lit '
+                       'l\'espace de fin de ligne et le trait de césure')
+    for n, p in enumerate((e for e in _noeuds(pdfs['y-mcid-ordre']) if str(e['/S']) == '/P'),
+                          1):
+        enfants = [k for k in _enfants(p) if isinstance(k, DictionaryObject)]
+        roles = [str(k['/S']) for k in enfants]
+        if len(enfants) < 3 or not _propre(enfants[0]) or not _propre(enfants[-1]):
+            erreurs.append(f'y-mcid-ordre : paragraphe {n}, enfants {roles}, attendu le '
+                           'texte, l\'objet en ligne, puis le texte qui le suit')
+    sauts = [sum(_propre(k) for k in _enfants(e) if isinstance(k, DictionaryObject))
+             for e in _noeuds(pdfs['y-mcid-sauts']) if str(e['/S']) in ('/P', '/NonStruct')
+             and any(isinstance(k, DictionaryObject) for k in _enfants(e))]
+    if not sauts or sauts[0] != 3 or sum(sauts) < 6:
+        erreurs.append(f'y-mcid-sauts : /Span de texte par bloc {sauts}, attendu un par '
+                       'ligne (3 pour le <br>, 3 ou plus pour le pre)')
+    try:
+        HTML(string=ENTETE + NON_DESSINEE + PIED).write_pdf(pdf_variant='pdf/ua-1')
+        erreurs.append('boîte de texte non dessinée : rendu sans erreur, attendu le '
+                       'KeyError de WeasyPrint 70.0, qui la signale')
+    except KeyError:
+        pass
+
     pdf = pdfs['y-mcid-lignes']
     par_page = [len(mcids) for mcids, _, _ in _marquage(pdf)]
     if par_page != [1, 1]:

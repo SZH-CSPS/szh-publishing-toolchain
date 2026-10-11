@@ -31,7 +31,7 @@ est rejugé avec ces dossiers : l'amont l'a-t-il intégré, le code a-t-il boug�
 | [75-auteurs-info](75-auteurs-info/RAPPORT.md) | `/Info /Author` joint par « , » des auteurs « Nom, Prénom » : on ne sait plus qui est qui | issue qui propose la PR |
 | [80-notes-balisees](80-notes-balisees/RAPPORT.md) | la note de bas de page est balisée en fin de page, sans `/Note`, et son appel n'est relié à rien | issue qui propose la PR, liée à #2482 |
 | [85-listes-imbriquees](85-listes-imbriquees/RAPPORT.md) | sous-liste frère des items, `<li><p>` refusé par veraPDF (7.2-20), `<dl>` sans `/Lbl` | issue qui propose la PR ; commentaire sur #2874 pour la sous-liste |
-| [90-un-mcid-par-element](90-un-mcid-par-element/RAPPORT.md) | un contenu marqué par ligne : le lecteur PDF d'Edge colle la fin d'une ligne au début de la suivante | issue qui propose la PR |
+| [90-un-mcid-par-element](90-un-mcid-par-element/RAPPORT.md) | un contenu marqué par ligne : le lecteur PDF d'Edge colle la fin d'une ligne au début de la suivante | issue ; PR seulement avec l'espace de fin de ligne (25) |
 | [sans-patch-lien-flex](sans-patch-lien-flex/RAPPORT.md) | un `<a>` enfant direct d'un conteneur flex perd son annotation `/Link` | pas de correctif : Pronto insère un `<span>` intermédiaire ; issue #2941 déjà ouverte |
 
 Le 25 s'applique seul mais n'a d'effet qu'avec le 20 : le dessin de l'espace de fin de ligne

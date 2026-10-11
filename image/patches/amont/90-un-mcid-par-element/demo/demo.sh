@@ -5,7 +5,7 @@ ICI="$(cd "$(dirname "$0")" && pwd)"
 . "$ICI/../../demo-commun.sh"
 
 echo "== Préparation des deux venvs"
-preparer_venvs 90-un-mcid-par-element.patch
+preparer_venvs 90-un-mcid-par-element.patch 20-cesure-trait.patch 25-espace-fin-de-ligne.patch
 
 for venv in NU PATCHE; do
   echo
