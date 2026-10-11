@@ -40,7 +40,13 @@
 #      d'un décalage du TJ (sinon pdfium y déduit une espace générée de largeur nulle et
 #      écarte la vraie : mots collés dans Edge), et le texte extrait garde ses mots ;
 #   75-auteurs-info : /Info /Author joint les auteurs « Nom, Prénom » par « ; », et
-#      dc:creator garde un rdf:li par auteur.
+#      dc:creator garde un rdf:li par auteur ;
+#   80-notes-balisees : chaque note est une /Note à /ID, rangée juste après son appel
+#      (/Reference) dans l'élément qui le contient, même reportée à la page suivante ; son
+#      numéro est un /Lbl ; aucune note sous /Document ; les /ID sont dans l'/IDTree ;
+#   85-listes-imbriquees : une sous-liste est un /L enfant du /LBody de son item ; un /LI
+#      ne contient que /Lbl et /LBody (sinon 7.2-20 sur <li><p>) ; une <dl> fait un /LI
+#      par groupe de termes (/Lbl) et de définitions (/LBody).
 # Ce qu'ils ne changent pas : alt="" seul reste une /Figure sans /Alt, signalée, car
 # l'import écrit alt="" pour toute image sans description. Le cas f doit donc échouer en
 # 7.3 ; s'il passe, le contrôle ne détecte plus rien ou le patch va trop loin. Le trait
@@ -71,11 +77,12 @@ ENTETE = ('<!doctype html><html lang="de"><head><meta charset="utf-8"><title>T</
 PIED = '</body></html>'
 
 (ENTETES, DECOR, CESURE, ESPACE, MARGES, XMP, DOUBLON, REPORTEE, LANGUE, LIENS,
- JUSTIFIE, AUTEURS) = (
+ JUSTIFIE, AUTEURS, NOTES_BALISEES, LISTES) = (
     '10-tableaux-entetes.patch', '15-images-decoratives.patch', '20-cesure-trait.patch',
     '25-espace-fin-de-ligne.patch', '30-marges-artefact.patch', '40-xmp-dc-language.patch',
     '50-notes-doublon.patch', '55-notes-reportees.patch', '60-langue-element.patch',
-    '65-nom-des-liens.patch', '70-espaces-justifiees.patch', '75-auteurs-info.patch')
+    '65-nom-des-liens.patch', '70-espaces-justifiees.patch', '75-auteurs-info.patch',
+    '80-notes-balisees.patch', '85-listes-imbriquees.patch')
 AUTEURS_NOMS = ('Fictive-Dumont, Élodie', 'Przykład, Łukasz')
 
 # Paragraphe justifié en colonne étroite : de larges écarts entre les mots.
@@ -199,6 +206,27 @@ CAS = {
     'r-auteurs': (AUTEURS,
                   ''.join(f'<meta name="author" content="{a}">' for a in AUTEURS_NOMS)
                   + '<p>Ein Satz.</p>', set()),
+    # Note au milieu d'une phrase, dans un item de liste, deux notes dans un paragraphe.
+    # Avec les notes 1 à 3, la p. 1 garde 8 lignes de texte : la note 4, appelée à la
+    # 8e, n'y tient plus et passe en p. 2. La note 5 est en p. 2 avec son appel.
+    's-notes': (NOTES_BALISEES,
+                NOTES + '<style>ul{margin:0}</style><p>Ein Satz<span class="note">Note '
+                'eins.</span> mit Note.</p><ul><li>Punkt a</li><li>Punkt b<span '
+                'class="note">Note zwei.</span></li><li>Punkt c</li></ul>'
+                '<p style="orphans:1;widows:1">Zwei<span class="note">Note drei.</span> '
+                'Noten<br>y1<br>y2<br>y3 Aufruf<span class="note">Note vier.</span></p>'
+                '<p>z1<br>z2 Aufruf<span class="note">Note fünf, Zeile 1<br>Zeile 2</span>'
+                '</p><p>Ende</p>', set()),
+    # Sous-liste entre deux textes d'un item, item à paragraphe (sans le patch : /P sous
+    # /LI, 7.2-20), item réduit à une sous-liste, liste de définition à deux définitions
+    # pour un terme et à deux termes pour une définition.
+    't-listes': (LISTES,
+                 '<ul><li>a</li><li>ba<ul><li>b1</li><li>b2</li></ul>bb</li><li>c</li></ul>'
+                 '<ol><li><p>Schritt eins</p><ol><li>Teilschritt</li></ol></li>'
+                 '<li><ul><li>nur eine Liste</li></ul></li></ol>'
+                 '<dl><dt>Logopädie</dt><dd>Sprache.</dd><dt>Psychomotorik</dt>'
+                 '<dd>Bewegung.</dd><dd>Zweite Definition.</dd><dt>Ergotherapie</dt>'
+                 '<dt>Ergo</dt><dd>Zwei Begriffe.</dd></dl>', set()),
 }
 
 
@@ -566,11 +594,69 @@ def _verifier_auteurs(pdfs, erreurs):
         erreurs.append(f'r-auteurs : dc:creator {createurs}, attendu {list(AUTEURS_NOMS)}')
 
 
+def _num(e):
+    return e.indirect_reference.idnum
+
+
+def _verifier_notes(pdfs, erreurs):
+    pdf = pdfs['s-notes']
+    notes = [e for e in _noeuds(pdf) if str(e['/S']) == '/Note']
+    if len(notes) != 5:
+        erreurs.append(f's-notes : {len(notes)} /Note, attendu 5')
+    ids, reportees, parents = [], 0, []
+    for n, note in enumerate(notes, 1):
+        ids.append(str(note['/ID']) if '/ID' in note else None)
+        parent = _res(note['/P'])
+        parents.append(str(parent['/S']))
+        freres = [k for k in _enfants(parent) if isinstance(k, DictionaryObject)]
+        numeros = [_num(k) for k in freres]
+        rang = numeros.index(_num(note)) if _num(note) in numeros else -1
+        avant = freres[rang - 1] if rang > 0 else None
+        if avant is None or str(avant.get('/S')) != '/Reference':
+            erreurs.append(f's-notes : la note {n} ne suit pas un /Reference dans '
+                           f'{parent["/S"]}')
+        enfants = _enfants(note)
+        if not enfants or str(enfants[0].get('/S')) != '/Lbl':
+            erreurs.append(f's-notes : la note {n} ne commence pas par un /Lbl')
+        reportees += _res(note['/Pg']).indirect_reference.idnum != (
+            _res(parent['/Pg']).indirect_reference.idnum)
+    if parents != ['/P', '/LBody', '/P', '/P', '/P']:
+        erreurs.append(f's-notes : notes rangées sous {parents}, attendu leur paragraphe '
+                       'ou leur /LBody')
+    if None in ids or len(set(ids)) != len(ids):
+        erreurs.append(f's-notes : /ID des notes {ids}, attendu tous présents et distincts')
+    if reportees != 1:
+        erreurs.append(f's-notes : {reportees} note(s) imprimée(s) sur une autre page que '
+                       'leur appel, attendu 1 (la note quatre, reportée)')
+    racine = PdfReader(pdf).trailer['/Root']['/StructTreeRoot'].get_object()
+    noms = _res(_res(racine.get('/IDTree', {})).get('/Names', []))
+    if not set(ids) <= {str(x) for x in noms[::2]}:
+        erreurs.append(f's-notes : /IDTree {list(noms[::2])} ne cite pas les notes {ids}')
+
+
+def _verifier_listes(pdfs, erreurs):
+    noeuds = list(_noeuds(pdfs['t-listes']))
+    parents = [str(_res(e['/P'])['/S']) for e in noeuds if str(e['/S']) == '/L']
+    voulu = ['/Document', '/LBody', '/Document', '/LBody', '/LBody', '/Document']
+    if parents != voulu:
+        erreurs.append(f't-listes : parents des /L {parents}, attendu {voulu}')
+    items = [[str(k.get('/S')) for k in _enfants(e) if isinstance(k, DictionaryObject)]
+             for e in noeuds if str(e['/S']) == '/LI']
+    intrus = [i for i in items if set(i) - {'/Lbl', '/LBody'}]
+    if intrus:
+        erreurs.append(f't-listes : /LI qui contiennent autre chose que /Lbl et /LBody '
+                       f'{intrus}')
+    voulu = [['/Lbl', '/LBody'], ['/Lbl', '/LBody', '/LBody'], ['/Lbl', '/Lbl', '/LBody']]
+    if items[-3:] != voulu:
+        erreurs.append(f't-listes : /LI de la <dl> {items[-3:]}, attendu {voulu}')
+
+
 VERIFS = {ENTETES: _verifier_entetes, DECOR: _verifier_decor, CESURE: _verifier_cesure,
           ESPACE: _verifier_espace, MARGES: _verifier_marges, XMP: _verifier_xmp,
           DOUBLON: _verifier_doublon, REPORTEE: _verifier_reportee,
           LANGUE: _verifier_langue, LIENS: _verifier_liens, JUSTIFIE: _verifier_justifie,
-          AUTEURS: _verifier_auteurs}
+          AUTEURS: _verifier_auteurs, NOTES_BALISEES: _verifier_notes,
+          LISTES: _verifier_listes}
 
 
 def main():

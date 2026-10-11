@@ -303,7 +303,7 @@ un bouclage.
 | Base Debian | `image/Containerfile`, `DEBIAN_TAG` | `13-slim` |
 | pandoc | `image/Containerfile`, `PANDOC_VERSION` et `PANDOC_SHA256` ; aussi `image/build-rootfs.sh` (même valeur) | 3.7.0.2 |
 | WeasyPrint et ses dépendances | `image/requirements.txt` | weasyprint 70.0, pillow 12.3.0, pypdf 6.19.0 |
-| Correctifs de WeasyPrint | `image/patches/weasyprint-70.0/` | 8 correctifs |
+| Correctifs de WeasyPrint | `image/patches/weasyprint-70.0/` | 14 correctifs |
 | Détourage des portraits | `image/requirements-portraits.txt` ; modèles `.onnx` dans `image/Containerfile` (sha256) | — |
 | veraPDF (contrôle PDF/UA) | `image/Containerfile`, `VERAPDF_VERSION`, URL versionnée et sha256 | 1.30.2 |
 | Vale (nettoyeur de manuscrit) | `image/Containerfile`, `VALE_VERSION` et sha256 | 3.22.0 |
@@ -358,13 +358,13 @@ texte avant son paragraphe d'ancrage, et beaucoup de manuscrits réels ont des z
 
 ### Les correctifs de WeasyPrint
 
-WeasyPrint est corrigé par douze petits correctifs, un par fonctionnalité, dans
+WeasyPrint est corrigé par quatorze petits correctifs, un par fonctionnalité, dans
 `image/patches/weasyprint-70.0/` : en-têtes de tableau, images décoratives, césure, espace en
 fin de ligne, marges en artefact, `dc:language`, notes en double, notes reportées, langue
 d'un passage (`/Lang`), nom des liens, espaces des lignes justifiées, séparateur des auteurs
-de `/Info /Author`. Chacun a
-son dossier dans `image/patches/amont/` (description du défaut, démonstration) et son cas
-dans `test/weasyprint-patch-check.py`.
+de `/Info /Author`, notes balisées après leur appel, listes imbriquées et de définition.
+Chacun a son dossier dans `image/patches/amont/` (description du défaut, démonstration) et
+son cas dans `test/weasyprint-patch-check.py`.
 
 À chaque nouvelle version de WeasyPrint :
 

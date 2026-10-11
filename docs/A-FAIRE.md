@@ -186,9 +186,9 @@ est faite. Les questions à trancher sont marquées « À décider ».
 ## Accessibilité
 
 - HTML : les notes sont lues au fil du texte ; à reprendre avec une vraie sortie web.
-- À décider : notes de fin d'article plutôt que de bas de page. Dans le PDF, le texte d'une
-  note est lu en bas de page, au milieu du flux ; des notes de fin le liraient à sa place.
-  C'est une décision éditoriale.
+- À décider : notes de fin d'article plutôt que de bas de page. Dans le PDF, le correctif
+  `80-notes-balisees` fait lire chaque note juste après son appel ; le choix ne relève plus
+  que de l'édition.
 - Lier les URL et DOI écrits en clair dans la bibliographie, à la prochaine majeure : le lien
   change l'anticrénelage de quelques glyphes des lignes touchées.
 - Livre : règles CSS pour `.szh-decor-seul` et `.szh-encadre-titre` dans

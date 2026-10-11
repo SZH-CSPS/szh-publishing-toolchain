@@ -1,0 +1,95 @@
+Correctif SZH de WeasyPrint 70.0 — note de bas de page balisée en /Note après son appel.
+
+Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
+image/patches/weasyprint-70.0/ (touche tags.py comme le 10, le 15, le 30, le 60, le 65 et
+le 85, sans ligne de contexte commune). Pour le désactiver : .patch.off.
+
+weasyprint/pdf/tags.py. Avec float: footnote, l'élément de structure d'une note était rangé
+là où sa boîte est dessinée : en bas de page, après le dernier bloc, au point de couper une
+liste entre deux items ; l'appel était un /NonStruct relié à rien (PDF/UA-1 7.9,
+Matterhorn 19). Désormais :
+- le corps de la note est un élément /Note à /ID unique, rangé dans l'élément qui contient
+  l'appel, juste après lui ; son contenu marqué reste dessiné en bas de page, l'ordre de
+  l'arbre étant indépendant de celui du flux. Une note reportée à la page suivante suit de
+  même son appel ; WeasyPrint ne coupe jamais une note, elle reste une seule /Note ;
+- l'appel (::footnote-call) est un /Reference, élément de citation d'ISO 32000-1 14.8.4.4,
+  et le numéro de la note (::footnote-marker) un /Lbl dans la /Note ;
+- le catalogue de structure reçoit l'arbre des identifiants (/IDTree), exigé dès qu'un
+  élément porte un /ID (ISO 32000-1, tableau 322), /TH compris.
+Une note dont l'appel n'est pas balisé (boîte de marge) reste en bas de sa page.
+Rendu identique au pixel ; cas s-notes de test/weasyprint-patch-check.py.
+
+--- a/weasyprint/pdf/tags.py
++++ b/weasyprint/pdf/tags.py
+@@ -64,6 +64,45 @@
+         sorted_refs = [ref for _, ref in sorted(page_nums.items())]
+         content_mapping['Nums'][-1].extend(sorted_refs)
+ 
++    # SZH : chaque note de la zone @footnote devient une /Note à /ID, rangée dans
++    # l'élément qui contient son appel, juste après lui (PDF/UA-1 7.9), même quand elle
++    # est imprimée sur la page suivante. Son contenu marqué reste où il est dessiné. Une
++    # note dont l'appel n'est pas balisé reste dans la zone, en bas de sa page.
++    calls, areas = {}, []
++    for page in document.pages:
++        for box in page._page_box.descendants():
++            if isinstance(box, boxes.FootnoteAreaBox) and hasattr(box, 'mark'):
++                areas.append(box)
++            elif getattr(box, 'footnote', None) is not None and hasattr(box, 'mark'):
++                calls.setdefault(box.element, box.mark)
++    for area in areas:
++        kids = area.mark['K']
++        if len(kids) != len(area.children):
++            continue
++        for footnote, reference in zip(area.children, tuple(kids)):
++            note = pdf.objects[int(reference.split()[0])]
++            note['S'] = '/Note'
++            note['ID'] = pydyf.String(f'note-{note.number}')
++            call_parent, call = calls.get(footnote.element, (None, None))
++            if call is not None and call.reference in call_parent['K']:
++                kids.remove(reference)
++                call_kids = call_parent['K']
++                call_kids.insert(call_kids.index(call.reference) + 1, reference)
++                note['P'] = call_parent.reference
++        if not kids and area.mark.reference in structure_document['K']:
++            structure_document['K'].remove(area.mark.reference)
++
++    # SZH : l'arbre des identifiants, exigé dès qu'un élément porte un /ID (ISO 32000-1,
++    # tableau 322) : ceux des /Note et des /TH.
++    identifiers = sorted(
++        (object_['ID'].string, object_.reference) for object_ in pdf.objects
++        if isinstance(object_, pydyf.Dictionary) and 'ID' in object_ and
++        object_.get('Type') == '/StructElem')
++    if identifiers:
++        structure_root['IDTree'] = pydyf.Dictionary({'Names': pydyf.Array(
++            item for identifier, reference in identifiers
++            for item in (pydyf.String(identifier), reference))})
++
+     # Add annotations for links and widgets.
+     start = len(document.pages)
+     for i, (reference, annotation) in enumerate(annotations, start=start):
+@@ -83,6 +122,11 @@
+     """Get PDF tag corresponding to HTML tag."""
+     if tag is None:
+         return 'NonStruct'
++    elif tag.endswith('::footnote-call'):
++        # SZH : l'appel de note renvoie à la /Note qui le suit (ISO 32000-1, 14.8.4.4).
++        return 'Reference'
++    elif tag.endswith('::footnote-marker'):
++        return 'Lbl'
+     elif tag == 'div':
+         return 'Div'
+     elif tag.split(':')[0] == 'a':
+@@ -314,6 +358,13 @@
+         assert kid['mcid'] not in nums
+         nums[kid['mcid']] = element.reference
+ 
++    # SZH : l'appel de note et la zone des notes gardent leur élément, pour que add_tags
++    # range chaque note après son appel.
++    if box.footnote is not None:
++        box.mark = (parent, element)
++    elif isinstance(box, boxes.FootnoteAreaBox):
++        box.mark = element
++
+     # Link table cells to related headers.
+     if tag == 'Table':
+         def _get_rows(table_box):
