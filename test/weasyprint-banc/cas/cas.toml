@@ -51,7 +51,7 @@ ordres = [["Q01", "Q02", "Q04", "Q05", "Q07", "Q09", "Q10", "Q11", "Q15", "Q16",
 
 [c04-notes-tableau]
 titre = "Notes dans un TH fusionné et dans un TD à headers= ; langue sur des cellules."
-ordres = [["Q01", "Q02", "Q03", "Q05", "Q06", "Q07", "Q08", "Q11", "Q12", "Q13", "Q14", "Q15"], ["Q03", "Q04", "Q05"], ["Q08", "Q09", "Q10", "Q11"]]
+ordres = [["Q01", "Q02", "Q03", "Q05", "Q06", "Q07", "Q08", "Q11", "Q12", "Q13", "Q14", "Q15"], ["Q03", "Q05", "Q14", "Q04", "Q15"], ["Q08", "Q09", "Q10", "Q11"]]
 langues = { Q06 = "de", Q11 = "de", Q14 = "fr", Q09 = "fr" }
 
 [c05-notes-blocs]
