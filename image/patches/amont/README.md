@@ -29,6 +29,8 @@ est rejugé avec ces dossiers : l'amont l'a-t-il intégré, le code a-t-il boug�
 | [65-nom-des-liens](65-nom-des-liens/RAPPORT.md) | le `/Contents` d'un lien est sa cible, jamais `aria-label`, son texte ni `title` ; pas d'`/Alt` sur un lien vide | commentaire sur l'issue #2550 |
 | [70-espaces-justifiees](70-espaces-justifiees/RAPPORT.md) | l'espace d'une ligne justifiée est dessinée au milieu de son écart : pdfium (Edge) l'écarte, mots collés | issue qui propose la PR |
 | [75-auteurs-info](75-auteurs-info/RAPPORT.md) | `/Info /Author` joint par « , » des auteurs « Nom, Prénom » : on ne sait plus qui est qui | issue qui propose la PR |
+| [80-notes-balisees](80-notes-balisees/RAPPORT.md) | la note de bas de page est balisée en fin de page, sans `/Note`, et son appel n'est relié à rien | issue qui propose la PR, liée à #2482 |
+| [85-listes-imbriquees](85-listes-imbriquees/RAPPORT.md) | sous-liste frère des items, `<li><p>` refusé par veraPDF (7.2-20), `<dl>` sans `/Lbl` | issue qui propose la PR ; commentaire sur #2874 pour la sous-liste |
 | [sans-patch-lien-flex](sans-patch-lien-flex/RAPPORT.md) | un `<a>` enfant direct d'un conteneur flex perd son annotation `/Link` | pas de correctif : Pronto insère un `<span>` intermédiaire ; issue #2941 déjà ouverte |
 
 Le 25 s'applique seul mais n'a d'effet qu'avec le 20 : le dessin de l'espace de fin de ligne

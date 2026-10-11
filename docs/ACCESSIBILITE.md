@@ -141,7 +141,12 @@ demandent un essai avec un lecteur d'écran (NVDA, par exemple). Sans cet essai,
   licence de la couverture (`pipeline/templates/szh-article.html`), entrées du sommaire FALC
   (`pipeline/livre-assembler.py`).
 - **Listes.** Les puces et numéros sont des `::marker` (`print.css`), que WeasyPrint balise
-  en `LI > Lbl + LBody`.
+  en `LI > Lbl + LBody`. Une sous-liste est un `/L` dans le `/LBody` de son item ; une
+  `<dl>` fait un `/LI` par terme, le terme en `/Lbl` et sa définition en `/LBody`
+  (correctif `85-listes-imbriquees`).
+- **Notes.** Une note imprimée en bas de page (`float: footnote`) est balisée en `/Note`
+  juste après son appel, lui-même un `/Reference` ; un lecteur d'écran la lit à cet endroit,
+  une seule fois (correctif `80-notes-balisees`).
 - **Langue.** `szh-contexte.lua` décide la langue de l'article. Elle est posée sur
   `<html lang>`, donc sur le `/Lang` du document, et sur chaque passage dans une autre
   langue. Les webviews du cockpit prennent la langue de l'interface.
@@ -198,6 +203,8 @@ touchent l'accessibilité :
 | `65-nom-des-liens` | `/Contents` d'un lien tiré d'`aria-label`, de son texte ou de `title` ; `/Alt` sur le `/Link` d'un lien sans texte |
 | `70-espaces-justifiees` | dans une ligne justifiée, pdfium (Edge) lit les vraies espaces au lieu d'en déduire de vides : mots non collés |
 | `75-auteurs-info` | `/Info /Author` sépare les auteurs « Nom, Prénom » par « ; » |
+| `80-notes-balisees` | la note de bas de page est une `/Note` à `/ID` placée juste après son appel (`/Reference`), et non plus en bas de page dans l'arbre ; `/IDTree` dans la racine de structure |
+| `85-listes-imbriquees` | sous-liste dans le `/LBody` de son item ; `<dl>` en `/LI` à `/Lbl` (terme) et `/LBody` (définition) |
 
 Le rapport, la démo et l'état chez les développeurs de WeasyPrint de chaque correctif sont
 dans [`image/patches/amont/`](../image/patches/amont/README.md). Un correctif n'arrive sur

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Listes imbriquées et de définition</title>
+  <style>
+    body { font: 11pt/1.3 sans-serif; }
+    dt { font-weight: bold; }
+  </style>
+</head>
+<body>
+  <ul>
+    <li>a</li>
+    <li>ba
+      <ul>
+        <li>b1</li>
+        <li>b2</li>
+      </ul>
+      bb
+    </li>
+    <li>c</li>
+  </ul>
+  <ol>
+    <li><p>Étape un</p>
+      <ol>
+        <li>sous-étape</li>
+      </ol>
+    </li>
+    <li><ul><li>liste seule dans l'item</li></ul></li>
+  </ol>
+  <dl>
+    <dt>Logopédie</dt>
+    <dd>Prise en charge du langage.</dd>
+    <dt>Psychomotricité</dt>
+    <dd>Prise en charge du mouvement.</dd>
+    <dd>Seconde définition du même terme.</dd>
+    <dt>Ergothérapie</dt>
+    <dt>Ergo</dt>
+    <dd>Deux termes, une définition.</dd>
+  </dl>
+</body>
+</html>

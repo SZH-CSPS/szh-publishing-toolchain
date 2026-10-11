@@ -79,6 +79,16 @@ const PATCHS = {
     cibles: ['weasyprint/pdf/__init__.py'],
     reperes: [/^\+\s+pdf\.info\['Author'\] = pydyf\.String\('; '\.join\(metadata\.authors\)\)$/m],
   },
+  '80-notes-balisees': {
+    cibles: ['weasyprint/pdf/tags.py'],
+    reperes: [/^\+\s+note\['S'\] = '\/Note'$/m, /^\+\s+return 'Reference'$/m,
+      /^\+\s+structure_root\['IDTree'\] = pydyf\.Dictionary\(\{'Names': pydyf\.Array\($/m],
+  },
+  '85-listes-imbriquees': {
+    cibles: ['weasyprint/pdf/tags.py'],
+    reperes: [/^\+def _new_element\(tag, parent, pdf, page_number\):$/m,
+      /^\+\s+tag = 'Lbl' if box\.element_tag == 'dt' else 'LBody'$/m],
+  },
 };
 
 function dossierPatchs() {

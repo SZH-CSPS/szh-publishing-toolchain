@@ -1,0 +1,114 @@
+Correctif SZH de WeasyPrint 70.0 — sous-liste dans son /LBody, liste de définition en /Lbl et /LBody.
+
+Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
+image/patches/weasyprint-70.0/ (touche tags.py comme le 10, le 15, le 30, le 60, le 65 et
+le 80, sans ligne de contexte commune). Pour le désactiver : .patch.off.
+
+weasyprint/pdf/tags.py, _build_box_tree. Une sous-liste (<ul>/<ol> dans un <li>) devenait
+un /L frère des /LI de la liste parente : le lien entre l'item et sa sous-liste était
+perdu. Un <li> qui contient un bloc (<li><p>) recevait ce /P directement sous le /LI
+(veraPDF PDF/UA-1 7.2-20). Une <dl> devenait un /L dont chaque <dt> et chaque <dd> était
+un /LI à part, sans /Lbl (PDF/UA-1 7.6, ISO 32000-1 tableau 336). Désormais :
+- tout ce que contient un /LI hors de son marqueur va dans son /LBody, créé au besoin :
+  la sous-liste est un /L enfant du /LBody, après le texte de l'item, et le texte qui la
+  suit dans l'item reste dans le même /LBody (technique L_05 de la PDF Association) ;
+- dans une <dl>, un /LI regroupe un ou plusieurs termes <dt>, chacun un /Lbl, et la ou
+  les définitions <dd> qui les suivent, chacune un /LBody ; un <dt> qui suit un <dd>
+  ouvre un nouveau /LI, un <dd> sans terme forme un /LI sans /Lbl. Aucun /ListNumbering :
+  sa valeur par défaut, /None, est celle d'une liste de définition (technique L_14).
+Une liste coupée par la page reste deux /L : WeasyPrint bâtit un arbre par page.
+Rendu identique au pixel ; cas t-listes de test/weasyprint-patch-check.py.
+
+--- a/weasyprint/pdf/tags.py
++++ b/weasyprint/pdf/tags.py
+@@ -123,6 +123,19 @@
+         return 'NonStruct'
+ 
+ 
++def _new_element(tag, parent, pdf, page_number):
++    """SZH : élément de structure sans boîte, enfant de parent."""
++    element = pydyf.Dictionary({
++        'Type': '/StructElem',
++        'S': f'/{tag}',
++        'K': pydyf.Array([]),
++        'Pg': pdf.page_references[page_number],
++        'P': parent.reference,
++    })
++    pdf.add_object(element)
++    return element
++
++
+ def _build_box_tree(box, parent, pdf, page_number, nums, annotations, tags):
+     """Recursively build tag tree for given box and yield children."""
+ 
+@@ -156,14 +169,14 @@
+     elif tag == 'LI':
+         # Ignore anonymous blocks created for lists and bullets.
+         anonymous_list_element = parent['S'] == '/LI'
+-        anonymous_li_child = parent['S'] == '/LBody'
++        anonymous_li_child = parent['S'] in ('/LBody', '/Lbl')
+         dl_item = box.element_tag in ('dt', 'dd')
+         no_bullet_li = box.element_tag == 'li' and (
+             'list-item' not in box.style['display'] or
+             box.style['list_style_type'] == 'none')
+         if anonymous_list_element:
+-            # Store as list item body.
+-            tag = 'LBody'
++            # Store as list item body, or as label for a term of a definition list.
++            tag = 'Lbl' if box.element_tag == 'dt' else 'LBody'
+         elif anonymous_li_child:
+             # Store as non struct list item body child.
+             tag = 'NonStruct'
+@@ -268,6 +281,8 @@
+         element['K'].append(form_element.reference)
+ 
+     # Build tree for box children.
++    body = item = None  # SZH : /LBody d'un /LI, /LI courant d'une liste de définition.
++    item_has_body = False
+     for child in box.children:
+         children = child.children if isinstance(child, boxes.LineBox) else [child]
+         for child in children:
+@@ -292,20 +307,35 @@
+                     nums[kid['mcid']] = kid_element.reference
+             else:
+                 # Recursively build tree for child.
+-                if child.element_tag in ('ul', 'ol') and element['S'] == '/LI':
+-                    # In PDFs, nested lists are linked to the parent list, but in
+-                    # HTML, nested lists are linked to a parent’s list item.
+-                    child_parent = parent
+-                else:
+-                    child_parent = element
++                # SZH : une sous-liste, ou un autre bloc d'un item, va dans le /LBody de
++                # son /LI, créé au besoin (PDF/UA-1 7.6). Dans une liste de définition,
++                # un /LI regroupe des termes (/Lbl) et leurs définitions (/LBody) : un
++                # terme qui suit une définition en ouvre un nouveau.
++                child_parent = element
++                if element['S'] == '/LI' and child.element_tag != 'li::marker' and (
++                        body is not None or child.element_tag != 'li'):
++                    if body is None:
++                        body = _new_element('LBody', element, pdf, page_number)
++                        element['K'].append(body.reference)
++                    child_parent = body
++                elif element['S'] == '/L' and child.element_tag in ('dt', 'dd'):
++                    if item is None or (child.element_tag == 'dt' and item_has_body):
++                        item = _new_element('LI', element, pdf, page_number)
++                        element['K'].append(item.reference)
++                        item_has_body = False
++                    item_has_body |= child.element_tag == 'dd'
++                    child_parent = item
+                 # Keep the current number of parent children, so that we can add the
+                 # new children before the possible grandchildren, for example for
+                 # lists.
+                 child_index = len(child_parent['K'])
+-                child_elements = _build_box_tree(
+-                    child, child_parent, pdf, page_number, nums, annotations, tags)
++                child_elements = tuple(_build_box_tree(
++                    child, child_parent, pdf, page_number, nums, annotations, tags))
+                 child_parent['K'][child_index:child_index] = [
+                     element.reference for element in child_elements]
++                for child_element in child_elements:
++                    if child_parent is element and child_element['S'] == '/LBody':
++                        body = child_element
+ 
+     if isinstance(box, boxes.ReplacedBox):
+         # Add replaced box.
