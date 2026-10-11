@@ -554,7 +554,7 @@ test('tableau-boite (préparation) : sans le filtre, un <table> n\'est envelopp�
 
 test('tableau-boite : un tableau markdown est enveloppé dans un <div> dédié', () => {
   const html = pandoc(TABLE_SIMPLE, { vers: 'html5', filtres: ['szh-tableau-boite.lua'] });
-  assert.match(html, /<div class="szh-tableau-boite">\s*<table>/, html);
+  assert.match(html, /<div class="szh-tableau-boite"[^>]*>\s*<table>/, html);
 });
 
 // Cas limite : un RawBlock qui contient « <table » est enveloppé, un RawBlock qui contient
@@ -566,8 +566,102 @@ test('tableau-boite : un tableau réinjecté est enveloppé, une simple mention 
   const html = pandoc(RAW_TABLE_ET_TEXTE, { de: 'native', vers: 'html5', filtres: ['szh-tableau-boite.lua'] });
   assert.strictEqual((html.match(/class="szh-tableau-boite"/g) || []).length, 1,
     'zéro ou plus d\'une enveloppe : ' + html);
-  assert.match(html, /<div class="szh-tableau-boite">\s*<table><tr><td>x<\/td><\/tr><\/table>\s*<\/div>/, html);
+  assert.match(html, /<div class="szh-tableau-boite"[^>]*>\s*<table><tr><td>x<\/td><\/tr><\/table>\s*<\/div>/, html);
   assert.match(html, /<p>Ceci mentionne le mot table sans balise\.<\/p>/, html);
+});
+
+// La boîte défile à l'écran quand le tableau déborde : elle doit s'atteindre au clavier
+// (tabindex), être une région et porter un nom, la légende ou « Tableau » dans la langue
+// du document.
+test('tableau-boite (préparation) : avant le filtre, aucune boîte focalisable', () => {
+  const html = pandoc(RAW_TABLE_ET_TEXTE, { de: 'native', vers: 'html5' });
+  assert.ok(!/tabindex|role="region"/.test(html), html);
+});
+
+test('tableau-boite : la boîte est une région focalisable, nommée par la légende', () => {
+  const raw = '```{=html}\n<table class="szh-tableau"><caption>Effectifs</caption>'
+    + '<tr><th scope="col">A</th></tr><tr><td>1</td></tr></table>\n```\n';
+  const html = pandoc(raw, { vers: 'html5', filtres: ['szh-tableau-boite.lua'] });
+  const boite = html.match(/<div class="szh-tableau-boite"[^>]*>/)[0];
+  assert.match(boite, /tabindex="0"/, boite);
+  assert.match(boite, /role="region"/, boite);
+  const cible = boite.match(/aria-labelledby="([^"]+)"/);
+  assert.ok(cible, 'pas de aria-labelledby : ' + boite);
+  assert.match(html, new RegExp('<caption id="' + cible[1] + '">Effectifs</caption>'), html);
+  // Markdown : nommée par le texte de sa légende.
+  const md = pandoc(TABLE_SIMPLE + '\n: Ma légende\n', { vers: 'html5', filtres: ['szh-tableau-boite.lua'] });
+  assert.match(md.match(/<div class="szh-tableau-boite"[^>]*>/)[0], /aria-label="Ma légende"/, md);
+});
+
+test('tableau-boite : sans légende, la boîte s’appelle « Tableau » ou « Tabelle »', () => {
+  const fr = pandoc(RAW_TABLE_ET_TEXTE, { de: 'native', vers: 'html5', filtres: ['szh-tableau-boite.lua'] });
+  assert.match(fr, /<div class="szh-tableau-boite" tabindex="0" role="region" aria-label="Tableau">/, fr);
+  const de = pandoc('---\nlang: de\n---\n\n' + TABLE_SIMPLE, { vers: 'html5', filtres: ['szh-tableau-boite.lua'] });
+  assert.match(de.match(/<div class="szh-tableau-boite"[^>]*>/)[0], /aria-label="Tabelle"/, de);
+});
+
+// Deux tableaux complexes écrits par l'éditeur du cockpit dans un même document : leurs id
+// (szh-th-r0c0…, description, note) sont identiques dans les fichiers. Après le filtre, ils
+// sont uniques et chaque référence vise un élément de son propre tableau.
+const TABLE_MODEL = require(path.join(RACINE, 'vscodium-extension', 'szh-cockpit', 'lib', 'table-model.js'));
+
+function tableauComplexe(legende) {
+  let m = TABLE_MODEL.analyserTable('<table><tr><td>X</td><td colspan="2">An A</td></tr>'
+    + '<tr><td></td><td>F</td><td>G</td></tr><tr><td>L1</td><td>1</td><td>2</td></tr></table>');
+  m = TABLE_MODEL.appliquerOperationTable('fusionner', m, { rMin: 0, cMin: 0, rMax: 1, cMax: 0 });
+  m = TABLE_MODEL.appliquerOperationTable('entete', m, { sens: 'lignes', n: 2 });
+  m = TABLE_MODEL.appliquerOperationTable('entete', m, { sens: 'colonnes', n: 1 });
+  m.attrs.legende = legende;
+  m.attrs.alt = 'Description de ' + legende + '.';
+  m.attrs.note = 'Note de ' + legende + '.';
+  return TABLE_MODEL.serialiserTable(m);
+}
+
+function deuxTableaux() {
+  return ['A', 'B'].map((l) => '```{=html}\n' + tableauComplexe(l) + '```\n').join('\nTexte.\n\n');
+}
+
+// Les boîtes d'un HTML, chacune avec ce qui la suit jusqu'à la suivante (ici du texte
+// sans id).
+function boites(html) {
+  return html.split('<div class="szh-tableau-boite"').slice(1);
+}
+
+function verifierIds(html) {
+  const ids = (html.match(/\sid="[^"]+"/g) || []).map((s) => s.trim());
+  assert.strictEqual(new Set(ids).size, ids.length, 'id en double : ' + ids.join(' '));
+  for (const b of boites(html)) {
+    const locaux = new Set((b.match(/\sid="([^"]+)"/g) || []).map((s) => s.match(/"([^"]+)"/)[1]));
+    const refs = [];
+    for (const m of b.matchAll(/\s(?:headers|aria-describedby|aria-labelledby)="([^"]+)"/g)) { refs.push(...m[1].split(' ')); }
+    assert.ok(refs.length > 0, 'aucune référence dans la boîte : ' + b);
+    for (const r of refs) { assert.ok(locaux.has(r), 'la référence ' + r + ' sort de son tableau : ' + b); }
+  }
+}
+
+const FILTRES_TABLEAU = ['szh-numerotation.lua', 'szh-tableau-boite.lua'];
+
+test('tableau-boite (préparation) : deux tableaux complexes, sans le filtre, partagent leurs id', () => {
+  const html = pandoc(deuxTableaux(), { vers: 'html5', filtres: ['szh-numerotation.lua'] });
+  assert.strictEqual((html.match(/id="szh-th-r0c1"/g) || []).length, 2, html);
+});
+
+test('tableau-boite : deux tableaux complexes d’un article ont des id uniques, et des headers= justes', () => {
+  const html = pandoc(deuxTableaux(), { vers: 'html5', filtres: FILTRES_TABLEAU });
+  verifierIds(html);
+  assert.match(html, /<td headers="szh-t2-th-r0c1 szh-t2-th-r1c1 szh-t2-th-r2c0"[^>]*>1<\/td>/, html);
+  assert.match(html, /aria-describedby="szh-t1-tabelle-desc-1 szh-t1-bloc-note-1"/, html);
+  assert.match(html, /aria-describedby="szh-t2-tabelle-desc-2 szh-t2-bloc-note-2"/, html);
+});
+
+test('tableau-boite : dans un chapitre de livre, le rang du chapitre entre dans les id', () => {
+  const env = { SZH_LIVRE: '1', SZH_CHAPITRE: '3' };
+  const html = pandoc(deuxTableaux(), { vers: 'html5', filtres: FILTRES_TABLEAU, env: env });
+  verifierIds(html);
+  assert.match(html, /<th id="szh-c3-t1-th-r0c1"/, html);
+  // Un autre chapitre, compilé à part puis assemblé : aucun id commun.
+  const autre = pandoc(deuxTableaux(), { vers: 'html5', filtres: FILTRES_TABLEAU, env: { SZH_LIVRE: '1', SZH_CHAPITRE: '4' } });
+  verifierIds(html + autre);
 });
 
 // ── szh-titre-metriques.lua : la table de largeurs d'avance, chargée par dofile ────────

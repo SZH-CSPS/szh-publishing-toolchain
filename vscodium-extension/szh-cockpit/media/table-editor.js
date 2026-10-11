@@ -85,10 +85,11 @@ function stylerApercu(){if(!dispo||!modele)return;var a=modele.attrs;
     if(a.zebreCol!=='aucun'){
       var par=(a.zebreCol==='paires')===((ci+1)%2===0);
       if(a.zebreColEntetes){if(par)el.style.background=TEINTE_ZEBRE;}
-      else if(!thead&&!cell.th&&par)el.style.background=TEINTE_ZEBRE;
+      else if(!thead&&(!cell.th||cell.enDonnee)&&par)el.style.background=TEINTE_ZEBRE;
     }
-    /* Titre de section : print.css le style par th[scope^="row"], de même ici. */
-    if(cell.th&&(cell.scope==='row'||cell.section)){var fe=fondDe(a.elFond);if(fe){el.style.background=fe.bg;el.style.color=fe.fg;}if(a.elGras)el.style.fontWeight='700';}
+    /* Titre de section : print.css le style par th[scope^="row"], de même ici. Une cellule
+       d'en-tête écrite en <td> (enDonnee) n'a pas ce style. */
+    if(cell.th&&!cell.enDonnee&&(cell.scope==='row'||cell.section)){var fe=fondDe(a.elFond);if(fe){el.style.background=fe.bg;el.style.color=fe.fg;}if(a.elGras)el.style.fontWeight='700';}
     else if(cell.th&&cell.scope==='col'){var fc=fondDe(a.ecFond);if(fc){el.style.background=fc.bg;el.style.color=fc.fg;}if(a.ecGras)el.style.fontWeight='700';}
     if(!thead&&r===N-1){var ft=fondDe(a.totalFond);if(ft){el.style.background=ft.bg;el.style.color=ft.fg;}if(a.totalGras)el.style.fontWeight='700';}
     if(a.bordureHaute){if(eL>0){if(r===eL-1)el.style.borderBottom='2px solid '+accLigne;}else if(r===0)el.style.borderTop='2px solid '+accLigne;}

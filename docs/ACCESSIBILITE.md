@@ -75,17 +75,45 @@ demandent un essai avec un lecteur d'écran (NVDA, par exemple). Sans cet essai,
   compilation (« PDF/UA-1 indisponible -> PDF balisé simple ») : un PDF qui perd ses balises
   ne passe pas en silence.
 - **Tableaux.** `szh-tableau-boite.lua` met chaque tableau dans une boîte qui ne se coupe
-  pas entre deux pages : une `<caption>` séparée de sa table fait tomber le balisage.
-  `szh-tabelle-scope.lua` pose `scope` sur les en-têtes (RGAA 5.7). Une description longue
-  (`data-alt`) devient un élément `.szh-description` masqué visuellement, relié au tableau
-  par `aria-describedby` (`szh-numerotation.lua`).
+  pas entre deux pages : une `<caption>` séparée de sa table fait tomber le balisage. À
+  l'écran, cette boîte défile quand le tableau est trop large ; elle est donc une région
+  atteignable au clavier (`tabindex="0"`, `role="region"`), nommée par la légende
+  (`aria-labelledby`) ou, sans légende, par « Tableau », « Tabelle » ou « Tabella ».
+  WeasyPrint ignore ces attributs : le PDF n'en change pas. `szh-tabelle-scope.lua` pose
+  `scope` sur les en-têtes (RGAA 5.7). Une description longue (`data-alt`) devient un
+  élément `.szh-description` masqué visuellement, relié au tableau par `aria-describedby`
+  (`szh-numerotation.lua`).
+- **Identifiants des tableaux.** Les `id` internes d'un tableau (en-têtes, description,
+  note, légende) sont préfixés à la compilation par le rang du tableau dans le document,
+  et dans un livre par le rang du chapitre : `szh-th-r0c1` devient `szh-t2-th-r0c1`, ou
+  `szh-c3-t2-th-r0c1`. Deux tableaux complexes d'un article, ou deux chapitres d'un livre
+  assemblé, ne partagent donc aucun `id`, et chaque `headers=` vise son propre tableau
+  (`szh-tableau-boite.lua`). Les fichiers `tables/*.html` gardent leurs `id` sans préfixe.
 - **Tableaux complexes.** L'éditeur de tableaux du cockpit admet au plus deux rangées ou
-  deux colonnes d'en-tête, contiguës depuis le bord. Un titre de section fusionné porte
+  deux colonnes d'en-tête, contiguës depuis le bord. Le lien entre une cellule et ses
+  en-têtes passe par `headers=` (WCAG H43, RGAA 5.7), et non par plusieurs `<tbody>`, qui
+  casseraient les sélecteurs de `print.css` (total, zébrage). Une cellule de données cite,
+  dans cet ordre :
+  - tous les en-têtes du `<thead>` qui couvrent sa colonne, groupe fusionné compris
+    (l'année, puis « Filles ») ;
+  - le titre de section qui la précède dans sa colonne, s'il y en a un ;
+  - les en-têtes de sa rangée dans les colonnes de gauche.
+
+  Un titre de section est une cellule fusionnée, marquée dans l'éditeur, qui porte
   `scope="rowgroup"` et sert d'en-tête, colonne par colonne, aux rangées qui le suivent
-  jusqu'au titre suivant. Le lien entre une cellule et ses en-têtes passe par `headers=`
-  (WCAG H43, RGAA 5.7), et non par plusieurs `<tbody>`, qui casseraient les sélecteurs de
-  `print.css` (total, zébrage). Code : `lib/table-model.js` et `media/table-editor.js` du
-  cockpit.
+  jusqu'au titre suivant. Il peut couvrir la rangée entière, colonne d'en-tête comprise, ou
+  commencer à droite de la colonne d'en-tête. Dans ce second cas, une cellule vide à sa
+  gauche est écrite en `<td>` : un `<th>` vide serait annoncé comme un en-tête sans nom.
+  Le titre de section s'ajoute aux en-têtes du `<thead>` sans en retirer aucun : il se lit
+  sur un autre axe que les groupes de colonnes. Un titre du premier bloc de rangées posé
+  dans le `<thead>` serait donc lu avec le titre de section qui suit (« Article 2025,
+  Article 2026 ») ; ce titre-là se marque comme titre de section dans le corps.
+
+  La rangée de total est la dernière rangée du corps quand le tableau lui donne un style
+  de total (gras ou fond, préréglage « Synthèse ») : elle ne reçoit aucun titre de section,
+  puisqu'elle totalise tout le tableau. Code : `lib/table-model.js` et
+  `media/table-editor.js` du cockpit. Ces règles valent à l'enregistrement : un tableau
+  déjà écrit les reçoit à sa prochaine modification dans l'éditeur.
 - **Images.** Une image à `alt=""` est décorative : elle sort en fond CSS, donc hors de
   l'arbre de structure (`en_decor()` dans `szh-numerotation.lua`). Le portrait d'un auteur
   est aussi un fond CSS. Une `<img alt="" role="presentation">` qui resterait sort en
