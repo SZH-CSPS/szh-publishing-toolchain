@@ -9,7 +9,10 @@
 #   3. livre-epub-finir.py : navigation par parties, repères, <title> des documents,
 #      couverture nommée ;
 #   4. la chaîne EPUB entière sur un petit livre (prepare, pandoc et szh-livre-epub-brut.lua,
-#      finir) : un tableau complexe y garde ses <th> de rangée et ses renvois.
+#      finir) : un tableau complexe y garde ses <th> de rangée et ses renvois ;
+#   5. deux chapitres à deux tableaux complexes, compilés par szh-numerotation.lua et
+#      szh-tableau-boite.lua (szh-cN-tM-…) puis préfixés par le slug : aucun id en double,
+#      et chaque renvoi reste dans son tableau, dans le HTML du PDF, le web et l'EPUB.
 #
 #   python3 test/livre-accessibilite.test.py
 
@@ -383,6 +386,134 @@ class FinitionEpub(unittest.TestCase):
         c = self.lire('EPUB/text/cover.xhtml')
         self.assertRegex(c, r'<svg [^>]*role="img" aria-label="Umschlag: Buch"><title>Umschlag: Buch</title>')
         ET.fromstring(c)
+
+
+# Tableau complexe tel que l'éditeur du cockpit l'écrit dans tables/*.html : identifiants
+# sans préfixe, description longue et note en attributs.
+TABLEAU_EDITEUR = (
+    '<table class="szh-tableau" data-entete-lignes="2" data-entete-colonnes="1" '
+    'data-alt="Beschreibung." data-note="Notiz.">\n'
+    '<caption>Titel</caption>\n<thead>\n<tr>\n'
+    '<th id="szh-th-r0c0" scope="col" rowspan="2">X</th>\n'
+    '<th id="szh-th-r0c1" scope="colgroup" colspan="2">2024</th>\n</tr>\n<tr>\n'
+    '<th id="szh-th-r1c1" scope="col">F</th>\n<th id="szh-th-r1c2" scope="col">G</th>\n'
+    '</tr>\n</thead>\n<tbody>\n<tr>\n<th id="szh-th-r2c0" scope="row">L1</th>\n'
+    '<td headers="szh-th-r0c1 szh-th-r1c1 szh-th-r2c0">1</td>\n'
+    '<td headers="szh-th-r0c1 szh-th-r1c2 szh-th-r2c0">2</td>\n'
+    '</tr>\n</tbody>\n</table>\n')
+
+RE_RENVOIS = re.compile(r'\s(?:headers|aria-describedby|aria-labelledby)="([^"]+)"')
+
+
+def _verifier_tableaux(test, html, nb_boites):
+    """Aucun id en double ; chaque headers=, aria-describedby et aria-labelledby d'une
+    boîte de tableau vise un élément de cette même boîte ; chaque href="#…" a sa cible."""
+    ids = re.findall(r'\sid="([^"]+)"', html)
+    test.assertEqual(sorted({i for i in ids if ids.count(i) > 1}), [])
+    for cible in re.findall(r'\shref="#([^"]+)"', html):
+        test.assertIn(cible, ids)
+    boites = html.split('<div class="szh-tableau-boite"')[1:]
+    test.assertEqual(len(boites), nb_boites)
+    for boite in boites:
+        locaux = set(re.findall(r'\sid="([^"]+)"', boite))
+        renvois = [r for liste in RE_RENVOIS.findall(boite) for r in liste.split()]
+        test.assertTrue(renvois, boite)
+        for r in renvois:
+            test.assertIn(r, locaux, 'le renvoi %s sort de son tableau' % r)
+
+
+class TableauxCompilesParChapitre(unittest.TestCase):
+    """Deux chapitres, chacun avec deux tableaux complexes, compilés par les vrais filtres
+    (rang du chapitre et du tableau dans les id), puis préfixés par le slug à l'assemblage :
+    les id restent uniques et chaque renvoi reste dans son tableau, dans le HTML du PDF,
+    le HTML web et l'EPUB."""
+
+    CHAPITRES = (('02-a', 2), ('04-b', 4))
+
+    def setUp(self):
+        self.pandoc = shutil.which('pandoc')
+        self.assertTrue(self.pandoc, 'pandoc introuvable')
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        md = ('---\nlang: de\n---\n\n```{=html}\n' + TABLEAU_EDITEUR + '```\n\nText.\n\n'
+              '```{=html}\n' + TABLEAU_EDITEUR + '```\n')
+        self.frags = []
+        for slug, rang in self.CHAPITRES:
+            env = dict(os.environ, SZH_LIVRE='1', SZH_CHAPITRE=str(rang))
+            r = subprocess.run([self.pandoc, '--from=markdown', '--to=html5'] + [
+                '--lua-filter=' + os.path.join(PIPELINE, 'filters', f)
+                for f in ('szh-numerotation.lua', 'szh-tableau-boite.lua')],
+                input=md, capture_output=True, text=True, env=env)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn('id="szh-c%d-t2-th-r0c1"' % rang, r.stdout)
+            chemin = os.path.join(self.tmp, slug + '.frag.html')
+            with open(chemin, 'w', encoding='utf-8') as f:
+                f.write(_chapitre(slug, slug.upper(), r.stdout))
+            self.frags.append(chemin)
+
+    def _assembler(self, *extra):
+        meta = os.path.join(self.tmp, 'buch.yaml')
+        with open(meta, 'w', encoding='utf-8') as f:
+            f.write('titre: "Buch"\nlang: de\nliminaires: [sommaire]\n')
+        sortie = os.path.join(self.tmp, 'sortie.html')
+        tampon, ancien = io.StringIO(), sys.stderr
+        sys.stderr = tampon
+        try:
+            code = la.main(['x', '--meta', meta, '--gabarit',
+                            os.path.join(PIPELINE, 'templates', 'szh-livre.html'),
+                            '--sortie', sortie, '--out', self.tmp,
+                            '--metadonnees-epub', os.path.join(self.tmp, 'epub.yaml'),
+                            *extra, *self.frags])
+        finally:
+            sys.stderr = ancien
+        self.assertEqual(code, 0, tampon.getvalue())
+        with open(sortie, encoding='utf-8') as f:
+            return f.read()
+
+    def test_html_du_pdf(self):
+        html = self._assembler()
+        _verifier_tableaux(self, html, 4)
+        self.assertIn('id="04-b-szh-c4-t2-th-r0c1"', html)
+        self.assertIn('headers="04-b-szh-c4-t2-th-r0c1 04-b-szh-c4-t2-th-r1c1 '
+                      '04-b-szh-c4-t2-th-r2c0"', html)
+
+    def test_html_web(self):
+        _verifier_tableaux(self, self._assembler('--web'), 4)
+
+    def test_epub(self):
+        corps = ''
+        for (slug, _), chemin in zip(self.CHAPITRES, self.frags):
+            with open(chemin, encoding='utf-8') as f:
+                corps += la.prefixer_identifiants(f.read(), slug)
+        entree = os.path.join(self.tmp, 'livre-epub.html')
+        with open(entree, 'w', encoding='utf-8') as f:
+            f.write(prep.prepare_for_epub(
+                '<!DOCTYPE html><html lang="de"><head><title>Buch</title></head><body>\n'
+                + corps + '</body></html>'))
+        meta = os.path.join(self.tmp, 'meta.yaml')
+        with open(meta, 'w', encoding='utf-8') as f:
+            f.write(la.metadonnees_epub({'titre': 'Buch', 'lang': 'de'}, descriptions=True))
+        epub = os.path.join(self.tmp, 'livre.epub')
+        r = subprocess.run([self.pandoc, entree, '--from=html', '--to=epub3', '--split-level=1',
+                            '--metadata-file=' + meta, '--lua-filter=' +
+                            os.path.join(PIPELINE, 'filters', 'szh-livre-epub-brut.lua'),
+                            '--output=' + epub], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        fin.finir(epub)
+        with zipfile.ZipFile(epub) as z:
+            textes = [z.read(n).decode('utf-8') for n in sorted(z.namelist())
+                      if n.startswith('EPUB/text/ch')]
+        # Un chapitre par document : les renvois se vérifient dans le sien, et les id
+        # restent uniques sur tout le livre.
+        ids = [i for t in textes for i in re.findall(r'\sid="([^"]+)"', t)]
+        self.assertEqual(sorted({i for i in ids if ids.count(i) > 1}), [])
+        nb = 0
+        for t in textes:
+            n = t.count('<div class="szh-tableau-boite"')
+            if n:
+                _verifier_tableaux(self, t, n)
+                nb += n
+        self.assertEqual(nb, 4)
 
 
 class ChaineEpub(unittest.TestCase):

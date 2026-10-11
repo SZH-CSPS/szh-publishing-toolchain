@@ -160,10 +160,6 @@ a[href^="#"], a.szh-appel {
   color: inherit; text-decoration: none;
 }
 a[href^="#"]:hover { color: #002A56; text-decoration: underline; }
-/* URL ou DOI écrit en clair dans la bibliographie, changé en lien par szh-citations.lua
-   (classe szh-lien-brut) : l'aspect du texte qui l'entoure. Le §9 le souligne à
-   l'écran. */
-.szh-reference a.szh-lien-brut { color: inherit; text-decoration: none; }
 /* Flèche du hero. Son blanc vient de l'attribut stroke='#ffffff' du SVG porté en fond par
    `.szh-arrow` (§5) : la cascade CSS ne descend pas dans une image de fond.
    `opacity: 1` neutralise le 0.9 de `.szh-arrow` : une opacité inférieure à 1 ferait
@@ -976,9 +972,6 @@ table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: 
   .szh-note, .szh-kw { font-size: 0.8125rem; }
   .szh-hero-eyebrow, .szh-hero-dossier, .szh-hero-vol, .szh-abstract-label,
   .important > .szh-encadre-titre { font-size: 0.75rem; }
-  /* Lien d'une référence bibliographique : souligné à l'écran, où il se clique. */
-  .szh-reference a.szh-lien-brut { text-decoration: underline; text-decoration-thickness: 0.06em;
-    text-underline-offset: 0.15em; }
   .szh-licence { font-size: 0.8125rem; }
   /* `body` : l'emporte sur partage-filtres.css, chargée après cette feuille. */
   body figure > figcaption .szh-credit, body table > caption .szh-credit { font-size: 0.75rem; }

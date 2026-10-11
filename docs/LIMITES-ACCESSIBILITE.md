@@ -17,7 +17,9 @@ vérifiables par machine, et la plupart des défauts ci-dessous lui échappent.
   métadonnée, confort).
 - **Cause** : WeasyPrint, pandoc, la maquette de Pronto, ou le contenu déposé.
 - **État** : *accepté* (on vit avec), *attend WeasyPrint* ou *attend pandoc* (seul un
-  changement de l'outil le lèvera), *à corriger* (dans Pronto).
+  changement de l'outil le lèvera), *à corriger* (dans Pronto), *levée à la reconstruction
+  de l'image* (un correctif de WeasyPrint est écrit ; il arrive sur un poste avec l'image
+  WSL, et la ligne sort ensuite).
 
 ## PDF d'article
 
@@ -25,27 +27,39 @@ La sortie `out/<slug>/<slug>.pdf`, aussi galley PDF de l'export OJS.
 
 | Limite | Norme | Gravité | Cause | État |
 |---|---|---|---|---|
-| Les notes de bas de page ne sont pas des `/Note` : le texte d'une note est balisé à l'endroit de son appel, et un lecteur d'écran le lit au milieu de la phrase. | PDF/UA-1 7.9 ; MH 19 | majeure | WeasyPrint : `float: footnote` ne produit pas de `/Note` | accepté, sans correctif |
-| La légende d'une figure est un `/Caption` voisin de la `/Figure`, et non son enfant ; la `/BBox` de la figure est en pixels CSS, et non en points. | PDF/UA-1 7.3 ; MH 13 ; ISO 32000-1, `BBox` | moyenne | WeasyPrint ([Kozea/WeasyPrint#2482](https://github.com/Kozea/WeasyPrint/issues/2482)) | attend WeasyPrint |
+| Les notes de bas de page ne sont pas des `/Note`. Le texte d'une note est balisé en bas de page, après le dernier bloc de la page : un lecteur d'écran le lit au milieu du flux, et peut couper une liste entre deux items. L'appel est un `/NonStruct` sans lien vers sa note. | PDF/UA-1 7.9 ; MH 19 | majeure | WeasyPrint : `float: footnote` ne produit pas de `/Note` | accepté, sans correctif ; des notes de fin restent à décider ([`A-FAIRE.md`](A-FAIRE.md#accessibilité)) |
+| Aucune langue d'élément : un résumé allemand, une citation `lang=de`, un mot `{lang=en}` gardent leur `lang` dans le HTML et le perdent dans le PDF. Tout est lu avec la voix de l'article. | PDF/UA-1 7.2 ; MH 11 ; WCAG 3.1.2 | majeure | WeasyPrint : `pdf/tags.py` n'écrit pas de `/Lang` sur un élément | levée à la reconstruction de l'image (correctif `60-langue-element`) |
+| La légende d'une figure est un `/Caption` voisin de la `/Figure`, et non son enfant. La `/BBox` de la figure est en pixels CSS, et non en points, et mesurée depuis le haut de la page. | PDF/UA-1 7.3 ; MH 13 ; ISO 32000-1, `BBox` | moyenne | WeasyPrint ([Kozea/WeasyPrint#2482](https://github.com/Kozea/WeasyPrint/issues/2482)) | attend WeasyPrint |
 | Une figure numérotée (légende non vide) mais déclarée décorative (`alt=""`) devient un fond CSS : la légende reste, l'image se tait. | WCAG 1.1.1 ; PDF/UA-1 7.3 | majeure pour le contenu touché | contenu | signalé : message `figure-legendee-decorative` dans les Contrôles et l'aperçu |
-| Un paragraphe coupé par la page devient deux `/P` : la lecture continue, mais la navigation par paragraphe s'arrête au milieu d'une phrase. | PDF/UA-1 7.1 | mineure | WeasyPrint : un arbre de structure par page | accepté (seul `break-inside: avoid` sur les paragraphes l'éviterait, au prix de la mise en page) |
+| Un bloc coupé par la page devient deux éléments : un paragraphe deux `/P`, une liste deux `/L` (un lecteur d'écran annonce deux listes), un chapitre de livre un `/Sect` par page. La lecture continue, mais la navigation par élément s'arrête à la coupure. | PDF/UA-1 7.1 ; WCAG 1.3.1 | mineure | WeasyPrint : un arbre de structure par page | accepté (seul `break-inside: avoid` l'éviterait, au prix de la mise en page) |
+| Une sous-liste est un `/L` frère des `/LI` de sa liste, et non un enfant du `/LBody` de son item : le lien entre l'item et sa sous-liste est perdu. | PDF/UA-1 7.6 ; ISO 32000-1, tableau 336 ; WCAG 1.3.1 | moyenne | WeasyPrint (`pdf/tags.py`) | accepté |
+| Une liste de définition (`dl`) devient un `/L` dont chaque terme et chaque définition sont des `/LI` sans `/Lbl` : rien ne lie le terme à sa définition. | PDF/UA-1 7.6 ; WCAG 1.3.1 | moyenne | WeasyPrint (`dt` et `dd` en `/LI`) | accepté |
 | Un lien coupé en fin de ligne produit deux annotations et deux `/Link` : le lecteur d'écran annonce deux liens. | PDF/UA-1 7.18 ; MH 28 ; WCAG 2.4.4 | mineure | WeasyPrint : une annotation par boîte de ligne | attend WeasyPrint |
+| Le `/Contents` d'un lien interne est l'identifiant de sa cible (« ref-plaisance-2007 »), que NVDA prononce avec Acrobat. Un lien sans texte (ORCID, retour à l'appel, licence) n'a que ce `/Contents` ou son URL : son `aria-label` est perdu. | PDF/UA-1 7.18.1, 7.18.5 ; MH 28 ; WCAG 2.4.4 | moyenne | WeasyPrint : `add_links` (`pdf/anchors.py`) écrit la cible sans lire `aria-label`, `title` ni le texte | levée à la reconstruction de l'image (correctif `65-nom-des-liens`) |
+| Dans une ligne justifiée, Edge (pdfium) colle des mots (« unarticle de laRevue ») : il ne lit pas les espaces élargies et en déduit d'autres. | WCAG 1.3.1 | moyenne | WeasyPrint : l'espace justifiée est dessinée avec un décalage avant | levée à la reconstruction de l'image (correctif `70-espaces-justifiees`) |
+| `/Info /Author` joint les auteurs par une virgule, alors que chacun s'écrit « Nom, Prénom » : « Dupont, Anne, Muller, Jean ». Le XMP (`dc:creator`) garde un auteur par entrée. | PDF/UA-1 7.1 (métadonnées) | mineure | WeasyPrint : `', '.join(metadata.authors)` (`pdf/__init__.py`) | levée à la reconstruction de l'image (correctif `75-auteurs-info`) |
 | Les `headers=` d'un tableau complexe sont calculés quand l'éditeur du cockpit enregistre le fichier `tables/*.html`. Un fichier qui n'a pas été réenregistré depuis peut omettre le groupe de colonnes sous un titre de section (l'année), rattacher la rangée de total à la dernière section, et garder un `/TH` vide à gauche d'un titre de section. | PDF/UA-1 7.5 ; WCAG 1.3.1 | moyenne | contenu : fichier écrit avant les règles de [`ACCESSIBILITE.md`](ACCESSIBILITE.md#le-balisage-du-pdf) | à corriger tableau par tableau, par une modification dans l'éditeur |
-| Le `/Contents` d'un lien interne est l'identifiant de sa cible (« ref-plaisance-2007 »). Le texte du lien, que le lecteur d'écran annonce d'abord, est bien dans le `/Link`. | PDF/UA-1 7.18.5 ; WCAG 2.4.4 | mineure | WeasyPrint : `add_links` (`pdf/anchors.py`) écrit la cible sans lire `aria-label`, `title` ni le texte | attend une décision : correctif possible, non écrit |
+| La description longue d'un tableau (`data-alt`) est un `/Div` après le `/Table` et sa note : elle se lit comme un paragraphe qui suit, sans lien avec le tableau. | PDF/UA-1 7.5 | mineure | WeasyPrint n'écrit ni `/Summary` ni `/Alt` sur un `/Table` | attend WeasyPrint |
+| Dans une grille d'images, chaque `/Figure` est enfant d'un `/Span` (élément en ligne). | PDF/UA-1 7.1 | mineure | WeasyPrint | accepté |
 | Une exergue qui répète une phrase du texte est lue deux fois : à sa place dans le texte, puis dans l'exergue. | WCAG 1.3.2 | mineure | maquette ; WeasyPrint ignore `aria-hidden` | accepté |
-| La puce `▸` d'une liste est un vrai `/Lbl`, mais un lecteur d'écran peut la prononcer (« triangle ») au lieu de « puce ». | PDF/UA-1 7.1 | mineure | WeasyPrint n'écrit pas d'`/ActualText` | accepté |
-| La description longue d'un tableau (`data-alt`) est un `/Div` juste après le `/Table` : elle se lit comme un paragraphe qui suit, sans lien avec le tableau. | PDF/UA-1 7.5 | mineure | WeasyPrint n'écrit ni `/Summary` ni `/Alt` sur un `/Table` | attend WeasyPrint |
-| `/Info /Author` joint les auteurs par une virgule, alors que chacun s'écrit « Nom, Prénom » : « Dupont, Anne, Muller, Jean ». Le XMP (`dc:creator`) garde un auteur par entrée. | PDF/UA-1 7.1 (métadonnées) | mineure | WeasyPrint : `', '.join(metadata.authors)` (`pdf/__init__.py`) | attend une décision : correctif possible, non écrit |
-| Le « N° » et le point médian de la ligne « VOL. 7 · N° 4/2017 » de la couverture sont lus tels quels. | WCAG 1.3.1 | mineure | maquette | accepté |
+| La puce `▸` d'une liste est un vrai `/Lbl`, mais un lecteur d'écran peut la prononcer comme un symbole (« petit triangle plein pointant vers la droite » dans les dictionnaires de NVDA) au lieu de « puce ». | PDF/UA-1 7.1 | mineure | WeasyPrint n'écrit pas d'`/ActualText` | accepté |
+| Une URL ou un DOI écrit en clair dans la bibliographie est du texte, et non un lien, dans le PDF comme dans le HTML. | WCAG 2.4.4 | mineure | contenu : `<slug>.biblio.md` en texte brut ; un lien posé par la chaîne change l'anticrénelage de quelques glyphes des lignes touchées | à reprendre à la prochaine majeure |
+| Un texte interlettré au-delà de 0,105 em (« Résumé », « Zusammenfassung », titre d'un encadré, à 0,12 et 0,14 em) est extrait lettre à lettre par pdfium (Edge, Chrome) : « R é s u m é ». Le texte balisé, qu'un lecteur d'écran reçoit, est juste. | WCAG 1.3.1 (copier-coller) | mineure | maquette (`print.css`) | accepté |
+| Le « N° » et le point médian de la ligne « VOL. 7 · N° 4/2017 », sur la couverture comme dans l'en-tête d'un article, sont lus tels quels ; le « o » en exposant est extrait à part (« N o 4/2017 »). | WCAG 1.3.1 | mineure | maquette | accepté |
 
 Non visés : les profils plus stricts que PDF/UA-1 (PDF/UA-2, WTPDF). veraPDF y relève
 notamment des `/Span` enfants directs de `/Document` et de `/Sect`, et les `/Caption` hors
-figure décrits plus haut.
+figure décrits plus haut. PAC 2024 relève, pour la même raison, 5 échecs « Structure
+Elements » sur chaque article d'essai : neuf des dix viennent des `/Caption` hors de leur
+`/Figure`, le dixième (article allemand) n'est pas expliqué.
 
-Non vérifié : tout ce que Matterhorn laisse au jugement humain (pertinence des textes
-alternatifs, ordre de lecture réel, titres qui décrivent leur section, sens porté par la
-seule couleur, tableau complexe lu cellule par cellule). Aucun essai avec un lecteur d'écran
-(NVDA, JAWS, VoiceOver) n'a été fait.
+Essai avec un lecteur d'écran : le 11 octobre 2026, NVDA 2026.2 a lu les articles d'essai
+fr et de dans Acrobat, l'article fr dans Edge, en PDF et en HTML, avant les corrections de
+la version 3.11.0. Il a confirmé la langue perdue, l'année absente des en-têtes du tableau
+complexe, les notes lues entre deux items de liste et les identifiants de liens prononcés.
+Non vérifié : JAWS et VoiceOver, et ce que Matterhorn laisse au jugement humain (pertinence
+des textes alternatifs, titres qui décrivent leur section, sens porté par la seule
+couleur).
 
 ## HTML autonome
 
@@ -58,8 +72,9 @@ La sortie `out/<slug>/<slug>.html` : source de WeasyPrint, et galley HTML de l'e
 | Pas de repère `<main>`. | WCAG 1.3.1 | mineure | maquette | sans objet tant que le site intègre le contenu dans sa propre page |
 
 Vérifié dans Edge, sur les articles d'essai : aucun défilement horizontal à 320, 768 et
-1280 px ni à 400 % (WCAG 1.4.10), aucun texte sous 12 px hors exposant. Non vérifié :
-navigation au clavier, lecteur d'écran.
+1280 px ni à 400 % (WCAG 1.4.10), aucun texte sous 12 px hors exposant. Avec NVDA dans
+Edge, la voix change aux passages en langue étrangère, et les notes sont lues dans la
+phrase. Non vérifié : navigation au clavier.
 
 ## Galley Word (DOCX)
 
@@ -89,7 +104,6 @@ livre : c'est le même moteur.
 | EPUB 3 | Un tableau qui contient une image est relu par pandoc : un tableau complexe y perd ses `<th>` de rangée. | WCAG 1.3.1 | majeure pour le contenu touché | chaîne EPUB du livre | accepté (cas non rencontré) |
 | EPUB 3 | EPUBCheck et Ace (DAISY) ne sont pas dans l'image WSL : l'EPUB n'est contrôlé que par `test/epub-check.py`. | EPUB Accessibility 1.1 | inconnue | outillage | non vérifié |
 | HTML web | Une note d'une pièce liminaire ou d'une pièce de fin reste en ligne, entre crochets : ces pièces sont compilées avec `szh-notes`. | WCAG 1.3.1 | mineure | chaîne | accepté |
-| HTML web | Un tableau plus large que la colonne défile dans une boîte qui n'est pas atteignable au clavier. | WCAG 2.1.1 | moyenne | `szh-tableau-boite.lua` (sans `tabindex`) | à corriger |
 | HTML web | Lecteur d'écran, zoom à 400 % au clavier : non essayés. | WCAG 2.2 | inconnue | — | non vérifié |
 
 Le PDF imprimeur n'est pas un livrable d'accessibilité.

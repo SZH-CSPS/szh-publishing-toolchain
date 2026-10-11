@@ -11,7 +11,7 @@ est faite. Les questions à trancher sont marquées « À décider ».
   ouverture d'une issue).
 - À la prochaine reconstruction de l'image : reprendre les commentaires réécrits de
   `image/Containerfile` et `image/patch-weasyprint.sh` (branche locale `commentaires-image`).
-  Ils ont été retirés de la version 3.11.0 pour ne pas reconstruire l'image.
+  Ils ont été retirés de la version 3.10.6 pour ne pas reconstruire l'image.
 - Retirer `.szh-arrow { opacity: 0.9 }` de `pipeline/styles/print.css` : une flèche avec
   transparence hors de la page de titre ferait échouer PDF/UA (règle 7.1-3).
 - Ajouter un portrait aux articles des contrôles PDF/UA : tous les auteurs de
@@ -188,14 +188,35 @@ est faite. Les questions à trancher sont marquées « À décider ».
 
 ## Accessibilité
 
-- Avertir quand une figure numérotée a `alt=""`.
 - HTML : les notes sont lues au fil du texte ; à reprendre avec une vraie sortie web.
-- EPUB : `conformsTo`, `accessibilitySummary`, `page-list` ; EPUBCheck et Ace ne sont pas
-  dans l'image.
+- À décider : notes de fin d'article plutôt que de bas de page. Dans le PDF, le texte d'une
+  note est lu en bas de page, au milieu du flux ; des notes de fin le liraient à sa place.
+  C'est une décision éditoriale.
+- Lier les URL et DOI écrits en clair dans la bibliographie, à la prochaine majeure : le lien
+  change l'anticrénelage de quelques glyphes des lignes touchées.
+- Livre : règles CSS pour `.szh-decor-seul` et `.szh-encadre-titre` dans
+  `styles/livre/`, pour ouvrir aux chapitres l'image décorative seule hors d'un `<p>` et le
+  titre d'encadré en texte réel (`szh-numerotation.lua` et `szh-encadres.lua` s'en
+  abstiennent dans un livre).
+- Livre : un `<meta name="author">` par auteur, au format « Nom, Prénom », comme l'article.
+  Le gabarit en écrit un seul, avec tous les noms.
+- À décider : hiérarchie des titres du livre (partie et chapitres tous en `<h1>`, titre du
+  livre en paragraphe). Trois options :
+  - A. Titre du livre en `<h1>`, tout le reste décalé d'un niveau : 2 à 3 jours, avec un
+    risque sur le rendu (une soixantaine de sélecteurs `h1`-`h4` des CSS du livre à
+    passer en classes, signets, `--split-level` de l'EPUB, plafond à `<h6>` pour un
+    chapitre dans une partie) ;
+  - B. Seuls les chapitres d'une partie descendent d'un niveau : environ 2 jours, mêmes
+    difficultés de plafond et de découpage EPUB ;
+  - C. Partie et chapitres regroupés dans une `<section>` : environ 1 jour, peu de gain pour
+    un lecteur d'écran, coupures CSS de `.szh-partie` à revoir.
+- EPUB : liste des pages (`page-list`), environ 1,5 à 2 jours : relever le premier bloc de
+  chaque page par l'API de WeasyPrint (une mise en page de plus par compilation), ancres
+  communes au HTML du PDF et à celui de l'EPUB, marqueurs `doc-pagebreak`, `dc:source`.
+- EPUB : `conformsTo` ; EPUBCheck et Ace ne sont pas dans l'image.
 - Sommaire du livre : `/LI` sans `/Lbl` et `/Link` imbriqués, à examiner.
-- Correctif possible du `/Contents` des liens internes (lire `aria-label`, `title`, le texte
-  du lien).
-- Faire un essai avec un vrai lecteur d'écran.
+- Refaire l'écoute avec NVDA sur le corpus d'essai une fois l'image reconstruite avec les
+  correctifs 60 à 75 ; essayer JAWS.
 - Vérifier le PDF imprimeur de `test/livre-normal` (erreur `AssertionError` dans
   `resolve_math` constatée une fois).
 

@@ -1,6 +1,6 @@
 // Accessibilité du HTML et du PDF d'un article, filtre par filtre : exergue, figure à
 // légende déclarée décorative, titre en escalier, image décorative seule, titre des
-// encadrés, liens de la bibliographie, <style> des décors, niveaux de titre, nom des
+// encadrés, <style> des décors, niveaux de titre, nom des
 // figures, feuille d'écran.
 //
 // Les filtres tournent avec le pandoc de la WSL, celui qui compile. Sans elle, les
@@ -163,28 +163,6 @@ avecWsl('encadrés : un chapitre de livre n’en reçoit pas', () => {
   const { html } = compiler('encadres-livre', { 'essai.md': md }, ['szh-encadres.lua'],
     { env: { SZH_LIVRE: '1' } });
   assert.ok(!/szh-encadre-titre/.test(html), html);
-});
-
-// ── Liens de la bibliographie ─────────────────────────────────────────────────────────
-avecWsl('bibliographie : une URL ou un DOI écrit en clair devient un lien', () => {
-  const md = 'Selon Dupont (2024).\n\n::: {.szh-biblio src="essai.biblio.md"}\n:::\n';
-  const biblio = 'Dupont, A. (2024). Un titre. *Revue, 4*(1), 1–2. https://doi.org/10.99999/x.2024.1\n\n'
-    + 'Muller, B. (2023). Autre. Consulté sur https://www.example.org/page.\n\n'
-    + 'Weber, C. (2022). Gardé. <https://www.example.org/garde>\n';
-  const { html } = compiler('biblio-liens', { 'essai.md': md, 'essai.biblio.md': biblio },
-    ['szh-citations.lua']);
-  assert.match(html, /<a href="https:\/\/doi\.org\/10\.99999\/x\.2024\.1" class="szh-lien-brut">https:\/\/doi\.org\/10\.99999\/x\.2024\.1<\/a>/, html);
-  // Le point final reste hors du lien.
-  assert.match(html, /<a href="https:\/\/www\.example\.org\/page" class="szh-lien-brut">https:\/\/www\.example\.org\/page<\/a>\./, html);
-  // Un lien déjà écrit garde son aspect de lien (pas de classe szh-lien-brut).
-  assert.match(html, /<a href="https:\/\/www\.example\.org\/garde" class="uri">/, html);
-});
-
-// Le lien d'une référence a l'aspect du texte dans le PDF ; le §9 le souligne à l'écran.
-test('print.css : un lien en clair de la bibliographie a l’aspect du texte', () => {
-  const css = fs.readFileSync(path.join(RACINE, 'pipeline', 'styles', 'print.css'), 'utf8');
-  const horsEcran = css.slice(0, css.indexOf('9. Écran'));
-  assert.match(horsEcran, /\.szh-reference a\.szh-lien-brut \{ color: inherit; text-decoration: none; \}/);
 });
 
 // ── Lien ORCID ────────────────────────────────────────────────────────────────────────
