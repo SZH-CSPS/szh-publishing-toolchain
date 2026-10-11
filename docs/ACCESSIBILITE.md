@@ -206,6 +206,7 @@ touchent l'accessibilité :
 | `75-auteurs-info` | `/Info /Author` sépare les auteurs « Nom, Prénom » par « ; » |
 | `80-notes-balisees` | la note de bas de page est une `/Note` à `/ID` placée juste après son appel (`/Reference`), ou après le lien, le titre ou le tableau qui contient l'appel, et non plus en bas de page dans l'arbre ; `/IDTree` dans la racine de structure |
 | `85-listes-imbriquees` | sous-liste dans le `/LBody` de son item, texte d'un item à puce en ligne aussi ; `<dl>` en `/LI` à `/Lbl` (terme) et `/LBody` (définition) |
+| `90-un-mcid-par-element` | les lignes d'un paragraphe, d'un item ou d'une cellule forment un seul contenu marqué par page, et non un par ligne : le lecteur PDF d'Edge ne colle plus la fin d'une ligne au début de la suivante ; un élément en ligne (accent, lien, passage en langue étrangère, appel de note) garde le sien |
 
 Le rapport, la démo et l'état chez les développeurs de WeasyPrint de chaque correctif sont
 dans [`image/patches/amont/`](../image/patches/amont/README.md). Un correctif n'arrive sur

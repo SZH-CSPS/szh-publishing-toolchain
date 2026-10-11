@@ -497,6 +497,15 @@ def invariants(c, v, rec, pixels_autres):
         obtenu = m['jetons_chemin'].get(j, ('', None))[0]
         if not re.search(r'(^|/)' + chemin + '$', obtenu):
             ko[f'chemin-{j}'] = f'{obtenu or "absent"} au lieu de …/{chemin}'
+    contenus = m.get('jetons_mcid', {})
+    for i, groupe in enumerate(c.get('meme_contenu', []), 1):
+        vus = [contenus.get(j, 'absent') for j in groupe]
+        if len(set(vus)) != 1 or 'absent' in vus:
+            ko[f'meme-contenu-{i}'] = ' '.join(f'{j}:{v}' for j, v in zip(groupe, vus))
+    for i, groupe in enumerate(c.get('contenus_distincts', []), 1):
+        vus = [contenus.get(j, 'absent') for j in groupe]
+        if len(set(vus)) != len(vus) or 'absent' in vus:
+            ko[f'contenus-distincts-{i}'] = ' '.join(f'{j}:{v}' for j, v in zip(groupe, vus))
     for cible, contents in m['liens']:
         if not contents.strip():
             ko['lien-sans-contents'] = cible

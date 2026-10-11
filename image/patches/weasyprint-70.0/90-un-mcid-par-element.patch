@@ -1,0 +1,82 @@
+Correctif SZH de WeasyPrint 70.0 — un seul contenu marqué pour les lignes d'un bloc.
+
+Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
+image/patches/weasyprint-70.0/ (touche stream.py comme le 15 et le 30, tags.py comme le 10,
+le 15, le 30, le 60, le 65, le 80 et le 85, draw/__init__.py comme le 30, sans ligne de
+contexte commune ; une seule ligne de contexte dans stream.py et tags.py pour cela). Pour
+le désactiver : .patch.off.
+
+weasyprint/draw/__init__.py, weasyprint/pdf/stream.py, weasyprint/pdf/tags.py. Chaque ligne
+de texte était un contenu marqué à part (un MCID et un /Span par ligne). Le lecteur PDF
+d'Edge (moteur Acrobat) expose chaque contenu marqué comme un nœud de texte, rogné de ses
+espaces, et NVDA enchaîne ces nœuds sans séparateur : la dernière lettre d'une ligne se
+collait à la première de la suivante (« andnot »). Désormais draw_block_level déclare le
+bloc dont il dessine les lignes (Stream.text_block) ; quand Stream.marked ouvre le texte
+propre de ce bloc (même élément, même pseudo-élément, donc même langue) et que rien n'a
+été dessiné depuis l'EMC du texte précédent de ce bloc, il retire cet EMC et n'ouvre pas
+de nouveau contenu marqué : la boîte n'entre pas dans _tags, et _build_box_tree la saute.
+Le texte d'un élément en ligne (em, a, span lang, appel de note) garde son propre contenu
+marqué, et ses frontières restent séparées. Un bloc coupé par la page garde un MCID par
+page : chaque page a son flux. Deux fragments d'un même bloc (colonnes) ou deux blocs
+anonymes d'un même élément gardent chacun le leur : la clé est la boîte du bloc.
+Rendu identique au pixel, veraPDF PDF/UA-1 inchangé ; cas y-mcid-lignes et
+y-mcid-frontieres de test/weasyprint-patch-check.py, démo
+image/patches/amont/90-un-mcid-par-element/.
+
+--- a/weasyprint/draw/__init__.py
++++ b/weasyprint/draw/__init__.py
+@@ -652,6 +652,7 @@
+                 draw_replacedbox(stream, block)
+         elif block.children:
+             if isinstance(block.children[-1], boxes.LineBox):
+-                for child in block.children:
+-                    draw_inline_level(stream, page, child)
++                with stream.text_block(block):
++                    for child in block.children:
++                        draw_inline_level(stream, page, child)
+         draw_block_level(page, stream, blocks_and_cells)
+--- a/weasyprint/pdf/stream.py
++++ b/weasyprint/pdf/stream.py
+@@ -288,4 +288,14 @@
+             self._tags[box] = {'tag': tag, 'mcid': mcid}
+-            property_list = pydyf.Dictionary({'MCID': mcid})
+-            super().begin_marked_content(tag, property_list)
++            # SZH : le texte d'un bloc qui suit son texte de la ligne précédente, sans
++            # rien dessiné entre les deux, reste dans le même contenu marqué : l'EMC
++            # précédent est retiré, la boîte n'a pas de MCID ni de /Span (tags.py).
++            block = self._text_block
++            continued = block is not None and tag == 'Span' and (
++                box.element is block.element and box.element_tag == block.element_tag)
++            if continued and self._last_text == (block, len(self.stream)):
++                del self._tags[box]
++                self.stream.pop()
++            else:
++                property_list = pydyf.Dictionary({'MCID': mcid})
++                super().begin_marked_content(tag, property_list)
+         try:
+@@ -295,2 +305,14 @@
+                 super().end_marked_content()
++                self._last_text = (block if continued else None, len(self.stream))
++
++    _text_block = _last_text = None
++
++    @contextmanager
++    def text_block(self, block):
++        """SZH : lignes d'un bloc, dont le texte peut partager un contenu marqué."""
++        previous, self._text_block = self._text_block, block
++        try:
++            yield
++        finally:
++            self._text_block = previous
+ 
+--- a/weasyprint/pdf/tags.py
++++ b/weasyprint/pdf/tags.py
+@@ -275,3 +275,7 @@
+                 # Add marked element from the stream.
+-                kid = tags.pop(child)
++                kid = tags.pop(child, None)
++                if kid is None:
++                    # SZH : texte dessiné dans le contenu marqué de la ligne
++                    # précédente (Stream.marked), déjà rattaché à l'arbre.
++                    continue
+                 assert kid['mcid'] not in nums

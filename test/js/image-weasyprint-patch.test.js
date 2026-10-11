@@ -90,6 +90,13 @@ const PATCHS = {
     reperes: [/^\+def _new_element\(tag, parent, pdf, page_number\):$/m,
       /^\+\s+tag = 'Lbl' if box\.element_tag == 'dt' else 'LBody'$/m],
   },
+  '90-un-mcid-par-element': {
+    cibles: ['weasyprint/draw/__init__.py', 'weasyprint/pdf/stream.py',
+      'weasyprint/pdf/tags.py'],
+    reperes: [/^\+\s+with stream\.text_block\(block\):$/m,
+      /^\+\s+if continued and self\._last_text == \(block, len\(self\.stream\)\):$/m,
+      /^\+\s+kid = tags\.pop\(child, None\)$/m],
+  },
 };
 
 function dossierPatchs() {

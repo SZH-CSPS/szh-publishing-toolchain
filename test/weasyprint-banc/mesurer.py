@@ -89,7 +89,9 @@ def lire_flux(reader, page):
     """[(pile de marquage, texte)] dans l'ordre du flux, formulaires compris.
 
     Une pile est une liste de (tag, propriétés). Le texte d'un /ActualText remplace celui
-    de ses glyphes, une fois par contenu marqué."""
+    de ses glyphes, une fois par contenu marqué. Un texte dessiné sur une autre ligne que le
+    précédent commence par un saut de ligne, comme le lit un outil qui suit la position :
+    un contenu marqué peut couvrir plusieurs lignes."""
     polices = Polices()
     sortie = []
 
@@ -98,6 +100,7 @@ def lire_flux(reader, page):
         fontes = res(ressources.get('/Font', {})) if ressources else {}
         xobjets = res(ressources.get('/XObject', {})) if ressources else {}
         actual_vu = set()
+        ligne = [0.0, None]   # ordonnée courante du texte, celle du dernier texte lu
         for operandes, op in ContentStream(contenu, reader).operations:
             if op in (b'BDC', b'BMC'):
                 props = {}
@@ -115,6 +118,10 @@ def lire_flux(reader, page):
                     pile.pop()
             elif op == b'Tf':
                 police = polices.get(fontes[operandes[0]])
+            elif op == b'Tm':
+                ligne[0] = float(operandes[5])
+            elif op in (b'Td', b'TD'):
+                ligne[0] += float(operandes[1])
             elif op in (b'Tj', b'TJ', b"'", b'"'):
                 arg = operandes[-1]
                 morceaux = arg if isinstance(arg, ArrayObject) else [arg]
@@ -128,6 +135,10 @@ def lire_flux(reader, page):
                     else:
                         actual_vu.add(id(actual))
                         texte = str(actual['/ActualText'])
+                if texte and ligne[1] is not None and ligne[0] != ligne[1]:
+                    texte = '\n' + texte
+                if texte:
+                    ligne[1] = ligne[0]
                 sortie.append((list(pile), texte))
             elif op == b'Do' and xobjets:
                 x = res(xobjets.get(operandes[0]))
@@ -168,6 +179,11 @@ def mesurer(chemin):
             texte_mcid[(i, mcid)] = texte_mcid.get((i, mcid), '') + texte
             if (i, mcid) not in ordre_flux:
                 ordre_flux.append((i, mcid))
+    # Contenu marqué où se lit chaque jeton, la première fois : « p<page>-<MCID> ».
+    m['jetons_mcid'] = {}
+    for i, mcid in ordre_flux:
+        for j in re.findall(r'(?<!\d)Q\d\d(?!\d)', texte_mcid[(i, mcid)]):
+            m['jetons_mcid'].setdefault(j, f'p{i}-{mcid}')
     m['texte_artefact'] = norm(' '.join(artefact))
     m['texte_flux'] = norm(' '.join(texte_mcid[k] for k in ordre_flux) + ' ' + ' '.join(hors))
 

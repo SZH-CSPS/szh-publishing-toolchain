@@ -23,6 +23,10 @@
 #                   celle du catalogue) ;
 #   chemins         jeton = fin attendue du chemin de rôles (expression régulière) ;
 #   liens           cible = /Contents attendu ;
+#   meme_contenu    listes de jetons qui doivent se lire dans un même contenu marqué
+#                   (même page, même MCID) : les lignes d'un même texte ;
+#   contenus_distincts  listes de jetons qui doivent se lire chacun dans son propre
+#                   contenu marqué : les frontières d'éléments en ligne ;
 #   info_author     /Info /Author attendu ; dc_language : langues attendues du XMP ;
 #   vera_ua1        clauses veraPDF admises en ua1 ;
 #   vera_ua1_exige  clauses qui doivent échouer : un défaut signalé doit le rester ;
@@ -175,3 +179,38 @@ figures_sans_alt = 1
 titre = "Item à marqueur en ligne, texte et éléments en ligne mêlés : l'ordre de lecture suit le texte."
 ordres = [["Q01", "Q02", "Q03", "Q04", "Q05"]]
 connus = { ua1 = ["veraPDF", "arbre-LI_enfant_interdit"], tags = ["arbre-LI_enfant_interdit"] }
+
+[c28-mcid-paragraphe]
+titre = "Paragraphe de plusieurs lignes, puis paragraphe coupé par la page : un contenu marqué par paragraphe et par page."
+ordres = [["Q01", "Q02", "Q03", "Q04", "Q05", "Q06"]]
+meme_contenu = [["Q01", "Q02", "Q03", "Q04"]]
+contenus_distincts = [["Q04", "Q05", "Q06"]]
+
+[c29-mcid-lien-langue]
+titre = "Paragraphe de plusieurs lignes coupé par un lien sur deux lignes, un passage allemand et un accent : le texte du paragraphe reste coupé à ces frontières."
+ordres = [["Q01", "Q02", "Q03", "Q04", "Q05", "Q06", "Q07", "Q08", "Q09", "Q10", "Q11", "Q12"]]
+meme_contenu = [["Q01", "Q02"], ["Q06", "Q07"], ["Q11", "Q12"]]
+contenus_distincts = [["Q02", "Q03", "Q05", "Q06", "Q08", "Q10", "Q11"]]
+langues = { Q05 = "fr", Q06 = "de", Q07 = "de", Q08 = "fr" }
+liens = { "https://exemple.org/figure-charte" = "Q03 la figure de la charte cantonale, publiée au printemps Q04" }
+
+[c30-mcid-note]
+titre = "Appel de note au milieu d'un paragraphe de plusieurs lignes, note de plusieurs lignes."
+ordres = [["Q01", "Q02", "Q03", "Q04", "Q05", "Q06"]]
+meme_contenu = [["Q01", "Q02"], ["Q03", "Q04"], ["Q05", "Q06"]]
+contenus_distincts = [["Q02", "Q03", "Q05"]]
+chemins = { Q03 = "Note/Span" }
+
+[c31-mcid-liste-cellule]
+titre = "Item de liste, texte d'item autour d'une sous-liste, en-tête et cellules de tableau sur plusieurs lignes."
+ordres = [["Q01", "Q02", "Q03", "Q04", "Q05", "Q06"], ["Q07", "Q08", "Q09", "Q10", "Q11", "Q12", "Q13"]]
+meme_contenu = [["Q01", "Q02"], ["Q05", "Q06"], ["Q07", "Q08"], ["Q10", "Q11"], ["Q12", "Q13"]]
+contenus_distincts = [["Q03", "Q04", "Q05"]]
+langues = { Q12 = "de", Q13 = "de" }
+
+[c32-mcid-blocs-anonymes]
+titre = "Texte d'un bloc avant et après un bloc vide, paragraphe sur deux colonnes : un contenu marqué par bloc anonyme et par colonne."
+ordres = [["Q01", "Q02", "Q03", "Q04", "Q05", "Q06", "Q07"]]
+meme_contenu = [["Q01", "Q02"]]
+contenus_distincts = [["Q02", "Q03"], ["Q04", "Q05"], ["Q06", "Q07"]]
+tolere = ["element_vide"]

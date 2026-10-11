@@ -131,6 +131,8 @@ const CLES = {
   ordres: (v) => listeDe(v, (o) => listeDe(o, (j) => JETON.test(j)) && o.length >= 2),
   langues: (v) => tableDe(v, (k, x) => JETON.test(k) && /^[a-z]{2}$/.test(x)),
   chemins: (v) => tableDe(v, (k, x) => JETON.test(k) && estChaine(x)),
+  meme_contenu: (v) => listeDe(v, (o) => listeDe(o, (j) => JETON.test(j)) && o.length >= 2),
+  contenus_distincts: (v) => listeDe(v, (o) => listeDe(o, (j) => JETON.test(j)) && o.length >= 2),
   liens: (v) => tableDe(v, (k, x) => estChaine(k) && estChaine(x)),
   figures: (v) => tableDe(v, (k, x) => estChaine(k) && estChaine(x)),
   figures_sans_alt: (v) => Number.isInteger(v) && v > 0,
@@ -167,7 +169,8 @@ for (const [nom, bloc] of Object.entries(blocs)) {
     const cites = [
       ...(bloc.ordres || []).flat(), ...Object.keys(bloc.langues || {}),
       ...Object.keys(bloc.chemins || {}), ...(bloc.doublons_admis || []),
-      ...(bloc.dans_arbre || []),
+      ...(bloc.dans_arbre || []), ...(bloc.meme_contenu || []).flat(),
+      ...(bloc.contenus_distincts || []).flat(),
     ];
     for (const j of cites) assert.ok(jetons.has(j), `${j} absent du texte de ${nom}.html`);
     for (const m of source.matchAll(/<link [^>]*href="([^"]+)"/g)) {

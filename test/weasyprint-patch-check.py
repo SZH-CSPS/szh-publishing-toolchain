@@ -56,7 +56,11 @@
 #   85-listes-imbriquees : une sous-liste est un /L enfant du /LBody de son item ; un /LI
 #      ne contient que /Lbl et /LBody (sinon 7.2-20 sur <li><p>), même à puce en ligne,
 #      dont le texte suit l'ordre de la ligne ; une <dl> fait un /LI par groupe de termes
-#      (/Lbl) et de définitions (/LBody).
+#      (/Lbl) et de définitions (/LBody) ;
+#   90-un-mcid-par-element : les lignes d'un paragraphe partagent un seul contenu marqué
+#      par page, un seul /Span (sinon le lecteur PDF d'Edge colle la fin d'une ligne au
+#      début de la suivante) ; le texte d'un élément en ligne (em, lien, lang) garde le
+#      sien, et le texte du paragraphe qui l'entoure reste coupé à ses frontières.
 # Ce qu'ils ne changent pas : alt="" seul reste une /Figure sans /Alt, signalée, car
 # l'import écrit alt="" pour toute image sans description. Le cas f doit donc échouer en
 # 7.3 ; s'il passe, le contrôle ne détecte plus rien ou le patch va trop loin. Le trait
@@ -87,12 +91,13 @@ ENTETE = ('<!doctype html><html lang="de"><head><meta charset="utf-8"><title>T</
 PIED = '</body></html>'
 
 (ENTETES, DECOR, CESURE, ESPACE, MARGES, XMP, DOUBLON, REPORTEE, LANGUE, LIENS,
- JUSTIFIE, AUTEURS, NOTES_BALISEES, LISTES) = (
+ JUSTIFIE, AUTEURS, NOTES_BALISEES, LISTES, MCID_LIGNES) = (
     '10-tableaux-entetes.patch', '15-images-decoratives.patch', '20-cesure-trait.patch',
     '25-espace-fin-de-ligne.patch', '30-marges-artefact.patch', '40-xmp-dc-language.patch',
     '50-notes-doublon.patch', '55-notes-reportees.patch', '60-langue-element.patch',
     '65-nom-des-liens.patch', '70-espaces-justifiees.patch', '75-auteurs-info.patch',
-    '80-notes-balisees.patch', '85-listes-imbriquees.patch')
+    '80-notes-balisees.patch', '85-listes-imbriquees.patch',
+    '90-un-mcid-par-element.patch')
 AUTEURS_NOMS = ('Fictive-Dumont, Élodie', 'Przykład, Łukasz')
 
 # Paragraphe justifié en colonne étroite : de larges écarts entre les mots.
@@ -304,6 +309,19 @@ CAS = {
                          '<ul style="list-style-position:inside"><li>Q01 eins <em>Q02 zwei'
                          '</em> Q03 drei <a href="#ziel">Q04 vier</a> Q05 fünf</li></ul>'
                          '<p id="ziel">Ziel</p>', set()),
+    # Un mot par ligne, 12 lignes en p. 1 et 4 en p. 2 : un seul /Span et un seul MCID
+    # pour le paragraphe sur chaque page.
+    'y-mcid-lignes': (MCID_LIGNES,
+                      NOTES + '<p style="width:15mm;orphans:1;widows:1">'
+                      + ' '.join(f'Wort{n}' for n in range(1, 17)) + '</p>', set()),
+    # Texte du paragraphe sur plusieurs lignes, coupé par un em sur deux lignes, un lien
+    # et un mot français : quatre /Span pour le texte du paragraphe, un par morceau.
+    'y-mcid-frontieres': (MCID_LIGNES,
+                          '<p style="width:30mm;font:4mm/5mm sans-serif">Erster Teil des '
+                          'Satzes <em>betont über zwei Zeilen hinweg</em> dann <a '
+                          'href="#ziel">ein Link</a> und <span lang="fr">un mot</span> '
+                          'danach ein Text über mehrere Zeilen am Ende.</p>'
+                          '<p id="ziel">Ziel</p>', set()),
 }
 
 
@@ -823,12 +841,48 @@ def _verifier_listes(pdfs, erreurs):
                        f'{voulu}')
 
 
+def _mcid_de(e):
+    """MCID cités directement par un élément de structure."""
+    return [int(k) for k in _enfants(e) if isinstance(k, (int, NumberObject))]
+
+
+def _verifier_mcid_lignes(pdfs, erreurs):
+    pdf = pdfs['y-mcid-lignes']
+    par_page = [len(mcids) for mcids, _, _ in _marquage(pdf)]
+    if par_page != [1, 1]:
+        erreurs.append(f'y-mcid-lignes : MCID par page {par_page}, attendu [1, 1]')
+    paragraphes = [[(str(k['/S']), len(_mcid_de(k))) for k in _enfants(e)]
+                   for e in _noeuds(pdf) if str(e['/S']) == '/P']
+    if paragraphes != [[('/Span', 1)], [('/Span', 1)]]:
+        erreurs.append(f'y-mcid-lignes : (rôle, MCID) des enfants de chaque /P '
+                       f'{paragraphes}, attendu un seul /Span à un MCID par page')
+    mots = ' '.join(' '.join(_lignes(pdf)).split())
+    if mots != ' '.join(f'Wort{n}' for n in range(1, 17)):
+        erreurs.append(f'y-mcid-lignes : texte extrait {mots!r}')
+
+    paragraphe = next(e for e in _noeuds(pdfs['y-mcid-frontieres']) if str(e['/S']) == '/P')
+    enfants = [k for k in _enfants(paragraphe) if isinstance(k, DictionaryObject)]
+    # Texte du paragraphe : un /Span qui ne cite que des MCID ; le <span lang> est un
+    # /Span qui contient un /Span.
+    propres = [str(k['/S']) == '/Span' and len(_mcid_de(k)) == len(_enfants(k))
+               for k in enfants]
+    mcids = [len(_mcid_de(k)) for k, propre in zip(enfants, propres) if propre]
+    roles = [str(k['/S']) for k in enfants]
+    if mcids != [1, 1, 1, 1] or any(a and b for a, b in zip(propres, propres[1:])):
+        erreurs.append(f'y-mcid-frontieres : enfants du /P {roles}, MCID du texte du '
+                       f'paragraphe {mcids}, attendu quatre /Span à un MCID, séparés par '
+                       'les éléments en ligne')
+    if '/Link' not in roles or '/NonStruct' not in roles:
+        erreurs.append(f'y-mcid-frontieres : enfants du /P {roles}, attendu le /NonStruct '
+                       'de l\'em et le /Link')
+
+
 VERIFS = {ENTETES: _verifier_entetes, DECOR: _verifier_decor, CESURE: _verifier_cesure,
           ESPACE: _verifier_espace, MARGES: _verifier_marges, XMP: _verifier_xmp,
           DOUBLON: _verifier_doublon, REPORTEE: _verifier_reportee,
           LANGUE: _verifier_langue, LIENS: _verifier_liens, JUSTIFIE: _verifier_justifie,
           AUTEURS: _verifier_auteurs, NOTES_BALISEES: _verifier_notes,
-          LISTES: _verifier_listes}
+          LISTES: _verifier_listes, MCID_LIGNES: _verifier_mcid_lignes}
 
 
 def main():
