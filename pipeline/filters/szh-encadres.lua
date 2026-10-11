@@ -4,7 +4,8 @@
 --   ::: {.important}                       titre « Information », ou data-titre
 --   ::: {.question data-titre="…"}         titre data-titre ; sans lui, pas de titre
 --
--- print.css le compose en petites capitales espacées. Article seulement : les feuilles du
+-- print.css compose celui de .important en petites capitales espacées, et masque
+-- visuellement celui de .question, qui reste lu. Article seulement : les feuilles du
 -- livre ne mettent pas ces encadrés en forme. Passe avant szh-typographie.lua, qui traite
 -- le titre comme le reste du texte.
 

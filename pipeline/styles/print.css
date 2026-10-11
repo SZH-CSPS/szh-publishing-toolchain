@@ -160,6 +160,10 @@ a[href^="#"], a.szh-appel {
   color: inherit; text-decoration: none;
 }
 a[href^="#"]:hover { color: #002A56; text-decoration: underline; }
+/* URL ou DOI écrit en clair dans la bibliographie, changé en lien par szh-citations.lua
+   (classe szh-lien-brut) : l'aspect du texte qui l'entoure. Le §9 le souligne à
+   l'écran. */
+.szh-reference a.szh-lien-brut { color: inherit; text-decoration: none; }
 /* Flèche du hero. Son blanc vient de l'attribut stroke='#ffffff' du SVG porté en fond par
    `.szh-arrow` (§5) : la cascade CSS ne descend pas dans une image de fond.
    `opacity: 1` neutralise le 0.9 de `.szh-arrow` : une opacité inférieure à 1 ferait
@@ -609,14 +613,22 @@ blockquote p:last-child { margin-bottom: 0; }
   background: var(--annual-soft); border-left: 4px solid var(--c-annual);
   padding: 15px 18px; margin: 1.2em 0; break-inside: avoid;
 }
-/* Titre d'un encadré .important ou .question : un <p> posé dans le texte par
-   filters/szh-encadres.lua, donc lu par un lecteur d'écran et balisé /P. Deux classes,
-   pour l'emporter sur `.question > *`. */
-.important > .szh-encadre-titre, .question > .szh-encadre-titre {
+/* Titre d'un encadré .important : un <p> posé dans le texte par filters/szh-encadres.lua,
+   donc lu par un lecteur d'écran et balisé /P. */
+.important > .szh-encadre-titre {
   margin: 0 0 5px; text-align: left; hyphens: manual;
   text-transform: uppercase; letter-spacing: 0.12em;
   font-size: 9.5px; font-weight: 800; color: #000000;
 }
+/* Titre d'une .question (data-titre) : lu et balisé, mais masqué visuellement, comme
+   .szh-description (partage-filtres.css). Hors du flux, il ne déplace rien ; WeasyPrint le
+   compose dans une boîte de 1 px rognée. Deux classes, pour l'emporter sur `.question > *`. */
+.question > .szh-encadre-titre {
+  position: absolute; width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0; overflow: hidden;
+  white-space: nowrap;
+}
+@media screen { .question > .szh-encadre-titre { clip-path: inset(50%); } }
 .important > *:not(:first-child) { text-align: justify; }
 .important > *:last-child { margin-bottom: 0; }
 
@@ -625,8 +637,7 @@ blockquote p:last-child { margin-bottom: 0; }
    réponse qui suit, comme un titre.
    `break-after: avoid-page` garde la question avec sa réponse : vérifié sur une page de
    hauteur variable, WeasyPrint l'honore ici (alors qu'il l'ignore sur `figcaption`, voir
-   `img`). Un data-titre devient un titre composé comme celui de .important
-   (.szh-encadre-titre, plus haut). */
+   `img`). Un data-titre devient un titre lu mais masqué (.szh-encadre-titre, plus haut). */
 .question {
   margin: 1.5em 0 0.6em;
   break-inside: avoid;
@@ -964,7 +975,10 @@ table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: 
   /* Petits corps de l'A4 (9 à 10 px) portés à 12 ou 13 px. */
   .szh-note, .szh-kw { font-size: 0.8125rem; }
   .szh-hero-eyebrow, .szh-hero-dossier, .szh-hero-vol, .szh-abstract-label,
-  .important > .szh-encadre-titre, .question > .szh-encadre-titre { font-size: 0.75rem; }
+  .important > .szh-encadre-titre { font-size: 0.75rem; }
+  /* Lien d'une référence bibliographique : souligné à l'écran, où il se clique. */
+  .szh-reference a.szh-lien-brut { text-decoration: underline; text-decoration-thickness: 0.06em;
+    text-underline-offset: 0.15em; }
   .szh-licence { font-size: 0.8125rem; }
   /* `body` : l'emporte sur partage-filtres.css, chargée après cette feuille. */
   body figure > figcaption .szh-credit, body table > caption .szh-credit { font-size: 0.75rem; }

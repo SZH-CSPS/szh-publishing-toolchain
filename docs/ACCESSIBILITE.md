@@ -101,9 +101,13 @@ demandent un essai avec un lecteur d'écran (NVDA, par exemple). Sans cet essai,
   `aria-hidden` : dans le PDF, elle reste lue. L'aperçu ne passe pas par ce filtre.
 - **Encadrés.** Le titre d'un encadré `.important` (« Information » ou son `data-titre`) et
   celui d'une `.question` qui a un `data-titre` sont un `<p class="szh-encadre-titre">` posé
-  par `szh-encadres.lua` : un texte réel, lu et balisé `/P`.
+  par `szh-encadres.lua` : un texte réel, lu et balisé `/P`. Celui d'une `.question` est
+  masqué visuellement, comme une description de tableau.
 - **Bibliographie.** Une URL ou un DOI écrit en clair dans `<slug>.biblio.md` devient un
-  lien (`szh-citations.lua`).
+  lien (`szh-citations.lua`, classe `szh-lien-brut`), avec l'aspect du texte dans le PDF
+  et souligné à l'écran.
+- **ORCID.** Le nom accessible du lien ORCID nomme la personne : « ORCID de Prénom Nom »,
+  « ORCID von Vorname Nachname » (`szh-auteurs.lua`).
 - **Liens sans texte.** Le QR et l'icône ORCID sont des `<a>` vides avec un `aria-label`,
   l'image passant en fond CSS. Un `<svg>` ou un bloc dans un `<a>` casse PDF/UA.
 - **Liens dans un conteneur flex.** WeasyPrint ne crée pas d'annotation `/Link` pour un `<a>`

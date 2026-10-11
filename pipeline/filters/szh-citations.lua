@@ -882,6 +882,22 @@ local function marque(classe)
 end
 
 -- --------------------------------------------- la bibliographie détachée, réinsérée
+-- Une URL ou un DOI écrit en clair dans une entrée devient un lien de classe
+-- szh-lien-brut, que print.css compose comme le texte. La ponctuation finale (« . », « , »,
+-- « ; », « ) ») reste hors du lien. Les liens déjà écrits (<https://…>, [texte](url)) ne
+-- changent pas.
+local function lier_urls_en_clair(blocs)
+  return blocs:walk({
+    Str = function(s)
+      local url, fin = s.text:match('^(https?://%S-)([%.,;:%)]*)$')
+      if not url or url:match('://$') then return nil end
+      local lien = pandoc.Link({ pandoc.Str(url) }, url, '', pandoc.Attr('', { 'szh-lien-brut' }))
+      if fin == '' then return lien end
+      return { lien, pandoc.Str(fin) }
+    end,
+  })
+end
+
 -- Comme szh-tabelle-inclure.lua : le dossier courant est celui de l'article, et un
 -- fichier manquant donne un encadré d'avertissement visible dans le rendu. Les deux
 -- classes ont le même style rouge (styles/partage-filtres.css).
@@ -938,9 +954,7 @@ local function resoudre_biblio(doc, slug)
       elseif est_vide(contenu) then
         -- Fichier vide : le bloc disparaît, sans avertissement.
       else
-        -- autolink_bare_uris : une URL ou un DOI écrit en clair devient un lien, comme
-        -- ceux que l'import a gardés de Word.
-        local entrees = pandoc.read(contenu, 'markdown+autolink_bare_uris').blocks
+        local entrees = lier_urls_en_clair(pandoc.read(contenu, 'markdown').blocks)
         if #entrees > 0 then
           local titre = titre_bibliographie(doc.meta)
           if titre ~= '' then

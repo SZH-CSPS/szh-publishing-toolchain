@@ -168,10 +168,41 @@ avecWsl('encadrés : un chapitre de livre n’en reçoit pas', () => {
 // ── Liens de la bibliographie ─────────────────────────────────────────────────────────
 avecWsl('bibliographie : une URL ou un DOI écrit en clair devient un lien', () => {
   const md = 'Selon Dupont (2024).\n\n::: {.szh-biblio src="essai.biblio.md"}\n:::\n';
-  const biblio = 'Dupont, A. (2024). Un titre. *Revue, 4*(1), 1–2. https://doi.org/10.99999/x.2024.1\n';
+  const biblio = 'Dupont, A. (2024). Un titre. *Revue, 4*(1), 1–2. https://doi.org/10.99999/x.2024.1\n\n'
+    + 'Muller, B. (2023). Autre. Consulté sur https://www.example.org/page.\n\n'
+    + 'Weber, C. (2022). Gardé. <https://www.example.org/garde>\n';
   const { html } = compiler('biblio-liens', { 'essai.md': md, 'essai.biblio.md': biblio },
     ['szh-citations.lua']);
-  assert.match(html, /<a href="https:\/\/doi\.org\/10\.99999\/x\.2024\.1"[^>]*>https:\/\/doi\.org\/10\.99999\/x\.2024\.1<\/a>/, html);
+  assert.match(html, /<a href="https:\/\/doi\.org\/10\.99999\/x\.2024\.1" class="szh-lien-brut">https:\/\/doi\.org\/10\.99999\/x\.2024\.1<\/a>/, html);
+  // Le point final reste hors du lien.
+  assert.match(html, /<a href="https:\/\/www\.example\.org\/page" class="szh-lien-brut">https:\/\/www\.example\.org\/page<\/a>\./, html);
+  // Un lien déjà écrit garde son aspect de lien (pas de classe szh-lien-brut).
+  assert.match(html, /<a href="https:\/\/www\.example\.org\/garde" class="uri">/, html);
+});
+
+// Le lien d'une référence a l'aspect du texte dans le PDF ; le §9 le souligne à l'écran.
+test('print.css : un lien en clair de la bibliographie a l’aspect du texte', () => {
+  const css = fs.readFileSync(path.join(RACINE, 'pipeline', 'styles', 'print.css'), 'utf8');
+  const horsEcran = css.slice(0, css.indexOf('9. Écran'));
+  assert.match(horsEcran, /\.szh-reference a\.szh-lien-brut \{ color: inherit; text-decoration: none; \}/);
+});
+
+// ── Lien ORCID ────────────────────────────────────────────────────────────────────────
+avecWsl('ORCID : le nom accessible du lien nomme l’auteur, en fr et en de', () => {
+  const fiche = (revue) => '---\nrevue: ' + revue + '\nauthor:\n- prenom: Anne\n  nom: Dupont\n'
+    + '  orcid: "0000-0002-1825-0097"\n  orcid-url: https://orcid.org/0000-0002-1825-0097\n---\n\nTexte.\n';
+  const fr = compiler('orcid-fr', { 'essai.md': fiche('revue') }, ['szh-auteurs.lua']);
+  assert.match(fr.html, /class="szh-orcid"[^>]*aria-label="ORCID de Anne Dupont"/, fr.html);
+  const de = compiler('orcid-de', { 'essai.md': fiche('zeitschrift') }, ['szh-auteurs.lua']);
+  assert.match(de.html, /class="szh-orcid"[^>]*aria-label="ORCID von Anne Dupont"/, de.html);
+});
+
+// Le titre d'une question est lu mais masqué : hors du flux, il ne déplace rien.
+test('print.css : le titre d’une .question est masqué visuellement, celui de .important composé', () => {
+  const css = fs.readFileSync(path.join(RACINE, 'pipeline', 'styles', 'print.css'), 'utf8');
+  const horsEcran = css.slice(0, css.indexOf('9. Écran'));
+  assert.match(horsEcran, /\.question > \.szh-encadre-titre \{\s*position: absolute; width: 1px; height: 1px;/);
+  assert.match(horsEcran, /\.important > \.szh-encadre-titre \{\s*margin: 0 0 5px;/);
 });
 
 // ── Niveaux de titre ──────────────────────────────────────────────────────────────────
