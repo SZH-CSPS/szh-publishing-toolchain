@@ -28,6 +28,7 @@ est rejugé avec ces dossiers : l'amont l'a-t-il intégré, le code a-t-il boug�
 | [60-langue-element](60-langue-element/RAPPORT.md) | aucun `/Lang` sur l'élément d'un passage dans une autre langue | issue qui propose la PR, liée à #2482 |
 | [65-nom-des-liens](65-nom-des-liens/RAPPORT.md) | le `/Contents` d'un lien est sa cible, jamais `aria-label`, son texte ni `title` ; pas d'`/Alt` sur un lien vide | commentaire sur l'issue #2550 |
 | [70-espaces-justifiees](70-espaces-justifiees/RAPPORT.md) | l'espace d'une ligne justifiée est dessinée au milieu de son écart : pdfium (Edge) l'écarte, mots collés | issue qui propose la PR |
+| [75-auteurs-info](75-auteurs-info/RAPPORT.md) | `/Info /Author` joint par « , » des auteurs « Nom, Prénom » : on ne sait plus qui est qui | issue qui propose la PR |
 | [sans-patch-lien-flex](sans-patch-lien-flex/RAPPORT.md) | un `<a>` enfant direct d'un conteneur flex perd son annotation `/Link` | pas de correctif : Pronto insère un `<span>` intermédiaire ; issue #2941 déjà ouverte |
 
 Le 25 s'applique seul mais n'a d'effet qu'avec le 20 : le dessin de l'espace de fin de ligne

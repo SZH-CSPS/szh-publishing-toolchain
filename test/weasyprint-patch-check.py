@@ -38,7 +38,9 @@
 #      le même nom en /Alt de son /Link, un lien à texte n'en a pas ;
 #   70-espaces-justifiees : dans une ligne justifiée, aucun glyphe espace n'est précédé
 #      d'un décalage du TJ (sinon pdfium y déduit une espace générée de largeur nulle et
-#      écarte la vraie : mots collés dans Edge), et le texte extrait garde ses mots.
+#      écarte la vraie : mots collés dans Edge), et le texte extrait garde ses mots ;
+#   75-auteurs-info : /Info /Author joint les auteurs « Nom, Prénom » par « ; », et
+#      dc:creator garde un rdf:li par auteur.
 # Ce qu'ils ne changent pas : alt="" seul reste une /Figure sans /Alt, signalée, car
 # l'import écrit alt="" pour toute image sans description. Le cas f doit donc échouer en
 # 7.3 ; s'il passe, le contrôle ne détecte plus rien ou le patch va trop loin. Le trait
@@ -69,11 +71,12 @@ ENTETE = ('<!doctype html><html lang="de"><head><meta charset="utf-8"><title>T</
 PIED = '</body></html>'
 
 (ENTETES, DECOR, CESURE, ESPACE, MARGES, XMP, DOUBLON, REPORTEE, LANGUE, LIENS,
- JUSTIFIE) = (
+ JUSTIFIE, AUTEURS) = (
     '10-tableaux-entetes.patch', '15-images-decoratives.patch', '20-cesure-trait.patch',
     '25-espace-fin-de-ligne.patch', '30-marges-artefact.patch', '40-xmp-dc-language.patch',
     '50-notes-doublon.patch', '55-notes-reportees.patch', '60-langue-element.patch',
-    '65-nom-des-liens.patch', '70-espaces-justifiees.patch')
+    '65-nom-des-liens.patch', '70-espaces-justifiees.patch', '75-auteurs-info.patch')
+AUTEURS_NOMS = ('Fictive-Dumont, Élodie', 'Przykład, Łukasz')
 
 # Paragraphe justifié en colonne étroite : de larges écarts entre les mots.
 JUSTIFIE_TEXTE = ('Die Teilhabe misst sich an dem, was jedes Kind tun kann, und nicht an '
@@ -192,6 +195,10 @@ CAS = {
     'q-justifie': (JUSTIFIE,
                    '<p style="width:60mm;text-align:justify;font:11pt sans-serif">'
                    + JUSTIFIE_TEXTE + '</p>', set()),
+    # Deux auteurs « Nom, Prénom », comme les écrit Pronto.
+    'r-auteurs': (AUTEURS,
+                  ''.join(f'<meta name="author" content="{a}">' for a in AUTEURS_NOMS)
+                  + '<p>Ein Satz.</p>', set()),
 }
 
 
@@ -549,10 +556,21 @@ def _verifier_justifie(pdfs, erreurs):
         erreurs.append(f'q-justifie : texte extrait {mots!r}')
 
 
+def _verifier_auteurs(pdfs, erreurs):
+    reader = PdfReader(pdfs['r-auteurs'])
+    auteur = reader.metadata.get('/Author')
+    if auteur != '; '.join(AUTEURS_NOMS):
+        erreurs.append(f'r-auteurs : /Author {auteur!r}, attendu {"; ".join(AUTEURS_NOMS)!r}')
+    createurs = reader.xmp_metadata.dc_creator
+    if createurs != list(AUTEURS_NOMS):
+        erreurs.append(f'r-auteurs : dc:creator {createurs}, attendu {list(AUTEURS_NOMS)}')
+
+
 VERIFS = {ENTETES: _verifier_entetes, DECOR: _verifier_decor, CESURE: _verifier_cesure,
           ESPACE: _verifier_espace, MARGES: _verifier_marges, XMP: _verifier_xmp,
           DOUBLON: _verifier_doublon, REPORTEE: _verifier_reportee,
-          LANGUE: _verifier_langue, LIENS: _verifier_liens, JUSTIFIE: _verifier_justifie}
+          LANGUE: _verifier_langue, LIENS: _verifier_liens, JUSTIFIE: _verifier_justifie,
+          AUTEURS: _verifier_auteurs}
 
 
 def main():

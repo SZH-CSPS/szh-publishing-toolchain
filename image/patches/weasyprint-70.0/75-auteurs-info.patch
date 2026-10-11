@@ -1,0 +1,25 @@
+Correctif SZH de WeasyPrint 70.0 — auteurs de /Info /Author séparés par « ; ».
+
+Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
+image/patches/weasyprint-70.0/ (seul à toucher pdf/__init__.py). Pour le désactiver :
+.patch.off.
+
+weasyprint/pdf/__init__.py. WeasyPrint écrivait /Info /Author en joignant les <meta
+name="author"> par « , ». Pronto écrit chaque auteur « Nom, Prénom » : deux auteurs
+donnaient « Fictive-Dumont, Élodie, Przykład, Łukasz », où l'on ne sait plus qui est qui.
+Désormais les auteurs sont joints par « ; » : « Fictive-Dumont, Élodie; Przykład, Łukasz ».
+dc:creator du XMP n'est pas touché : il a déjà un rdf:li par auteur.
+Rendu identique au pixel ; cas r-auteurs de test/weasyprint-patch-check.py.
+
+--- a/weasyprint/pdf/__init__.py
++++ b/weasyprint/pdf/__init__.py
+@@ -253,7 +253,8 @@
+     if metadata.title:
+         pdf.info['Title'] = pydyf.String(metadata.title)
+     if metadata.authors:
+-        pdf.info['Author'] = pydyf.String(', '.join(metadata.authors))
++        # SZH : « ; » entre auteurs, car un auteur « Nom, Prénom » contient déjà une virgule.
++        pdf.info['Author'] = pydyf.String('; '.join(metadata.authors))
+     if metadata.description:
+         pdf.info['Subject'] = pydyf.String(metadata.description)
+     if metadata.keywords:

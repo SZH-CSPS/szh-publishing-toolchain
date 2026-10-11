@@ -75,6 +75,10 @@ const PATCHS = {
     cibles: ['weasyprint/draw/text.py'],
     reperes: [/^\+\s+string \+= f'>\{int\(kerning\) - offset\}<'$/m],
   },
+  '75-auteurs-info': {
+    cibles: ['weasyprint/pdf/__init__.py'],
+    reperes: [/^\+\s+pdf\.info\['Author'\] = pydyf\.String\('; '\.join\(metadata\.authors\)\)$/m],
+  },
 };
 
 function dossierPatchs() {
