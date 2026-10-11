@@ -23,11 +23,18 @@
 
   /* Largeur de lecture : une soixantaine de caractères par ligne. */
   --web-colonne: 62ch;
+
+  /* Fonds des tableaux stylés : ceux du PDF (accent-css.py écrit --szh-accent-clair et
+     --szh-zebre depuis buch.yaml). */
+  --web-tableau-tete:  var(--szh-accent-clair);
+  --web-tableau-zebre: var(--szh-zebre);
 }
 
 /* Thème sombre : seuls ces jetons locaux changent, pas ceux de socle.css. Les couleurs de
    chapitre (--c-chapitre, PALETTE_CHAPITRE dans livre.mk) sont vérifiées contre le blanc,
-   pas sur ce fond sombre. */
+   pas sur ce fond sombre. Les fonds de tableau sont assombris : sous une encre claire, les
+   fonds clairs du PDF rendraient le texte illisible. Sans color-mix(), le fond du tableau
+   reste celui de la page. */
 @media (prefers-color-scheme: dark) {
   :root {
     --web-fond:        #15151b;
@@ -36,6 +43,8 @@
     --web-filet:       #3a3a44;
     --web-lien:        #9db8dd;
     --web-fond-encart: #20232c;
+    --web-tableau-tete:  color-mix(in srgb, var(--szh-accent-clair) 20%, var(--web-fond));
+    --web-tableau-zebre: color-mix(in srgb, var(--web-ink) 6%, var(--web-fond));
   }
 }
 
@@ -125,6 +134,9 @@ h4 { font-size: 1rem; font-style: italic; margin: 1.25rem 0 0.4rem; }
   color: var(--web-lien); border-left-color: var(--web-lien);
 }
 .szh-sommaire .niveau-2, .szh-sommaire .niveau-3 { padding-left: 1.5em; font-size: 0.95em; }
+/* Sous-liste (chapitres d'une partie, intertitres d'un chapitre) : un filet sépare aussi sa
+   première entrée de l'entrée qui la porte. */
+.szh-sommaire li li:first-child { border-top: 1px solid var(--web-filet); }
 
 /* ═══ 6. Blocs FALC (falc-resume, falc-encadre, falc-cle, falc-etapes, falc-projet) ═══
    Mêmes blocs que sur papier, mesurés en rem et en % au lieu de millimètres. */
@@ -177,8 +189,8 @@ caption { text-align: left; font-size: 0.85rem; color: var(--web-ink2); margin-b
 th, td { text-align: left; vertical-align: top; padding: 0.35rem 0.6rem; border-bottom: 1px solid var(--web-filet); }
 /* Accent des tableaux stylés de l'éditeur (.szh-tableau) : mêmes jetons que le PDF
    (accent-css.py écrit --szh-accent-…/--szh-gris-clair/--szh-zebre depuis buch.yaml). */
-.szh-tableau thead th { background: var(--szh-accent-clair); }
-.szh-tableau tbody tr:nth-child(even) { background: var(--szh-zebre); }
+.szh-tableau thead th { background: var(--web-tableau-tete); }
+.szh-tableau tbody tr:nth-child(even) { background: var(--web-tableau-zebre); }
 .szh-tableau th[data-align="center"], .szh-tableau td[data-align="center"] { text-align: center; }
 .szh-tableau th[data-align="right"], .szh-tableau td[data-align="right"] { text-align: right; }
 /* Description longue d'un tableau (aria-describedby) : masquée à l'œil, lue par le lecteur
@@ -190,9 +202,17 @@ th, td { text-align: left; vertical-align: top; padding: 0.35rem 0.6rem; border-
 }
 
 /* ═══ 10. Notes ════════════════════════════════════════════════════════════════
-   Les navigateurs ignorent `float: footnote` : la note reste en ligne, à sa place dans le
-   texte (même repli que l'aperçu, dans print.css). */
+   Un chapitre arrive ici sans szh-notes (fragments EPUB, voir livre.mk) : l'appel est un
+   lien vers sa note, rangée en fin de chapitre avec un lien de retour.
+   Une pièce liminaire garde la note de szh-notes (`float: footnote`, ignoré par les
+   navigateurs) : elle reste en ligne, entre crochets, détachée du mot qui l'appelle. Les
+   crochets sont du contenu généré, lu par les lecteurs d'écran. */
+.footnotes { font-size: 0.85rem; color: var(--web-ink2); line-height: 1.4; }
+.footnotes hr { border: 0; border-top: 1px solid var(--web-filet); width: 30%; margin: 2rem 0 1rem; }
+.footnotes ol { padding-left: 1.5rem; }
 .szh-note { display: inline; font-size: 0.85em; color: var(--web-ink2); }
+.szh-note::before { content: " ["; }
+.szh-note::after { content: "]"; }
 
 /* ═══ 11. Liens ════════════════════════════════════════════════════════════════
    Les liens gardent leur couleur et leur soulignement, sauf le sommaire et les appels de
@@ -201,6 +221,23 @@ a { color: var(--web-lien); }
 a:hover, a:focus-visible { text-decoration-thickness: 0.08em; }
 .szh-sommaire a, a.footnote-ref, a.footnote-back, a[href^="#"].szh-appel {
   color: inherit; text-decoration: none;
+}
+/* Retour de la bibliographie à l'appel de citation (szh-citations.lua) : un <a> vide, nommé
+   par son aria-label. La flèche de partage-filtres.css, tracée à la couleur des liens, dans
+   une cible de 24 px de côté, avec un anneau de focus marqué. */
+a.szh-retour-appel {
+  display: inline-block; width: 24px; height: 24px; vertical-align: middle;
+  color: var(--web-lien);
+}
+a.szh-retour-appel::before {
+  content: ""; display: block; width: 14px; height: 14px; margin: 5px;
+  background-color: currentColor;
+  -webkit-mask: var(--web-fleche-retour) center / contain no-repeat;
+  mask: var(--web-fleche-retour) center / contain no-repeat;
+}
+a.szh-retour-appel:focus-visible { outline: 2px solid var(--web-lien); outline-offset: 1px; }
+:root {
+  --web-fleche-retour: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='9 14 4 9 9 4'/%3E%3Cpath d='M20 20v-7a4 4 0 0 0-4-4H4'/%3E%3C/svg%3E");
 }
 
 /* ═══ 11b. Encadré falc-header « écouter cette histoire » ═════════════════════

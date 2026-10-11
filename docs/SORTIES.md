@@ -55,8 +55,8 @@ Un chapitre se compile comme un article. Les sorties du livre sont assemblées p
 | PDF numérique | `livre-pdf` | build par défaut (`Ctrl+S`) | `out/<livre>.pdf` | RVB, PDF/UA-1, signets ; seul PDF du livre contrôlé par la porte PDF/UA |
 | PDF imprimeur | `livre-imprimeur` | Livre : PDF imprimeur | `out/<livre>-imprimeur.pdf` | fond perdu de 3 mm, traits de coupe ; CMJN avec texte en noir seul si `impression.profil-cmjn` est rempli |
 | Couverture | `livre-couverture` | Livre : couverture | `out/<livre>-couverture-impression.pdf` et `out/<livre>-couverture.pdf` | à plat en PDF/X-4 CMJN, sans aucun RVB ; version écran en PDF/UA-1 |
-| EPUB 3 | `livre-epub` | Livre : EPUB | `out/<livre>.epub` | vraies notes de fin, sommaire de navigation, structure vérifiée par `test/epub-check.py` |
-| HTML web | `livre-html-web` | Livre : HTML web | `out/web/<livre>.html` | un seul fichier, lisible hors ligne |
+| EPUB 3 | `livre-epub` | Livre : EPUB | `out/<livre>.epub` | vraies notes de fin, sommaire de navigation imbriqué par parties, tableaux gardés tels quels, métadonnées d'accessibilité, structure vérifiée par `test/epub-check.py` |
+| HTML web | `livre-html-web` | Livre : HTML web | `out/web/<livre>.html` | un seul fichier, lisible hors ligne ; repères `main` et `nav`, notes de fin liées, mode sombre |
 
 `<livre>` est le nom du dossier du livre. Les quatre tâches « Livre : … » sont aussi dans le
 panneau Export du cockpit, qui ne les montre que pour un livre.

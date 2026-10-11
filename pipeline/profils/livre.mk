@@ -704,15 +704,19 @@ endif
 # --------------------------------------------------------------------------------------
 # Le HTML web, assemblé avec CSS_LIVRE_WEB : un seul fichier autonome, polices et feuilles
 # incorporées, images déjà en data: URI dans les fragments.
+# Il part des fragments EPUB, compilés sans szh-notes : une note y est un appel lié à sa
+# note, en fin de chapitre. Une note placée en CSS (float: footnote) resterait, à l'écran,
+# collée au mot qui l'appelle.
 # --------------------------------------------------------------------------------------
-$(LIVRE_WEB_HTML): $(FRAGMENTS) $(LIMINAIRES) $(CONFIG_LIVRE) $(ASSEMBLEUR) $(GABARIT_LIVRE) \
+$(LIVRE_WEB_HTML): $(FRAGMENTS_EPUB) $(LIMINAIRES) $(CONFIG_LIVRE) $(ASSEMBLEUR) $(GABARIT_LIVRE) \
                $(SOCLE) $(STYLE_LIVRE_WEB) $(ACCENT_CSS) $(IMAGES_ASSEMBLEES)
 	@mkdir -p "$(dir $@)"
 	@$(ASSEMBLER) \
 	  --sortie "$@" \
 	  --out "$(OUT)" \
+	  --web \
 	  $(CSS_LIVRE_WEB) \
-	  $(FRAGMENTS)
+	  $(FRAGMENTS_EPUB)
 
 livre-html-web: $(LIENS_COURTS_PREALABLE) verifie-livre $(LIVRE_WEB_HTML)
 	@echo "[livre] $(LIVRE_WEB_HTML)"
@@ -764,14 +768,22 @@ $(EPUB_SOCLE): $(SOCLE)
 	@mkdir -p "$(OUT)"
 	@sed '/^@font-face/,/}/d' "$<" > "$@"
 
-$(LIVRE_EPUB): $(LIVRE_EPUB_HTML) $(STYLE_LIVRE_EPUB) $(EPUB_SOCLE) $(ACCENT_CSS) $(OUT)/$(NOM_LIVRE)-couverture-1.png
+# szh-livre-epub-brut.lua rend tels quels les tableaux que livre-epub-prepare.py a mis de
+# côté. livre-epub-finir.py reprend ensuite l'archive : navigation par parties, repères et
+# titres des documents dans la langue du livre, texte alternatif de la couverture.
+EPUB_BRUT  := $(PIPELINE_DIR)/filters/szh-livre-epub-brut.lua
+EPUB_FINIR := $(PIPELINE_DIR)/livre-epub-finir.py
+$(LIVRE_EPUB): $(LIVRE_EPUB_HTML) $(STYLE_LIVRE_EPUB) $(EPUB_SOCLE) $(ACCENT_CSS) $(OUT)/$(NOM_LIVRE)-couverture-1.png \
+               $(EPUB_BRUT) $(EPUB_FINIR)
 	@$(PANDOC) "$(LIVRE_EPUB_HTML)" \
 	  --from=html --to=epub3 \
 	  --split-level=1 \
 	  --metadata-file="$(LIVRE_EPUB_META)" \
+	  --lua-filter="$(EPUB_BRUT)" \
 	  --css="$(abspath $(EPUB_SOCLE))" --css="$(abspath $(STYLE_LIVRE_EPUB))" --css="$(ACCENT_ABS)" \
 	  --epub-cover-image="$(OUT)/$(NOM_LIVRE)-couverture-1.png" \
 	  --output="$@"
+	@python3 "$(EPUB_FINIR)" "$@"
 
 livre-epub: $(LIENS_COURTS_PREALABLE) verifie-livre $(LIVRE_EPUB)
 	@echo "[livre] $(LIVRE_EPUB)"

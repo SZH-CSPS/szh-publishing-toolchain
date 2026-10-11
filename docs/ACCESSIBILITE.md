@@ -62,7 +62,8 @@ demandent un essai avec un lecteur d'écran (NVDA, par exemple). Sans cet essai,
 | `test/accessibilite/` | un numéro d'essai fr et de : tableaux sans en-tête, bibliographie à diacritiques polonais, turcs et serbes, sauts de niveau de titre, paire de traductions à numérotation divergente. Sa vérification PDF/UA doit rendre 0. |
 | `test/polices-check.py` | refuse un PDF qui embarque une police absente de `pipeline/fonts/` (une police de repli rend des caractères illisibles au copier-coller) |
 | `test/apca-check.py` | contraste APCA de la palette (`pipeline/styles/couleurs.css`) et des couleurs de `print.css`, paire par paire, avec `pipeline/apca.py` |
-| `test/epub-check.py` | structure de l'EPUB d'un livre |
+| `test/epub-check.py` | structure de l'EPUB d'un livre ; renvois `headers` et `aria-*`, titres des documents, métadonnées d'accessibilité, repères |
+| `test/livre-accessibilite.test.py` | identifiants par chapitre, sommaire imbriqué, repères du HTML web, chaîne EPUB d'un tableau complexe |
 | `test/weasyprint-patch-check.py` | ce que chaque correctif de WeasyPrint doit produire |
 | `test/build-render.sh` | le banc de rendu ; il enchaîne la vérification PDF/UA, `polices-check.py` et `test/accessibilite/` |
 
@@ -142,6 +143,23 @@ demandent un essai avec un lecteur d'écran (NVDA, par exemple). Sans cet essai,
   un groupe de transparence, où son contenu sort de l'arbre de structure (PDF/UA-1,
   règle 7.1-3). Les teintes claires de la couverture (point médian entre auteurs, filigrane)
   sont donc des couleurs pré-mélangées, avec `opacity: 1`.
+
+### Le livre
+
+- **Identifiants.** Chaque chapitre d'un livre se compile seul, et les filtres numérotent
+  leurs identifiants par chapitre. `livre-assembler.py` les préfixe par le slug du chapitre
+  et réécrit leurs renvois : la description longue d'un tableau désigne le bon tableau dans
+  le PDF, le HTML web et l'EPUB.
+- **Sommaire.** Une liste imbriquée : les chapitres d'une partie dans une sous-liste de la
+  partie, dans le PDF, le HTML web et la navigation de l'EPUB.
+- **HTML web.** Le contenu est dans un `<main>`, le sommaire dans un `<nav>`. Une note est
+  un appel lié à sa note, en fin de chapitre. En mode sombre, les fonds de tableau sont
+  assombris. Le lien de retour de la bibliographie vers l'appel de citation a une cible de
+  24 px et un anneau de focus.
+- **EPUB.** Les tableaux arrivent dans l'archive tels que la chaîne les écrit (`th`,
+  `scope`, `headers`, note et description reliées). L'OPF porte les métadonnées
+  d'accessibilité de schema.org, avec un résumé dans la langue du livre ; les repères et le
+  titre de chaque document sont dans cette langue ; la couverture a un nom accessible.
 
 ### Les correctifs de WeasyPrint
 

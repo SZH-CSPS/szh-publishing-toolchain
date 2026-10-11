@@ -92,9 +92,11 @@ function exigerRefus(r, code, champ) {
   assert.ok(champs[champs.length - 2].length > 10, 'phrase française absente : ' + ligne);
 }
 
+// Les entrées du sommaire dans l'ordre du livre, chacune réduite à son <li> et à son lien :
+// la sous-liste qu'une entrée porte (chapitres d'une partie) est retirée.
 function sommaire(html) {
   const s = /<section class="szh-sommaire"[\s\S]*?<\/section>/.exec(html || '');
-  return s ? s[0].match(/<li[\s\S]*?<\/li>/g) || [] : [];
+  return s ? (s[0].match(/<li\b[^>]*>[\s\S]*?(?=<ol>|<\/li>)/g) || []).map((l) => l + '</li>') : [];
 }
 
 // ── Parties ───────────────────────────────────────────────────────────────────────────
@@ -210,14 +212,16 @@ test('sommaire : la partie entre au niveau 0, ses chapitres sont marqués dans-p
   assert.strictEqual(li.length, 4, li.join('\n'));
   assert.match(li[0], /^<li class="niveau-1" [^>]*><span><a href="#00-vor-titre">Vor</);
   // Le numéro hors du lien : un bloc en ligne dans un <a> lui ôte son balisage /Link.
-  assert.strictEqual(li[1], '<li class="niveau-0 partie-seule"><span><span class="szh-sommaire-num">1</span>'
+  assert.strictEqual(li[1], '<li class="niveau-0 partie-seule szh-sommaire-groupe"><span><span class="szh-sommaire-num">1</span>'
     + '<a href="#partie-1-titre">Grundlagen und Begriffe</a></span></li>');
   assert.match(li[2], /^<li class="niveau-1 dans-partie" /);
+  // Les chapitres de la partie sont dans la sous-liste de son entrée.
+  assert.match(r.html, /<a href="#partie-1-titre">Grundlagen und Begriffe<\/a><\/span><ol>\n<li class="niveau-1 dans-partie"[^\n]*01-eins-titre[^\n]*\n<li class="niveau-1 dans-partie"[^\n]*02-zwei-titre[^\n]*\n<\/ol><\/li>/);
 });
 
 test('sommaire : une partie page-seule non est marquée partie-partagee', { skip: sansPython }, () => {
   const r = livre(buch('parties:\n- titre: "Vorwort"\n  numero: "I"\n  chapitres: [01-eins]\n  page-seule: non\n'));
-  assert.match(sommaire(r.html)[0], /^<li class="niveau-0 partie-partagee">/);
+  assert.match(sommaire(r.html)[0], /^<li class="niveau-0 partie-partagee szh-sommaire-groupe">/);
 });
 
 test('sommaire (sommaire-niveaux) : 1 par défaut, les chapitres seuls ; 2 ajoute leurs intertitres', { skip: sansPython }, () => {
