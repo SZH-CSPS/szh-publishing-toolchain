@@ -127,6 +127,8 @@ touchent l'accessibilité :
 | `25-espace-fin-de-ligne` | l'espace de fin de ligne est dans la couche texte (n'agit qu'avec le 20) |
 | `30-marges-artefact` | en-têtes, pieds et folios en artefacts de pagination |
 | `40-xmp-dc-language` | `dc:language` dans le XMP |
+| `60-langue-element` | `/Lang` sur l'élément d'un passage dans une autre langue (résumé, citation, `[mot]{lang=en}`) |
+| `65-nom-des-liens` | `/Contents` d'un lien tiré d'`aria-label`, de son texte ou de `title` ; `/Alt` sur le `/Link` d'un lien sans texte |
 
 Le rapport, la démo et l'état chez les développeurs de WeasyPrint de chaque correctif sont
 dans [`image/patches/amont/`](../image/patches/amont/README.md). Un correctif n'arrive sur

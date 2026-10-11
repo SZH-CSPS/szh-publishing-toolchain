@@ -62,6 +62,15 @@ const PATCHS = {
     cibles: ['weasyprint/layout/block.py'],
     reperes: [/^\+\s+context\.current_page_footnotes\[-1\] in own_footnotes\):$/m],
   },
+  '60-langue-element': {
+    cibles: ['weasyprint/pdf/tags.py'],
+    reperes: [/^\+\s+element\['Lang'\] = pydyf\.String\(lang\)$/m],
+  },
+  '65-nom-des-liens': {
+    cibles: ['weasyprint/pdf/anchors.py', 'weasyprint/pdf/tags.py'],
+    reperes: [/^\+def _get_link_name\(element\):$/m,
+      /^\+\s+element\['Alt'\] = annotation\['Contents'\]$/m],
+  },
 };
 
 function dossierPatchs() {
