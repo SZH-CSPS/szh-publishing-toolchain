@@ -66,3 +66,5 @@ Sortie du 11.10.2026 :
   /Info /Author : 'Doe, Jane; Roe, Richard'
   dc:creator    : ['Doe, Jane', 'Roe, Richard']
 ```
+
+Texte de pull request, test pytest compris : `PR.md`.

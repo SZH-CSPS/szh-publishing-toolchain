@@ -9,7 +9,7 @@ Sur une ligne justifiée, Edge et son lecteur d'écran lisent des mots collés
 U+0020 : c'est sa position qui trompe le lecteur de texte. pdfium, le moteur PDF de Chrome
 et d'Edge, voit un écart entre la fin d'un mot et le glyphe espace. Il en déduit une espace
 « générée » de largeur nulle (`FPDFText_IsGenerated`) et écarte la vraie. Sur
-`demo/justifie.html` : 7 espaces générées sur 50 sans le correctif, aucune avec.
+`demo/justifie.html` : 19 espaces générées sur 62 sans le correctif, aucune avec.
 
 pypdf, qui ajoute lui-même une espace devant tout grand écart du `TJ`, n'est pas touché.
 veraPDF passe avant comme après. Ce que lit un lecteur d'écran réel n'a pas été vérifié.
@@ -78,19 +78,23 @@ Texte prêt : `ISSUE.md`.
 wsl.exe -d SZH-Publishing -- bash /mnt/c/Users/robin/Documents/Prog/szh-publishing-toolchain/image/patches/amont/70-espaces-justifiees/demo/demo.sh
 ```
 
+HTML : `justifie.html` (un paragraphe justifié, un paragraphe à `word-spacing`).
+
 Sortie du 11.10.2026 :
 
 ```
 == justifie, WeasyPrint nu
   veraPDF ua1 : PASS (0 règle(s) en échec)
-  TJ : 50 espaces dessinées, dont 7 précédées d'un décalage
-  pdfium : 7 espaces générées, 43 lues dans le flux
+  TJ : 62 espaces dessinées, dont 19 précédées d'un décalage
+  pdfium : 19 espaces générées, 43 lues dans le flux
 
 == justifie, WeasyPrint patché
   veraPDF ua1 : PASS (0 règle(s) en échec)
-  TJ : 50 espaces dessinées, dont 0 précédées d'un décalage
-  pdfium : 0 espaces générées, 50 lues dans le flux
+  TJ : 62 espaces dessinées, dont 0 précédées d'un décalage
+  pdfium : 0 espaces générées, 62 lues dans le flux
 
 == pixels nu / patché
   identiques à 300 dpi
 ```
+
+Texte de pull request, test pytest compris : `PR.md`.

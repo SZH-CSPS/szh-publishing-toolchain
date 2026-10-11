@@ -66,8 +66,9 @@ Texte prêt : `ISSUE.md` (commentaire pour #2550).
 wsl.exe -d SZH-Publishing -- bash /mnt/c/Users/robin/Documents/Prog/szh-publishing-toolchain/image/patches/amont/65-nom-des-liens/demo/demo.sh
 ```
 
-HTML : `liens.html` (lien à texte sur plusieurs espaces, appel de note, ORCID à
-`aria-label`, licence à `title`, lien sans aucun nom, retour à l'appel à `aria-label`).
+HTML : `liens.html` (lien à texte sur plusieurs espaces, appel de note, lien à texte et
+`aria-label`, ORCID à `aria-label`, licence à `title`, lien sans aucun nom, retour à
+l'appel à `aria-label`).
 
 Sortie du 11.10.2026 (`/Link` : `/Contents` de l'annotation, `/Alt` de l'élément) :
 
@@ -76,6 +77,7 @@ Sortie du 11.10.2026 (`/Link` : `/Contents` de l'annotation, `/Alt` de l'éléme
   veraPDF ua1 : PASS (0 règle(s) en échec)
   /Link  Contents=['https://example.org/']  Alt='-'
   /Link  Contents=['note']  Alt='-'
+  /Link  Contents=['https://example.org/report.pdf']  Alt='-'
   /Link  Contents=['https://orcid.org/0000-0002-1825-0097']  Alt='-'
   /Link  Contents=['https://creativecommons.org/licenses/by/4.0/']  Alt='-'
   /Link  Contents=['https://example.org/nameless']  Alt='-'
@@ -85,6 +87,7 @@ Sortie du 11.10.2026 (`/Link` : `/Contents` de l'annotation, `/Alt` de l'éléme
   veraPDF ua1 : PASS (0 règle(s) en échec)
   /Link  Contents=['the example site']  Alt='-'
   /Link  Contents=['1']  Alt='-'
+  /Link  Contents=['Annual report, PDF, 2 MB']  Alt='Annual report, PDF, 2 MB'
   /Link  Contents=['ORCID profile of Jane Doe']  Alt='ORCID profile of Jane Doe'
   /Link  Contents=['CC BY 4.0']  Alt='CC BY 4.0'
   /Link  Contents=['https://example.org/nameless']  Alt='https://example.org/nameless'
@@ -98,4 +101,7 @@ livre ont leur `aria-label` en `/Contents` et en `/Alt`, les liens internes leur
 
 Un élément dans un lien à texte (`<a>…<em>…</em></a>`) devient un `/NonStruct` sous le
 `/Link`, que veraPDF refuse (7.18.5-1) avec ou sans ce correctif : c'est
-[#185](https://github.com/Kozea/WeasyPrint/issues/185), listée dans #2482.
+[#185](https://github.com/Kozea/WeasyPrint/issues/185), listée dans #2482, et [#2942](https://github.com/Kozea/WeasyPrint/issues/2942) (ouverte
+le 28.09.2026), qui décrit le même cas.
+
+Texte de pull request, test pytest compris : `PR.md`.

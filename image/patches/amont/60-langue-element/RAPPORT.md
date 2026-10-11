@@ -70,12 +70,15 @@ Texte prêt : `ISSUE.md`.
 wsl.exe -d SZH-Publishing -- bash /mnt/c/Users/robin/Documents/Prog/szh-publishing-toolchain/image/patches/amont/60-langue-element/demo/demo.sh
 ```
 
-HTML : `langue-element.html` (`lang="fr"`, un `span` anglais, une `section` allemande, une
-citation anglaise, un `span lang="fr"` redondant).
+HTML : `langue-element.html` (`lang="en"`, un `span` français, une `section` allemande qui
+contient un `span` anglais, une citation française, un `span lang="en"` redondant).
 
 Sortie du 11.10.2026, résumée : veraPDF ua1 PASS avant comme après. Nu, aucun `/Lang` dans
-l'arbre. Patché : `/Span Lang='en'` (mindset), `/Sect Lang='de'` (sans `/Lang` sur son
-`/H1` ni son `/P`), `/BlockQuote Lang='en'` ; le `span lang="fr"` redondant n'en reçoit pas.
+l'arbre. Patché : `/Span Lang='fr'` (bricolage), `/Sect Lang='de'` (sans `/Lang` sur son
+`/H2` ni son `/P`), `/Span Lang='en'` dans la section allemande (mindset),
+`/BlockQuote Lang='fr'` ; le `span lang="en"` redondant n'en reçoit pas.
+
+Texte de pull request, test pytest compris : `PR.md`.
 
 Sur le corpus d'essai de Pronto (trois articles, un livre), compilé avec les dix correctifs
 puis sans les correctifs 60 et 65 : veraPDF ua1 sans échec, 40 pages identiques au pixel.
