@@ -135,9 +135,10 @@ test('tableau : deux rangées d’en-tête -> id, scope, headers, et aller-retou
 });
 
 // Une rangée fusionnée marquée « titre de section » sert d'en-tête aux rangées qui la
-// suivent, jusqu'au titre suivant. Elle remplace le titre de groupe du thead ; les en-têtes
-// de colonne restent. Le lien passe par headers=, que les lecteurs d'écran suivent exactement.
-test('tableau : un titre de section relaie le titre de groupe pour les rangées qui suivent', () => {
+// suivent, jusqu'au titre suivant. Elle s'ajoute aux en-têtes du thead, groupe compris : le
+// titre de section et le groupe de colonnes peuvent être deux axes différents. Le lien
+// passe par headers=, que les lecteurs d'écran suivent exactement.
+test('tableau : un titre de section s’ajoute aux en-têtes du thead pour les rangées qui suivent', () => {
   let m = table.analyserTable('<table><tr><td colspan="3">Article 2025</td></tr>'
     + '<tr><td>Titre</td><td>Caractères</td><td>DOI</td></tr>'
     + '<tr><td>t1</td><td>1</td><td>d1</td></tr>'
@@ -150,8 +151,8 @@ test('tableau : un titre de section relaie le titre de groupe pour les rangées 
     'le titre de section doit sortir en th scope="rowgroup" : ' + html);
   assert.ok(/<td headers="szh-th-r0c0 szh-th-r1c0">t1<\/td>/.test(html),
     'avant la section : titre de groupe du thead + en-tête de colonne');
-  assert.ok(/<td headers="szh-th-r1c0 szh-th-r3c0">t2<\/td>/.test(html),
-    'après la section : elle remplace le titre de groupe, l’en-tête de colonne reste');
+  assert.ok(/<td headers="szh-th-r0c0 szh-th-r1c0 szh-th-r3c0">t2<\/td>/.test(html),
+    'après la section : groupe et en-tête de colonne du thead, puis la section');
   const relu = table.analyserTable(html);
   assert.deepStrictEqual(relu, m, 'aller-retour instable avec un titre de section');
   // Désactivé : le rôle part, la fusion reste, la rangée redevient des données.
@@ -176,8 +177,8 @@ test('tableau : un titre de section partiel ne couvre que les colonnes de sa fus
     'le titre partiel doit garder sa fusion de 2 colonnes : ' + html);
   assert.ok(/<td headers="szh-th-r0c0 szh-th-r1c2">reste<\/td>/.test(html),
     'la cellule restante de la rangée-titre reste une donnée');
-  assert.ok(/<td headers="szh-th-r1c0 szh-th-r3c0">t2<\/td>/.test(html),
-    'colonne couverte : le titre partiel remplace le titre de groupe du thead');
+  assert.ok(/<td headers="szh-th-r0c0 szh-th-r1c0 szh-th-r3c0">t2<\/td>/.test(html),
+    'colonne couverte : le titre partiel s’ajoute aux en-têtes du thead');
   assert.ok(/<td headers="szh-th-r0c0 szh-th-r1c2">d2<\/td>/.test(html),
     'colonne non couverte : le titre de groupe du thead reste');
   const relu = table.analyserTable(html);

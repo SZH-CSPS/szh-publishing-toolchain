@@ -276,19 +276,23 @@ function compacterGrille(g) {
 // Réaligne th et scope sur les comptes data-entete-lignes et data-entete-colonnes : une
 // cellule est en-tête si son origine est dans les rangées du haut (scope=col) ou les
 // colonnes de gauche (scope=row) ; au coin, le haut l'emporte.
-// Titres de section (en-têtes intermédiaires, WCAG H43) : le drapeau `section` n'est gardé
-// que hors du thead et des colonnes d'en-tête de gauche ; ailleurs il est effacé.
+// Titres de section (en-têtes intermédiaires, WCAG H43) : le drapeau `section` est gardé
+// hors du thead, sur une cellule dont la fusion atteint au moins une colonne de données ;
+// ailleurs il est effacé.
 function reappliquerEntetes(modele) {
   const occ = matriceOccupation(modele.lignes);
   const eL = modele.attrs.enteteLignes, eC = modele.attrs.enteteColonnes;
   modele.lignes.forEach((lg, r) => {
     lg.cellules.forEach((cell, ci) => {
+      const p = occ.positions[r][ci];
       const enHaut = r < eL;
-      const aGauche = occ.positions[r][ci].c0 < eC;
+      const aGauche = p.c0 < eC;
       // Un titre de section peut être partiel (fusion de quelques colonnes, voire une
       // seule cellule) : il couvre les colonnes de sa fusion, pour les rangées qui
-      // suivent. Seuls le thead et les colonnes d'en-tête de gauche l'excluent.
-      const estSection = !!cell.section && !enHaut && !aGauche;
+      // suivent. Il peut partir d'une colonne d'en-tête de gauche quand sa fusion déborde
+      // sur les données (rangée entière). Un en-tête de gauche fusionné en hauteur, relu
+      // avec scope="rowgroup", ne déborde pas : il n'est pas un titre de section.
+      const estSection = !!cell.section && !enHaut && p.c0 + p.colspan > eC;
       cell.section = estSection;
       cell.th = enHaut || aGauche || estSection;
       cell.scope = enHaut ? 'col' : (aGauche ? 'row' : '');
@@ -467,21 +471,76 @@ function analyserTable(html) {
   return finaliserModele({ attrs: attrs, lignes: lignes });
 }
 
+// Titres de section d'un modèle finalisé, triés par rangée : [{ r, c0, fin, li, ci }]
+// (fin = dernière colonne couverte).
+function sectionsDuModele(m, occ) {
+  const eL = (m.attrs && m.attrs.enteteLignes) || 0, eC = (m.attrs && m.attrs.enteteColonnes) || 0;
+  const sections = [];
+  m.lignes.forEach((lg, r) => {
+    if (r < eL) { return; }
+    lg.cellules.forEach((cell, ci) => {
+      const p = occ.positions[r][ci];
+      if (cell.section && cell.th && p && p.c0 + p.colspan > eC) {
+        sections.push({ r: r, c0: p.c0, fin: p.c0 + p.colspan - 1, li: r, ci: ci });
+      }
+    });
+  });
+  return sections;
+}
+
+// Vrai si le contenu d'une cellule n'a ni texte ni image.
+function contenuVide(contenu) {
+  const s = String(contenu || '');
+  if (/<img\b/i.test(s)) { return false; }
+  return s.replace(/<[^>]*>/g, '').replace(/&nbsp;|&#160;|\u00a0/g, '').trim() === '';
+}
+
+// Cellules des colonnes d'en-tête de gauche écrites en <td> : sur une rangée de titre de
+// section, une cellule vide à gauche du titre n'est l'en-tête de rien. Un <th> vide serait
+// annoncé comme un en-tête sans nom. Rend un Set de « li:ci ».
+function entetesVidesEnDonnee(m, occ, sections) {
+  const eL = (m.attrs && m.attrs.enteteLignes) || 0, eC = (m.attrs && m.attrs.enteteColonnes) || 0;
+  const res = new Set();
+  const rangees = new Set(sections.map((s) => s.r));
+  m.lignes.forEach((lg, r) => {
+    if (r < eL || !rangees.has(r)) { return; }
+    lg.cellules.forEach((cell, ci) => {
+      const p = occ.positions[r][ci];
+      if (cell.th && !cell.section && p.c0 < eC && p.rowspan === 1 && contenuVide(cell.contenu)) {
+        res.add(r + ':' + ci);
+      }
+    });
+  });
+  return res;
+}
+
+// Rangée de total : la dernière rangée du corps quand le tableau lui donne un style de
+// total (data-total-gras, data-total-fond, préréglage « synthese »). -1 sinon.
+function rangeeTotal(m) {
+  const a = m.attrs;
+  if (!a.totalGras && a.totalFond === 'aucun') { return -1; }
+  const der = m.lignes.length - 1;
+  return der >= a.enteteLignes ? der : -1;
+}
+
 // En-têtes d'une cellule de données (headers=) :
+//   * tous les en-têtes du thead qui couvrent ses colonnes, de haut en bas ;
 //   * un titre de section couvre les colonnes de sa fusion (voire sa seule colonne),
 //     pour les rangées qui le suivent, jusqu'au prochain titre couvrant la colonne —
-//     la résolution est par colonne, le plus proche au-dessus gagne ;
-//   * il remplace, pour ses colonnes, un titre de groupe fusionné du thead ; les
-//     en-têtes simples (une cellule = une colonne) du thead s'appliquent toujours ;
+//     la résolution est par colonne, le plus proche au-dessus gagne. Il s'ajoute aux
+//     en-têtes du thead : le titre de section et le groupe de colonnes sont deux axes ;
+//   * la rangée de total ne reçoit aucun titre de section : elle totalise tout le tableau ;
 //   * les en-têtes de ligne à gauche s'appliquent par leur géométrie (un rowspan
 //     couvre exactement ses rangées).
-// `sections` : [{ r, c0, fin, id }] triés par r croissant (fin = dernière colonne).
-function headersDe(occ, r, c0, colspan, rowspan, eL, eC, idTh, sections) {
+// `sections` : [{ r, c0, fin, id }] triés par r croissant. `opts.exclus` : Set de « li:ci »
+// des cellules d'en-tête écrites en <td> ; `opts.total` : vrai pour la rangée de total.
+function headersDe(occ, r, c0, colspan, rowspan, eL, eC, idTh, sections, opts) {
+  const o = opts || {};
   const ids = [], vus = {};
   const ajouterId = (id) => { if (!vus[id]) { vus[id] = 1; ids.push(id); } };
   const ajouter = (li, cc) => {
     const ref = occ.grid[li] && occ.grid[li][cc];
-    if (ref) { ajouterId(idTh(ref.li, ref.c0)); }
+    if (ref && !(o.exclus && o.exclus.has(ref.li + ':' + ref.ci))) { ajouterId(idTh(ref.li, ref.c0)); }
   };
   // Titre de section le plus proche au-dessus couvrant la colonne cc, s'il existe.
   const secDe = (cc) => {
@@ -496,13 +555,14 @@ function headersDe(occ, r, c0, colspan, rowspan, eL, eC, idTh, sections) {
     for (let cc = c0; cc < c0 + colspan; cc++) {
       const ref = occ.grid[hr] && occ.grid[hr][cc];
       if (!ref) { continue; }
-      if (ref.colspan > 1 && secDe(cc)) { continue; }   // titre de groupe remplacé
       ajouter(hr, cc);
     }
   }
-  for (let cc = c0; cc < c0 + colspan; cc++) {
-    const s = secDe(cc);
-    if (s) { ajouterId(s.id); }
+  if (!o.total) {
+    for (let cc = c0; cc < c0 + colspan; cc++) {
+      const s = secDe(cc);
+      if (s) { ajouterId(s.id); }
+    }
   }
   for (let hc = 0; hc < eC; hc++) { for (let rr = r; rr < r + rowspan; rr++) { ajouter(rr, hc); } }
   return ids.join(' ');
@@ -524,19 +584,12 @@ function serialiserTable(modele) {
   // Forme à garder identique à celle de pipeline/docx-tables.py, qui écrit le même
   // balisage à l'import.
   const idTh = (li, c0) => 'szh-th-r' + li + 'c' + c0;
-  // Titres de section, éventuellement partiels : chaque cellule marquée (hors thead et
-  // colonnes d'en-tête de gauche) couvre les colonnes de sa fusion. Leur présence rend le
-  // tableau complexe : le lien entre une cellule et son titre passe par headers=.
-  const sections = [];
-  m.lignes.forEach((lg, r) => {
-    if (r < eL) { return; }
-    lg.cellules.forEach((cell, ci) => {
-      const p = occ.positions[r][ci];
-      if (cell.section && cell.th && p && p.c0 >= eC) {
-        sections.push({ r: r, c0: p.c0, fin: p.c0 + p.colspan - 1, id: idTh(r, p.c0) });
-      }
-    });
-  });
+  // Titres de section, éventuellement partiels : chaque cellule marquée (hors thead) couvre
+  // les colonnes de sa fusion. Leur présence rend le tableau complexe : le lien entre une
+  // cellule et son titre passe par headers=.
+  const sections = sectionsDuModele(m, occ).map((s) => Object.assign(s, { id: idTh(s.r, s.c0) }));
+  const exclus = entetesVidesEnDonnee(m, occ, sections);
+  const total = rangeeTotal(m);
   let ouv = '<table class="' + a.classe + '"';
   if (eL > 0) { ouv += ' data-entete-lignes="' + eL + '"'; }
   if (eC > 0) { ouv += ' data-entete-colonnes="' + eC + '"'; }
@@ -573,9 +626,10 @@ function serialiserTable(modele) {
     out.push('<tr>');
     lg.cellules.forEach((cell, ci) => {
       const c0 = occ.positions[r][ci].c0;
-      const tag = cell.th ? 'th' : 'td';
+      const enTete = cell.th && !exclus.has(r + ':' + ci);
+      const tag = enTete ? 'th' : 'td';
       let t = '<' + tag;
-      if (cell.th) {
+      if (enTete) {
         const estColonne = r < eL;   // rangée du haut : en-tête de colonne, scope col
         if (complexe) {
           t += ' id="' + idTh(r, c0) + '"';
@@ -588,8 +642,9 @@ function serialiserTable(modele) {
         } else if (cell.scope === 'col' || cell.scope === 'row') {
           t += ' scope="' + cell.scope + '"';
         }
-      } else if (complexe) {
-        const ids = headersDe(occ, r, c0, cell.colspan, cell.rowspan, eL, eC, idTh, sections);
+      } else if (complexe && !cell.th) {
+        const ids = headersDe(occ, r, c0, cell.colspan, cell.rowspan, eL, eC, idTh, sections,
+          { exclus: exclus, total: r === total });
         if (ids) { t += ' headers="' + ids + '"'; }
       }
       if (cell.colspan > 1) { t += ' colspan="' + cell.colspan + '"'; }
@@ -612,8 +667,11 @@ function serialiserTable(modele) {
   return out.join('\n') + '\n';
 }
 
+// Ce que la webview affiche. `enDonnee` : cellule d'en-tête écrite en <td> dans le
+// fichier (voir entetesVidesEnDonnee), sans le style des en-têtes.
 function disposition(modele) {
   const occ = matriceOccupation(modele.lignes);
+  const exclus = entetesVidesEnDonnee(modele, occ, sectionsDuModele(modele, occ));
   return {
     nbLignes: modele.lignes.length,
     nbColonnes: occ.nbColonnes,
@@ -623,6 +681,7 @@ function disposition(modele) {
         li: r, ci: ci, r0: r, c0: occ.positions[r][ci].c0,
         colspan: occ.positions[r][ci].colspan, rowspan: occ.positions[r][ci].rowspan,
         th: cell.th, scope: cell.scope, section: !!cell.section,
+        enDonnee: exclus.has(r + ':' + ci),
         align: cell.align || 'left', contenu: cell.contenu,
         images: imagesPourAffichage(cell.contenu)
       }))

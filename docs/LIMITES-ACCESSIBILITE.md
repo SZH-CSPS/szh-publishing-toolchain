@@ -35,6 +35,7 @@ La sortie `out/<slug>/<slug>.pdf`, aussi galley PDF de l'export OJS.
 | L'exergue est lue deux fois : à sa place dans le texte, puis dans l'exergue. | WCAG 1.3.2 | mineure | maquette ; WeasyPrint ignore `aria-hidden` | accepté |
 | La puce `▸` d'une liste est un vrai `/Lbl`, mais un lecteur d'écran peut la prononcer (« triangle ») au lieu de « puce ». | PDF/UA-1 7.1 | mineure | WeasyPrint n'écrit pas d'`/ActualText` | accepté |
 | La description longue d'un tableau (`data-alt`) est un `/Div` juste après le `/Table` : elle se lit comme un paragraphe qui suit, sans lien avec le tableau. | PDF/UA-1 7.5 | mineure | WeasyPrint n'écrit ni `/Summary` ni `/Alt` sur un `/Table` | attend WeasyPrint |
+| Les `headers=` d'un tableau complexe sont calculés quand l'éditeur du cockpit enregistre le fichier `tables/*.html`. Un fichier qui n'a pas été réenregistré depuis peut omettre le groupe de colonnes sous un titre de section (l'année), rattacher la rangée de total à la dernière section, et garder un `/TH` vide à gauche d'un titre de section. | PDF/UA-1 7.5 ; WCAG 1.3.1 | moyenne | contenu : fichier écrit avant les règles de [`ACCESSIBILITE.md`](ACCESSIBILITE.md#le-balisage-du-pdf) | à corriger tableau par tableau, par une modification dans l'éditeur |
 | Le « N° » et le point médian de la ligne « VOL. 7 · N° 4/2017 » de la couverture sont lus tels quels. | WCAG 1.3.1 | mineure | maquette | accepté |
 
 Non visés : les profils plus stricts que PDF/UA-1 (PDF/UA-2, WTPDF). veraPDF y relève
