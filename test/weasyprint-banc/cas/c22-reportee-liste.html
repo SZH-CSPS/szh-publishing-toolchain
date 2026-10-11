@@ -1,0 +1,6 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><title>Note qui reste avec son appel</title><style>@page{size:100mm 80mm;margin:10mm;@footnote{margin-top:1mm}} body{font:4mm/5mm sans-serif;margin:0;orphans:2;widows:2} p{margin:0} ul{margin:0} .note{float:footnote} ::footnote-call{line-height:0;vertical-align:super;font-size:70%} a.ref::after{content:" S. " target-counter(attr(href), page)} .saut{break-before:page}</style></head><body>
+<p>Q01 <a class="ref" href="#fin">Q02 Verweis</a> Q03 Aufruf<span class="note">Q04 Fussnote <a href="https://exemple.org/r">Q05 Link</a><br>Q06 Zeile</span><br>a2<br>a3</p>
+<ul><li>Q07 b1<br>b2<br>b3<br>b4<br>b5</li></ul><p>Q08 c1<br>c2<br>c3<br>c4<br>Q09 c5</p>
+<p class="saut">Q90 <a class="ref" href="#fin">Q91 Verweis</a></p><p class="saut" id="fin">Q92 Ende</p>
+</body></html>

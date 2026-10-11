@@ -1,0 +1,177 @@
+# Invariants des cas du banc : un bloc [nom] par fichier nom.html de ce dossier.
+# Mode d'emploi et exemple : test/weasyprint-banc/README.md.
+#
+# Vérifiés pour chaque cas, sans rien déclarer :
+#   exception           le rendu ne lève pas d'exception ;
+#   veraPDF             variante ua1 : aucune clause en échec hors de `vera_ua1` ;
+#   extraction-*        chaque jeton Qnn du texte du HTML se lit une fois, et une seule, dans
+#                       le texte extrait par pypdf et par pdfium (sauf `doublons_admis`) ;
+#   pixels-variantes    ua1, tags, nu et a3u donnent les mêmes pixels ;
+#   arbre-*             variantes balisées : MCID orphelin, fantôme ou cité deux fois,
+#                       ParentTree incohérent, /P ou /Pg faux, /ID en double ou hors /IDTree,
+#                       annotation sans OBJR, OBJR sans annotation, /LI à enfant autre que
+#                       /Lbl et /LBody, élément vide, jeton présent deux fois dans l'arbre
+#                       (sauf ce que liste `tolere`) ;
+#   arbre-perte         chaque jeton du texte du HTML est dans l'arbre ;
+#   lien-sans-contents  toute annotation /Link a un /Contents.
+#
+# Déclarés par cas :
+#   titre           ce que le cas éprouve, en une phrase (obligatoire) ;
+#   ordres          listes de jetons : l'ordre de lecture de l'arbre aplati, restreint à ces
+#                   jetons, doit être exactement celui-là (ordre-1, ordre-2…) ;
+#   langues         jeton = langue attendue (/Lang de l'élément ou de ses ancêtres, sinon
+#                   celle du catalogue) ;
+#   chemins         jeton = fin attendue du chemin de rôles (expression régulière) ;
+#   liens           cible = /Contents attendu ;
+#   info_author     /Info /Author attendu ; dc_language : langues attendues du XMP ;
+#   vera_ua1        clauses veraPDF admises en ua1 ;
+#   vera_ua1_exige  clauses qui doivent échouer : un défaut signalé doit le rester ;
+#   figures         alt = /Alt attendu d'une /Figure ; figures_sans_alt : nombre minimal
+#                   de /Figure sans /Alt ;
+#   doublons_admis  jetons qu'on peut lire deux fois (en-tête de tableau répété) ;
+#   tolere          contrôles d'arbre ignorés pour ce cas (nom sans le préfixe arbre-) ;
+#   dans_arbre      jetons attendus dans l'arbre, quand ce ne sont pas tous ceux du HTML ;
+#   connus          { variante = [invariants] } : limites admises, listées à part, qui ne
+#                   font pas échouer le banc.
+
+[c01-liens-dans-note]
+titre = "Liens externe, interne, DOI et ORCID vide à aria-label dans une note."
+ordres = [["Q01", "Q02", "Q07", "Q08"], ["Q03", "Q04", "Q05", "Q06"], ["Q02", "Q03", "Q06", "Q07"]]
+chemins = { Q04 = "Note/Link" }
+liens = { "https://orcid.org/0000-0000-0000-0000" = "ORCID de Fictive-Dumont, Élodie" }
+
+[c02-note-reportee-lien]
+titre = "Note longue reportée à la page suivante (55), repagination par target-counter (50), lien et passage allemand dans la note."
+ordres = [["Q01", "Q02", "Q03", "Q04", "Q08", "Q09", "Q10", "Q11"], ["Q05", "Q06", "Q07"], ["Q04", "Q05", "Q07", "Q08"]]
+langues = { Q05 = "fr", Q07 = "de", Q08 = "fr" }
+
+[c03-notes-et-listes]
+titre = "Note dans un item, dans un paragraphe d'item, dans un sous-item ; liste dans une note."
+ordres = [["Q01", "Q02", "Q04", "Q05", "Q07", "Q09", "Q10", "Q11", "Q15", "Q16", "Q19"], ["Q02", "Q03", "Q04"], ["Q05", "Q06", "Q07", "Q08", "Q09"], ["Q16", "Q17", "Q18", "Q19"]]
+
+[c04-notes-tableau]
+titre = "Notes dans un TH fusionné et dans un TD à headers= ; langue sur des cellules."
+ordres = [["Q01", "Q02", "Q03", "Q05", "Q06", "Q07", "Q08", "Q11", "Q12", "Q13", "Q14", "Q15"], ["Q03", "Q04", "Q05"], ["Q08", "Q09", "Q10", "Q11"]]
+langues = { Q06 = "de", Q11 = "de", Q14 = "fr", Q09 = "fr" }
+
+[c05-notes-blocs]
+titre = "Notes dans l'exergue, un titre, une légende de figure, un encadré, une citation lang=de (dont une note lang=fr)."
+ordres = [["Q01", "Q03", "Q06", "Q09", "Q11", "Q13", "Q15"], ["Q01", "Q02", "Q03", "Q04", "Q06", "Q07", "Q08", "Q09", "Q10", "Q11", "Q12", "Q13", "Q14", "Q15"]]
+langues = { Q11 = "de", Q12 = "de", Q13 = "de", Q14 = "fr", Q15 = "fr", Q10 = "fr" }
+
+[c06-langues]
+titre = "lang en ligne, sur un lien, dans une note, sur un item, sur des cellules."
+ordres = [["Q01", "Q02", "Q03", "Q07", "Q08", "Q09", "Q10", "Q12", "Q13", "Q14", "Q15"], ["Q04", "Q05", "Q06"]]
+langues = { Q01 = "fr", Q02 = "de", Q03 = "en", Q04 = "fr", Q05 = "en", Q06 = "it", Q07 = "de", Q08 = "fr", Q09 = "en", Q10 = "de", Q11 = "de", Q12 = "fr", Q13 = "de", Q14 = "fr", Q15 = "de" }
+
+[c07-cesure-justification]
+titre = "Colonne étroite justifiée : césure dans un lien, une note, un item, une cellule ; word-spacing, espaces insécables, letter-spacing."
+ordres = [["Q01", "Q02", "Q03", "Q05", "Q06", "Q07", "Q08", "Q09"]]
+
+[c08-lien-coupe-page]
+titre = "Lien coupé en fin de page."
+ordres = [["Q01", "Q02", "Q03", "Q04", "Q05"]]
+
+[c09-images-liens-notes]
+connus = { ua1 = ["veraPDF", "arbre-annotation_sans_objr"], tags = ["arbre-annotation_sans_objr"] }
+titre = "Image décorative dans un lien (avec et sans aria-label), image nommée dans un lien, image et décor dans une note, figure dans un item."
+ordres = [["Q01", "Q04", "Q07", "Q08", "Q09"], ["Q05", "Q06"]]
+
+[c10-marges-liens]
+titre = "Lien DOI dans un élément courant de la marge (reste du contenu balisé, 30)."
+ordres = [["Q01", "Q02"]]
+
+[c11-liste-definition]
+titre = "Liste de définition : lien et note dans une définition, deux termes, définition à paragraphe et sous-liste, deux définitions, note dans un terme."
+ordres = [["Q01", "Q02", "Q03", "Q05", "Q06", "Q07", "Q08", "Q09", "Q10", "Q12"], ["Q03", "Q04", "Q05"], ["Q10", "Q11", "Q12"]]
+langues = { Q06 = "de", Q05 = "fr" }
+
+[c12-liste-coupee]
+titre = "Liste en bas de page, note et lien dans l'item."
+ordres = [["Q01", "Q02", "Q03", "Q04", "Q07", "Q08"], ["Q04", "Q05", "Q06", "Q07"]]
+
+[c13-metadonnees]
+titre = "Auteurs multiples, description, mots-clés, document de, passages fr et it."
+langues = { Q01 = "de", Q02 = "fr", Q03 = "it" }
+info_author = "Fictive-Dumont, Élodie; Przykład, Łukasz"
+dc_language = ["de"]
+
+[c14-thead-repete]
+titre = "Tableau sur deux pages, en-tête répété portant une note."
+doublons_admis = ["Q01", "Q03"]
+tolere = ["jeton_deux_fois_arbre"]
+ordres = [["Q10", "Q20", "Q30", "Q39"]]
+
+[c15-note-dans-lien]
+connus = { ua1 = ["veraPDF"] }
+titre = "Appel de note à l'intérieur d'un lien à texte, et seul contenu d'un lien à aria-label."
+ordres = [["Q01", "Q02", "Q04", "Q07"], ["Q02", "Q03", "Q04"]]
+
+[c16-li-en-ligne]
+connus = { ua1 = ["veraPDF", "arbre-LI_enfant_interdit", "ordre-4"], tags = ["arbre-LI_enfant_interdit", "ordre-4"] }
+titre = "Item à marqueur intérieur (list-style-position: inside) et enfants en ligne ; item à marqueur extérieur ; texte avant et après une sous-liste."
+ordres = [["Q01", "Q02", "Q03", "Q04", "Q05", "Q07"], ["Q08", "Q09", "Q10", "Q11", "Q12"], ["Q13", "Q14", "Q15", "Q16", "Q17"], ["Q05", "Q06", "Q07"]]
+
+[c17-listes-sans-puce-flex]
+connus = { ua1 = ["arbre-element_vide"], tags = ["arbre-element_vide"] }
+titre = "Liste d'auteurs sans puce avec ORCID et note ; mots-clés en flex ; lien enfant d'un conteneur flex."
+ordres = [["Q01", "Q04", "Q05", "Q06", "Q07", "Q08"], ["Q01", "Q03", "Q04"]]
+langues = { Q06 = "de" }
+
+[c18-notes-longues]
+titre = "Note longue à deux paragraphes et lien interne de retour, appel en bas de page."
+ordres = [["Q01", "Q02", "Q06", "Q07", "Q08", "Q10"], ["Q03", "Q04", "Q05"], ["Q02", "Q03", "Q05", "Q06"], ["Q08", "Q09", "Q10"]]
+
+[c19-notes-nombreuses]
+titre = "Six notes à lien sur deux ou trois pages : reports en chaîne."
+ordres = [["Q11", "Q14", "Q21", "Q24", "Q31", "Q34", "Q41", "Q44", "Q51", "Q54", "Q61", "Q64"], ["Q11", "Q12", "Q13", "Q14"], ["Q21", "Q22", "Q23", "Q24"], ["Q31", "Q32", "Q33", "Q34"], ["Q41", "Q42", "Q43", "Q44"], ["Q51", "Q52", "Q53", "Q54"], ["Q61", "Q62", "Q63", "Q64"]]
+
+[c20-listes-lache]
+titre = "Listes « lâches » de pandoc (<li><p>), note dans un item numéroté, lien à aria-label et texte dans un item, lang dans un item."
+ordres = [["Q01", "Q02", "Q04", "Q05", "Q06", "Q07", "Q09"], ["Q02", "Q03", "Q04"]]
+langues = { Q07 = "de", Q06 = "fr" }
+liens = { "https://exemple.org/x" = "Q08 libellé" }
+
+[c21-doublon-lien]
+tolere = ["element_vide"]
+titre = "Note reportée en page suivante puis repagination par target-counter (50), lien et langue dans la note."
+ordres = [["Q01", "Q02", "Q03", "Q08", "Q90", "Q91", "Q92"], ["Q03", "Q04", "Q05", "Q06", "Q07", "Q08"]]
+langues = { Q06 = "fr", Q05 = "de" }
+
+[c22-reportee-liste]
+tolere = ["element_vide"]
+titre = "Note qui doit rester avec son appel quand un item de liste suivant manque de lignes (55)."
+ordres = [["Q01", "Q02", "Q03", "Q07", "Q08", "Q09", "Q90", "Q91", "Q92"], ["Q03", "Q04", "Q05", "Q06"]]
+
+[c23-images-dans-liens]
+titre = "alt=\"\" sans role dans un lien : doit rester signalé (7.3-1) ; image décrite dans un lien à aria-label : garde son alt."
+vera_ua1 = ["7.3-1", "7.18.5-1"]
+vera_ua1_exige = ["7.3-1"]
+figures_sans_alt = 1
+ordres = [["Q01", "Q02", "Q05"]]
+figures = { "Q04 logo" = "Q04 logo" }
+
+[c24-grille-sommaire]
+connus = { ua1 = ["arbre-element_vide"], tags = ["arbre-element_vide"] }
+titre = "Sommaire à target-counter et leader, note dans un titre de chapitre, grille d'images à légendes (note, lang, décor)."
+ordres = [["Q01", "Q02", "Q03", "Q06", "Q09", "Q10", "Q11", "Q12"], ["Q03", "Q04", "Q06", "Q07"]]
+langues = { Q09 = "de", Q06 = "fr" }
+liens = { "ch1" = "Q01 Chapitre un" }
+
+[c25-couverture]
+connus = { ua1 = ["arbre-element_vide"], tags = ["arbre-element_vide"] }
+titre = "Couverture : hero en flex, DOI dans span > a, QR vide à aria-label, auteur en flex avec ORCID, résumé allemand."
+ordres = [["Q01", "Q02", "Q03", "Q05", "Q07", "Q08", "Q09"]]
+langues = { Q08 = "de", Q07 = "fr" }
+liens = { "https://orcid.org/0000-0000-0000-0003" = "ORCID Q06" }
+
+[c26-image-alt-vide-dans-lien]
+titre = "Image à alt=\"\" seule dans un lien : la /Figure reste sans /Alt, et veraPDF la signale (7.3-1)."
+vera_ua1 = ["7.3-1", "7.18.5-1"]
+vera_ua1_exige = ["7.3-1"]
+figures_sans_alt = 1
+
+[c27-item-marqueur-interieur]
+titre = "Item à marqueur en ligne, texte et éléments en ligne mêlés : l'ordre de lecture suit le texte."
+ordres = [["Q01", "Q02", "Q03", "Q04", "Q05"]]
+connus = { ua1 = ["veraPDF", "arbre-LI_enfant_interdit"], tags = ["arbre-LI_enfant_interdit"] }
