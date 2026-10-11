@@ -476,7 +476,9 @@ milieu de la phrase. `livre-assembler.py` colle les fragments et écrit les mét
   la partie ;
 - les repères (`landmarks`) mènent à la couverture, à la page de titre, à la table des
   matières et au premier chapitre, nommés dans la langue du livre ;
-- l'image de couverture reçoit un nom accessible (titre et sous-titre).
+- l'image de couverture reçoit un nom accessible (titre et sous-titre) ;
+- une figure nommée par sa légende (`aria-labelledby`, `szh-legende-avant.lua`) retrouve
+  sa cible : pandoc relit la `<figcaption>` sans son identifiant, qui lui est rendu.
 
 L'archive contient :
 

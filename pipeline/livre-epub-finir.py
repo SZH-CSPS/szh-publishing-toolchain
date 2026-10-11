@@ -11,6 +11,9 @@
 # 3. Repères (nav epub:type="landmarks") : couverture, page de titre, table des matières et
 #    début du texte (le premier chapitre), nommés dans la langue du livre.
 # 4. Couverture : l'image reçoit un nom accessible, le titre et le sous-titre du livre.
+# 5. Figures : pandoc relit une figure sans l'id de sa <figcaption>. Le renvoi
+#    aria-labelledby que szh-legende-avant.lua pose sur la <figure> reçoit de nouveau sa
+#    cible : la légende reprend l'id, avec le préfixe « id_ » de pandoc devant un chiffre.
 #
 # La langue et le titre sont lus dans l'OPF. L'archive est réécrite avec le même ordre
 # d'entrées, mimetype en tête et sans compression, comme l'exige EPUB.
@@ -178,6 +181,31 @@ def couverture(xhtml, langue, titre, sous_titre):
                   % (m.group(1), nom, nom), xhtml, count=1)
 
 
+RE_FIGURE = re.compile(r'(<figure\b[^>]*>)([\s\S]*?</figure>)')
+RE_LABELLEDBY = re.compile(r'\saria-labelledby="([^"]*)"')
+
+
+def nommer_figures(xhtml):
+    """Point 5 de l'en-tête. Une figure dont la cible n'existe plus et qui n'a pas de
+    <figcaption> perd son aria-labelledby."""
+    ids = set(re.findall(r'\sid="([^"]+)"', xhtml))
+
+    def figure(m):
+        ouvrante, corps = m.group(1), m.group(2)
+        a = RE_LABELLEDBY.search(ouvrante)
+        if not a or a.group(1) in ids:
+            return m.group(0)
+        if '<figcaption>' not in corps:
+            return RE_LABELLEDBY.sub('', ouvrante, count=1) + corps
+        cible = a.group(1)
+        if cible[:1].isdigit():
+            cible = 'id_' + cible
+        ouvrante = RE_LABELLEDBY.sub(' aria-labelledby="%s"' % cible, ouvrante, count=1)
+        return ouvrante + corps.replace('<figcaption>', '<figcaption id="%s">' % cible, 1)
+
+    return RE_FIGURE.sub(figure, xhtml)
+
+
 def finir(chemin):
     with zipfile.ZipFile(chemin) as z:
         infos = z.infolist()
@@ -214,6 +242,7 @@ def finir(chemin):
                            xhtml, count=1)
         if fichier == 'cover.xhtml':
             xhtml = couverture(xhtml, langue, titre, sous_titre)
+        xhtml = nommer_figures(xhtml)
         contenus[nom] = xhtml.encode('utf-8')
 
     nom_nav = racine + 'nav.xhtml'

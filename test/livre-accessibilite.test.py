@@ -7,7 +7,7 @@
 #   2. livre-epub-prepare.py : tableaux mis de côté en XHTML (proteger_tableaux), data-partie
 #      et data-chapitre sur le titre d'un chapitre ;
 #   3. livre-epub-finir.py : navigation par parties, repères, <title> des documents,
-#      couverture nommée ;
+#      couverture nommée, figure nommée par sa légende ;
 #   4. la chaîne EPUB entière sur un petit livre (prepare, pandoc et szh-livre-epub-brut.lua,
 #      finir) : un tableau complexe y garde ses <th> de rangée et ses renvois ;
 #   5. deux chapitres à deux tableaux complexes, compilés par szh-numerotation.lua et
@@ -516,6 +516,30 @@ class TableauxCompilesParChapitre(unittest.TestCase):
         self.assertEqual(nb, 4)
 
 
+# Figure nommée par sa légende, telle que szh-legende-avant.lua l'écrit.
+FIGURE = ('<figure aria-labelledby="szh-legende-1">\n<img src="data:image/png;base64,'
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" '
+          'alt="Ein Balken" />\n<figcaption id="szh-legende-1">Abbildung 1: Balken</figcaption>\n'
+          '</figure>\n')
+
+
+class FiguresEpub(unittest.TestCase):
+    def test_la_legende_reprend_l_id_vise(self):
+        x = fin.nommer_figures('<figure aria-labelledby="02-a-szh-legende-1"><img alt="x" />'
+                               '<figcaption>L</figcaption></figure>')
+        self.assertIn('<figure aria-labelledby="id_02-a-szh-legende-1">', x)
+        self.assertIn('<figcaption id="id_02-a-szh-legende-1">L</figcaption>', x)
+
+    def test_un_renvoi_resolu_ne_change_pas(self):
+        x = ('<figure aria-labelledby="l1"><img alt="x" /><figcaption id="l1">L</figcaption>'
+             '</figure>')
+        self.assertEqual(fin.nommer_figures(x), x)
+
+    def test_sans_legende_le_renvoi_part(self):
+        x = fin.nommer_figures('<figure class="g" aria-labelledby="l1"><img alt="x" /></figure>')
+        self.assertEqual(x, '<figure class="g"><img alt="x" /></figure>')
+
+
 class ChaineEpub(unittest.TestCase):
     """prepare, pandoc --to=epub3 avec szh-livre-epub-brut.lua, puis finir : la commande de
     profils/livre.mk, sur deux chapitres qui portent chacun un tableau complexe."""
@@ -525,7 +549,7 @@ class ChaineEpub(unittest.TestCase):
         self.assertTrue(pandoc, 'pandoc introuvable')
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp, True)
-        a, b = (la.prefixer_identifiants(_chapitre(s, s.upper(), _tableau(), p), s)
+        a, b = (la.prefixer_identifiants(_chapitre(s, s.upper(), _tableau() + FIGURE, p), s)
                 for s, p in (('02-a', None), ('04-b', 1)))
         html = ('<!DOCTYPE html><html lang="de"><head><title>Buch</title></head><body>\n' + a
                 + '<section class="szh-partie" id="partie-1" data-page-seule="oui">\n'
@@ -554,6 +578,9 @@ class ChaineEpub(unittest.TestCase):
         self.assertNotIn('<td scope', tout)
         self.assertIn('<p class="szh-bloc-note" id="id_04-b-szh-bloc-note-1">', tout)
         self.assertIn('aria-describedby="id_04-b-szh-tabelle-desc-1 id_04-b-szh-bloc-note-1"', tout)
+        # La figure nommée par sa légende garde son renvoi (livre-epub-finir.py, point 5).
+        self.assertIn('<figure aria-labelledby="id_04-b-szh-legende-1">', tout)
+        self.assertIn('<figcaption id="id_04-b-szh-legende-1">', tout)
         self.assertIn('<meta property="schema:accessibilitySummary">', opf)
         self.assertIn('<meta property="schema:accessibilityFeature">longDescription</meta>', opf)
 
