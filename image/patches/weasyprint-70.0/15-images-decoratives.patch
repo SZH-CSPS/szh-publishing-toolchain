@@ -1,8 +1,8 @@
-Correctif SZH de WeasyPrint 70.0, 2/8 — image décorative peinte en artefact, sans /Figure.
+Correctif SZH de WeasyPrint 70.0 — image décorative peinte en artefact, sans /Figure.
 
 Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
-image/patches/weasyprint-70.0/ (touche tags.py comme le 1/6 et le 5/6, stream.py comme le
-5/6, sans ligne de contexte commune). Pour le désactiver : .patch.off.
+image/patches/weasyprint-70.0/ (touche tags.py comme le 10, le 30, le 60 et le 65,
+stream.py comme le 30, sans ligne de contexte commune). Pour le désactiver : .patch.off.
 
 weasyprint/pdf/stream.py + tags.py. Une <img alt="" role="presentation"> sortait en /Figure
 sans /Alt : WeasyPrint journalisait « has no required alt description » et veraPDF échouait

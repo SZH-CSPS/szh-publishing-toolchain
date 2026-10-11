@@ -1,4 +1,4 @@
-Correctif SZH de WeasyPrint 70.0, 8/8 — une note reste sur la page de son appel.
+Correctif SZH de WeasyPrint 70.0 — une note reste sur la page de son appel.
 
 Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
 image/patches/weasyprint-70.0/ (seul à toucher layout/block.py). Pour le désactiver : .patch.off.

@@ -1,7 +1,7 @@
-Correctif SZH de WeasyPrint 70.0, 9/10 — langue d'un élément de structure (/Lang).
+Correctif SZH de WeasyPrint 70.0 — langue d'un élément de structure (/Lang).
 
 Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
-image/patches/weasyprint-70.0/ (touche tags.py comme le 1/10, le 2/10, le 5/10 et le 10/10,
+image/patches/weasyprint-70.0/ (touche tags.py comme le 10, le 15, le 30 et le 65,
 sans ligne de contexte commune). Pour le désactiver : .patch.off.
 
 weasyprint/pdf/tags.py, _build_box_tree. WeasyPrint écrivait la langue de <html lang> en

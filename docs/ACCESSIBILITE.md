@@ -129,6 +129,7 @@ touchent l'accessibilité :
 | `40-xmp-dc-language` | `dc:language` dans le XMP |
 | `60-langue-element` | `/Lang` sur l'élément d'un passage dans une autre langue (résumé, citation, `[mot]{lang=en}`) |
 | `65-nom-des-liens` | `/Contents` d'un lien tiré d'`aria-label`, de son texte ou de `title` ; `/Alt` sur le `/Link` d'un lien sans texte |
+| `70-espaces-justifiees` | dans une ligne justifiée, pdfium (Edge) lit les vraies espaces au lieu d'en déduire de vides : mots non collés |
 
 Le rapport, la démo et l'état chez les développeurs de WeasyPrint de chaque correctif sont
 dans [`image/patches/amont/`](../image/patches/amont/README.md). Un correctif n'arrive sur

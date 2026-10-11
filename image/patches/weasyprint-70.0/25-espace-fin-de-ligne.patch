@@ -1,8 +1,8 @@
-Correctif SZH de WeasyPrint 70.0, 4/8 — espace de fin de ligne dans la couche texte.
+Correctif SZH de WeasyPrint 70.0 — espace de fin de ligne dans la couche texte.
 
 Posé par image/patch-weasyprint.sh ; s'applique sans les autres patchs de
-image/patches/weasyprint-70.0/ (aucune ligne de contexte commune avec le 3/6, seul autre à
-toucher layout/inline.py), mais ne produit rien sans le 3/6, qui porte le dessin de
+image/patches/weasyprint-70.0/ (aucune ligne de contexte commune avec le 20, seul autre à
+toucher layout/inline.py), mais ne produit rien sans le 20, qui porte le dessin de
 l'espace (voir son en-tête). Pour le désactiver : .patch.off.
 
 weasyprint/layout/inline.py. Une ligne coupée sur une espace ne gardait pas cette espace
@@ -10,7 +10,7 @@ dans le PDF : la mise en ligne la retire, comme le veut CSS Text, et la couche t
 perdait avec le dessin. Le copier-coller et l'extraction rendaient « lamarche » (5 fins de
 ligne sur 782 portaient une espace, sur 4 articles de la Revue).
 Désormais, get_next_linebox repère une coupure sur une espace repliable (_break_at_space) et
-pose line_end_space sur la dernière boîte de texte de la ligne ; draw_first_line (3/6) y
+pose line_end_space sur la dernière boîte de texte de la ligne ; draw_first_line (20) y
 ajoute le glyphe espace de la police, sans encre. Jamais après une césure, ni en fin de
 paragraphe, ni sur un <br>, ni en white-space: pre*, ni de droite à gauche.
 Preuve : rendu identique au pixel, veraPDF PDF/UA-1 inchangé ; cas j-espace (« un »,

@@ -35,13 +35,17 @@
 #      en ligne (/Span) ; ni ses descendants ni un lang égal à l'héritée n'en reçoivent ;
 #   65-nom-des-liens : le /Contents d'un lien vaut aria-label, sinon son texte (espaces
 #      normalisés), sinon title, sinon sa cible ; un lien à aria-label ou sans texte porte
-#      le même nom en /Alt de son /Link, un lien à texte n'en a pas.
+#      le même nom en /Alt de son /Link, un lien à texte n'en a pas ;
+#   70-espaces-justifiees : dans une ligne justifiée, aucun glyphe espace n'est précédé
+#      d'un décalage du TJ (sinon pdfium y déduit une espace générée de largeur nulle et
+#      écarte la vraie : mots collés dans Edge), et le texte extrait garde ses mots.
 # Ce qu'ils ne changent pas : alt="" seul reste une /Figure sans /Alt, signalée, car
 # l'import écrit alt="" pour toute image sans description. Le cas f doit donc échouer en
 # 7.3 ; s'il passe, le contrôle ne détecte plus rien ou le patch va trop loin. Le trait
 # d'un composé coupé à son trait reste un trait, et ni un <br> ni une fin de paragraphe ne
 # reçoivent d'espace.
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -64,11 +68,17 @@ ENTETE = ('<!doctype html><html lang="de"><head><meta charset="utf-8"><title>T</
           '</head><body>')
 PIED = '</body></html>'
 
-ENTETES, DECOR, CESURE, ESPACE, MARGES, XMP, DOUBLON, REPORTEE, LANGUE, LIENS = (
+(ENTETES, DECOR, CESURE, ESPACE, MARGES, XMP, DOUBLON, REPORTEE, LANGUE, LIENS,
+ JUSTIFIE) = (
     '10-tableaux-entetes.patch', '15-images-decoratives.patch', '20-cesure-trait.patch',
     '25-espace-fin-de-ligne.patch', '30-marges-artefact.patch', '40-xmp-dc-language.patch',
     '50-notes-doublon.patch', '55-notes-reportees.patch', '60-langue-element.patch',
-    '65-nom-des-liens.patch')
+    '65-nom-des-liens.patch', '70-espaces-justifiees.patch')
+
+# Paragraphe justifié en colonne étroite : de larges écarts entre les mots.
+JUSTIFIE_TEXTE = ('Die Teilhabe misst sich an dem, was jedes Kind tun kann, und nicht an '
+                  'dem, was die Schule es anschauen lässt. Die Massnahmen werden mit der '
+                  'Familie besprochen und in einem Plan festgehalten.')
 
 # Lien vide de taille fixe, comme l'icône ORCID ou le retour à l'appel de Pronto.
 ICONE = '<style>a.icone{display:inline-block;width:4mm;height:4mm;background:#a6ce39}</style>'
@@ -179,6 +189,9 @@ CAS = {
                 '<a class="icone" href="https://creativecommons.org/licenses/by/4.0/"></a></p>'
                 '<p id="ende"><a href="#appel">Zum   Anfang\n zurück</a></p>',
                 set()),
+    'q-justifie': (JUSTIFIE,
+                   '<p style="width:60mm;text-align:justify;font:11pt sans-serif">'
+                   + JUSTIFIE_TEXTE + '</p>', set()),
 }
 
 
@@ -482,10 +495,64 @@ def _verifier_liens(pdfs, erreurs):
         erreurs.append(f'p-liens : (/Contents, /Alt) {liens}, attendu {voulu}')
 
 
+def _glyphes_espace(reader, page):
+    """Identifiants des glyphes que la ToUnicode des polices de la page lit U+0020."""
+    espaces = set()
+    for police in _res(page['/Resources']['/Font']).values():
+        police = _res(police)
+        if '/ToUnicode' not in police:
+            continue
+        cmap = _res(police['/ToUnicode']).get_data().decode('latin-1')
+        for g, u in re.findall(r'<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>', cmap):
+            if u.lower() in ('0020', '00a0'):
+                espaces.add(int(g, 16))
+        for g1, g2, u in re.findall(
+                r'<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>', cmap):
+            for k, g in enumerate(range(int(g1, 16), int(g2, 16) + 1)):
+                if int(u, 16) + k in (0x20, 0xA0):
+                    espaces.add(g)
+    return espaces
+
+
+def _espaces_du_tj(pdf):
+    """(espaces dessinées, espaces précédées d'un décalage vers la droite) dans les TJ."""
+    reader = PdfReader(pdf)
+    dessinees = decalees = 0
+    for page in reader.pages:
+        espaces = _glyphes_espace(reader, page)
+        for operandes, op in ContentStream(page.get_contents(), reader).operations:
+            if op != b'TJ':
+                continue
+            precedent = None
+            for x in operandes[0]:
+                if isinstance(x, (bytes, str)):
+                    octets = x.original_bytes if isinstance(x, TextStringObject) else x
+                    octets = octets if isinstance(octets, bytes) else octets.encode('latin-1')
+                    for i in range(0, len(octets), 2):
+                        if int.from_bytes(octets[i:i + 2], 'big') in espaces:
+                            dessinees += 1
+                            # Un nombre négatif du TJ pousse vers la droite.
+                            decalees += i == 0 and precedent is not None and precedent < -50
+                    precedent = None
+                else:
+                    precedent = float(x)
+    return dessinees, decalees
+
+
+def _verifier_justifie(pdfs, erreurs):
+    dessinees, decalees = _espaces_du_tj(pdfs['q-justifie'])
+    if not dessinees or decalees:
+        erreurs.append(f'q-justifie : {dessinees} espace(s) dessinée(s), dont {decalees} '
+                       'au milieu de leur écart, attendu des espaces et aucune décalée')
+    mots = ' '.join(' '.join(_lignes(pdfs['q-justifie'])).split())
+    if mots != JUSTIFIE_TEXTE:
+        erreurs.append(f'q-justifie : texte extrait {mots!r}')
+
+
 VERIFS = {ENTETES: _verifier_entetes, DECOR: _verifier_decor, CESURE: _verifier_cesure,
           ESPACE: _verifier_espace, MARGES: _verifier_marges, XMP: _verifier_xmp,
           DOUBLON: _verifier_doublon, REPORTEE: _verifier_reportee,
-          LANGUE: _verifier_langue, LIENS: _verifier_liens}
+          LANGUE: _verifier_langue, LIENS: _verifier_liens, JUSTIFIE: _verifier_justifie}
 
 
 def main():

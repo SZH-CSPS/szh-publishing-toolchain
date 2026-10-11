@@ -71,6 +71,10 @@ const PATCHS = {
     reperes: [/^\+def _get_link_name\(element\):$/m,
       /^\+\s+element\['Alt'\] = annotation\['Contents'\]$/m],
   },
+  '70-espaces-justifiees': {
+    cibles: ['weasyprint/draw/text.py'],
+    reperes: [/^\+\s+string \+= f'>\{int\(kerning\) - offset\}<'$/m],
+  },
 };
 
 function dossierPatchs() {

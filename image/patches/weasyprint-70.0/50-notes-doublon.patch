@@ -1,4 +1,4 @@
-Correctif SZH de WeasyPrint 70.0, 7/8 — note reportée imprimée deux fois après une repagination.
+Correctif SZH de WeasyPrint 70.0 — note reportée imprimée deux fois après une repagination.
 
 Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
 image/patches/weasyprint-70.0/ (seul à toucher layout/page.py). Pour le désactiver : .patch.off.

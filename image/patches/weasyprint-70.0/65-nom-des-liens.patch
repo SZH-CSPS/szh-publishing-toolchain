@@ -1,8 +1,8 @@
-Correctif SZH de WeasyPrint 70.0, 10/10 — nom des liens en /Contents et /Alt.
+Correctif SZH de WeasyPrint 70.0 — nom des liens en /Contents et /Alt.
 
 Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
-image/patches/weasyprint-70.0/ (seul à toucher anchors.py ; touche tags.py comme le 1/10,
-le 2/10, le 5/10 et le 9/10, sans ligne de contexte commune). Pour le désactiver :
+image/patches/weasyprint-70.0/ (seul à toucher anchors.py ; touche tags.py comme le 10,
+le 15, le 30 et le 60, sans ligne de contexte commune). Pour le désactiver :
 .patch.off.
 
 weasyprint/pdf/anchors.py (add_links) et pdf/tags.py. L'annotation /Link avait pour
