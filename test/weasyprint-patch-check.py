@@ -30,13 +30,24 @@
 #   50-notes-doublon : une note reportée à la page suivante n'y est pas imprimée une
 #      seconde fois quand un target-counter fait repaginer ;
 #   55-notes-reportees : une note reste sur la page de son appel quand c'est un paragraphe
-#      suivant qui manque de lignes pour orphans ; c'est ce paragraphe qui part.
+#      suivant qui manque de lignes pour orphans ; c'est ce paragraphe qui part ;
+#   60-langue-element : un élément dont lang change la langue héritée porte /Lang, bloc ou
+#      en ligne (/Span) ; ni ses descendants ni un lang égal à l'héritée n'en reçoivent ;
+#   65-nom-des-liens : le /Contents d'un lien vaut aria-label, sinon son texte (espaces
+#      normalisés), sinon title, sinon sa cible ; un lien à aria-label ou sans texte porte
+#      le même nom en /Alt de son /Link, un lien à texte n'en a pas ;
+#   70-espaces-justifiees : dans une ligne justifiée, aucun glyphe espace n'est précédé
+#      d'un décalage du TJ (sinon pdfium y déduit une espace générée de largeur nulle et
+#      écarte la vraie : mots collés dans Edge), et le texte extrait garde ses mots ;
+#   75-auteurs-info : /Info /Author joint les auteurs « Nom, Prénom » par « ; », et
+#      dc:creator garde un rdf:li par auteur.
 # Ce qu'ils ne changent pas : alt="" seul reste une /Figure sans /Alt, signalée, car
 # l'import écrit alt="" pour toute image sans description. Le cas f doit donc échouer en
 # 7.3 ; s'il passe, le contrôle ne détecte plus rien ou le patch va trop loin. Le trait
 # d'un composé coupé à son trait reste un trait, et ni un <br> ni une fin de paragraphe ne
 # reçoivent d'espace.
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -59,10 +70,21 @@ ENTETE = ('<!doctype html><html lang="de"><head><meta charset="utf-8"><title>T</
           '</head><body>')
 PIED = '</body></html>'
 
-ENTETES, DECOR, CESURE, ESPACE, MARGES, XMP, DOUBLON, REPORTEE = (
+(ENTETES, DECOR, CESURE, ESPACE, MARGES, XMP, DOUBLON, REPORTEE, LANGUE, LIENS,
+ JUSTIFIE, AUTEURS) = (
     '10-tableaux-entetes.patch', '15-images-decoratives.patch', '20-cesure-trait.patch',
     '25-espace-fin-de-ligne.patch', '30-marges-artefact.patch', '40-xmp-dc-language.patch',
-    '50-notes-doublon.patch', '55-notes-reportees.patch')
+    '50-notes-doublon.patch', '55-notes-reportees.patch', '60-langue-element.patch',
+    '65-nom-des-liens.patch', '70-espaces-justifiees.patch', '75-auteurs-info.patch')
+AUTEURS_NOMS = ('Fictive-Dumont, Élodie', 'Przykład, Łukasz')
+
+# Paragraphe justifié en colonne étroite : de larges écarts entre les mots.
+JUSTIFIE_TEXTE = ('Die Teilhabe misst sich an dem, was jedes Kind tun kann, und nicht an '
+                  'dem, was die Schule es anschauen lässt. Die Massnahmen werden mit der '
+                  'Familie besprochen und in einem Plan festgehalten.')
+
+# Lien vide de taille fixe, comme l'icône ORCID ou le retour à l'appel de Pronto.
+ICONE = '<style>a.icone{display:inline-block;width:4mm;height:4mm;background:#a6ce39}</style>'
 
 # Pages de 100 × 80 mm à 12 lignes de 5 mm ; un renvoi target-counter vers la dernière
 # page fait repaginer.
@@ -151,6 +173,32 @@ CAS = {
                    'class="note">Fussnote eins, Zeile 1<br>Zeile 2</span><br>a2<br>a3</p>'
                    '<p>b1<br>b2<br>b3<br>b4<br>b5</p><p>c1<br>c2<br>c3<br>c4<br>c5</p>'
                    + FIN, set()),
+    # Document allemand (ENTETE) : résumé français, citation anglaise, mot anglais, et un
+    # lang="de" redondant qui ne doit rien produire.
+    'o-langue': (LANGUE,
+                 '<p>Ein Satz.</p><div lang="fr"><p>Résumé en <em>français</em>.</p></div>'
+                 '<blockquote lang="en"><p>A quotation.</p></blockquote>'
+                 '<p>Ein <span lang="en">Mindset</span> und <span lang="de">Wort</span>.</p>',
+                 set()),
+    # Lien à texte, ORCID et retour à l'appel vides à aria-label, lien à title seul, lien
+    # sans aucun nom, lien interne à texte sur plusieurs espaces. Pas d'élément dans un lien
+    # à texte : WeasyPrint en fait un /NonStruct sous le /Link, refusé en 7.18.5-1.
+    'p-liens': (LIENS,
+                ICONE + '<p id="appel">Siehe <a href="https://www.szh.ch/">die Website</a>.</p>'
+                '<p><a class="icone" href="https://orcid.org/0000-0002-1825-0097" '
+                'aria-label="ORCID von Anna Muster"></a> '
+                '<a class="icone" href="#appel" aria-label="Zurück zum Verweis 1"></a> '
+                '<a class="icone" href="#ende" title="Zum Ende"></a> '
+                '<a class="icone" href="https://creativecommons.org/licenses/by/4.0/"></a></p>'
+                '<p id="ende"><a href="#appel">Zum   Anfang\n zurück</a></p>',
+                set()),
+    'q-justifie': (JUSTIFIE,
+                   '<p style="width:60mm;text-align:justify;font:11pt sans-serif">'
+                   + JUSTIFIE_TEXTE + '</p>', set()),
+    # Deux auteurs « Nom, Prénom », comme les écrit Pronto.
+    'r-auteurs': (AUTEURS,
+                  ''.join(f'<meta name="author" content="{a}">' for a in AUTEURS_NOMS)
+                  + '<p>Ein Satz.</p>', set()),
 }
 
 
@@ -169,27 +217,34 @@ def _patchs_actifs():
     return actifs
 
 
-def _elements(pdf):
-    """Éléments de structure dans l'ordre du document : (S, A, ID, Alt)."""
-    def enfants(e):
-        k = e.get('/K')
-        if k is None:
-            return []
-        k = _res(k)
-        return [_res(x) for x in k] if isinstance(k, ArrayObject) else [k]
+def _enfants(e):
+    k = e.get('/K')
+    if k is None:
+        return []
+    k = _res(k)
+    return [_res(x) for x in k] if isinstance(k, ArrayObject) else [k]
 
+
+def _noeuds(pdf):
+    """Éléments de structure dans l'ordre du document, tels que pypdf les lit."""
     def parcourir(e):
         if not isinstance(e, DictionaryObject) or '/S' not in e:
             return
-        a = _res(e['/A']) if '/A' in e else {}
-        yield (str(e['/S']), a, str(e['/ID']) if '/ID' in e else None,
-               str(e['/Alt']) if '/Alt' in e else None)
-        for c in enfants(e):
+        yield e
+        for c in _enfants(e):
             yield from parcourir(c)
 
     racine = PdfReader(pdf).trailer['/Root']['/StructTreeRoot'].get_object()
-    for c in enfants(racine):
+    for c in _enfants(racine):
         yield from parcourir(c)
+
+
+def _elements(pdf):
+    """Éléments de structure dans l'ordre du document : (S, A, ID, Alt)."""
+    for e in _noeuds(pdf):
+        a = _res(e['/A']) if '/A' in e else {}
+        yield (str(e['/S']), a, str(e['/ID']) if '/ID' in e else None,
+               str(e['/Alt']) if '/Alt' in e else None)
 
 
 def _headers(elements):
@@ -420,9 +475,102 @@ def _verifier_reportee(pdfs, erreurs):
         erreurs.append('n-reportee : le paragraphe « c » n\'est pas parti entier en p. 2')
 
 
+def _verifier_langue(pdfs, erreurs):
+    langues = [(str(e['/S']), str(e['/Lang'])) for e in _noeuds(pdfs['o-langue'])
+               if '/Lang' in e]
+    voulu = [('/Div', 'fr'), ('/BlockQuote', 'en'), ('/Span', 'en')]
+    if langues != voulu:
+        erreurs.append(f'o-langue : /Lang {langues}, attendu {voulu}')
+
+
+def _verifier_liens(pdfs, erreurs):
+    liens = []
+    for e in _noeuds(pdfs['p-liens']):
+        if str(e['/S']) != '/Link':
+            continue
+        contents = [str(_res(k['/Obj']).get('/Contents')) for k in _enfants(e)
+                    if isinstance(k, DictionaryObject) and k.get('/Type') == '/OBJR']
+        liens.append((contents, str(e['/Alt']) if '/Alt' in e else None))
+    cc = 'https://creativecommons.org/licenses/by/4.0/'
+    voulu = [(['die Website'], None),
+             (['ORCID von Anna Muster'], 'ORCID von Anna Muster'),
+             (['Zurück zum Verweis 1'], 'Zurück zum Verweis 1'),
+             (['Zum Ende'], 'Zum Ende'),
+             ([cc], cc),
+             (['Zum Anfang zurück'], None)]
+    if liens != voulu:
+        erreurs.append(f'p-liens : (/Contents, /Alt) {liens}, attendu {voulu}')
+
+
+def _glyphes_espace(reader, page):
+    """Identifiants des glyphes que la ToUnicode des polices de la page lit U+0020."""
+    espaces = set()
+    for police in _res(page['/Resources']['/Font']).values():
+        police = _res(police)
+        if '/ToUnicode' not in police:
+            continue
+        cmap = _res(police['/ToUnicode']).get_data().decode('latin-1')
+        for g, u in re.findall(r'<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>', cmap):
+            if u.lower() in ('0020', '00a0'):
+                espaces.add(int(g, 16))
+        for g1, g2, u in re.findall(
+                r'<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>', cmap):
+            for k, g in enumerate(range(int(g1, 16), int(g2, 16) + 1)):
+                if int(u, 16) + k in (0x20, 0xA0):
+                    espaces.add(g)
+    return espaces
+
+
+def _espaces_du_tj(pdf):
+    """(espaces dessinées, espaces précédées d'un décalage vers la droite) dans les TJ."""
+    reader = PdfReader(pdf)
+    dessinees = decalees = 0
+    for page in reader.pages:
+        espaces = _glyphes_espace(reader, page)
+        for operandes, op in ContentStream(page.get_contents(), reader).operations:
+            if op != b'TJ':
+                continue
+            precedent = None
+            for x in operandes[0]:
+                if isinstance(x, (bytes, str)):
+                    octets = x.original_bytes if isinstance(x, TextStringObject) else x
+                    octets = octets if isinstance(octets, bytes) else octets.encode('latin-1')
+                    for i in range(0, len(octets), 2):
+                        if int.from_bytes(octets[i:i + 2], 'big') in espaces:
+                            dessinees += 1
+                            # Un nombre négatif du TJ pousse vers la droite.
+                            decalees += i == 0 and precedent is not None and precedent < -50
+                    precedent = None
+                else:
+                    precedent = float(x)
+    return dessinees, decalees
+
+
+def _verifier_justifie(pdfs, erreurs):
+    dessinees, decalees = _espaces_du_tj(pdfs['q-justifie'])
+    if not dessinees or decalees:
+        erreurs.append(f'q-justifie : {dessinees} espace(s) dessinée(s), dont {decalees} '
+                       'au milieu de leur écart, attendu des espaces et aucune décalée')
+    mots = ' '.join(' '.join(_lignes(pdfs['q-justifie'])).split())
+    if mots != JUSTIFIE_TEXTE:
+        erreurs.append(f'q-justifie : texte extrait {mots!r}')
+
+
+def _verifier_auteurs(pdfs, erreurs):
+    reader = PdfReader(pdfs['r-auteurs'])
+    auteur = reader.metadata.get('/Author')
+    if auteur != '; '.join(AUTEURS_NOMS):
+        erreurs.append(f'r-auteurs : /Author {auteur!r}, attendu {"; ".join(AUTEURS_NOMS)!r}')
+    createurs = reader.xmp_metadata.dc_creator
+    if createurs != list(AUTEURS_NOMS):
+        erreurs.append(f'r-auteurs : dc:creator {createurs}, attendu {list(AUTEURS_NOMS)}')
+
+
 VERIFS = {ENTETES: _verifier_entetes, DECOR: _verifier_decor, CESURE: _verifier_cesure,
           ESPACE: _verifier_espace, MARGES: _verifier_marges, XMP: _verifier_xmp,
-          DOUBLON: _verifier_doublon, REPORTEE: _verifier_reportee}
+          DOUBLON: _verifier_doublon, REPORTEE: _verifier_reportee,
+          LANGUE: _verifier_langue, LIENS: _verifier_liens, JUSTIFIE: _verifier_justifie,
+          AUTEURS: _verifier_auteurs}
 
 
 def main():

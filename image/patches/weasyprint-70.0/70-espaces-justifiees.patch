@@ -1,0 +1,56 @@
+Correctif SZH de WeasyPrint 70.0 — espaces des lignes justifiées dessinées contre leur mot.
+
+Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
+image/patches/weasyprint-70.0/ (touche draw/text.py comme le 20, sans ligne de contexte
+commune). Pour le désactiver : .patch.off.
+
+weasyprint/draw/text.py, draw_first_line. Pour justifier, WeasyPrint élargit chaque espace
+par un letter-spacing Pango (text/line_break.py) ; Pango rend la moitié de cet écart en
+x_offset, que draw_first_line écrivait AVANT le glyphe espace dans le TJ. L'espace était
+donc dessinée au milieu d'un grand intervalle. pdfium (Chrome, Edge) y voit un écart entre
+deux mots, insère une espace « générée » de largeur nulle et écarte la vraie : sur une
+ligne justifiée, le texte lu par Edge et son lecteur d'écran a ses mots collés
+(« unarticle de laRevue »). Désormais, dans un texte justifié ou à word-spacing, une
+espace (U+0020 ou U+00A0) à x_offset est dessinée contre le glyphe qui la précède, et son
+décalage s'ajoute au nombre écrit après elle : les glyphes suivants gardent leur position
+et l'espace n'a pas d'encre. Les autres glyphes, les espaces d'un texte seulement espacé
+(letter-spacing) et toute espace à y_offset gardent le dessin d'origine.
+Rendu identique au pixel ; cas q-justifie de test/weasyprint-patch-check.py.
+
+--- a/weasyprint/draw/text.py
++++ b/weasyprint/draw/text.py
+@@ -205,6 +205,14 @@
+             # Set horizontal and vertical offsets.
+             offset = glyph_info.geometry.x_offset / font_size
+             rise = glyph_info.geometry.y_offset / 1000
++            # SZH : une espace élargie par la justification ou word-spacing est dessinée
++            # contre le mot qui la précède, son décalage reporté après elle. Au milieu de
++            # l'écart, pdfium y voyait un intervalle, en déduisait une espace de largeur
++            # nulle et écartait la vraie. Sans encre, rien ne bouge.
++            space_shift = bool(
++                offset and not rise and
++                (textbox.justification_spacing or textbox.style['word_spacing']) and
++                font.to_unicode.get(glyph_id) in (' ', '\xa0'))
+             if rise:
+                 if string[-1] == '<':
+                     string = string[:-1]
+@@ -221,7 +229,7 @@
+                 stream.set_text_rise(0)
+                 string = '<'
+             else:
+-                if offset:
++                if offset and not space_shift:
+                     string += f'>{-offset}<'
+                 string += f'{glyph_id:02x}' if font.bitmap else f'{glyph_id:04x}'
+ 
+@@ -236,7 +244,9 @@
+ 
+             # Set kerning, word spacing, letter spacing.
+             kerning = logical_width + offset - width * 1000 * FROM_UNITS / font_size
+-            if kerning:
++            if space_shift:
++                string += f'>{int(kerning) - offset}<'
++            elif kerning:
+                 string += f'>{int(kerning)}<'
+ 
+             # Create list of emojis.

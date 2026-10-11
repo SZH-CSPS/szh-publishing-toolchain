@@ -161,8 +161,11 @@ RUN mkdir -p /opt/icc \
 # 7.5-1) et images décoratives en artefact (7.3-1), 20 couche texte des fins de ligne
 # (césure lue U+00AD, espace de fin de ligne gardée), 30 en-tête, pied et folio en
 # artefact de pagination, 40 dc:language dans le XMP, 50 et 55 notes de bas de page (pas
-# de doublon après une repagination, pas de note chassée loin de son appel). Un patch renommé en .patch.off est ignoré, et le journal le
-# dit. patch-weasyprint.sh fait échouer la construction si le dossier manque pour cette
+# de doublon après une repagination, pas de note chassée loin de son appel), 60 /Lang sur
+# un élément dans une autre langue (7.2), 65 nom des liens en /Contents et /Alt (7.18.5),
+# 70 espaces des lignes justifiées dessinées contre leur mot (texte lu sans mots collés),
+# 75 auteurs de /Info /Author séparés par « ; ».
+# Un patch renommé en .patch.off est ignoré, et le journal le dit. patch-weasyprint.sh fait échouer la construction si le dossier manque pour cette
 # version ou si un patch ne s'applique plus au caractère près — une montée de WeasyPrint
 # oblige à les rejuger. `patch` vient de la liste apt ci-dessus.
 COPY requirements.txt /tmp/requirements.txt

@@ -108,7 +108,8 @@ demandent un essai avec un lecteur d'écran (NVDA, par exemple). Sans cet essai,
   `bookmark-label` dans `print.css`). `/Info /Title` reçoit le même titre.
 - **Métadonnées XMP.** `dc:language` est écrit par le correctif WeasyPrint
   `40-xmp-dc-language`. `xmp:CreatorTool` vaut « Pronto, open-source publishing software by
-  SZH/CSPS » ; `dc:creator` porte les auteurs au format « Nom, Prénom ».
+  SZH/CSPS » ; `dc:creator` porte les auteurs au format « Nom, Prénom », un par entrée, et
+  `/Info /Author` les joint par « ; » (correctif `75-auteurs-info`).
 - **Transparence.** Une `opacity` inférieure à 1 fait dessiner l'élément par WeasyPrint dans
   un groupe de transparence, où son contenu sort de l'arbre de structure (PDF/UA-1,
   règle 7.1-3). Les teintes claires de la couverture (point médian entre auteurs, filigrane)
@@ -127,6 +128,10 @@ touchent l'accessibilité :
 | `25-espace-fin-de-ligne` | l'espace de fin de ligne est dans la couche texte (n'agit qu'avec le 20) |
 | `30-marges-artefact` | en-têtes, pieds et folios en artefacts de pagination |
 | `40-xmp-dc-language` | `dc:language` dans le XMP |
+| `60-langue-element` | `/Lang` sur l'élément d'un passage dans une autre langue (résumé, citation, `[mot]{lang=en}`) |
+| `65-nom-des-liens` | `/Contents` d'un lien tiré d'`aria-label`, de son texte ou de `title` ; `/Alt` sur le `/Link` d'un lien sans texte |
+| `70-espaces-justifiees` | dans une ligne justifiée, pdfium (Edge) lit les vraies espaces au lieu d'en déduire de vides : mots non collés |
+| `75-auteurs-info` | `/Info /Author` sépare les auteurs « Nom, Prénom » par « ; » |
 
 Le rapport, la démo et l'état chez les développeurs de WeasyPrint de chaque correctif sont
 dans [`image/patches/amont/`](../image/patches/amont/README.md). Un correctif n'arrive sur
@@ -159,7 +164,7 @@ lève le message `qr-contraste-insuffisant` (`szh-qr-commun.lua`).
 - Une image a un texte alternatif ou une légende, ou bien `alt=""` si elle est décorative.
 - Un tableau a sa rangée d'en-tête en `<th scope>`, et une description longue s'il le faut.
 - Pas de positionnement qui casse l'ordre de lecture.
-- Tout passage dans une autre langue porte `lang`, même si le PDF ne le reporte pas encore.
+- Tout passage dans une autre langue porte `lang` : le PDF en fait le `/Lang` de son élément.
 - Pas d'`opacity` inférieure à 1 dans `print.css` : on pré-mélange la couleur.
 - Les contrastes se vérifient par `test/apca-check.py`. Aucune information n'est portée par
   la seule couleur.

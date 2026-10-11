@@ -1,8 +1,9 @@
-Correctif SZH de WeasyPrint 70.0, 3/8 — trait de césure en /ActualText U+00AD.
+Correctif SZH de WeasyPrint 70.0 — trait de césure en /ActualText U+00AD.
 
 Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
-image/patches/weasyprint-70.0/ (aucune ligne de contexte commune avec le 4/6, seul autre à
-toucher layout/inline.py). Pour le désactiver : .patch.off.
+image/patches/weasyprint-70.0/ (aucune ligne de contexte commune avec le 25, seul autre à
+toucher layout/inline.py, ni avec le 70, seul autre à toucher draw/text.py). Pour le
+désactiver : .patch.off.
 
 weasyprint/draw/text.py, layout/inline.py, text/line_break.py, text/ffi.py. Le trait
 ajouté par la césure (hyphens: auto, ou &shy;) était un caractère du texte comme un autre :
@@ -13,11 +14,11 @@ WeasyPrint, U+2010 (hyphenate-character vaut '‐', css/properties.py de la 70.0
   layout.hyphenated, split_text_box le recopie sur la boîte, draw_first_line ouvre le
   /Span au premier glyphe du trait et le ferme en fin de ligne. Le trait d'un vrai composé
   (« Hess-Klein ») coupé à son trait n'est pas touché : WeasyPrint n'y ajoute rien.
-- Ce patch porte aussi le dessin de l'espace de fin de ligne du 4/6 (fin de
+- Ce patch porte aussi le dessin de l'espace de fin de ligne du 25 (fin de
   draw_first_line, et hb_font_get_nominal_glyph déclaré dans text/ffi.py). Ils ne se
   séparent pas : ce dessin lit les variables truncated et hyphen_start que pose le bloc du
   trait, au début de draw_first_line, et une même ligne ne peut pas appartenir à deux
-  patchs. Sans le 4/6, ce code dort : rien ne pose line_end_space.
+  patchs. Sans le 25, ce code dort : rien ne pose line_end_space.
 Preuve : rendu identique au pixel, veraPDF PDF/UA-1 inchangé ; cas h-cesure (un /Span
 U+00AD autour du seul glyphe du trait) et i-compose de test/weasyprint-patch-check.py, démo
 image/patches/amont/20-cesure-trait/. poppler et xpdf ne recollent plus d'eux-mêmes un mot

@@ -358,9 +358,11 @@ texte avant son paragraphe d'ancrage, et beaucoup de manuscrits réels ont des z
 
 ### Les correctifs de WeasyPrint
 
-WeasyPrint est corrigé par huit petits correctifs, un par fonctionnalité, dans
+WeasyPrint est corrigé par douze petits correctifs, un par fonctionnalité, dans
 `image/patches/weasyprint-70.0/` : en-têtes de tableau, images décoratives, césure, espace en
-fin de ligne, marges en artefact, `dc:language`, notes en double, notes reportées. Chacun a
+fin de ligne, marges en artefact, `dc:language`, notes en double, notes reportées, langue
+d'un passage (`/Lang`), nom des liens, espaces des lignes justifiées, séparateur des auteurs
+de `/Info /Author`. Chacun a
 son dossier dans `image/patches/amont/` (description du défaut, démonstration) et son cas
 dans `test/weasyprint-patch-check.py`.
 
@@ -374,14 +376,16 @@ dans `test/weasyprint-patch-check.py`.
 4. lancer `test/weasyprint-patch-check.py` dans la WSL ;
 5. après la construction, compiler et vérifier que le journal ne dit pas
    « PDF/UA-1 indisponible → PDF balisé simple » ;
-6. vérifier si WeasyPrint sait enfin poser la langue d'un passage (`/Lang` sur un élément) :
+6. vérifier que la langue d'un passage arrive dans le PDF : compiler un article qui a un
+   résumé dans l'autre langue, et chercher `Lang=` sur cet élément dans l'arbre de
+   structure :
 
    ```sh
-   grep -rn Lang /opt/weasyprint/lib/python3*/site-packages/weasyprint/pdf/
+   /opt/weasyprint/bin/python image/patches/amont/inspecter.py arbre <article>.pdf
    ```
 
-   Aujourd'hui, `/Lang` n'est posé que sur le document entier. Voir
-   [`LIMITES-ACCESSIBILITE.md`](LIMITES-ACCESSIBILITE.md).
+   C'est le correctif `60-langue-element` qui pose ce `/Lang`. Si WeasyPrint le fait
+   lui-même, retirer le correctif.
 
 Après une montée de veraPDF ou de son Java, vérifier que la porte PDF/UA distingue toujours
 ses trois issues : 0 conforme, 1 non conforme, 2 panne d'outillage (validateur absent, Java

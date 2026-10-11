@@ -1,0 +1,74 @@
+Correctif SZH de WeasyPrint 70.0 — nom des liens en /Contents et /Alt.
+
+Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
+image/patches/weasyprint-70.0/ (seul à toucher anchors.py ; touche tags.py comme le 10,
+le 15, le 30 et le 60, sans ligne de contexte commune). Pour le désactiver :
+.patch.off.
+
+weasyprint/pdf/anchors.py (add_links) et pdf/tags.py. L'annotation /Link avait pour
+/Contents sa cible : l'URL d'un lien externe, l'identifiant d'un lien interne
+(« appel-ref-1 »). Un <a> vide à aria-label (ORCID, retour à l'appel, licence) n'avait donc
+pour nom que cette cible (PDF/UA-1 7.18.5, Matterhorn 28-004, WCAG 2.4.4). Désormais :
+- /Contents vaut le premier non vide entre aria-label, le texte du lien (l'alt de ses
+  images s'il n'a pas de texte) et title, espaces normalisés ; la cible à défaut ;
+- l'élément de structure /Link d'un lien nommé par aria-label, ou sans texte, reçoit le
+  même nom en /Alt. Un lecteur d'écran lit le contenu de l'élément /Link, pas le /Contents
+  de l'annotation : sans /Alt, un lien vide n'a rien à dire. Un lien à texte sans
+  aria-label garde son texte et n'a pas de /Alt.
+Rendu identique au pixel ; cas p-liens de test/weasyprint-patch-check.py.
+
+--- a/weasyprint/pdf/tags.py
++++ b/weasyprint/pdf/tags.py
+@@ -246,6 +246,14 @@
+         pdf.add_object(object_reference)
+         annotations.append((element.reference, annotation))
+         element['K'].append(object_reference.reference)
++        # SZH : un lien nommé par aria-label, ou sans texte, porte aussi son nom (le
++        # /Contents posé par pdf/anchors.py) en /Alt de l'élément /Link : c'est ce que lit
++        # un lecteur d'écran à la place du contenu.
++        link = box.element
++        if link is not None and 'Contents' in annotation and (
++                (link.get('aria-label') or '').strip() or
++                not ''.join(link.itertext()).strip()):
++            element['Alt'] = annotation['Contents']
+ 
+     # Include widget annotations.
+     if box.widget_annotation:
+--- a/weasyprint/pdf/anchors.py
++++ b/weasyprint/pdf/anchors.py
+@@ -35,7 +35,8 @@
+                 'BS': pydyf.Dictionary({'W': 0}),
+             })
+             if tags is not None:
+-                box.link_annotation['Contents'] = pydyf.String(link_target)
++                box.link_annotation['Contents'] = pydyf.String(
++                    _get_link_name(box.element) or link_target)
+             if link_type == 'internal':
+                 box.link_annotation['Dest'] = pydyf.String(link_target)
+             else:
+@@ -56,6 +57,25 @@
+             anchor_name, pydyf.Array([page.reference, '/XYZ', x, y, 0])])
+ 
+ 
++def _get_link_name(element):
++    """Return the accessible name of a link, or an empty string.
++
++    SZH : le nom du lien en /Contents (PDF/UA-1 7.18.5), le premier non vide entre :
++    aria-label, le texte du lien (alt de ses images à défaut), title. Espaces normalisés.
++    Vide, l'appelant écrit la cible.
++
++    """
++    if element is None:
++        return ''
++    text = ''.join(element.itertext())
++    if not text.strip():
++        text = ' '.join(image.get('alt') or '' for image in element.iter('img'))
++    for name in (element.get('aria-label'), text, element.get('title')):
++        if name := ' '.join((name or '').split()):
++            return name
++    return ''
++
++
+ def add_outlines(pdf, bookmarks, parent=None):
+     """Include bookmark outlines in PDF."""
+     count = len(bookmarks)

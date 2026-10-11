@@ -1,0 +1,36 @@
+Correctif SZH de WeasyPrint 70.0 — langue d'un élément de structure (/Lang).
+
+Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
+image/patches/weasyprint-70.0/ (touche tags.py comme le 10, le 15, le 30 et le 65,
+sans ligne de contexte commune). Pour le désactiver : .patch.off.
+
+weasyprint/pdf/tags.py, _build_box_tree. WeasyPrint écrivait la langue de <html lang> en
+/Lang du catalogue, jamais sur un élément de structure : un résumé allemand dans un article
+français, une citation anglaise ou un [mot]{lang=en} de pandoc étaient lus avec la voix du
+document (PDF/UA-1 7.2, Matterhorn 11-006, WCAG 3.1.2). Désormais, l'élément dont le style
+porte une langue différente de celle de son parent (propriété interne lang, tirée de
+l'attribut HTML lang, celle qui règle déjà la césure) reçoit /Lang avec cette valeur, telle
+qu'écrite dans le HTML. Ses descendants, boîtes anonymes et pseudo-éléments compris,
+héritent de la même langue et n'en reçoivent pas. Un élément en ligne (<span lang>) est un
+/Span et le reçoit aussi.
+Hors de portée : xml:lang (WeasyPrint ne lit que lang, comme un navigateur pour du HTML),
+et lang posé sur <body> ou sur <table>, qui n'ont pas d'élément de structure à eux (body)
+ou passent par une enveloppe anonyme (table) : leurs descendants n'en reçoivent pas.
+Rendu identique au pixel ; cas o-langue de test/weasyprint-patch-check.py.
+
+--- a/weasyprint/pdf/tags.py
++++ b/weasyprint/pdf/tags.py
+@@ -195,6 +195,13 @@
+     })
+     pdf.add_object(element)
+ 
++    # SZH : un élément dont l'attribut lang change la langue héritée la déclare en /Lang
++    # (PDF/UA-1 7.2). Ses descendants en héritent dans l'arbre : on ne la répète pas.
++    lang = box.style['lang']
++    if lang and box.style.parent_style is not None and (
++            lang != box.style.parent_style['lang']):
++        element['Lang'] = pydyf.String(lang)
++
+     # Handle special cases.
+     if tag == 'Figure':
+         # Add extra data for images.
