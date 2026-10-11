@@ -18,8 +18,8 @@ python3 test/weasyprint-banc/banc.py --mode rapide
 
 | Option | Effet |
 |---|---|
-| `--mode rapide` | production et pile complète, puis le retrait de chaque correctif nouveau ou modifié sur les cas qui changent (environ 25 s à 2,5 min) |
-| `--mode complet` | en plus : WeasyPrint vierge, production plus chaque nouveau correctif, retrait de chaque correctif sur tous les cas (environ 6 min à froid) |
+| `--mode rapide` | production et pile complète, puis le retrait de chaque correctif nouveau ou modifié sur les cas qui changent |
+| `--mode complet` | en plus : WeasyPrint vierge, production plus chaque nouveau correctif, retrait de chaque correctif sur tous les cas |
 | `--paires` | retire les correctifs deux à deux quand aucun retrait seul n'explique un changement |
 | `--cas c16,c2*` | ne rend que ces cas (préfixes ou motifs) |
 | `--production <réf>` | prend les correctifs de la production dans cette référence git, ou dans une liste de numéros (`10,15,20`) |
@@ -28,11 +28,26 @@ python3 test/weasyprint-banc/banc.py --mode rapide
 
 La production est la liste des correctifs de la dernière version publiée. Le banc la lit
 par git dans `origin/main`, sinon dans le dernier tag, sinon dans `HEAD`. La pile complète
-est faite des `.patch` du dossier local ; les `.patch.off` en sont exclus.
+est faite des `.patch` du dossier local ; les `.patch.off` en sont exclus. Un correctif
+retiré ou désactivé depuis la production est jugé en le remettant dans la pile complète
+(colonne « +N » du rapport). La WSL des postes n'a pas git : le banc y prend celui de
+Windows (`git.exe`, à son emplacement standard ; la variable `SZH_GIT` en désigne un
+autre).
 
-Le banc crée lui-même son venv dans `tmp/banc/venvs/`, avec les versions épinglées
+Le banc crée lui-même son venv dans `<travail>/venvs/`, avec les versions épinglées
 d'`image/requirements.txt` et pypdfium2. Il le garde tant que ces versions ne changent pas.
 Les piles, les PDF et les mesures sont gardés de la même façon.
+
+Durées mesurées sur un poste (WSL à 2 cœurs), à froid :
+
+| Situation | Durée |
+|---|---|
+| mode rapide, aucun correctif changé depuis la production | 25 s |
+| mode rapide, six correctifs nouveaux | 2,5 min |
+| mode complet, 14 correctifs | 6 min avec `--travail ~/banc`, davantage dans `tmp/banc/` (disque Windows) |
+| un second passage sans changement | 20 s |
+
+Un venv neuf ajoute une minute.
 
 Codes de sortie : 0 rien à signaler ; 1 une régression ou un invariant en échec hors des
 limites admises ; 2 panne d'outillage (veraPDF absent, venv impossible à créer, correctif
