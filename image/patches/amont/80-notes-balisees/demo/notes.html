@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Notes balisées à leur appel</title>
+  <title>Footnotes tagged after their call</title>
   <style>
     @page { size: 100mm 80mm; margin: 10mm; @footnote { margin-top: 1mm; } }
     body { font: 4mm/5mm sans-serif; margin: 0; }
@@ -13,16 +13,16 @@
   </style>
 </head>
 <body>
-  <p>Une phrase avec une note<span class="note">Note au milieu de la phrase.</span> au milieu.</p>
+  <p>A sentence with a note<span class="note">Note in the middle of the sentence.</span> in the middle.</p>
   <ul>
-    <li>premier item</li>
-    <li>deuxième item<span class="note">Note dans un item de liste.</span></li>
-    <li>troisième item</li>
+    <li>first item</li>
+    <li>second item<span class="note">Note in a list item.</span></li>
+    <li>third item</li>
   </ul>
-  <p>Deux notes<span class="note">Première des deux notes.</span> dans un même
-    paragraphe<span class="note">Seconde des deux notes.</span>, puis la fin.</p>
-  <p>l1<br>l2<br>l3<br>l4<br>l5<br>l6 dernier appel<span class="note">Note longue, ligne 1
-    <br>ligne 2<br>ligne 3<br>ligne 4</span></p>
-  <p>Page suivante.</p>
+  <p>Two notes<span class="note">First of two notes.</span> in the same
+    paragraph<span class="note">Second of two notes.</span>, then the end.</p>
+  <p>A last call<span class="note">Long note, pushed to the next page, line 1
+    <br>line 2<br>line 3<br>line 4</span></p>
+  <p>Next page.</p>
 </body>
 </html>

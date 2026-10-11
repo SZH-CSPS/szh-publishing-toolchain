@@ -18,7 +18,8 @@ ISO 32000-1, tableau 336 : les enfants d'un `/L` sont des `/LI` (et une `/Captio
 d'un `/LI` un `/Lbl` et un `/LBody`. Les techniques PDF/UA de la PDF Association (bêta)
 placent la sous-liste dans le `/LBody` de son item (L_05, et L_F07 pour l'échec) et balisent
 une liste de description en `/L > /LI > /Lbl + /LBody`, sans `/ListNumbering` ou à `/None`
-(L_14).
+(L_14). Matterhorn 1.1 n'a pas de condition sur ces imbrications : son point de
+contrôle 16 (listes) ne vise que `/ListNumbering` et le contenu non balisé en liste.
 
 ## La cause dans le code amont
 
@@ -99,3 +100,5 @@ Sur le corpus d'essai de Pronto (trois articles, deux livres, 50 pages), compil�
 douze correctifs puis avec les quatorze : 0 page différente au pixel, veraPDF ua1 sans
 échec ; les six sous-listes des deux articles (trois chacun) sont dans leur `/LBody`, et
 les deux `<dl>` font chacune deux `/LI` à `/Lbl` et `/LBody` au lieu de quatre `/LI`.
+
+Texte de pull request, test pytest compris : `PR.md`.

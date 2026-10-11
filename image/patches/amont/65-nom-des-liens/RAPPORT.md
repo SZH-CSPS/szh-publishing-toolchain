@@ -12,7 +12,9 @@ nom que cette cible, et son élément de structure `/Link` ne contient que la r�
 l'annotation (`/OBJR`) : rien que le lecteur d'écran puisse annoncer.
 
 - PDF/UA-1 7.18.1 et 7.18.5 : une annotation, et en particulier un lien, porte une
-  description en `/Contents` (ISO 32000-1:2008, 12.5.2 et 14.9.3) ; Matterhorn 28-004.
+  description en `/Contents` (ISO 32000-1:2008, 12.5.2 et 14.9.3) ; Matterhorn 28-012 (« A
+  link annotation does not include an alternate description in the Contents key » ; 28-004
+  exclut les liens).
 - WCAG 2.4.4 : le nom d'un lien dit où il mène.
 - Un lecteur d'écran lit l'arbre de structure : le contenu de l'élément `/Link`, ou son
   `/Alt` s'il en a un, qui remplace ce contenu (ISO 32000-1, 14.9.3). Pour un `/Link` vide,

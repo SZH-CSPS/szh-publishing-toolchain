@@ -10,7 +10,8 @@ anglaise (`<blockquote lang="en">`) et des mots isolés (`[mindset]{lang=en}` en
 catalogue, mais aucun élément de structure ne reçoit de `/Lang` : un lecteur d'écran lit
 tout avec la voix du document. PDF/UA-1 7.2 (ISO 14289-1) renvoie à ISO 32000-1:2008,
 14.9.2 : la langue d'un passage se déclare par `/Lang` sur l'élément de structure (ou sur le
-contenu marqué). Matterhorn 11-006 ; WCAG 3.1.2 (langue d'un passage).
+contenu marqué). Matterhorn 11-007 (« Natural language is not appropriate », jugement
+humain ; 11-006 porte sur la langue des métadonnées) ; WCAG 3.1.2 (langue d'un passage).
 
 veraPDF ne le voit pas : il ne peut pas savoir dans quelle langue est un texte. Le PDF passe
 PDF/UA-1 avant comme après.

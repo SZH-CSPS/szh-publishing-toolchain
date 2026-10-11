@@ -15,7 +15,8 @@ l'endroit de l'appel). Dans le PDF balisé de WeasyPrint 70.0 :
 - le numéro de la note (`::footnote-marker`) est un `/NonStruct`.
 
 PDF/UA-1 7.9 (ISO 14289-1) : une note se balise en `/Note`, avec un `/ID` unique
-(Matterhorn 19-003). Le Tagged PDF Best Practice Guide: Syntax (PDF Association) place la
+(Matterhorn 19-001 à 19-004 : note en `/Note`, renvoi en `/Reference`, `/ID` présent et
+unique). Le Tagged PDF Best Practice Guide: Syntax (PDF Association) place la
 `/Note` juste après sa référence dans l'ordre logique. veraPDF ne le voit pas : il ne sait
 pas qu'un `/NonStruct` est une note. L'écoute NVDA du 11 octobre 2026 a confirmé la note lue
 entre deux items de liste.
@@ -85,8 +86,8 @@ wsl.exe -d SZH-Publishing -- bash /mnt/c/Users/robin/Documents/Prog/szh-publishi
 ```
 
 HTML : `notes.html` (page de 100 × 80 mm) : une note au milieu d'une phrase, une dans un item
-de liste, deux dans un même paragraphe (la seconde, reportée en p. 2), une note de quatre
-lignes en p. 2.
+de liste, deux dans un même paragraphe, et une note de quatre lignes dont l'appel est en
+p. 1 et le corps reporté en p. 2.
 
 Sortie du 11.10.2026, résumée : veraPDF ua1 PASS avant comme après. Nu, les notes sont des
 `/NonStruct` en fin de page ; patché, chaque `/Note` suit son `/Reference` dans le `/P` ou
@@ -96,3 +97,5 @@ Sur le corpus d'essai de Pronto (trois articles, deux livres, 50 pages), compil�
 douze correctifs puis avec les quatorze : 0 page différente au pixel, veraPDF ua1 sans
 échec ; les quatre notes des articles et celle du livre sont des `/Note` après leur appel,
 et la liste « 3. 4. 5. » de l'article français n'est plus coupée par les notes.
+
+Texte de pull request, test pytest compris : `PR.md`.
