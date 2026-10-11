@@ -7,13 +7,15 @@
 # (vérifié par test/js/chaines-filtres.test.js).
 #
 # Ordre d'un article :
-#   contexte -> maquette -> niveaux -> listes-serrees -> tabelle-inclure -> tabelle-scope ->
+#   contexte -> maquette -> encadres -> niveaux -> listes-serrees -> tabelle-inclure -> tabelle-scope ->
 #   typographie -> titre-lignes -> metafichier -> grille -> image-introuvable -> ressource ->
 #   figure -> numerotation -> tableau-boite -> legende-avant -> sections -> auteurs ->
 #   citations -> rubrique -> cesure -> exergue -> notes
 # Contraintes :
 #   * contexte en tête : la langue, le produit et l'unité qu'il pose dans meta sont lus par
 #     presque tous les autres ;
+#   * encadres avant typographie : le titre qu'il pose dans un encadré est du texte, que la
+#     typographie traite comme le reste ;
 #   * titre-lignes juste après typographie : il mesure le titre pour le couper en escalier,
 #     et doit le voir avec ses espaces insécables ;
 #   * typographie après tabelle-inclure, qui apporte le texte des tableaux, et avant
@@ -46,6 +48,7 @@
 # Chapitre de livre : les filtres communs gardent l'ordre de l'article.
 #   Absents :
 #   * maquette et titre-lignes : couverture et en-tête d'un article, qu'un chapitre n'a pas ;
+#   * encadres : les feuilles du livre ne composent pas le titre des encadrés ;
 #   * auteurs : remplacé par livre-auteurs, la ligne d'auteurs sous le titre ;
 #   * ressource et rubrique : formats de la Documentation de la revue. Un
 #     ::: {.szh-ressource …} dans un chapitre passe tel quel.
@@ -80,7 +83,7 @@ SOCLE_SORTIE    := cesure exergue notes
 CHAINE_SOCLE    := $(SOCLE_CONTEXTE) $(SOCLE_ENTREE) $(SOCLE_TYPO) $(SOCLE_IMAGES) $(SOCLE_NUMEROS) \
                    $(SOCLE_CITATIONS) $(SOCLE_SORTIE)
 
-CHAINE_ARTICLE := $(SOCLE_CONTEXTE) maquette $(SOCLE_ENTREE) $(SOCLE_TYPO) titre-lignes $(SOCLE_IMAGES) \
+CHAINE_ARTICLE := $(SOCLE_CONTEXTE) maquette encadres $(SOCLE_ENTREE) $(SOCLE_TYPO) titre-lignes $(SOCLE_IMAGES) \
                   ressource $(SOCLE_NUMEROS) auteurs $(SOCLE_CITATIONS) rubrique $(SOCLE_SORTIE)
 CHAINE_APERCU  := $(filter-out maquette exergue,$(CHAINE_ARTICLE))
 

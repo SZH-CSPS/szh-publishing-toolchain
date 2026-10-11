@@ -12,6 +12,11 @@
 -- .szh-legende-dessous (livre normal, `legende: dessous`). La note de figure
 -- (<p class="szh-bloc-note">) est toujours remise en dernier.
 --
+-- Une figure à légende est nommée par elle : la <figcaption> reçoit un id et la <figure>
+-- un aria-labelledby, car Edge et Chrome ne tirent pas le nom d'une figure de sa
+-- <figcaption>. L'id porte le slug de l'unité, unique dans un livre assemblé. WeasyPrint
+-- ignore aria-labelledby : le PDF ne change pas.
+--
 -- Sorties HTML seulement : un writer non-HTML jette les RawBlock html, et l'image
 -- disparaîtrait. Les motifs Lua n'ont pas d'alternative « | », d'où deux motifs.
 if not (FORMAT:match('^html') or FORMAT:match('^epub')) then return {} end
@@ -21,15 +26,29 @@ local function att(v)
   return (v:gsub('&', '&amp;'):gsub('"', '&quot;'):gsub('<', '&lt;'):gsub('>', '&gt;'))
 end
 
+-- Slug de l'unité compilée (fichier d'entrée sans .md), pour des id uniques dans un livre.
+local function slug_unite()
+  local fichiers = (PANDOC_STATE and PANDOC_STATE.input_files) or {}
+  local chemin = fichiers[1]
+  if type(chemin) ~= 'string' then return 'doc' end
+  local slug = chemin:gsub('.*[/\\]', ''):gsub('%.md$', ''):gsub('[^%w%-_]', '-')
+  return slug ~= '' and slug or 'doc'
+end
+local n_legende = 0
+
 -- `<figure>` avec l'id et les classes de la Figure d'origine ; les autres attributs
 -- de l'Attr ne sont pas repris, pandoc ne les émet pas non plus sur `<figure>`.
-local function balise_ouvrante(fig)
+-- `id_legende` : l'id de la <figcaption> qui nomme la figure, ou nil.
+local function balise_ouvrante(fig, id_legende)
   local bouts = { '<figure' }
   if fig.identifier and fig.identifier ~= '' then
     bouts[#bouts + 1] = ' id="' .. att(fig.identifier) .. '"'
   end
   if fig.classes and #fig.classes > 0 then
     bouts[#bouts + 1] = ' class="' .. att(table.concat(fig.classes, ' ')) .. '"'
+  end
+  if id_legende then
+    bouts[#bouts + 1] = ' aria-labelledby="' .. att(id_legende) .. '"'
   end
   bouts[#bouts + 1] = '>'
   return table.concat(bouts)
@@ -53,13 +72,20 @@ local function est_bloc_note(b)
 end
 
 function Figure(fig)
-  local blocs = pandoc.Blocks({ pandoc.RawBlock('html', balise_ouvrante(fig)) })
   local apres = credit_seul(fig)
+  -- La légende nomme la figure, sauf un crédit seul, qui n'en dit pas le sujet.
+  local id_legende = nil
+  if #fig.caption.long > 0 and not apres then
+    n_legende = n_legende + 1
+    id_legende = 'szh-legende-' .. slug_unite() .. '-' .. n_legende
+  end
+  local blocs = pandoc.Blocks({ pandoc.RawBlock('html', balise_ouvrante(fig, id_legende)) })
   -- Figure sans légende : pas de <figcaption> vide.
   local legende = pandoc.Blocks({})
   if #fig.caption.long > 0 then
     legende:insert(pandoc.RawBlock('html',
-      apres and '<figcaption class="szh-credit-seul">' or '<figcaption>'))
+      apres and '<figcaption class="szh-credit-seul">'
+            or '<figcaption id="' .. att(id_legende) .. '">'))
     legende:extend(fig.caption.long)
     legende:insert(pandoc.RawBlock('html', '</figcaption>'))
   end

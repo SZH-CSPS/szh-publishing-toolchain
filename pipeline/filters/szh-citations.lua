@@ -938,7 +938,9 @@ local function resoudre_biblio(doc, slug)
       elseif est_vide(contenu) then
         -- Fichier vide : le bloc disparaît, sans avertissement.
       else
-        local entrees = pandoc.read(contenu, 'markdown').blocks
+        -- autolink_bare_uris : une URL ou un DOI écrit en clair devient un lien, comme
+        -- ceux que l'import a gardés de Word.
+        local entrees = pandoc.read(contenu, 'markdown+autolink_bare_uris').blocks
         if #entrees > 0 then
           local titre = titre_bibliographie(doc.meta)
           if titre ~= '' then

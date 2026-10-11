@@ -30,7 +30,9 @@ for d in articles/*/; do
   # On teste le code de sortie de make, pas celui du grep : un échec dont le message ne
   # contient aucun mot cherché passerait sinon pour un succès.
   if make -f "$REPO/pipeline/Makefile" "out/$slug/$slug.pdf" > "$journal" 2>&1; then
-    # « [niveaux] » : szh-niveaux.lua signale ainsi un saut de niveau de titre corrigé.
+    # « [niveaux] » : szh-niveaux.lua signale ainsi plus de cinq rangs de titre, dont les
+    # plus profonds se retrouvent tous en <h6>. Un saut de niveau (## puis ####) est
+    # compacté sans message : le titre sort au bon rang.
     grep -iE "nonempty|error|traceback|warning|\[niveaux\]" "$journal" || echo "  build ok"
   else
     echo "  ÉCHEC du build :"

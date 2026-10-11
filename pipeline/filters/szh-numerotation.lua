@@ -221,6 +221,42 @@ local function en_decor(img, garder_largeur)
     .. '" role="presentation"><span></span></span>')
 end
 
+-- Un paragraphe du corps qui ne contient qu'une image décorative devient un <div
+-- class="szh-decor-seul"> : WeasyPrint balise tout <p> en /P, et ce /P n'aurait aucun texte.
+-- print.css donne au <div> les marges d'un paragraphe, la mise en page ne bouge pas. Seuls
+-- les paragraphes de premier niveau de l'article sont concernés : ailleurs (citation,
+-- encadré, chapitre de livre), les marges d'un paragraphe ne sont pas celles du corps.
+local DEBUT_DECOR = '<span class="' .. CLASSE_DECOR .. ' '
+
+local function decor_seul(b)
+  if b.t ~= 'Para' then return false end
+  local decor = nil
+  for _, x in ipairs(b.content) do
+    if x.t == 'RawInline' and x.format == 'html' and x.text:sub(1, #DEBUT_DECOR) == DEBUT_DECOR then
+      if decor then return false end
+      decor = x
+    elseif x.t ~= 'Space' and x.t ~= 'SoftBreak' then
+      return false
+    end
+  end
+  return decor
+end
+
+local function sortir_decors_seuls(blocs)
+  local sortie = pandoc.Blocks({})
+  for _, b in ipairs(blocs) do
+    local decor = decor_seul(b)
+    if decor then
+      -- En HTML brut, sans blanc autour du <span> : un blanc ferait un /Span vide de plus.
+      sortie:insert(pandoc.RawBlock('html', '<div class="' .. CLASSE_DECOR .. '-seul">'
+                                    .. decor.text .. '</div>'))
+    else
+      sortie:insert(b)
+    end
+  end
+  return sortie
+end
+
 -- Échappe un chemin pour url("…") : guillemets, apostrophes, parenthèses et retours à la
 -- ligne (« Bild (1).png ») casseraient la règle CSS.
 local function echapper_url(s)
@@ -549,6 +585,48 @@ local function constat_figure_sans_alt(src)
       .. 'Legende: ein Screenreader sagt dazu nichts.'))
 end
 
+-- Une figure numérotée (légende non vide) dont toutes les images sont déclarées décoratives
+-- (alt="") : la légende est lue, l'image ne l'est pas. Signalé dans l'aperçu et à la
+-- compilation ; le rendu ne change pas. Un signalement par fichier image.
+local FIGURES_DECORATIVES_SIGNALEES = {}
+
+local function constat_figure_decorative(src)
+  if FIGURES_DECORATIVES_SIGNALEES[src] then return end
+  FIGURES_DECORATIVES_SIGNALEES[src] = true
+  local nom = src:match('([^/\\]+)$') or src
+  local champ_unite = (LIVRE and 'chapitre « ' or 'article « ') .. slug_article() .. ' »'
+  commun.constat('numerotation', 'avertissement', 'figure-legendee-decorative',
+    { champ_unite, 'image « ' .. sans_barre(src) .. ' »' },
+    sans_barre('L’image ' .. nom .. ' a une légende mais est déclarée décorative\u{202F}: '
+      .. 'un lecteur d’écran lit la légende et rien de l’image.'),
+    sans_barre('Das Bild ' .. nom .. ' hat eine Legende, ist aber als dekorativ '
+      .. 'markiert: ein Screenreader liest die Legende und nichts vom Bild.'))
+end
+
+-- Signale chaque figure à légende dont toutes les images sont décoratives. L'alt est dans
+-- l'attribut alt= (aperçu) ou dans la description (PDF), comme dans la passe principale.
+local function signaler_figures_decoratives(blocs)
+  blocs:walk({
+    Figure = function(fig)
+      if a_classe(fig, CLASSE_CREDIT_SEUL) then return nil end
+      if vide(utils.stringify(fig.caption.long)) then return nil end
+      local sources, decoratives = {}, 0
+      fig.content:walk({
+        Image = function(img)
+          sources[#sources + 1] = img.src
+          if vide(img.attributes['alt'] or utils.stringify(img.caption)) then
+            decoratives = decoratives + 1
+          end
+        end,
+      })
+      if #sources > 0 and decoratives == #sources then
+        constat_figure_decorative(sources[1])
+      end
+      return nil
+    end,
+  })
+end
+
 -- Vrai si `img` n'a ni attribut alt ni légende. Les portraits ne sont pas concernés : ils
 -- sont ajoutés plus tard, par szh-auteurs.lua.
 local function figure_sans_alt(img)
@@ -612,6 +690,9 @@ function Pandoc(doc)
       return b
     end,
   })
+
+  -- Avant la passe principale, qui change les images décoratives en fond CSS.
+  signaler_figures_decoratives(doc.blocks)
 
   doc.blocks = doc.blocks:walk({
 
@@ -755,9 +836,24 @@ function Pandoc(doc)
     end,
   })
 
-  -- Le <style> des images décoratives, en fin de document.
+  if not LIVRE then doc.blocks = sortir_decors_seuls(doc.blocks) end
+
+  -- Le <style> des images décoratives. Article : dans le <head>, par header-includes, que
+  -- le gabarit écrit après les feuilles de style ; un <style> n'a pas sa place dans le
+  -- <body>. Chapitre de livre : en fin de document, le livre assemblant les corps seuls.
   local style = style_decors()
-  if style then doc.blocks:insert(style) end
+  if style and LIVRE then
+    doc.blocks:insert(style)
+  elseif style then
+    local entetes = doc.meta['header-includes']
+    if entetes == nil then
+      entetes = pandoc.MetaList({})
+    elseif pandoc.utils.type(entetes) ~= 'List' then
+      entetes = pandoc.MetaList({ entetes })
+    end
+    entetes:insert(pandoc.MetaBlocks({ style }))
+    doc.meta['header-includes'] = entetes
+  end
 
   -- Le style des encadrés de l'aperçu.
   if lecteur_ecran then

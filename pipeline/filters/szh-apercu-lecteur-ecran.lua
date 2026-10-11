@@ -31,6 +31,7 @@ local L = {
     vide         = 'vide',
     sans_alt     = "aucun texte alternatif saisi, et rien ne déclare l’image décorative",
     decor        = "image purement décorative : pas de texte alternatif, c’est voulu",
+    decor_legende = "figure à légende déclarée décorative : la légende est lue, rien de l’image",
     reprise      = 'reprend la légende',
     desc_absente = 'description longue non renseignée – elle est facultative',
     entetes      = 'en-têtes déclarés : %d',
@@ -43,6 +44,7 @@ local L = {
     vide         = 'leer',
     sans_alt     = 'kein Alternativtext erfasst, und nichts erklärt das Bild als dekorativ',
     decor        = 'rein dekoratives Bild: kein Alternativtext, so gewollt',
+    decor_legende = 'Abbildung mit Legende als dekorativ markiert: die Legende wird gelesen, nichts vom Bild',
     reprise      = 'übernimmt die Bildlegende',
     desc_absente = 'lange Beschreibung nicht erfasst – sie ist optional',
     entetes      = 'deklarierte Kopfzellen: %d',
@@ -55,6 +57,7 @@ local L = {
     vide         = 'vuoto',
     sans_alt     = "nessun testo alternativo inserito, e nulla dichiara l’immagine decorativa",
     decor        = 'immagine puramente decorativa: nessun testo alternativo, è voluto',
+    decor_legende = 'figura con didascalia dichiarata decorativa: si legge la didascalia, nulla dell’immagine',
     reprise      = 'ripete la didascalia',
     desc_absente = 'descrizione lunga non indicata – è facoltativa',
     entetes      = 'intestazioni dichiarate: %d',
@@ -67,6 +70,7 @@ local L = {
     vide         = 'empty',
     sans_alt     = 'no alternative text entered, and nothing declares the image decorative',
     decor        = 'purely decorative image: no alternative text, by design',
+    decor_legende = 'captioned figure declared decorative: the caption is read, nothing of the image',
     reprise      = 'repeats the caption',
     desc_absente = 'long description not provided — it is optional',
     entetes      = 'declared header cells: %d',
@@ -113,7 +117,10 @@ end
 -- ─── Images ──────────────────────────────────────────────────────────────────
 -- Quatre cas :
 --   alt="…"                  -> le texte que le lecteur d'écran énoncera ;
---   alt=""                   -> image décorative, voulue ;
+--   alt=""                   -> image décorative, voulue ; dans une figure à légende
+--                               (`legendee`), la note dit que la figure n'est pas décrite
+--                               (le constat figure-legendee-decorative de
+--                               szh-numerotation.lua le signale aussi) ;
 --   alt absent, une légende  -> la légende est reprise comme alt : une note le signale
 --                               (le lecteur d'écran l'entendra deux fois) ;
 --   alt absent, sans légende -> rien n'est lu : encadré rouge. C'est le cas que
@@ -123,11 +130,14 @@ end
 -- alt="" et alt absent ne se distinguent que sur l'AST intact : szh-numerotation.lua pose
 -- ensuite alt="" partout où l'alt manque. Ce module est donc appelé au tout début de son
 -- Pandoc(doc).
-local function encadre_image(img, l)
+local function encadre_image(img, l, legendee)
   local attr = img.attributes['alt']
   local legende = trim(utils.stringify(img.caption))
   if attr ~= nil and not vide(attr) then
     return encadre(l, { ligne(etiq('ALT=') .. ech(trim(attr))) }, false)
+  end
+  if attr ~= nil and legendee then
+    return encadre(l, { ligne(etiq('ALT=') .. absent(l)), ligne(note(l.decor_legende)) }, false)
   end
   if attr ~= nil then
     return encadre(l, { ligne(etiq('ALT=') .. absent(l)), ligne(note(l.decor)) }, false)
@@ -244,7 +254,8 @@ descendre = function(blocs, l)
   for _, b in ipairs(blocs) do
     if b.t == 'Figure' or b.t == 'Para' or b.t == 'Plain' then
       sortie:insert(b)
-      for _, img in ipairs(images_de(b)) do sortie:insert(encadre_image(img, l)) end
+      local legendee = b.t == 'Figure' and not vide(utils.stringify(b.caption.long))
+      for _, img in ipairs(images_de(b)) do sortie:insert(encadre_image(img, l, legendee)) end
     elseif b.t == 'Table' then
       sortie:insert(b)
       sortie:insert(encadre_table_ast(b, l))

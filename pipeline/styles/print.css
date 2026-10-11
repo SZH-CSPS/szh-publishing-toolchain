@@ -609,12 +609,14 @@ blockquote p:last-child { margin-bottom: 0; }
   background: var(--annual-soft); border-left: 4px solid var(--c-annual);
   padding: 15px 18px; margin: 1.2em 0; break-inside: avoid;
 }
-.important::before {
-  content: "Information"; display: block;
+/* Titre d'un encadré .important ou .question : un <p> posé dans le texte par
+   filters/szh-encadres.lua, donc lu par un lecteur d'écran et balisé /P. Deux classes,
+   pour l'emporter sur `.question > *`. */
+.important > .szh-encadre-titre, .question > .szh-encadre-titre {
+  margin: 0 0 5px; text-align: left; hyphens: manual;
   text-transform: uppercase; letter-spacing: 0.12em;
-  font-size: 9.5px; font-weight: 800; color: #000000; margin-bottom: 5px;
+  font-size: 9.5px; font-weight: 800; color: #000000;
 }
-.important[data-titre]::before { content: attr(data-titre); }
 .important > *:not(:first-child) { text-align: justify; }
 .important > *:last-child { margin-bottom: 0; }
 
@@ -623,7 +625,8 @@ blockquote p:last-child { margin-bottom: 0; }
    réponse qui suit, comme un titre.
    `break-after: avoid-page` garde la question avec sa réponse : vérifié sur une page de
    hauteur variable, WeasyPrint l'honore ici (alors qu'il l'ignore sur `figcaption`, voir
-   `img`). */
+   `img`). Un data-titre devient un titre composé comme celui de .important
+   (.szh-encadre-titre, plus haut). */
 .question {
   margin: 1.5em 0 0.6em;
   break-inside: avoid;
@@ -660,6 +663,11 @@ figure > figcaption { font-size: 0.85rem; color: #444; margin-bottom: 0.5em; tex
    collés et se lisent comme un bloc. */
 figure > figcaption.szh-credit-seul { margin: 0.1em 0 0; line-height: 1.3; }
 figure > figcaption.szh-credit-seul + .szh-bloc-note { margin-top: 0.1em; }
+
+/* Image décorative seule dans son paragraphe : szh-numerotation.lua la pose dans un <div>
+   et non un <p>, qui serait un /P sans texte. Les marges sont celles d'un `p` (§4). */
+.szh-decor-seul { margin: 0 0 0.7em; }
+.szh-decor-seul:last-child { margin-bottom: 0; }
 
 /* Images, légendes et notes s'alignent à gauche, sur la marge (`figure`, ci-dessus). */
 
@@ -929,3 +937,39 @@ table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: 
 
 /* L'icône-lien ORCID (a.szh-orcid) et l'image décorative (.szh-decor) sont mises en forme
    dans styles/partage-filtres.css. */
+
+/* ═══ 9. Écran (galley HTML) ══════════════════════════════════════════════════
+   Le HTML autonome est aussi lu dans un navigateur. Ces règles ne valent qu'à l'écran :
+   WeasyPrint n'applique pas @media screen, le PDF n'en est pas changé. Les tailles sont en
+   rem, pour suivre la taille de texte choisie par la lectrice. Une requête de largeur est
+   imbriquée dans un « @media screen » nu, comme dans partage-filtres.css. */
+@media screen {
+  /* Colonne de lecture centrée, avec une marge sur les côtés ; corps à 16 px. */
+  body { max-width: 46rem; margin: 0 auto; padding: 0 1rem 2rem; font-size: 1rem; }
+  /* En-tête et pied courants : répétés par le hero, et masqués aux lecteurs d'écran. */
+  .szh-entete-courante, .szh-pied-courant { display: none; }
+  /* Hero et filet dans la colonne : les marges négatives valent celles de la page A4. La
+     hauteur suit le contenu, et rien n'est rogné. */
+  .szh-hero {
+    margin: 0 -1rem; height: auto; min-height: 0; padding: 1.5rem 1rem 1.5rem;
+  }
+  .szh-filet { margin: 0 -1rem; }
+  .szh-hero-top { flex-wrap: wrap; }
+  .szh-hero-vol { white-space: normal; text-align: left; }
+  .szh-hero-main { max-width: none; max-height: none; overflow: visible; padding-bottom: 0; }
+  .szh-hero-meta { position: static; max-width: none; margin-top: 1rem; }
+  /* Le filigrane passe sous le texte du hero, qui le recouvrait à moins de 800 px. */
+  .szh-book { z-index: 0; }
+  .szh-hero > :not(.szh-book) { position: relative; z-index: 1; }
+  /* Petits corps de l'A4 (9 à 10 px) portés à 12 ou 13 px. */
+  .szh-note, .szh-kw { font-size: 0.8125rem; }
+  .szh-hero-eyebrow, .szh-hero-dossier, .szh-hero-vol, .szh-abstract-label,
+  .important > .szh-encadre-titre, .question > .szh-encadre-titre { font-size: 0.75rem; }
+  .szh-licence { font-size: 0.8125rem; }
+  /* `body` : l'emporte sur partage-filtres.css, chargée après cette feuille. */
+  body figure > figcaption .szh-credit, body table > caption .szh-credit { font-size: 0.75rem; }
+  /* Colonne étroite : fer à gauche, la justification y ouvrirait de grands blancs. */
+  @media (max-width: 34rem) {
+    p, li, .szh-abstract p, blockquote p, .important > *:not(:first-child) { text-align: left; }
+  }
+}
