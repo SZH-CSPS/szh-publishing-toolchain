@@ -56,6 +56,12 @@ Dans `_build_box_tree()` :
   anonyme du texte reste le `/LBody` ; une sous-liste ou un bloc qui vient avant tout texte
   en fait créer un. Le texte qui suit la sous-liste dans l'item reste dans le même `/LBody`
   (en `/NonStruct`, comme le fait déjà la 70.0 pour une boîte anonyme sous un `/LBody`) ;
+- avec une puce dans la ligne (`list-style-position: inside`, ou un `::marker` mis en
+  ligne), WeasyPrint ne crée pas de boîte anonyme : les boîtes de texte de l'item sont des
+  enfants directs de sa ligne, entre ses éléments en ligne. Elles vont elles aussi dans le
+  `/LBody`, qui reçoit donc tout le contenu de l'item hors de sa puce, dans l'ordre de la
+  ligne : `<li>Q01 <em>Q02</em> Q03 <a>Q04</a> Q05</li>` se lit Q01 à Q05. Laisser le texte
+  sous le `/LI` et les éléments en ligne dans le `/LBody` le faisait lire Q01 Q02 Q04 Q03 Q05 ;
 - dans un `/L`, les `dt` et `dd` qui se suivent partagent un `/LI` : chaque `dt` y est un
   `/Lbl`, chaque `dd` un `/LBody`. Un `dt` qui suit un `dd` ouvre un nouveau `/LI`, un `dd`
   sans terme forme un `/LI` sans `/Lbl`. Plusieurs définitions d'un terme donnent plusieurs
@@ -69,7 +75,9 @@ Dans `_build_box_tree()` :
 Hors de portée : une liste coupée par la page reste deux `/L`. WeasyPrint bâtit un arbre par
 page ; les réunir demande de fusionner aussi les blocs qui les contiennent, et de réécrire
 les MCID directs et l'arbre parent : c'est la limite générale du bloc coupé, pas celle des
-listes.
+listes. Une puce dans la ligne d'un item qui contient aussi un bloc (sous-liste, paragraphe)
+est dessinée dans le bloc anonyme qui enveloppe cette ligne : son `/Lbl` reste au début du
+`/LBody`, comme sans le correctif.
 
 ## Recommandation
 
@@ -89,16 +97,21 @@ wsl.exe -d SZH-Publishing -- bash /mnt/c/Users/robin/Documents/Prog/szh-publishi
 
 HTML : `listes.html` : sous-liste entre deux textes d'un item, item à paragraphe suivi d'une
 sous-liste, item réduit à une sous-liste, `<dl>` à un terme et une définition, à deux
-définitions, à deux termes.
+définitions, à deux termes, item à puce dans la ligne avec `em` et lien.
 
 Sortie du 11.10.2026, résumée : nu, veraPDF ua1 FAIL (7.2-20, le `/P` sous le `/LI`), les
 sous-listes enfants du `/L` parent, la `<dl>` en huit `/LI` sans `/Lbl`. Patché, PASS ;
 chaque sous-liste dans le `/LBody` de son item, la `<dl>` en trois `/LI` :
-`Lbl LBody`, `Lbl LBody LBody`, `Lbl Lbl LBody`.
+`Lbl LBody`, `Lbl LBody LBody`, `Lbl Lbl LBody` ; l'item à puce dans la ligne en
+`Lbl LBody`, son texte, son `em` et son lien dans l'ordre sous le `/LBody`. Nu, veraPDF
+compte deux échecs 7.2-20 (dont le texte de cet item sous le `/LI`).
 
 Sur le corpus d'essai de Pronto (trois articles, deux livres, 50 pages), compilé avec les
 douze correctifs puis avec les quatorze : 0 page différente au pixel, veraPDF ua1 sans
 échec ; les six sous-listes des deux articles (trois chacun) sont dans leur `/LBody`, et
 les deux `<dl>` font chacune deux `/LI` à `/Lbl` et `/LBody` au lieu de quatre `/LI`.
+
+Cas de `test/weasyprint-patch-check.py` : `t-listes` et `t-liste-en-ligne` (puce dans la
+ligne, texte, `em`, texte, lien, texte dans cet ordre sous le `/LBody`).
 
 Texte de pull request, test pytest compris : `PR.md`.

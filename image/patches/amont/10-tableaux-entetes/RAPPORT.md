@@ -73,6 +73,12 @@ lignes (`rowspan`, pour `scope="row"` ou `rowgroup`) qu'il couvre, lit l'attribu
 `headers` quand il désigne des `th` du tableau, et retire les doublons. Une vingtaine de
 lignes, dans une seule fonction.
 
+`_get_rows()` rend tout enfant d'un élément `tr`, cellule ou non. Un `th` ou un `td` en
+`display: block` (ou un `tr` en bloc) n'est pas une cellule de la grille et n'a pas de
+`grid_x` : il est ignoré, sans `/ID` ni `/Headers`, comme une cellule qui n'en a pas. Le lire
+sans précaution levait `AttributeError` dans `add_tags`, et Pronto (`weasy_ua`) retombait
+alors sur un PDF non balisé. Cas `u-tableau-bloc` de `test/weasyprint-patch-check.py`.
+
 ## Recommandation
 
 - **Le proposer en amont**, par une issue avec l'exemple, et proposer le

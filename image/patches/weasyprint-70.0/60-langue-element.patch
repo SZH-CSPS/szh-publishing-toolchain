@@ -7,29 +7,44 @@ sans ligne de contexte commune). Pour le désactiver : .patch.off.
 weasyprint/pdf/tags.py, _build_box_tree. WeasyPrint écrivait la langue de <html lang> en
 /Lang du catalogue, jamais sur un élément de structure : un résumé allemand dans un article
 français, une citation anglaise ou un [mot]{lang=en} de pandoc étaient lus avec la voix du
-document (PDF/UA-1 7.2, Matterhorn 11-006, WCAG 3.1.2). Désormais, l'élément dont le style
+document (PDF/UA-1 7.2, Matterhorn 11-007, WCAG 3.1.2). Désormais, l'élément dont le style
 porte une langue différente de celle de son parent (propriété interne lang, tirée de
 l'attribut HTML lang, celle qui règle déjà la césure) reçoit /Lang avec cette valeur, telle
 qu'écrite dans le HTML. Ses descendants, boîtes anonymes et pseudo-éléments compris,
 héritent de la même langue et n'en reçoivent pas. Un élément en ligne (<span lang>) est un
 /Span et le reçoit aussi.
+Une valeur qui n'a pas la forme d'une étiquette BCP 47 (sous-étiquettes ASCII de 1 à 8
+lettres ou chiffres séparées par « - », la première alphabétique) n'est pas écrite : un
+avertissement est journalisé et l'élément garde la langue de son parent. Recopiée, « en_US »
+ou un texte libre ferait échouer veraPDF (7.2-29). lang="" n'écrit rien non plus :
+WeasyPrint l'ignore déjà pour la césure, et le contenu garde la langue de son parent. Une
+/Lang vide, qui dirait « langue inconnue », est refusée par veraPDF ua1 (7.2-29, mesuré).
 Hors de portée : xml:lang (WeasyPrint ne lit que lang, comme un navigateur pour du HTML),
 et lang posé sur <body> ou sur <table>, qui n'ont pas d'élément de structure à eux (body)
 ou passent par une enveloppe anonyme (table) : leurs descendants n'en reçoivent pas.
-Rendu identique au pixel ; cas o-langue de test/weasyprint-patch-check.py.
+Rendu identique au pixel ; cas o-langue et w-langue-invalide de
+test/weasyprint-patch-check.py.
 
 --- a/weasyprint/pdf/tags.py
 +++ b/weasyprint/pdf/tags.py
-@@ -195,6 +195,13 @@
+@@ -195,6 +195,21 @@
      })
      pdf.add_object(element)
  
 +    # SZH : un élément dont l'attribut lang change la langue héritée la déclare en /Lang
 +    # (PDF/UA-1 7.2). Ses descendants en héritent dans l'arbre : on ne la répète pas.
++    # Une valeur qui n'a pas la forme d'une étiquette BCP 47 (« en_US ») n'est pas
++    # recopiée : l'élément garde la langue de son parent.
 +    lang = box.style['lang']
 +    if lang and box.style.parent_style is not None and (
 +            lang != box.style.parent_style['lang']):
-+        element['Lang'] = pydyf.String(lang)
++        subtags = lang.split('-')
++        if subtags[0].isalpha() and all(
++                subtag.isascii() and subtag.isalnum() and len(subtag) <= 8
++                for subtag in subtags):
++            element['Lang'] = pydyf.String(lang)
++        else:
++            LOGGER.warning('Invalid language tag "%s" not set in PDF tags', lang)
 +
      # Handle special cases.
      if tag == 'Figure':

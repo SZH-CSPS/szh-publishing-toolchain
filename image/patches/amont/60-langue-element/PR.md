@@ -31,13 +31,15 @@ No `/Lang` is set in the structure tree. veraPDF doesn't report it, as it can't 
 
 In `_build_box_tree()`, the structure element gets a `/Lang` entry when the computed `lang` of its box differs from the `lang` of its parent style. The value is the `lang` attribute as written in HTML, the same string as the catalog `/Lang`. Descendants with the same language don't get `/Lang`, as they inherit it from the structure tree; anonymous boxes and pseudo-elements have their parent's language and don't get it either.
 
+The value is only written when it has the syntax of a BCP 47 language tag: ASCII subtags of 1 to 8 letters or digits separated by hyphens, the first one made of letters. Otherwise (`en_US`, free text, `fr-`), nothing is written, a warning is logged and the element keeps the language of its parent: copied as is, such a value makes veraPDF report a PDF/UA-1 failure (7.2-29, "not a Language-Tag") on a document that passes without the change. An empty `lang=""` sets nothing either: an empty `/Lang` would mean "unknown language" in ISO 32000-1, but veraPDF reports it with the same rule, and WeasyPrint already ignores `lang=""` for hyphenation.
+
 The `lang` property is already computed and inherited for hyphenation, so the change is limited to a few lines.
 
 Not covered: `lang` on `<body>` (no structure element of its own) and on `<table>` (the `/Table` element is created for the anonymous table wrapper, which has the language of its parent).
 
 ## Spec references
 
-- ISO 14289-1:2014 (PDF/UA-1), 7.2: changes of natural language in the content must be declared.
+- ISO 14289-1:2014 (PDF/UA-1), 7.2: changes of natural language in the content must be declared, with a language identifier (RFC 3066, now BCP 47).
 - ISO 32000-1:2008, 14.9.2 (Natural Language Specification): the `Lang` entry of a structure element dictionary (table 323) sets the language of its content, inherited by its children.
 - WCAG 2.2, success criterion 3.1.2 (Language of Parts).
 
@@ -62,28 +64,12 @@ The rendering is unchanged: identical pixels at 150 and 300 dpi (pypdfium2), and
 
 ## Tests
 
-New test in `tests/test_pdf.py`, failing before the change and passing after. The full test suite and `ruff check` give the same results as before.
+New tests in `tests/test_pdf.py` (languages of elements, invalid and empty values), failing before the change and passing after. The full test suite and `ruff check` give the same results as before.
 
 ```diff
---- a/weasyprint/pdf/tags.py
-+++ b/weasyprint/pdf/tags.py
-@@ -195,6 +195,13 @@
-     })
-     pdf.add_object(element)
- 
-+    # Set language when it differs from the inherited one. Descendants
-+    # inherit it from the structure tree.
-+    lang = box.style['lang']
-+    if lang and box.style.parent_style is not None and (
-+            lang != box.style.parent_style['lang']):
-+        element['Lang'] = pydyf.String(lang)
-+
-     # Handle special cases.
-     if tag == 'Figure':
-         # Add extra data for images.
 --- a/tests/test_pdf.py
 +++ b/tests/test_pdf.py
-@@ -859,6 +859,22 @@
+@@ -859,6 +859,37 @@
      assert f'[({id}-4-0) ({id}-0-1) ({id}-0-2) ({id}-0-3)]'.encode() in pdf
  
  
@@ -103,7 +89,45 @@ New test in `tests/test_pdf.py`, failing before the change and passing after. Th
 +    assert tags == [(b'Span', b'fr'), (b'Sect', b'de'), (b'Span', b'en')]
 +
 +
++def test_pdf_tags_lang_invalid():
++    with capture_logs() as logs:
++        pdf = FakeHTML(string='''
++          <html lang="en">
++            <p><span lang="en_US">a</span> <span lang="">b</span>
++            <span lang="fr-CH">c</span></p>
++          </html>
++        ''').write_pdf(pdf_tags=True)
++    # Invalid language tags are ignored, empty ones are not set.
++    tags = re.findall(rb'/S /(\w+)[^>]*?/Lang \(([^)]*)\)', pdf)
++    assert tags == [(b'Span', b'fr-CH')]
++    assert len(logs) == 1
++    assert 'en_US' in logs[0]
++
++
  @pytest.mark.parametrize(('html', 'fields'), [
      ('<input>', ['/Tx', '/V ()']),
      ('<input value="">', ['/Tx', '/V ()']),
+--- a/weasyprint/pdf/tags.py
++++ b/weasyprint/pdf/tags.py
+@@ -195,6 +195,20 @@
+     })
+     pdf.add_object(element)
+ 
++    # Set language when it differs from the inherited one and is a
++    # well-formed language tag. Descendants inherit it from the structure
++    # tree.
++    lang = box.style['lang']
++    if lang and box.style.parent_style is not None and (
++            lang != box.style.parent_style['lang']):
++        subtags = lang.split('-')
++        if subtags[0].isalpha() and all(
++                subtag.isascii() and subtag.isalnum() and len(subtag) <= 8
++                for subtag in subtags):
++            element['Lang'] = pydyf.String(lang)
++        else:
++            LOGGER.warning('Invalid language tag "%s" not set in PDF tags', lang)
++
+     # Handle special cases.
+     if tag == 'Figure':
+         # Add extra data for images.
 ```

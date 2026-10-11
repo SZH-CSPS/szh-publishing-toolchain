@@ -11,13 +11,18 @@ perdu. Un <li> qui contient un bloc (<li><p>) recevait ce /P directement sous le
 un /LI à part, sans /Lbl (PDF/UA-1 7.6, ISO 32000-1 tableau 336). Désormais :
 - tout ce que contient un /LI hors de son marqueur va dans son /LBody, créé au besoin :
   la sous-liste est un /L enfant du /LBody, après le texte de l'item, et le texte qui la
-  suit dans l'item reste dans le même /LBody (technique L_05 de la PDF Association) ;
+  suit dans l'item reste dans le même /LBody (technique L_05 de la PDF Association). Avec
+  une puce dans la ligne (list-style-position: inside), le texte de l'item va aussi dans
+  le /LBody, avec les éléments en ligne qui l'entourent, dans l'ordre de la ligne ;
 - dans une <dl>, un /LI regroupe un ou plusieurs termes <dt>, chacun un /Lbl, et la ou
   les définitions <dd> qui les suivent, chacune un /LBody ; un <dt> qui suit un <dd>
   ouvre un nouveau /LI, un <dd> sans terme forme un /LI sans /Lbl. Aucun /ListNumbering :
   sa valeur par défaut, /None, est celle d'une liste de définition (technique L_14).
-Une liste coupée par la page reste deux /L : WeasyPrint bâtit un arbre par page.
-Rendu identique au pixel ; cas t-listes de test/weasyprint-patch-check.py.
+Une liste coupée par la page reste deux /L : WeasyPrint bâtit un arbre par page. Une puce
+dans la ligne d'un item qui contient aussi un bloc (sous-liste, paragraphe) est dans le
+bloc anonyme qui enveloppe cette ligne : son /Lbl reste alors au début du /LBody.
+Rendu identique au pixel ; cas t-listes et t-liste-en-ligne de
+test/weasyprint-patch-check.py.
 
 --- a/weasyprint/pdf/tags.py
 +++ b/weasyprint/pdf/tags.py
@@ -68,7 +73,29 @@ Rendu identique au pixel ; cas t-listes de test/weasyprint-patch-check.py.
      for child in box.children:
          children = child.children if isinstance(child, boxes.LineBox) else [child]
          for child in children:
-@@ -292,20 +307,35 @@
+@@ -280,32 +295,55 @@
+                     element['K'].append(kid['mcid'])
+                     nums[kid['mcid']] = element.reference
+                 else:
++                    # SZH : le texte d'un item à marqueur en ligne va dans son /LBody,
++                    # avec les éléments qui l'entourent, dans l'ordre de la ligne.
++                    text_parent = element
++                    if element['S'] == '/LI':
++                        if body is None:
++                            body = _new_element('LBody', element, pdf, page_number)
++                            element['K'].append(body.reference)
++                        text_parent = body
+                     kid_element = pydyf.Dictionary({
+                         'Type': '/StructElem',
+                         'S': f'/{kid["tag"]}',
+                         'K': pydyf.Array([kid['mcid']]),
+                         'Pg': pdf.page_references[page_number],
+-                        'P': element.reference,
++                        'P': text_parent.reference,
+                     })
+                     pdf.add_object(kid_element)
+-                    element['K'].append(kid_element.reference)
++                    text_parent['K'].append(kid_element.reference)
                      nums[kid['mcid']] = kid_element.reference
              else:
                  # Recursively build tree for child.

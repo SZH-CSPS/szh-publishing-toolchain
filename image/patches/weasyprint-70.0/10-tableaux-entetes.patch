@@ -13,29 +13,35 @@ perdait son en-tête de ligne et recevait celui de la colonne voisine. Mesuré s
 Le correctif reprend la position de grille déjà calculée par formatting_structure/build.py
 (cell.grid_x), inscrit le th sur toutes les colonnes ou lignes qu'il couvre, retire les
 doublons et, quand une cellule porte l'attribut HTML `headers` qui désigne des th du
-tableau, s'en sert en priorité.
+tableau, s'en sert en priorité. Un th ou un td qui n'est pas une cellule de la grille
+(tr ou th en display: block) n'a pas de grid_x : il est ignoré, sans /ID ni /Headers.
 Preuve : veraPDF PDF/UA-1 passe de 7.5-1 en échec à PASS sur les tableaux colspan et
-rowspan de image/patches/amont/10-tableaux-entetes/demo/ ; cas a-colspan, d-rowspan et
-c-headers de test/weasyprint-patch-check.py, /Headers relus cellule par cellule.
+rowspan de image/patches/amont/10-tableaux-entetes/demo/ ; cas a-colspan, d-rowspan,
+c-headers et u-tableau-bloc de test/weasyprint-patch-check.py, /Headers relus cellule par
+cellule.
 
 --- a/weasyprint/pdf/tags.py
 +++ b/weasyprint/pdf/tags.py
-@@ -326,42 +326,49 @@
+@@ -326,42 +326,55 @@
          rows = tuple(_get_rows(box))
  
          # Find column and row headers.
 -        colspans = defaultdict(int)
-+        # SZH : un en-tête est inscrit sur TOUTES les colonnes (colspan) ou lignes
++        # SZH : un en-tête est inscrit sur toutes les colonnes (colspan) ou lignes
 +        # (rowspan) qu'il couvre, à la position de grille déjà calculée par
 +        # formatting_structure/build.py (cell.grid_x), et non plus à sa seule colonne de
 +        # départ : un th colspan=2 laissait sa seconde colonne sans /Headers (PDF/UA
 +        # 7.5-1). Les th qui portent un id HTML sont retenus pour l'attribut `headers`.
++        # Un th ou un td qui n'est pas une cellule de grille (display: block, par
++        # exemple) n'a pas de grid_x : il est ignoré.
 +        header_ids = {}
          for i, row in enumerate(rows):
 -            j = 0
              for cell in row.children:
++                j = getattr(cell, 'grid_x', None)
++                if j is None or not hasattr(cell, 'mark'):
++                    continue
                  if cell.element is not None and cell.element_tag == 'th':
-+                    j = cell.grid_x
                      key = pydyf.String(f'{element.number}-{i}-{j}')
                      cell.mark['ID'] = key
 -                    if cell.element.attrib.get('scope') == 'row':
@@ -63,6 +69,9 @@ c-headers de test/weasyprint-patch-check.py, /Headers relus cellule par cellule.
          for i, row in enumerate(rows):
 -            j = 0
              for cell in row.children:
++                j = getattr(cell, 'grid_x', None)
++                if j is None or not hasattr(cell, 'mark'):
++                    continue
                  if cell.element is not None and cell.element_tag == 'td':
                      headers = [
 -                        header for span in range(cell.rowspan)
@@ -81,7 +90,6 @@ c-headers de test/weasyprint-patch-check.py, /Headers relus cellule par cellule.
 +                        for token in cell.element.attrib.get('headers', '').split()
 +                        if token in header_ids]
 +                    if not headers:
-+                        j = cell.grid_x
 +                        headers = [
 +                            header for span in range(cell.rowspan)
 +                            for header in row_headers[i + span]]

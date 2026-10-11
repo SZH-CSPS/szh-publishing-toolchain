@@ -40,13 +40,28 @@ pose `/Lang`.
 
 ## Notre correctif
 
-Six lignes dans `_build_box_tree()`, juste après la création de l'élément : si
+Une douzaine de lignes dans `_build_box_tree()`, juste après la création de l'élément : si
 `box.style['lang']` est posé et diffère de `box.style.parent_style['lang']`, l'élément
 reçoit `/Lang` avec cette valeur, telle qu'écrite dans le HTML (balise BCP 47, la même
 chaîne que le `/Lang` du catalogue). Les descendants de même langue n'en reçoivent pas : ils
 en héritent dans l'arbre (ISO 32000-1, 14.9.2.1). Les boîtes anonymes et les pseudo-éléments
 ont la langue de leur parent et n'en reçoivent pas non plus. Un `<span lang>` est un `/Span`
 et reçoit `/Lang` comme un bloc.
+
+La valeur n'est écrite que si elle a la forme d'une étiquette de langue BCP 47 : des
+sous-étiquettes ASCII de 1 à 8 lettres ou chiffres, séparées par « - », la première faite de
+lettres (« de », « fr-CH », « EN-gb », « zh-Hant-TW »). Sinon (« en_US », « nimporte
+quoi », « fr- »), rien n'est écrit, un avertissement est journalisé (`Invalid language tag
+"en_US" not set in PDF tags`) et l'élément garde la langue de son parent. Recopiée, une telle
+valeur fait échouer veraPDF ua1 (7.2-29, « not a Language-Tag ») là où le PDF passait sans
+le correctif : une faute de frappe dans un `[mot]{lang=…}` de pandoc rendait le PDF non
+conforme. Le contrôle est syntaxique : une étiquette bien formée mais inconnue (« xx ») est
+écrite.
+
+`lang=""` ne produit rien non plus. HTML lui donne le sens « langue inconnue » ; ISO
+32000-1 aussi pour une `/Lang` vide, mais veraPDF ua1 la refuse (7.2-29, mesuré sur un
+`/Span` dont le `/Lang` a été vidé). WeasyPrint ignore déjà `lang=""` pour la césure : le
+passage garde la langue de son parent, dans le PDF comme dans la mise en page.
 
 Ce que le correctif ne couvre pas :
 
@@ -72,14 +87,18 @@ wsl.exe -d SZH-Publishing -- bash /mnt/c/Users/robin/Documents/Prog/szh-publishi
 ```
 
 HTML : `langue-element.html` (`lang="en"`, un `span` français, une `section` allemande qui
-contient un `span` anglais, une citation française, un `span lang="en"` redondant).
+contient un `span` anglais, une citation française, un `span lang="en"` redondant, un
+`lang="en_US"` et un `lang=""`).
 
 Sortie du 11.10.2026, résumée : veraPDF ua1 PASS avant comme après. Nu, aucun `/Lang` dans
 l'arbre. Patché : `/Span Lang='fr'` (bricolage), `/Sect Lang='de'` (sans `/Lang` sur son
 `/H2` ni son `/P`), `/Span Lang='en'` dans la section allemande (mindset),
-`/BlockQuote Lang='fr'` ; le `span lang="en"` redondant n'en reçoit pas.
+`/BlockQuote Lang='fr'` ; le `span lang="en"` redondant n'en reçoit pas, ni les `span`
+à `lang="en_US"` et `lang=""` (un avertissement pour « en_US »).
 
-Texte de pull request, test pytest compris : `PR.md`.
+Texte de pull request, test pytest compris : `PR.md`. Cas de
+`test/weasyprint-patch-check.py` : `o-langue` et `w-langue-invalide` (« en_US », texte
+libre, `lang=""` sans `/Lang`, « EN-gb » écrit ; veraPDF sans échec).
 
 Sur le corpus d'essai de Pronto (trois articles, un livre), compilé avec les dix correctifs
 puis sans les correctifs 60 et 65 : veraPDF ua1 sans échec, 40 pages identiques au pixel.

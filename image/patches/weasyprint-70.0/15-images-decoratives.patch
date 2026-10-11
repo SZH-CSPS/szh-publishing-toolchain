@@ -12,9 +12,12 @@ Désormais, une image déclarée décorative — alt="" ET role="presentation" (
 DEUX — est peinte dans /Artifact BMC (Stream.artifact(), déjà là pour les ombres) et
 _build_box_tree ne lui crée pas d'élément. alt="" seul reste une /Figure signalée comme
 avant : l'import l'écrit pour toute image sans description, ce n'est pas une décision.
+Dans un lien, l'annotation propre à l'image décorative est rattachée au /Link qui la
+contient (/OBJR et /StructParent).
 Preuve : rendu inchangé, l'image reste peinte ; veraPDF PDF/UA-1 passe de 7.3-1 en échec à
-PASS sur image/patches/amont/15-images-decoratives/demo/ ; cas e-decor, e-decor-seul et
-f-alt-vide-seul (qui doit rester en échec 7.3-1) de test/weasyprint-patch-check.py.
+PASS sur image/patches/amont/15-images-decoratives/demo/ ; cas e-decor, e-decor-seul,
+v-decor-lien et f-alt-vide-seul (qui doit rester en échec 7.3-1) de
+test/weasyprint-patch-check.py.
 
 --- a/weasyprint/pdf/stream.py
 +++ b/weasyprint/pdf/stream.py
@@ -64,13 +67,23 @@ f-alt-vide-seul (qui doit rester en échec 7.3-1) de test/weasyprint-patch-check
  
  
  def add_tags(pdf, document, pdf_version, page_streams):
-@@ -130,6 +131,11 @@
+@@ -130,6 +131,21 @@
      if isinstance(box, AbsolutePlaceholder):
          box = box._box
  
 +    # SZH : une image décorative déclarée est peinte en artefact (Stream.marked) et n'a
 +    # donc ni MCID ni place dans l'arbre : pas de /Figure sans /Alt (PDF/UA 7.3-1).
++    # Dans un lien, son annotation reste rattachée à l'élément parent, le /Link.
 +    if isinstance(box, boxes.ReplacedBox) and is_decorative_image(box):
++        if box.link_annotation:
++            object_reference = pydyf.Dictionary({
++                'Type': '/OBJR',
++                'Obj': box.link_annotation.reference,
++                'Pg': pdf.page_references[page_number],
++            })
++            pdf.add_object(object_reference)
++            annotations.append((parent.reference, box.link_annotation))
++            parent['K'].append(object_reference.reference)
 +        return
 +
      element_tag = None if box.element is None else box.element_tag

@@ -42,7 +42,7 @@ About nested lists, #2874 chose to keep the nested `/L` as a direct child of the
 
 In `_build_box_tree()`:
 
-- every child of a `/LI` other than its marker goes into the `/LBody` of the item. The anonymous box of the item text stays the `/LBody`; a nested list or a block that comes before any text creates one. Text after a nested list stays in the same `/LBody`;
+- every child of a `/LI` other than its marker goes into the `/LBody` of the item. The anonymous box of the item text stays the `/LBody`; a nested list or a block that comes before any text creates one. Text after a nested list stays in the same `/LBody`. With an inline marker (`list-style-position: inside`), there's no anonymous box and the text boxes are direct children of the item line, between its inline elements: they go into the `/LBody` too, so that `<li>a <em>b</em> c</li>` is read in order, and not as "a b" then "c" after the other inline elements;
 - in a `/L`, consecutive `dt` and `dd` share a `/LI`: each `dt` is a `/Lbl`, each `dd` a `/LBody`. A `dt` after a `dd` starts a new `/LI`, and a `dd` without term gives a `/LI` without `/Lbl`. Several definitions give several `/LBody`, several terms several `/Lbl`, as table 336 allows "one or more labels (Lbl) or list bodies (LBody) or both";
 - the nested list is still built after the text of its item, so the order fixed by #2879 is kept, and `test_pdf_tags_nested_lists_order` still passes.
 
@@ -90,9 +90,47 @@ veraPDF `--flavour ua1`: FAIL before (7.2-20), PASS after. Identical pixels at 1
 
 ## Tests
 
-New test in `tests/test_pdf.py`, failing before the change and passing after. The full test suite and `ruff check` give the same results as before.
+New test in `tests/test_pdf.py` (nested list, paragraph in a list item, definition list, list item with an inline marker), failing before the change and passing after. The full test suite and `ruff check` give the same results as before.
 
 ```diff
+--- a/tests/test_pdf.py
++++ b/tests/test_pdf.py
+@@ -859,6 +859,35 @@
+     assert f'[({id}-4-0) ({id}-0-1) ({id}-0-2) ({id}-0-3)]'.encode() in pdf
+ 
+ 
++@assert_no_logs
++def test_pdf_tags_nested_and_definition_lists():
++    pdf = FakeHTML(string='''
++      <html lang="en">
++        <ul><li>a<ul><li>b</li></ul>c</li></ul>
++        <ol><li><p>d</p></li></ol>
++        <dl><dt>e</dt><dd>f</dd><dd>g</dd><dt>h</dt><dt>i</dt><dd>j</dd></dl>
++        <ul style="list-style-position: inside"><li>k <em>l</em> m</li></ul>
++      </html>
++    ''').write_pdf(pdf_tags=True)
++    tags = dict(re.findall(rb'(\d+) 0 obj\n<</Type /StructElem/S /(\w+)', pdf))
++    children = {}
++    for tag, kids in re.findall(rb'/S /(\w+)/K \[([^\]]*)\]', pdf):
++        children.setdefault(tag, []).append(
++            [tags.get(number) for number in re.findall(rb'(\d+) 0 R', kids)])
++    for kids in children[b'L']:
++        assert set(kids) == {b'LI'}
++    for kids in children[b'LI']:
++        assert set(kids) <= {b'Lbl', b'LBody'}
++    # Nested list and paragraph in list item bodies.
++    assert [b'Span', b'L', b'NonStruct'] in children[b'LBody']
++    assert [b'P'] in children[b'LBody']
++    # Terms and definitions grouped in list items.
++    assert [b'Lbl', b'LBody', b'LBody'] in children[b'LI']
++    assert [b'Lbl', b'Lbl', b'LBody'] in children[b'LI']
++    # Text of list items with inline markers in order in the body.
++    assert [b'Span', b'NonStruct', b'Span'] in children[b'LBody']
++
++
+ @pytest.mark.parametrize(('html', 'fields'), [
+     ('<input>', ['/Tx', '/V ()']),
+     ('<input value="">', ['/Tx', '/V ()']),
 --- a/weasyprint/pdf/tags.py
 +++ b/weasyprint/pdf/tags.py
 @@ -123,6 +123,19 @@
@@ -142,7 +180,29 @@ New test in `tests/test_pdf.py`, failing before the change and passing after. Th
      for child in box.children:
          children = child.children if isinstance(child, boxes.LineBox) else [child]
          for child in children:
-@@ -292,20 +307,35 @@
+@@ -280,32 +295,55 @@
+                     element['K'].append(kid['mcid'])
+                     nums[kid['mcid']] = element.reference
+                 else:
++                    # Put text of list items with inline markers in their
++                    # body, with the inline elements around it.
++                    text_parent = element
++                    if element['S'] == '/LI':
++                        if body is None:
++                            body = _new_element('LBody', element, pdf, page_number)
++                            element['K'].append(body.reference)
++                        text_parent = body
+                     kid_element = pydyf.Dictionary({
+                         'Type': '/StructElem',
+                         'S': f'/{kid["tag"]}',
+                         'K': pydyf.Array([kid['mcid']]),
+                         'Pg': pdf.page_references[page_number],
+-                        'P': element.reference,
++                        'P': text_parent.reference,
+                     })
+                     pdf.add_object(kid_element)
+-                    element['K'].append(kid_element.reference)
++                    text_parent['K'].append(kid_element.reference)
                      nums[kid['mcid']] = kid_element.reference
              else:
                  # Recursively build tree for child.
@@ -186,39 +246,4 @@ New test in `tests/test_pdf.py`, failing before the change and passing after. Th
  
      if isinstance(box, boxes.ReplacedBox):
          # Add replaced box.
---- a/tests/test_pdf.py
-+++ b/tests/test_pdf.py
-@@ -859,6 +859,32 @@
-     assert f'[({id}-4-0) ({id}-0-1) ({id}-0-2) ({id}-0-3)]'.encode() in pdf
- 
- 
-+@assert_no_logs
-+def test_pdf_tags_nested_and_definition_lists():
-+    pdf = FakeHTML(string='''
-+      <html lang="en">
-+        <ul><li>a<ul><li>b</li></ul>c</li></ul>
-+        <ol><li><p>d</p></li></ol>
-+        <dl><dt>e</dt><dd>f</dd><dd>g</dd><dt>h</dt><dt>i</dt><dd>j</dd></dl>
-+      </html>
-+    ''').write_pdf(pdf_tags=True)
-+    tags = dict(re.findall(rb'(\d+) 0 obj\n<</Type /StructElem/S /(\w+)', pdf))
-+    children = {}
-+    for tag, kids in re.findall(rb'/S /(\w+)/K \[([^\]]*)\]', pdf):
-+        children.setdefault(tag, []).append(
-+            [tags.get(number) for number in re.findall(rb'(\d+) 0 R', kids)])
-+    for kids in children[b'L']:
-+        assert set(kids) == {b'LI'}
-+    for kids in children[b'LI']:
-+        assert set(kids) <= {b'Lbl', b'LBody'}
-+    # Nested list and paragraph in list item bodies.
-+    assert [b'Span', b'L', b'NonStruct'] in children[b'LBody']
-+    assert [b'P'] in children[b'LBody']
-+    # Terms and definitions grouped in list items.
-+    assert [b'Lbl', b'LBody', b'LBody'] in children[b'LI']
-+    assert [b'Lbl', b'Lbl', b'LBody'] in children[b'LI']
-+
-+
- @pytest.mark.parametrize(('html', 'fields'), [
-     ('<input>', ['/Tx', '/V ()']),
-     ('<input value="">', ['/Tx', '/V ()']),
 ```

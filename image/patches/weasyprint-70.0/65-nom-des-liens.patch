@@ -1,74 +1,123 @@
 Correctif SZH de WeasyPrint 70.0 — nom des liens en /Contents et /Alt.
 
 Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
-image/patches/weasyprint-70.0/ (seul à toucher anchors.py ; touche tags.py comme le 10,
-le 15, le 30 et le 60, sans ligne de contexte commune). Pour le désactiver :
-.patch.off.
+image/patches/weasyprint-70.0/ (touche tags.py comme le 10, le 15, le 30, le 60, le 80 et
+le 85, sans ligne de contexte commune). Pour le désactiver : .patch.off.
 
-weasyprint/pdf/anchors.py (add_links) et pdf/tags.py. L'annotation /Link avait pour
-/Contents sa cible : l'URL d'un lien externe, l'identifiant d'un lien interne
-(« appel-ref-1 »). Un <a> vide à aria-label (ORCID, retour à l'appel, licence) n'avait donc
-pour nom que cette cible (PDF/UA-1 7.18.5, Matterhorn 28-004, WCAG 2.4.4). Désormais :
-- /Contents vaut le premier non vide entre aria-label, le texte du lien (l'alt de ses
-  images s'il n'a pas de texte) et title, espaces normalisés ; la cible à défaut ;
-- l'élément de structure /Link d'un lien nommé par aria-label, ou sans texte, reçoit le
+weasyprint/pdf/tags.py. L'annotation /Link avait pour /Contents sa cible : l'URL d'un lien
+externe, l'identifiant d'un lien interne (« appel-ref-1 »). Un <a> vide à aria-label
+(ORCID, retour à l'appel, licence) n'avait donc pour nom que cette cible (PDF/UA-1 7.18.5,
+Matterhorn 28-012, WCAG 2.4.4). Désormais, add_tags nomme chaque annotation de lien avant
+de bâtir l'arbre, une fois connues les boîtes de toutes les pages :
+- /Contents vaut le premier non vide entre aria-label, le texte du lien, l'alt de ses
+  images (le <title> d'un SVG) et title, espaces normalisés ; la cible à défaut. Le texte
+  ne compte ni le corps d'une note appelée dans le lien, ni ce qui n'est pas affiché
+  (display: none, visibility: hidden, scripts) ; deux blocs y sont séparés par une
+  espace. Une image ou un pseudo-élément du lien porte une annotation à lui : elle reçoit
+  le nom du lien qui le contient ;
+- l'élément de structure /Link d'un <a> nommé par aria-label, ou sans texte, reçoit le
   même nom en /Alt. Un lecteur d'écran lit le contenu de l'élément /Link, pas le /Contents
   de l'annotation : sans /Alt, un lien vide n'a rien à dire. Un lien à texte sans
-  aria-label garde son texte et n'a pas de /Alt.
-Rendu identique au pixel ; cas p-liens de test/weasyprint-patch-check.py.
+  aria-label garde son texte et n'a pas de /Alt. Le /Alt n'est jamais la cible, ni posé
+  sur une /Figure ou sur un élément qui en a déjà un : une image sans description dans un
+  lien reste une /Figure sans /Alt, signalée (7.3-1).
+Rendu identique au pixel ; cas p-liens, x-liens-images et x-liens-textes de
+test/weasyprint-patch-check.py.
 
 --- a/weasyprint/pdf/tags.py
 +++ b/weasyprint/pdf/tags.py
-@@ -246,6 +246,14 @@
+@@ -40,6 +40,80 @@
+         structure_root['Namespaces'] = pydyf.Array([namespace.reference])
+         structure_document['NS'] = namespace.reference
+ 
++    # SZH : chaque annotation de lien prend le nom du lien en /Contents (PDF/UA-1
++    # 7.18.5), au lieu de sa cible : le premier non vide entre aria-label, son texte,
++    # l'alt de ses images (le <title> d'un SVG) et title, espaces normalisés. Le texte ne
++    # compte ni les notes, ni ce qui n'est pas affiché (display: none, visibility:
++    # hidden, scripts) ; deux blocs sont séparés par une espace. Le nom d'un <a> nommé
++    # par aria-label, ou sans texte, est gardé dans box.link_alt pour le /Alt de son
++    # élément /Link (voir _build_box_tree).
++    rendered, visible, blocks, notes, links = set(), set(), set(), set(), []
++
++    def walk(box, link):
++        if isinstance(box, AbsolutePlaceholder):
++            box = box._box
++        element, element_tag = box.element, box.element_tag or ''
++        if element is not None and element_tag.split(':')[0] == 'a':
++            link = element
++        if element is not None and '::' not in element_tag:
++            rendered.add(element)
++            if box.style['visibility'] == 'visible':
++                visible.add(element)
++            if not isinstance(box, boxes.InlineLevelBox):
++                blocks.add(element)
++            if box.is_footnote():
++                notes.add(element)
++        if box.footnote is not None and box.footnote.element is not None:
++            notes.add(box.footnote.element)
++        if box.link_annotation:
++            links.append((box, element if link is None else link))
++        for child in getattr(box, 'children', ()):
++            walk(child, link)
++
++    def text(element):
++        if not isinstance(element.tag, str) or element in notes:
++            return ''
++        shown = element in visible
++        parts = [' '] if element in blocks else []
++        if shown and element.text:
++            parts.append(element.text)
++        for child in element:
++            parts.append(text(child))
++            if shown and child.tail:
++                parts.append(child.tail)
++        if element in blocks:
++            parts.append(' ')
++        return ''.join(parts)
++
++    def image_alt(element):
++        if element.tag == 'img':
++            return element.get('alt') or ''
++        elif element.tag == '{http://www.w3.org/2000/svg}svg':
++            title = element.find('{http://www.w3.org/2000/svg}title')
++            if title is not None and title.text:
++                return title.text
++        return ''
++
++    for page in document.pages:
++        walk(page._page_box, None)
++    names = {}
++    for box, link in links:
++        if link is None:
++            continue
++        if link not in names:
++            label = ' '.join((link.get('aria-label') or '').split())
++            content = ' '.join(text(link).split())
++            alts = ' '.join(' '.join(
++                image_alt(image) for image in link.iter() if image in rendered).split())
++            title = ' '.join((link.get('title') or '').split())
++            name = label or content or alts or title
++            names[link] = (name, name if label or not content else None)
++        name, alt = names[link]
++        if name:
++            box.link_annotation['Contents'] = pydyf.String(name)
++        if alt and box.element is link and box.element_tag == 'a':
++            box.link_alt = alt
++
+     # Map content.
+     content_mapping['Nums'] = pydyf.Array()
+     annotations = []
+@@ -246,6 +320,13 @@
          pdf.add_object(object_reference)
          annotations.append((element.reference, annotation))
          element['K'].append(object_reference.reference)
-+        # SZH : un lien nommé par aria-label, ou sans texte, porte aussi son nom (le
-+        # /Contents posé par pdf/anchors.py) en /Alt de l'élément /Link : c'est ce que lit
-+        # un lecteur d'écran à la place du contenu.
-+        link = box.element
-+        if link is not None and 'Contents' in annotation and (
-+                (link.get('aria-label') or '').strip() or
-+                not ''.join(link.itertext()).strip()):
-+            element['Alt'] = annotation['Contents']
++        # SZH : l'élément /Link d'un <a> nommé par aria-label, ou sans texte, porte aussi
++        # son nom en /Alt : c'est ce que lit un lecteur d'écran à la place du contenu.
++        # Ni une image ni un pseudo-élément du lien ne le reçoivent, ni un élément qui a
++        # déjà un /Alt, et la cible n'est jamais un nom.
++        link_alt = getattr(box, 'link_alt', None)
++        if tag == 'Link' and link_alt and 'Alt' not in element:
++            element['Alt'] = pydyf.String(link_alt)
  
      # Include widget annotations.
      if box.widget_annotation:
---- a/weasyprint/pdf/anchors.py
-+++ b/weasyprint/pdf/anchors.py
-@@ -35,7 +35,8 @@
-                 'BS': pydyf.Dictionary({'W': 0}),
-             })
-             if tags is not None:
--                box.link_annotation['Contents'] = pydyf.String(link_target)
-+                box.link_annotation['Contents'] = pydyf.String(
-+                    _get_link_name(box.element) or link_target)
-             if link_type == 'internal':
-                 box.link_annotation['Dest'] = pydyf.String(link_target)
-             else:
-@@ -56,6 +57,25 @@
-             anchor_name, pydyf.Array([page.reference, '/XYZ', x, y, 0])])
- 
- 
-+def _get_link_name(element):
-+    """Return the accessible name of a link, or an empty string.
-+
-+    SZH : le nom du lien en /Contents (PDF/UA-1 7.18.5), le premier non vide entre :
-+    aria-label, le texte du lien (alt de ses images à défaut), title. Espaces normalisés.
-+    Vide, l'appelant écrit la cible.
-+
-+    """
-+    if element is None:
-+        return ''
-+    text = ''.join(element.itertext())
-+    if not text.strip():
-+        text = ' '.join(image.get('alt') or '' for image in element.iter('img'))
-+    for name in (element.get('aria-label'), text, element.get('title')):
-+        if name := ' '.join((name or '').split()):
-+            return name
-+    return ''
-+
-+
- def add_outlines(pdf, bookmarks, parent=None):
-     """Include bookmark outlines in PDF."""
-     count = len(bookmarks)

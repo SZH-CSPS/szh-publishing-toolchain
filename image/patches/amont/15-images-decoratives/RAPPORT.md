@@ -40,6 +40,13 @@ nous l'import l'écrit pour toute image sans description, ce n'est pas une déci
 la règle la plus juste serait celle de HTML-AAM (`alt=""` vaut `role="presentation"`), plus
 `aria-hidden="true"` (#2550) ; c'est à eux d'en décider.
 
+Dans un lien, WeasyPrint donne à la boîte de l'image une annotation `/Link` à elle. Comme
+l'image n'a plus d'élément, cette annotation est rattachée à l'élément parent, le `/Link`
+du `<a>` : `/OBJR` dans le `/Link`, `/StructParent` sur l'annotation. Sans cela, elle restait
+hors de l'arbre de structure (PDF/UA-1 7.18.1). Cas `v-decor-lien` de
+`test/weasyprint-patch-check.py` : deux annotations, toutes deux rattachées, veraPDF sans
+échec (7.18.5-1 sans ce rattachement).
+
 ## Recommandation
 
 - **Le garder**, et **ajouter un commentaire à #2550** plutôt

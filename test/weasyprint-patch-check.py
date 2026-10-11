@@ -15,9 +15,11 @@
 # Ce que chaque patch doit garantir (voir son en-tête) :
 #   10-tableaux-entetes : un th colspan/rowspan est inscrit sur toutes les colonnes/lignes
 #      qu'il couvre (sans lui : /Headers [] sur la 2e colonne d'un « Punkte » colspan=2,
-#      PDF/UA 7.5-1) ; l'attribut HTML `headers` l'emporte sur la position ;
+#      PDF/UA 7.5-1) ; l'attribut HTML `headers` l'emporte sur la position ; un th en
+#      display: block est ignoré, sans erreur ;
 #   15-images-decoratives : une <img alt="" role="presentation"> sort en artefact, sans
-#      /Figure (sinon 7.3-1), et reste dessinée ;
+#      /Figure (sinon 7.3-1), et reste dessinée ; dans un lien, son annotation est
+#      rattachée au /Link ;
 #   20-cesure-trait : le trait ajouté par la césure est un /Span /ActualText U+00AD autour
 #      de ce seul glyphe (sinon « ensei‐gnants » au copier-coller) ;
 #   25-espace-fin-de-ligne : une ligne coupée sur une espace garde cette espace dans la
@@ -28,14 +30,18 @@
 #   40-xmp-dc-language : la langue de <html lang> est en dc:language dans le XMP, au sein
 #      de l'unique rdf:RDF du paquet (pypdf ne lit que le premier) ;
 #   50-notes-doublon : une note reportée à la page suivante n'y est pas imprimée une
-#      seconde fois quand un target-counter fait repaginer ;
+#      seconde fois quand un target-counter fait repaginer, ni perdue quand elle est
+#      reportée depuis la dernière page ;
 #   55-notes-reportees : une note reste sur la page de son appel quand c'est un paragraphe
 #      suivant qui manque de lignes pour orphans ; c'est ce paragraphe qui part ;
 #   60-langue-element : un élément dont lang change la langue héritée porte /Lang, bloc ou
-#      en ligne (/Span) ; ni ses descendants ni un lang égal à l'héritée n'en reçoivent ;
-#   65-nom-des-liens : le /Contents d'un lien vaut aria-label, sinon son texte (espaces
-#      normalisés), sinon title, sinon sa cible ; un lien à aria-label ou sans texte porte
-#      le même nom en /Alt de son /Link, un lien à texte n'en a pas ;
+#      en ligne (/Span) ; ni ses descendants ni un lang égal à l'héritée n'en reçoivent, ni
+#      un lang mal formé ou vide (sinon 7.2-29) ;
+#   65-nom-des-liens : le /Contents d'un lien vaut aria-label, sinon son texte affiché
+#      (espaces normalisés, sans les notes ni le texte masqué), sinon l'alt de ses images,
+#      sinon title, sinon sa cible ; un lien à aria-label ou sans texte porte le même nom
+#      en /Alt de son /Link, un lien à texte n'en a pas ; la cible n'est jamais un /Alt, et
+#      une image sans alt dans un lien reste une /Figure sans /Alt ;
 #   70-espaces-justifiees : dans une ligne justifiée, aucun glyphe espace n'est précédé
 #      d'un décalage du TJ (sinon pdfium y déduit une espace générée de largeur nulle et
 #      écarte la vraie : mots collés dans Edge), et le texte extrait garde ses mots ;
@@ -43,10 +49,14 @@
 #      dc:creator garde un rdf:li par auteur ;
 #   80-notes-balisees : chaque note est une /Note à /ID, rangée juste après son appel
 #      (/Reference) dans l'élément qui le contient, même reportée à la page suivante ; son
-#      numéro est un /Lbl ; aucune note sous /Document ; les /ID sont dans l'/IDTree ;
+#      numéro est un /Lbl ; aucune note n'est restée en bas de page dans l'arbre ; les /ID
+#      sont dans l'/IDTree ; une
+#      note portée par un lien, une liste ou une image garde son rôle dans une /Note ; une
+#      note appelée dans un lien, un titre ou un th suit le lien, le titre ou le tableau ;
 #   85-listes-imbriquees : une sous-liste est un /L enfant du /LBody de son item ; un /LI
-#      ne contient que /Lbl et /LBody (sinon 7.2-20 sur <li><p>) ; une <dl> fait un /LI
-#      par groupe de termes (/Lbl) et de définitions (/LBody).
+#      ne contient que /Lbl et /LBody (sinon 7.2-20 sur <li><p>), même à puce en ligne,
+#      dont le texte suit l'ordre de la ligne ; une <dl> fait un /LI par groupe de termes
+#      (/Lbl) et de définitions (/LBody).
 # Ce qu'ils ne changent pas : alt="" seul reste une /Figure sans /Alt, signalée, car
 # l'import écrit alt="" pour toute image sans description. Le cas f doit donc échouer en
 # 7.3 ; s'il passe, le contrôle ne détecte plus rien ou le patch va trop loin. Le trait
@@ -129,6 +139,17 @@ CAS = {
                 '<table><caption>C</caption><tr><td><img src="img.png" alt="" '
                 'role="presentation" width="80"></td><td><img src="img.png" '
                 'alt="Porträt" width="80"></td></tr></table>', set()),
+    # th et tr en display: block : ce ne sont plus des cellules de grille, ignorées sans
+    # erreur. HTML non conforme par construction : veraPDF n'est pas jugé (None).
+    'u-tableau-bloc': (ENTETES,
+                       '<style>.bloc tr,.bloc th{display:block}</style><table class="bloc">'
+                       '<tr><th>Block</th></tr></table><table><caption>C</caption><thead>'
+                       '<tr><th scope="col">A</th><th scope="col">B</th></tr></thead><tbody>'
+                       '<tr><td>1</td><td>2</td></tr></tbody></table>', None),
+    # Décor dans un lien : l'annotation de l'image reste rattachée au /Link.
+    'v-decor-lien': (DECOR,
+                     '<p><a href="https://www.szh.ch/"><img src="img.png" alt="" '
+                     'role="presentation" width="20"> SZH</a></p>', set()),
     # Décor seul : aucune /Figure ne doit rester, mais l'image doit être peinte.
     'e-decor-seul': (DECOR,
                      '<table><caption>C</caption><tr><td><img src="img.png" alt="" '
@@ -173,6 +194,14 @@ CAS = {
                   'Verweis</a><br>a2<br>a3<br>a4<br>a5<br>a6<br>a7<br>a8<br>a9<br>a10<br>'
                   'a11 Aufruf<span class="note">Fussnote eins, Zeile 1<br>Zeile 2</span>'
                   '</p><p>b1</p>' + FIN, set()),
+    # Note appelée à la fin du dernier paragraphe, reportée seule sur une page de plus,
+    # alors qu'un renvoi target-counter fait repaginer : sans le patch, elle disparaît.
+    'm-reportee-fin': (DOUBLON,
+                       NOTES + '<p style="orphans:1;widows:1">a1 <a class="ref" href="#ziel">'
+                       'Verweis</a>' + ''.join(f'<br>a{n}' for n in range(2, 21)) +
+                       '<br>a21 Aufruf<span class="note">Letzte Fussnote, Zeile 1<br>'
+                       'Zeile 2<br>Zeile 3<br>Zeile 4</span></p><p id="ziel">Ende</p>',
+                       set()),
     # Le paragraphe « c » n'a qu'une ligne en bas de la p. 1 (orphans: 2) : sans le patch,
     # la note du paragraphe « a » est chassée en p. 2 pour y loger c2.
     'n-reportee': (REPORTEE,
@@ -187,6 +216,11 @@ CAS = {
                  '<blockquote lang="en"><p>A quotation.</p></blockquote>'
                  '<p>Ein <span lang="en">Mindset</span> und <span lang="de">Wort</span>.</p>',
                  set()),
+    # Valeurs de lang mal formées ou vides : aucune /Lang, sinon veraPDF 7.2-29.
+    'w-langue-invalide': (LANGUE,
+                          '<p>Ein <span lang="en_US">Wort</span>, <span lang="irgend was">'
+                          'Satz</span>, <span lang="">leer</span> und <span lang="EN-gb">'
+                          'Word</span>.</p>', set()),
     # Lien à texte, ORCID et retour à l'appel vides à aria-label, lien à title seul, lien
     # sans aucun nom, lien interne à texte sur plusieurs espaces. Pas d'élément dans un lien
     # à texte : WeasyPrint en fait un /NonStruct sous le /Link, refusé en 7.18.5-1.
@@ -199,6 +233,24 @@ CAS = {
                 '<a class="icone" href="https://creativecommons.org/licenses/by/4.0/"></a></p>'
                 '<p id="ende"><a href="#appel">Zum   Anfang\n zurück</a></p>',
                 set()),
+    # Images dans des liens : une image sans description reste une /Figure sans /Alt,
+    # signalée (7.3-1), et ne prend pas la cible pour nom ; une image décrite nomme son
+    # lien.
+    'x-liens-images': (LIENS,
+                       '<p><a href="https://www.szh.ch/a"><img src="img.png" alt="" '
+                       'width="20"></a> <a href="https://www.szh.ch/b"><img src="img.png" '
+                       'alt="Logo" width="20"></a></p>', {'7.3-1', '7.18.5-1'}),
+    # Le nom d'un lien ne compte ni le texte masqué, ni le corps d'une note appelée
+    # dedans ; deux blocs y sont séparés par une espace. Notes et blocs dans un lien :
+    # veraPDF n'est pas jugé (None).
+    'x-liens-textes': (LIENS,
+                       '<style>.note{float:footnote}</style><p id="anfang">'
+                       '<a href="#ende">Sichtbar<span style="display:none">versteckt</span>'
+                       '<span style="visibility:hidden">unsichtbar</span><span class="note">'
+                       'Fussnote im Link.</span></a></p><div><a href="#anfang" '
+                       'style="display:block"><span style="display:block">Erster</span>'
+                       '<span style="display:block">Zweiter</span></a></div>'
+                       '<p id="ende">Ende</p>', None),
     'q-justifie': (JUSTIFIE,
                    '<p style="width:60mm;text-align:justify;font:11pt sans-serif">'
                    + JUSTIFIE_TEXTE + '</p>', set()),
@@ -217,6 +269,25 @@ CAS = {
                 'Noten<br>y1<br>y2<br>y3 Aufruf<span class="note">Note vier.</span></p>'
                 '<p>z1<br>z2 Aufruf<span class="note">Note fünf, Zeile 1<br>Zeile 2</span>'
                 '</p><p>Ende</p>', set()),
+    # Notes portées par une liste et par une image : enveloppées dans une /Note, sans
+    # perdre leur rôle. Notes appelées dans un en-tête de tableau et dans un titre :
+    # rangées après le tableau et après le titre.
+    's-notes-elements': (NOTES_BALISEES,
+                         NOTES + '<style>ul{margin:0}</style><h1>Titel<span class="note">'
+                         'Im Titel.</span></h1><div>Liste<ul class="note"><li>Punkt</li>'
+                         '</ul> danach.</div><p>Bild<img class="note" src="img.png" '
+                         'alt="Bild" width="20"> danach.</p><table><caption>C</caption>'
+                         '<thead><tr><th scope="col">Punkte<span class="note">Im Kopf.'
+                         '</span></th></tr></thead><tbody><tr><td>1</td></tr></tbody>'
+                         '</table>', set()),
+    # Note portée par un lien, notes appelées dans un lien, nommé ou non par aria-label :
+    # la note suit le lien. Liens à éléments : veraPDF n'est pas jugé (None).
+    's-notes-liens': (NOTES_BALISEES,
+                      NOTES + '<p>Link<a class="note" href="https://www.szh.ch/">Website</a>'
+                      ' danach.</p><p><a href="https://www.szh.ch/">Website<span '
+                      'class="note">Im Link.</span></a> danach.</p><p><a '
+                      'href="https://www.szh.ch/" aria-label="SZH">Website<span '
+                      'class="note">Im benannten Link.</span></a> danach.</p>', None),
     # Sous-liste entre deux textes d'un item, item à paragraphe (sans le patch : /P sous
     # /LI, 7.2-20), item réduit à une sous-liste, liste de définition à deux définitions
     # pour un terme et à deux termes pour une définition.
@@ -227,6 +298,12 @@ CAS = {
                  '<dl><dt>Logopädie</dt><dd>Sprache.</dd><dt>Psychomotorik</dt>'
                  '<dd>Bewegung.</dd><dd>Zweite Definition.</dd><dt>Ergotherapie</dt>'
                  '<dt>Ergo</dt><dd>Zwei Begriffe.</dd></dl>', set()),
+    # Puce dans la ligne : tout le texte de l'item, hors puce, dans son /LBody, dans
+    # l'ordre de la ligne.
+    't-liste-en-ligne': (LISTES,
+                         '<ul style="list-style-position:inside"><li>Q01 eins <em>Q02 zwei'
+                         '</em> Q03 drei <a href="#ziel">Q04 vier</a> Q05 fünf</li></ul>'
+                         '<p id="ziel">Ziel</p>', set()),
 }
 
 
@@ -397,6 +474,12 @@ def _verifier_entetes(pdfs, erreurs):
     if _headers(el) != voulu:
         erreurs.append(f'c-headers : /Headers {_headers(el)}, attendu {voulu}')
 
+    # Le th en bloc n'est pas une cellule : pas d'/ID ; le tableau ordinaire est intact.
+    el = list(_elements(pdfs['u-tableau-bloc']))
+    ids = [i for s, _, i, _ in el if s == '/TH' and i is not None]
+    if len(ids) != 2 or _headers(el) != [[ids[0]], [ids[1]]]:
+        erreurs.append(f'u-tableau-bloc : /Headers {_headers(el)} (th {ids})')
+
 
 def _verifier_decor(pdfs, erreurs):
     figures = [alt for s, _, _, alt in _elements(pdfs['e-decor']) if s == '/Figure']
@@ -410,6 +493,28 @@ def _verifier_decor(pdfs, erreurs):
     figures = [alt for s, _, _, alt in _elements(pdfs['f-alt-vide-seul']) if s == '/Figure']
     if figures != [None]:
         erreurs.append(f'f-alt-vide-seul : /Figure {figures}, attendu une /Figure sans /Alt')
+    annotations, rattachees = _annotations_de_lien(pdfs['v-decor-lien'])
+    if len(annotations) != 2 or set(annotations) != rattachees or not all(
+            annotations.values()):
+        erreurs.append(f'v-decor-lien : annotations {annotations} (numéro : StructParent), '
+                       f'rattachées à un /Link {sorted(rattachees)}, attendu 2, toutes '
+                       'rattachées')
+
+
+def _annotations_de_lien(pdf):
+    """({ numéro d'annotation /Link : a un /StructParent }, numéros cités par un OBJR
+    d'élément /Link)."""
+    reader = PdfReader(pdf)
+    annotations = {}
+    for page in reader.pages:
+        for a in page.get('/Annots', []):
+            objet = _res(a)
+            if objet.get('/Subtype') == '/Link':
+                annotations[a.idnum] = '/StructParent' in objet
+    rattachees = {k.raw_get('/Obj').idnum for e in _noeuds(pdf) if str(e['/S']) == '/Link'
+                  for k in _enfants(e)
+                  if isinstance(k, DictionaryObject) and k.get('/Type') == '/OBJR'}
+    return annotations, rattachees
 
 
 def _verifier_cesure(pdfs, erreurs):
@@ -491,6 +596,9 @@ def _verifier_doublon(pdfs, erreurs):
     notes = _pages_de(pdfs['m-doublon'], 'Fussnote eins')
     if notes != [2]:
         erreurs.append(f'm-doublon : note en p. {notes}, attendu [2] (reportée une fois)')
+    notes = _pages_de(pdfs['m-reportee-fin'], 'Letzte Fussnote')
+    if len(notes) != 1:
+        erreurs.append(f'm-reportee-fin : note en p. {notes}, attendu une seule page')
 
 
 def _verifier_reportee(pdfs, erreurs):
@@ -509,25 +617,54 @@ def _verifier_langue(pdfs, erreurs):
     voulu = [('/Div', 'fr'), ('/BlockQuote', 'en'), ('/Span', 'en')]
     if langues != voulu:
         erreurs.append(f'o-langue : /Lang {langues}, attendu {voulu}')
+    langues = [(str(e['/S']), str(e['/Lang'])) for e in _noeuds(pdfs['w-langue-invalide'])
+               if '/Lang' in e]
+    if langues != [('/Span', 'EN-gb')]:
+        erreurs.append(f'w-langue-invalide : /Lang {langues}, attendu [(\'/Span\', '
+                       '\'EN-gb\')]')
 
 
-def _verifier_liens(pdfs, erreurs):
+def _liens(pdf, roles=('/Link',)):
+    """(rôle, /Contents des annotations rattachées, /Alt) des éléments de ces rôles."""
     liens = []
-    for e in _noeuds(pdfs['p-liens']):
-        if str(e['/S']) != '/Link':
+    for e in _noeuds(pdf):
+        if str(e['/S']) not in roles:
             continue
         contents = [str(_res(k['/Obj']).get('/Contents')) for k in _enfants(e)
                     if isinstance(k, DictionaryObject) and k.get('/Type') == '/OBJR']
-        liens.append((contents, str(e['/Alt']) if '/Alt' in e else None))
+        liens.append((str(e['/S']), contents, str(e['/Alt']) if '/Alt' in e else None))
+    return liens
+
+
+def _verifier_liens(pdfs, erreurs):
+    liens = [(c, a) for _, c, a in _liens(pdfs['p-liens'])]
     cc = 'https://creativecommons.org/licenses/by/4.0/'
+    # Sans nom, la cible reste en /Contents, jamais en /Alt.
     voulu = [(['die Website'], None),
              (['ORCID von Anna Muster'], 'ORCID von Anna Muster'),
              (['Zurück zum Verweis 1'], 'Zurück zum Verweis 1'),
              (['Zum Ende'], 'Zum Ende'),
-             ([cc], cc),
+             ([cc], None),
              (['Zum Anfang zurück'], None)]
     if liens != voulu:
         erreurs.append(f'p-liens : (/Contents, /Alt) {liens}, attendu {voulu}')
+
+    # /Contents des /Figure : annotation propre à l'image, que WeasyPrint range dans la
+    # /Figure (veraPDF 7.18.5-1, déjà là sans les patchs).
+    liens = _liens(pdfs['x-liens-images'], ('/Link', '/Figure'))
+    a, b = 'https://www.szh.ch/a', 'https://www.szh.ch/b'
+    voulu = [('/Link', [a], None), ('/Figure', [a], None),
+             ('/Link', ['Logo'], 'Logo'), ('/Figure', ['Logo'], 'Logo')]
+    if liens != voulu:
+        erreurs.append(f'x-liens-images : (rôle, /Contents, /Alt) {liens}, attendu {voulu}')
+    if b in str(liens):
+        erreurs.append(f'x-liens-images : la cible {b} sert de nom alors que l\'image est '
+                       'décrite')
+
+    noms = [c[:1] for _, c, _ in _liens(pdfs['x-liens-textes'])][:2]
+    if noms != [['Sichtbar'], ['Erster Zweiter']]:
+        erreurs.append(f'x-liens-textes : /Contents {noms}, attendu [[\'Sichtbar\'], '
+                       '[\'Erster Zweiter\']]')
 
 
 def _glyphes_espace(reader, page):
@@ -633,6 +770,32 @@ def _verifier_notes(pdfs, erreurs):
     if not set(ids) <= {str(x) for x in noms[::2]}:
         erreurs.append(f's-notes : /IDTree {list(noms[::2])} ne cite pas les notes {ids}')
 
+    # (rôle du parent, rôle de l'élément qui précède, rôles des enfants) de chaque /Note.
+    voulu = {'s-notes-elements': [('/Document', '/H1', ['/Lbl', '/Span']),
+                                  ('/Div', '/Reference', ['/Lbl', '/L']),
+                                  ('/P', '/Reference', ['/Figure']),
+                                  ('/Document', '/Table', ['/Lbl', '/Span'])],
+             's-notes-liens': [('/P', '/Link', ['/Link']),
+                               ('/P', '/Link', ['/Lbl', '/Span']),
+                               ('/P', '/Link', ['/Lbl', '/Span'])]}
+    for nom, attendu in voulu.items():
+        obtenu = []
+        for note in _noeuds(pdfs[nom]):
+            if str(note['/S']) != '/Note':
+                continue
+            parent = _res(note['/P'])
+            freres = [k for k in _enfants(parent) if isinstance(k, DictionaryObject) and
+                      '/S' in k]
+            numeros = [_num(k) for k in freres]
+            rang = numeros.index(_num(note)) if _num(note) in numeros else 0
+            avant = freres[rang - 1] if rang > 0 else {}
+            obtenu.append((str(parent['/S']), str(avant.get('/S')),
+                           [str(k.get('/S')) for k in _enfants(note)
+                            if isinstance(k, DictionaryObject)]))
+        if obtenu != attendu:
+            erreurs.append(f'{nom} : /Note (parent, précédent, enfants) {obtenu}, attendu '
+                           f'{attendu}')
+
 
 def _verifier_listes(pdfs, erreurs):
     noeuds = list(_noeuds(pdfs['t-listes']))
@@ -650,6 +813,15 @@ def _verifier_listes(pdfs, erreurs):
     if items[-3:] != voulu:
         erreurs.append(f't-listes : /LI de la <dl> {items[-3:]}, attendu {voulu}')
 
+    # Q01 à Q05 dans l'ordre : texte, em, texte, lien, texte.
+    noeuds = list(_noeuds(pdfs['t-liste-en-ligne']))
+    items = [[str(k.get('/S')) for k in _enfants(e) if isinstance(k, DictionaryObject)]
+             for e in noeuds if str(e['/S']) in ('/LI', '/LBody')]
+    voulu = [['/Lbl', '/LBody'], ['/Span', '/NonStruct', '/Span', '/Link', '/Span']]
+    if items != voulu:
+        erreurs.append(f't-liste-en-ligne : enfants du /LI et du /LBody {items}, attendu '
+                       f'{voulu}')
+
 
 VERIFS = {ENTETES: _verifier_entetes, DECOR: _verifier_decor, CESURE: _verifier_cesure,
           ESPACE: _verifier_espace, MARGES: _verifier_marges, XMP: _verifier_xmp,
@@ -665,21 +837,32 @@ def main():
     print(f'Correctifs posés : {", ".join(actifs) or "aucun"}')
     erreurs = []
     with tempfile.TemporaryDirectory() as d:
+        # Un dossier en argument garde les PDF produits, pour les relire.
+        d = sys.argv[1] if len(sys.argv) > 1 else d
+        os.makedirs(d, exist_ok=True)
         Image.new('RGB', (40, 30), (200, 60, 40)).save(os.path.join(d, 'img.png'))
         pdfs = {}
         for nom, (_, corps, _) in cas.items():
-            pdfs[nom] = os.path.join(d, nom + '.pdf')
-            HTML(string=ENTETE + corps + PIED, base_url=d + os.sep).write_pdf(
-                pdfs[nom], pdf_variant='pdf/ua-1')
+            chemin = os.path.join(d, nom + '.pdf')
+            try:
+                HTML(string=ENTETE + corps + PIED, base_url=d + os.sep).write_pdf(
+                    chemin, pdf_variant='pdf/ua-1')
+            except Exception as exception:
+                erreurs.append(f'{nom} : WeasyPrint échoue, {exception!r}')
+                continue
+            pdfs[nom] = chemin
         verdicts = _verapdf(list(pdfs.values())) if pdfs else {}
 
         for nom, (_, _, attendu) in cas.items():
             obtenu = verdicts.get(nom + '.pdf')
-            if obtenu != attendu:
+            if nom in pdfs and attendu is not None and obtenu != attendu:
                 erreurs.append(f'{nom} : veraPDF en échec sur {sorted(obtenu or [])}, '
                                f'attendu {sorted(attendu)}')
         for patch in actifs:
-            VERIFS[patch](pdfs, erreurs)
+            try:
+                VERIFS[patch](pdfs, erreurs)
+            except KeyError as exception:
+                erreurs.append(f'{patch} : cas non produit {exception}')
 
     if erreurs:
         print('Correctifs WeasyPrint : ÉCHEC')

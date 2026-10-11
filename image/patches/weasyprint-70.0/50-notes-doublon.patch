@@ -10,9 +10,13 @@ repaginer, une page « à jour » n'est pas refaite : la page refaite suivante l
 laissée par la page d'avant la page sautée, et pose une seconde fois la note déjà imprimée.
 Désormais, la liste des notes reportées en fin de page est gardée dans l'état de la page
 suivante (remake_state['reported_footnotes']), restaurée au début de remake_page(), et
-comptée dans « la page suivante a-t-elle changé ? ». Sans repagination, rien ne change.
+comptée dans « la page suivante a-t-elle changé ? ». Une page à jour qui n'est pas refaite
+transmet de même les notes qu'elle reporte (make_all_pages) : la dernière page n'arrête
+plus la mise en page quand une note reportée attend une page de plus, qui était perdue.
+Sans repagination, rien ne change.
 Mesuré sur image/patches/amont/50-notes-doublon/demo/doublon.html : note en p. 2 et p. 3
-sans le patch, en p. 2 seule avec ; suite pytest de WeasyPrint 70.0 sans nouvel échec.
+sans le patch, en p. 2 seule avec ; cas m-doublon et m-reportee-fin de
+test/weasyprint-patch-check.py ; suite pytest de WeasyPrint 70.0 sans nouvel échec.
 
 --- a/weasyprint/layout/page.py
 +++ b/weasyprint/layout/page.py
@@ -56,3 +60,15 @@ sans le patch, en p. 2 seule avec ; suite pytest de WeasyPrint 70.0 sans nouvel 
          }
          # Setting content_changed to True ensures remake.
          # If resume_at is None (last page) it must be False to prevent endless
+@@ -1064,7 +1071,10 @@
+             PROGRESS_LOGGER.info(
+                 'Step 5 - Creating layout - Page %d (up-to-date)', i + 1)
+             resume_at = context.page_maker[i + 1][0]
+-            reported_footnotes = None
++            # Footnotes reported by this page, kept when it was laid out: the last
++            # page may report footnotes to a page that only holds them.
++            reported_footnotes = context.page_maker[i + 1][-1].get(
++                'reported_footnotes')
+             yield pages[i]
+ 
+         i += 1

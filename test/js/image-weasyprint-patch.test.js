@@ -27,7 +27,8 @@ function versionEpinglee() {
 const PATCHS = {
   '10-tableaux-entetes': {
     cibles: ['weasyprint/pdf/tags.py'],
-    reperes: [/^\+\s+j = cell\.grid_x$/m, /^\+\s+if html_id := cell\.element\.attrib\.get\('id'\):$/m],
+    reperes: [/^\+\s+j = getattr\(cell, 'grid_x', None\)$/m,
+      /^\+\s+if html_id := cell\.element\.attrib\.get\('id'\):$/m],
   },
   '15-images-decoratives': {
     cibles: ['weasyprint/pdf/stream.py', 'weasyprint/pdf/tags.py'],
@@ -67,9 +68,9 @@ const PATCHS = {
     reperes: [/^\+\s+element\['Lang'\] = pydyf\.String\(lang\)$/m],
   },
   '65-nom-des-liens': {
-    cibles: ['weasyprint/pdf/anchors.py', 'weasyprint/pdf/tags.py'],
-    reperes: [/^\+def _get_link_name\(element\):$/m,
-      /^\+\s+element\['Alt'\] = annotation\['Contents'\]$/m],
+    cibles: ['weasyprint/pdf/tags.py'],
+    reperes: [/^\+\s+box\.link_annotation\['Contents'\] = pydyf\.String\(name\)$/m,
+      /^\+\s+element\['Alt'\] = pydyf\.String\(link_alt\)$/m],
   },
   '70-espaces-justifiees': {
     cibles: ['weasyprint/draw/text.py'],

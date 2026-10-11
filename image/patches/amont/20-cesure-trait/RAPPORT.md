@@ -52,6 +52,22 @@ la norme). veraPDF ne le contrôle pas : il passe avant comme après.
 
 Le patch fait 154 lignes, dont le dessin de l'espace du 25 (voir plus haut).
 
+Deux effets connus, dans pdfium seul (Chrome, Edge, le banc au pixel de Pronto) :
+
+- dans un texte interlettré (`letter-spacing`), le trait de césure est dessiné environ
+  0,8 pt plus loin que sans le correctif. Le TJ du trait commence par son décalage
+  (`<>-85.33<077f>`), que pdfium place autrement que Ghostscript ; Acrobat et Ghostscript
+  le dessinent au même endroit qu'avant. Écrire ce décalage dans le TJ précédent, avant le
+  `BDC`, l'éviterait ; non fait, les textes interlettrés de Pronto sont des titres courts,
+  jamais coupés ;
+- le texte que pdfium extrait d'un mot coupé contient U+FFFE à la place du trait, sans fin
+  de ligne (« quotidien », U+FFFE, « nement ») ; sans le correctif, « quotidien‐ » puis
+  « nement » sur deux lignes. Le mot est recollé, mais ce caractère peut sortir d'un
+  copier-coller dans Chrome ou Edge (non vérifié dans un navigateur). Le texte balisé,
+  qu'un lecteur d'écran reçoit, est juste (`/ActualText` U+00AD).
+
+Les deux figurent dans [`docs/LIMITES-ACCESSIBILITE.md`](../../../docs/LIMITES-ACCESSIBILITE.md).
+
 ## Recommandation
 
 - **Le proposer en amont** (issue courte, code sur demande). Le

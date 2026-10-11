@@ -16,12 +16,21 @@ Matterhorn 19). Désormais :
   et le numéro de la note (::footnote-marker) un /Lbl dans la /Note ;
 - le catalogue de structure reçoit l'arbre des identifiants (/IDTree), exigé dès qu'un
   élément porte un /ID (ISO 32000-1, tableau 322), /TH compris.
+Une note portée par un /Span, un /P ou un /Div devient la /Note ; portée par un autre
+élément (lien, liste, image…), elle garde son rôle et est enveloppée dans une /Note neuve,
+où son numéro passe en tête. L'appel et le numéro d'une note portée par un lien restent
+des /Link. Une note appelée dans un lien est rangée après le lien, pour ne pas devenir une
+partie de son nom ni disparaître derrière son /Alt ; appelée dans un titre, après le
+titre, pour que la navigation par titres ne la lise pas ; appelée dans un en-tête de
+tableau (/TH), après le tableau, pour qu'elle ne soit pas relue avec chaque cellule qui
+cite cet en-tête. L'appel (/Reference) reste à sa place.
 Une note dont l'appel n'est pas balisé (boîte de marge) reste en bas de sa page.
-Rendu identique au pixel ; cas s-notes de test/weasyprint-patch-check.py.
+Rendu identique au pixel ; cas s-notes, s-notes-elements et s-notes-liens de
+test/weasyprint-patch-check.py.
 
 --- a/weasyprint/pdf/tags.py
 +++ b/weasyprint/pdf/tags.py
-@@ -64,6 +64,45 @@
+@@ -64,6 +64,105 @@
          sorted_refs = [ref for _, ref in sorted(page_nums.items())]
          content_mapping['Nums'][-1].extend(sorted_refs)
  
@@ -29,6 +38,12 @@ Rendu identique au pixel ; cas s-notes de test/weasyprint-patch-check.py.
 +    # l'élément qui contient son appel, juste après lui (PDF/UA-1 7.9), même quand elle
 +    # est imprimée sur la page suivante. Son contenu marqué reste où il est dessiné. Une
 +    # note dont l'appel n'est pas balisé reste dans la zone, en bas de sa page.
++    # Une note portée par un autre élément qu'un /Span, /P ou /Div (lien, liste,
++    # image…) garde son rôle : elle est enveloppée dans une /Note neuve, avec son
++    # numéro. Une note appelée dans un lien, un titre ou un en-tête de tableau est
++    # rangée après le lien, après le titre ou après le tableau : sinon elle serait lue
++    # comme une partie du nom du lien, par la navigation par titres ou avec chaque
++    # cellule qui cite l'en-tête.
 +    calls, areas = {}, []
 +    for page in document.pages:
 +        for box in page._page_box.descendants():
@@ -36,20 +51,74 @@ Rendu identique au pixel ; cas s-notes de test/weasyprint-patch-check.py.
 +                areas.append(box)
 +            elif getattr(box, 'footnote', None) is not None and hasattr(box, 'mark'):
 +                calls.setdefault(box.element, box.mark)
++
++    def get_element(reference):
++        return pdf.objects[int(reference.split()[0])]
++
++    def wrap_in_note(element):
++        # Le numéro (/Lbl), premier enfant de l'élément ou d'un bloc anonyme qui
++        # l'enveloppe, passe en tête de la /Note ; le bloc anonyme vidé est retiré.
++        note = pydyf.Dictionary({
++            'Type': '/StructElem',
++            'S': '/Note',
++            'K': pydyf.Array([element.reference]),
++            'Pg': element['Pg'],
++            'P': element['P'],
++        })
++        pdf.add_object(note)
++        element['P'] = note.reference
++        parents, parent = [], element
++        while parent['K'] and not isinstance(parent['K'][0], int):
++            first = get_element(parent['K'][0])
++            if first.get('S') == '/Lbl':
++                parent['K'].remove(first.reference)
++                note['K'].insert(0, first.reference)
++                first['P'] = note.reference
++                for anonymous in reversed(parents):
++                    if anonymous['K']:
++                        break
++                    get_element(anonymous['P'])['K'].remove(anonymous.reference)
++                break
++            elif first.get('S') not in (element['S'], '/NonStruct'):
++                break
++            parents.append(first)
++            parent = first
++        return note
++
++    def note_position(call_parent, call):
++        # Élément après lequel ranger la note : l'appel, ou le plus extérieur des
++        # liens, titres et tableaux à en-tête qui le contiennent.
++        previous, element, header = call, call_parent, False
++        while element.get('Type') == '/StructElem':
++            tag = element['S']
++            header |= tag == '/TH'
++            if tag in ('/Link', '/H', '/H1', '/H2', '/H3', '/H4', '/H5', '/H6') or (
++                    tag == '/Table' and header):
++                previous = element
++            element = get_element(element['P'])
++        if previous is call:
++            return call_parent, call
++        return get_element(previous['P']), previous
++
 +    for area in areas:
 +        kids = area.mark['K']
 +        if len(kids) != len(area.children):
 +            continue
 +        for footnote, reference in zip(area.children, tuple(kids)):
-+            note = pdf.objects[int(reference.split()[0])]
++            note = get_element(reference)
++            if note['S'] not in ('/Span', '/P', '/Div', '/NonStruct'):
++                note = wrap_in_note(note)
++                kids[kids.index(reference)] = note.reference
++                reference = note.reference
 +            note['S'] = '/Note'
 +            note['ID'] = pydyf.String(f'note-{note.number}')
 +            call_parent, call = calls.get(footnote.element, (None, None))
 +            if call is not None and call.reference in call_parent['K']:
 +                kids.remove(reference)
-+                call_kids = call_parent['K']
-+                call_kids.insert(call_kids.index(call.reference) + 1, reference)
-+                note['P'] = call_parent.reference
++                parent, previous = note_position(call_parent, call)
++                parent_kids = parent['K']
++                parent_kids.insert(parent_kids.index(previous.reference) + 1, reference)
++                note['P'] = parent.reference
 +        if not kids and area.mark.reference in structure_document['K']:
 +            structure_document['K'].remove(area.mark.reference)
 +
@@ -67,19 +136,20 @@ Rendu identique au pixel ; cas s-notes de test/weasyprint-patch-check.py.
      # Add annotations for links and widgets.
      start = len(document.pages)
      for i, (reference, annotation) in enumerate(annotations, start=start):
-@@ -83,6 +122,11 @@
+@@ -83,6 +182,12 @@
      """Get PDF tag corresponding to HTML tag."""
      if tag is None:
          return 'NonStruct'
-+    elif tag.endswith('::footnote-call'):
++    elif tag.endswith('::footnote-call') and tag.split(':')[0] != 'a':
 +        # SZH : l'appel de note renvoie à la /Note qui le suit (ISO 32000-1, 14.8.4.4).
++        # L'appel et le numéro d'une note portée par un lien restent des /Link.
 +        return 'Reference'
-+    elif tag.endswith('::footnote-marker'):
++    elif tag.endswith('::footnote-marker') and tag.split(':')[0] != 'a':
 +        return 'Lbl'
      elif tag == 'div':
          return 'Div'
      elif tag.split(':')[0] == 'a':
-@@ -314,6 +358,13 @@
+@@ -314,6 +419,13 @@
          assert kid['mcid'] not in nums
          nums[kid['mcid']] = element.reference
  

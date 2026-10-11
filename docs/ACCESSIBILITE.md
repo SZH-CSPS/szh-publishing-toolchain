@@ -146,7 +146,8 @@ demandent un essai avec un lecteur d'écran (NVDA, par exemple). Sans cet essai,
   (correctif `85-listes-imbriquees`).
 - **Notes.** Une note imprimée en bas de page (`float: footnote`) est balisée en `/Note`
   juste après son appel, lui-même un `/Reference` ; un lecteur d'écran la lit à cet endroit,
-  une seule fois (correctif `80-notes-balisees`).
+  une seule fois (correctif `80-notes-balisees`). Appelée dans un lien, un titre ou un
+  en-tête de tableau, elle est lue après le lien, après le titre ou après le tableau.
 - **Langue.** `szh-contexte.lua` décide la langue de l'article. Elle est posée sur
   `<html lang>`, donc sur le `/Lang` du document, et sur chaque passage dans une autre
   langue. Les webviews du cockpit prennent la langue de l'interface.
@@ -193,18 +194,18 @@ touchent l'accessibilité :
 
 | Correctif | Effet |
 |---|---|
-| `10-tableaux-entetes` | `/Headers` justes sous un `th` fusionné (`colspan`, `rowspan`) |
-| `15-images-decoratives` | `<img alt="" role="presentation">` en artefact, et non en `/Figure` sans alternative |
+| `10-tableaux-entetes` | `/Headers` justes sous un `th` fusionné (`colspan`, `rowspan`) ; un `th` en `display: block` est ignoré |
+| `15-images-decoratives` | `<img alt="" role="presentation">` en artefact, et non en `/Figure` sans alternative ; dans un lien, son annotation reste rattachée au `/Link` |
 | `20-cesure-trait` | le trait de césure n'est pas copié comme un vrai caractère |
 | `25-espace-fin-de-ligne` | l'espace de fin de ligne est dans la couche texte (n'agit qu'avec le 20) |
 | `30-marges-artefact` | en-têtes, pieds et folios en artefacts de pagination |
 | `40-xmp-dc-language` | `dc:language` dans le XMP |
-| `60-langue-element` | `/Lang` sur l'élément d'un passage dans une autre langue (résumé, citation, `[mot]{lang=en}`) |
-| `65-nom-des-liens` | `/Contents` d'un lien tiré d'`aria-label`, de son texte ou de `title` ; `/Alt` sur le `/Link` d'un lien sans texte |
+| `60-langue-element` | `/Lang` sur l'élément d'un passage dans une autre langue (résumé, citation, `[mot]{lang=en}`) ; une valeur mal formée (« en_US ») ou vide n'est pas écrite |
+| `65-nom-des-liens` | `/Contents` d'un lien tiré d'`aria-label`, de son texte visible (sans les notes), de l'`alt` de ses images ou de `title` ; `/Alt` sur le `/Link` d'un lien sans texte ou à `aria-label`, jamais la cible ni sur une image |
 | `70-espaces-justifiees` | dans une ligne justifiée, pdfium (Edge) lit les vraies espaces au lieu d'en déduire de vides : mots non collés |
 | `75-auteurs-info` | `/Info /Author` sépare les auteurs « Nom, Prénom » par « ; » |
-| `80-notes-balisees` | la note de bas de page est une `/Note` à `/ID` placée juste après son appel (`/Reference`), et non plus en bas de page dans l'arbre ; `/IDTree` dans la racine de structure |
-| `85-listes-imbriquees` | sous-liste dans le `/LBody` de son item ; `<dl>` en `/LI` à `/Lbl` (terme) et `/LBody` (définition) |
+| `80-notes-balisees` | la note de bas de page est une `/Note` à `/ID` placée juste après son appel (`/Reference`), ou après le lien, le titre ou le tableau qui contient l'appel, et non plus en bas de page dans l'arbre ; `/IDTree` dans la racine de structure |
+| `85-listes-imbriquees` | sous-liste dans le `/LBody` de son item, texte d'un item à puce en ligne aussi ; `<dl>` en `/LI` à `/Lbl` (terme) et `/LBody` (définition) |
 
 Le rapport, la démo et l'état chez les développeurs de WeasyPrint de chaque correctif sont
 dans [`image/patches/amont/`](../image/patches/amont/README.md). Un correctif n'arrive sur

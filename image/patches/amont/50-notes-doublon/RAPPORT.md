@@ -67,6 +67,15 @@ The list of footnotes reported at the end of page `i` becomes part of the state 
 `.get()`, so the first page and old states default to an empty list. Without
 repagination, the restored list is the one the previous page just left: nothing changes.
 
+The same state also fixes a lost footnote. When the last page of the content reports a
+footnote to an extra page, and a `target-counter` makes the layout loop again, this last
+page may be up to date: `make_all_pages` did not lay it out again and set
+`reported_footnotes = None`, so it stopped there and the extra page, with the footnote,
+was dropped (plain 70.0 too). An up-to-date page now gives the footnotes it reports, read
+in `page_maker[i + 1]`, and the loop goes on to the extra page. Case `m-reportee-fin` of
+`test/weasyprint-patch-check.py`: note lost without this change, printed once with it.
+Pronto books have a table of contents with `target-counter`.
+
 ## Proofs (03.10.2026, WSL SZH-Publishing, copies of the venv, `/opt` untouched)
 
 - `demo/demo.sh`: plain 70.0 prints the note on pages 2 and 3; plain 70.0 with
