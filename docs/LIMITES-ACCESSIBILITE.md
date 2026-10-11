@@ -82,9 +82,14 @@ livre : c'est le même moteur.
 | Sortie | Limite | Norme | Gravité | Cause | État |
 |---|---|---|---|---|---|
 | PDF numérique | Les entrées du sommaire sont des `/LI` sans `/Lbl`, et chacune contient un `/Link` imbriqué dans un autre (le titre, puis le folio). | PDF/UA-1 7.18 | mineure | maquette et WeasyPrint | à examiner |
-| EPUB 3 | Pas de déclaration de conformité (`dcterms:conformsTo`), pas d'`accessibilitySummary`, pas de liste des pages (`page-list`) alors qu'une édition imprimée existe. | EPUB Accessibility 1.1 | mineure à moyenne | chaîne EPUB du livre | à corriger |
+| PDF numérique, HTML web, EPUB 3 | Une partie et ses chapitres sont tous des titres de niveau 1, et le titre du livre est un paragraphe de la page de titre : la hiérarchie des titres ne dit pas qu'un chapitre appartient à sa partie. Seuls le sommaire, les signets du PDF et la navigation de l'EPUB l'imbriquent. | WCAG 1.3.1 ; PDF/UA-1 7.4 | moyenne | maquette : un chapitre se compile comme un article, son titre est un `<h1>` | attend une décision |
+| EPUB 3 | Pas de déclaration de conformité (`dcterms:conformsTo`) : la conformité WCAG 2.2 AA de l'EPUB n'a pas été vérifiée en entier (EPUBCheck, Ace, lecteur d'écran). Le résumé d'accessibilité le dit. | EPUB Accessibility 1.1 | mineure | outillage | non vérifié |
+| EPUB 3 | Pas de liste des pages (`page-list`) alors qu'une édition imprimée existe. | EPUB Accessibility 1.1 | moyenne | chaîne EPUB du livre | à corriger |
+| EPUB 3 | Un tableau qui contient une image est relu par pandoc : un tableau complexe y perd ses `<th>` de rangée. | WCAG 1.3.1 | majeure pour le contenu touché | chaîne EPUB du livre | accepté (cas non rencontré) |
 | EPUB 3 | EPUBCheck et Ace (DAISY) ne sont pas dans l'image WSL : l'EPUB n'est contrôlé que par `test/epub-check.py`. | EPUB Accessibility 1.1 | inconnue | outillage | non vérifié |
-| HTML web | Mêmes points non vérifiés que le HTML autonome. | WCAG 2.2 | inconnue | — | non vérifié |
+| HTML web | Une note d'une pièce liminaire ou d'une pièce de fin reste en ligne, entre crochets : ces pièces sont compilées avec `szh-notes`. | WCAG 1.3.1 | mineure | chaîne | accepté |
+| HTML web | Un tableau plus large que la colonne défile dans une boîte qui n'est pas atteignable au clavier. | WCAG 2.1.1 | moyenne | `szh-tableau-boite.lua` (sans `tabindex`) | à corriger |
+| HTML web | Lecteur d'écran, zoom à 400 % au clavier : non essayés. | WCAG 2.2 | inconnue | — | non vérifié |
 
 Le PDF imprimeur n'est pas un livrable d'accessibilité.
 

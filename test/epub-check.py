@@ -8,7 +8,7 @@
 # epubcheck : il trouve ce qu'un assemblage maison casse sans erreur visible (fichier hors
 # manifeste, lien interne sans cible, image absente, chapitre absent du sommaire).
 #
-# Huit contrôles, dans l'ordre où un échec peut fausser les suivants :
+# Dix contrôles, dans l'ordre où un échec peut fausser les suivants :
 #   1. mimetype — première entrée de l'archive, non compressée, contenu exact.
 #   2. META-INF/container.xml -> chemin de l'OPF, résolu dans l'archive.
 #   3. manifeste -> archive : chaque item existe réellement.
@@ -23,6 +23,15 @@
 #      navigation (table des matières ou repères). Exemple de défaut : un élément placé
 #      avant le <h1> d'un chapitre fait sortir à pandoc un XHTML presque vide, que
 #      nav.xhtml ne vise pas.
+#   9. accessibilité des XHTML : identifiants uniques dans chaque document ; chaque
+#      renvoi headers, aria-describedby, aria-labelledby vise un identifiant du même
+#      document, et un headers= vise un <th> ; le <title> d'un document n'est pas son nom
+#      de fichier ; l'image de couverture a un nom.
+#  10. accessibilité de l'OPF et de la navigation : les métadonnées schema:accessMode,
+#      accessModeSufficient, accessibilityFeature, accessibilityHazard et
+#      accessibilitySummary sont posées ; les repères (landmarks) ne sont pas restés en
+#      anglais dans un livre d'une autre langue, et mènent à la table des matières et au
+#      début du texte.
 #
 # Sortie : un bilan par EPUB, code de sortie 1 au premier défaut (tous les EPUB
 # passés en argument sont quand même contrôlés jusqu'au bout).
@@ -328,6 +337,102 @@ def verifier_navigation(zf, opf_racine, items, rapport):
                      'nav.xhtml (%d lien(s) au total).' % (total, total, len(cibles_nav)))
 
 
+ATTRIBUTS_IDREFS = ('headers', 'aria-describedby', 'aria-labelledby')
+EPUB_TYPE = '{http://www.idpf.org/2007/ops}type'
+
+
+def verifier_accessibilite_xhtml(zf, items, opf_racine, rapport):
+    """Point 9."""
+    spine = set()
+    spine_el = opf_racine.find('spine')
+    for itemref in (spine_el.findall('itemref') if spine_el is not None else []):
+        if itemref.get('idref') in items:
+            spine.add(items[itemref.get('idref')]['href'])
+    renvois = 0
+    for info in items.values():
+        if not (info['media-type'] or '').endswith('xhtml+xml'):
+            continue
+        chemin = info['href']
+        try:
+            racine = ET.fromstring(zf.read(chemin))
+        except (KeyError, ET.ParseError):
+            continue  # déjà signalé
+        for el in racine.iter():
+            el.tag = _sans_ns(el.tag)
+        par_id = {}
+        for el in racine.iter():
+            ident = el.get('id')
+            if ident:
+                if ident in par_id:
+                    rapport.defaut('%s : id="%s" en double' % (chemin, ident))
+                par_id[ident] = el
+        for el in racine.iter():
+            for attr in ATTRIBUTS_IDREFS:
+                for ident in (el.get(attr) or '').split():
+                    renvois += 1
+                    cible = par_id.get(ident)
+                    if cible is None:
+                        rapport.defaut('%s : <%s %s> vise "%s", absent du document'
+                                       % (chemin, el.tag, attr, ident))
+                    elif attr == 'headers' and cible.tag != 'th':
+                        rapport.defaut('%s : <%s headers> vise "%s", un <%s> et non un <th>'
+                                       % (chemin, el.tag, ident, cible.tag))
+        titre = racine.find('head/title')
+        nom_fichier = posixpath.basename(chemin)
+        if chemin in spine and titre is not None and (titre.text or '').strip() == nom_fichier:
+            rapport.defaut('%s : <title> est le nom du fichier' % chemin)
+        if 'svg' in info['properties'] or nom_fichier.startswith('cover'):
+            for el in racine.iter():
+                if el.tag == 'svg' and not (el.get('aria-label') or el.find('title') is not None):
+                    rapport.defaut('%s : image de couverture <svg> sans nom accessible' % chemin)
+                if el.tag == 'img' and el.get('alt') is None:
+                    rapport.defaut('%s : image de couverture <img> sans alt' % chemin)
+    rapport.info('accessibilité des XHTML : identifiants uniques, %d renvoi(s) résolu(s), '
+                 'titres des documents.' % renvois)
+
+
+PROPRIETES_ACCESSIBILITE = ('schema:accessMode', 'schema:accessModeSufficient',
+                            'schema:accessibilityFeature', 'schema:accessibilityHazard',
+                            'schema:accessibilitySummary')
+REPERES_ANGLAIS = ('Title Page', 'Cover', 'Table of Contents', 'Start')
+
+
+def verifier_accessibilite_opf(zf, opf_racine, items, rapport):
+    """Point 10."""
+    meta = opf_racine.find('metadata')
+    poses = {m.get('property') for m in (meta.findall('meta') if meta is not None else [])
+             if (m.text or '').strip()}
+    manquantes = [p for p in PROPRIETES_ACCESSIBILITE if p not in poses]
+    if manquantes:
+        rapport.defaut('OPF : métadonnées d\'accessibilité absentes : %s' % ', '.join(manquantes))
+    langue = ''
+    if meta is not None and meta.find('language') is not None:
+        langue = (meta.find('language').text or '').strip()
+    nav_item = next((i for i in items.values() if 'nav' in i['properties']), None)
+    if nav_item is None:
+        return
+    try:
+        racine_nav = ET.fromstring(zf.read(nav_item['href']))
+    except (KeyError, ET.ParseError):
+        return
+    types = set()
+    for nav in racine_nav.iter('{http://www.w3.org/1999/xhtml}nav'):
+        if nav.get(EPUB_TYPE) != 'landmarks':
+            continue
+        for a in nav.iter('{http://www.w3.org/1999/xhtml}a'):
+            types.add(a.get(EPUB_TYPE))
+            libelle = (a.text or '').strip()
+            if not langue.startswith('en') and libelle in REPERES_ANGLAIS:
+                rapport.defaut('nav.xhtml : repère « %s » en anglais dans un livre en %s'
+                               % (libelle, langue))
+    for type_ in ('toc', 'bodymatter'):
+        if type_ not in types:
+            rapport.defaut('nav.xhtml : aucun repère epub:type="%s"' % type_)
+    if not manquantes:
+        rapport.info('OPF : métadonnées d\'accessibilité posées ; repères : %s.'
+                     % ', '.join(sorted(t for t in types if t)))
+
+
 def controler_epub(chemin_epub):
     rapport = Rapport(chemin_epub)
     try:
@@ -354,6 +459,8 @@ def controler_epub(chemin_epub):
         verifier_metadonnees(opf_racine, rapport)
         verifier_xhtml_et_liens(zf, items, noms, rapport)
         verifier_navigation(zf, opf_racine, items, rapport)
+        verifier_accessibilite_xhtml(zf, items, opf_racine, rapport)
+        verifier_accessibilite_opf(zf, opf_racine, items, rapport)
     return rapport
 
 

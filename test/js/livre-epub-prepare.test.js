@@ -45,8 +45,8 @@ function chapitre(slug, avant, apres) {
 test('epub : une ligne d’auteur·e·s au-dessus du titre passe juste après lui', { skip: sansPython }, () => {
   const html = preparer('<body>\n' + chapitre('eins', '<p class="szh-auteurs">Lea Beispiel</p>\n', '')
     + chapitre('zwei', '<div class="szh-auteurs">\n<p>Noah Probe</p>\n</div>\n', '') + '</body>');
-  assert.match(html, /<h1 id="eins-titre">Titre eins<\/h1>\s*<p class="szh-auteurs">Lea Beispiel<\/p>/, html);
-  assert.match(html, /<h1 id="zwei-titre">Titre zwei<\/h1>\s*<div class="szh-auteurs">\s*<p>Noah Probe<\/p>\s*<\/div>/, html);
+  assert.match(html, /<h1 [^>]*id="eins-titre">Titre eins<\/h1>\s*<p class="szh-auteurs">Lea Beispiel<\/p>/, html);
+  assert.match(html, /<h1 [^>]*id="zwei-titre">Titre zwei<\/h1>\s*<div class="szh-auteurs">\s*<p>Noah Probe<\/p>\s*<\/div>/, html);
   // Rien ne reste entre deux chapitres : le premier <h1> ouvre chaque document.
   assert.doesNotMatch(html, /Texte\.<\/p>\s*<(p|div) class="szh-auteurs"/, html);
 });
@@ -58,7 +58,8 @@ test('epub : l’enveloppe d’une partie est retirée, son titre devient un <h1
     + chapitre('zwei', '', '').replace('<section class="szh-chapitre"', '<section class="szh-chapitre" data-partie="1"') + '</body>');
   assert.doesNotMatch(html, /<section/, html);
   assert.match(html, /<p>Texte\.<\/p>\s*<h1 id="partie-1-titre"[^>]*>Teil<\/h1>\n<p class="szh-partie-illustration">/, html);
-  assert.match(html, /<h1 id="zwei-titre">/, html);
+  // Le titre du chapitre garde son slug et sa partie, pour la navigation de l'EPUB.
+  assert.match(html, /<h1 data-chapitre="zwei" data-partie="1" id="zwei-titre">/, html);
 });
 
 test('epub : une ligne d’auteur·e·s déjà sous le titre ne bouge pas', { skip: sansPython }, () => {

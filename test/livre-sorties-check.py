@@ -1,4 +1,5 @@
-"""Contrôle des sorties d'un livre compilé : folios, métadonnées, couverture, EPUB.
+"""Contrôle des sorties d'un livre compilé : folios, métadonnées, couverture, EPUB,
+identifiants et renvois du HTML du PDF et du HTML web.
 
     /opt/weasyprint/bin/python test/livre-sorties-check.py test/livre-falc
 
@@ -248,6 +249,40 @@ def controler_epub(chemin, buch, personnes):
         ok('%s : couverture, titre, %d personnes' % (chemin, len(personnes)))
 
 
+RE_ID = re.compile(r'<[a-zA-Z][^<>]*?\sid="([^"]+)"')
+RE_RENVOIS = re.compile(r'\s(headers|aria-describedby|aria-labelledby)="([^"]+)"')
+RE_ANCRE = re.compile(r'\shref="#([^"]+)"')
+
+
+def controler_identifiants(chemin, web=False):
+    """HTML du PDF ou HTML web : aucun identifiant en double, chaque renvoi interne
+    (headers, aria-describedby, aria-labelledby, href="#…") résolu ; le HTML web a ses
+    repères main et nav."""
+    if not os.path.exists(chemin):
+        fail('%s absent' % chemin)
+        return
+    with open(chemin, encoding='utf-8') as f:
+        texte = f.read()
+    # Les <svg> en ligne gardent leurs propres identifiants.
+    texte = re.sub(r'<svg\b[\s\S]*?</svg>', '', texte)
+    ids = RE_ID.findall(texte)
+    vus, doubles = set(), set()
+    for i in ids:
+        (doubles if i in vus else vus).add(i)
+    for i in sorted(doubles):
+        fail('%s : id="%s" en double' % (chemin, i))
+    renvois = [v for _, liste in RE_RENVOIS.findall(texte) for v in liste.split()]
+    renvois += RE_ANCRE.findall(texte)
+    for r in sorted(set(renvois) - vus):
+        fail('%s : renvoi vers « %s », absent du document' % (chemin, r))
+    if web:
+        for repere in ('<main>', '<nav class="szh-sommaire"'):
+            if repere not in texte:
+                fail('%s : pas de %s' % (chemin, repere))
+    if not echecs or chemin not in echecs[-1]:
+        ok('%s : %d identifiants uniques, %d renvois résolus' % (chemin, len(ids), len(renvois)))
+
+
 def main(dossier):
     buch = lire_yaml(os.path.join(dossier, 'buch.yaml'))
     ref = json.load(open(REFERENCE, encoding='utf-8'))
@@ -261,6 +296,8 @@ def main(dossier):
     controler_meta_pdf(pdf, buch, personnes)
     controler_couverture(out, nom, buch, ref)
     controler_epub(os.path.join(out, nom + '.epub'), buch, personnes)
+    controler_identifiants(os.path.join(out, nom + '.html'))
+    controler_identifiants(os.path.join(out, 'web', nom + '.html'), web=True)
 
     apercus = [f for f in os.listdir(os.path.join(out, 'chapitres'))
                if f.endswith('.pdf')] if os.path.isdir(os.path.join(out, 'chapitres')) else []

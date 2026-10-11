@@ -4,7 +4,10 @@
 #
 #   python3 livre-assembler.py --meta buch.yaml --gabarit <g.html> --sortie <out.html>
 #                              [--css <feuille>]... [--css-embed <feuille>]... <fragment>...
-#                              [--sans-liminaires]
+#                              [--sans-liminaires] [--web]
+#
+# --web : le HTML pour l'écran (cible livre-html-web). Le contenu est dans un <main>, et le
+# sommaire est un <nav>.
 #
 # --sans-liminaires : le chapitre seul (cible livre-chapitre-pdf de livre.mk). Aucun
 # liminaire, pas de sommaire ; le titre du document devient celui du chapitre.
@@ -301,7 +304,8 @@ def verifier_hauteur_sommaire(entrees):
                      ONGLET_H_MIN_2_LIGNES), file=sys.stderr)
 
 
-def sommaire_html(entrees, titre, hierarchique=False, auteurs=None, cases=True):
+def sommaire_html(entrees, titre, hierarchique=False, auteurs=None, cases=True,
+                  balise='section'):
     """Le sommaire : une <ol> de liens internes. Les numéros de page sont posés par
     target-counter() dans base.css.
 
@@ -319,6 +323,13 @@ def sommaire_html(entrees, titre, hierarchique=False, auteurs=None, cases=True):
     Une entrée est (niveau, ancre, texte, couleur, hauteur de case[, extra]) ; niveau 0 pour
     une partie. `extra` : classes du <li> et numéro de partie, imprimé dans son <span>.
     `cases` faux : pas d'index à pouce (maquette normal), rien à vérifier.
+
+    La liste suit la structure du livre : les chapitres d'une partie (classe dans-partie)
+    sont dans une sous-liste de son <li>, les intertitres d'un chapitre dans une sous-liste
+    du sien. Un <li> qui porte une sous-liste a la classe szh-sommaire-groupe.
+
+    `balise` : l'élément qui porte le sommaire, `section` pour le PDF et l'EPUB, `nav` pour
+    le HTML web, où il est un repère de navigation.
     """
     if cases:
         verifier_hauteur_sommaire(entrees)
@@ -328,9 +339,29 @@ def sommaire_html(entrees, titre, hierarchique=False, auteurs=None, cases=True):
     onglet_hauteur = next((e[4] for e in entrees if e[4]), None)
     style_section = (' style="--onglet-hauteur: %s"' % html.escape(onglet_hauteur, quote=True)
                       if onglet_hauteur else '')
-    lignes = ['<section class="szh-sommaire" id="szh-sommaire"%s>' % style_section,
-              '<h1>' + html.escape(titre) + '</h1>', '<ol>']
+    if balise == 'nav':
+        ouverture = ('<nav class="szh-sommaire" id="szh-sommaire" aria-labelledby='
+                     '"szh-sommaire-titre"%s>' % style_section)
+        titre_html = '<h1 id="szh-sommaire-titre">' + html.escape(titre) + '</h1>'
+    else:
+        ouverture = '<section class="szh-sommaire" id="szh-sommaire"%s>' % style_section
+        titre_html = '<h1>' + html.escape(titre) + '</h1>'
+
+    # L'arbre des entrées : (entrée, enfants).
+    racine, pile = [], []
     for entree in entrees:
+        niveau = entree[0]
+        extra = entree[5] if len(entree) > 5 else {}
+        if niveau == 0 or (niveau == 1 and 'dans-partie' not in extra.get('classes', ())):
+            pile = []
+        while pile and pile[-1][0][0] >= niveau:
+            pile.pop()
+        noeud = (entree, [])
+        (pile[-1][1] if pile else racine).append(noeud)
+        pile.append(noeud)
+
+    def element(noeud):
+        entree, enfants = noeud
         niveau, ancre, txt, couleur = entree[:4]
         extra = entree[5] if len(entree) > 5 else {}
         style = (' style="--c-chapitre: %s"' % html.escape(couleur, quote=True)
@@ -341,12 +372,18 @@ def sommaire_html(entrees, titre, hierarchique=False, auteurs=None, cases=True):
         suite = ('<span class="szh-sommaire-auteurs">%s</span>' % html.escape(ligne_auteurs)
                  if ligne_auteurs else '')
         classes = ''.join(' ' + c for c in extra.get('classes', ()))
+        if enfants:
+            classes += ' szh-sommaire-groupe'
+            suite += '<ol>\n' + '\n'.join(element(e) for e in enfants) + '\n</ol>'
         numero = ('<span class="szh-sommaire-num">%s</span>' % html.escape(extra['numero'])
                   if extra.get('numero') else '')
-        lignes.append('<li class="niveau-%d%s"%s><span>%s<a href="#%s">%s</a></span>%s</li>'
-                      % (niveau, classes, style, numero, html.escape(ancre, quote=True),
-                         html.escape(txt), suite))
-    lignes += ['</ol>', '</section>']
+        return ('<li class="niveau-%d%s"%s><span>%s<a href="#%s">%s</a></span>%s</li>'
+                % (niveau, classes, style, numero, html.escape(ancre, quote=True),
+                   html.escape(txt), suite))
+
+    lignes = [ouverture, titre_html, '<ol>']
+    lignes += [element(n) for n in racine]
+    lignes += ['</ol>', '</%s>' % balise]
     return '\n'.join(lignes)
 
 
@@ -957,6 +994,74 @@ def fichiers_images(meta, racine):
     return rendus
 
 
+# --------------------------------------------------------------------------------------
+# Identifiants propres au chapitre.
+#
+# pandoc préfixe par « <slug>- » les identifiants qu'il écrit (--id-prefix, livre.mk), mais
+# pas ceux du HTML brut posé par les filtres : description longue et note de tableau, en-têtes
+# des tableaux complexes. Ces identifiants sont numérotés par chapitre, donc répétés d'un
+# chapitre à l'autre une fois le livre assemblé. Ils reçoivent ici le même préfixe, et
+# chaque renvoi interne au fragment (href="#…", headers, aria-describedby…) le suit. Un
+# <svg> en ligne garde les siens : ses renvois passent aussi par url(#…).
+# --------------------------------------------------------------------------------------
+# Une balise ouvrante ; une valeur entre guillemets peut contenir « > ».
+RE_BALISE_OUVRANTE = re.compile(r'<[a-zA-Z][\w:-]*(?:"[^"]*"|\'[^\']*\'|[^\'"<>])*>')
+RE_SVG = re.compile(r'<svg\b[\s\S]*?</svg>', re.I)
+RE_ATTR_ID = re.compile(r'(\sid=")([^"]+)(")')
+RE_ATTR_HREF_LOCAL = re.compile(r'(\shref="#)([^"]+)(")')
+# Attributs qui portent une liste d'identifiants séparés par des espaces.
+RE_ATTR_IDREFS = re.compile(
+    r'(\s(?:headers|for|list|form|itemref|aria-describedby|aria-labelledby|aria-controls|'
+    r'aria-owns|aria-flowto|aria-details|aria-activedescendant|aria-errormessage)=")'
+    r'([^"]*)(")')
+
+
+def _hors_svg(texte, fonction):
+    """Applique `fonction` au texte situé hors des <svg> en ligne."""
+    morceaux, fin = [], 0
+    for m in RE_SVG.finditer(texte):
+        morceaux.append(fonction(texte[fin:m.start()]))
+        morceaux.append(m.group(0))
+        fin = m.end()
+    morceaux.append(fonction(texte[fin:]))
+    return ''.join(morceaux)
+
+
+def prefixer_identifiants(fragment, slug):
+    """Préfixe par « <slug>- » chaque identifiant du fragment qui ne l'a pas déjà, sauf
+    celui de la section du chapitre (« ch-<slug> », cible du sommaire), et réécrit les
+    renvois qui le visent dans le même fragment. Un renvoi vers un identifiant absent du
+    fragment reste tel quel."""
+    if not slug:
+        return fragment
+    prefixe = slug + '-'
+    locaux = set()
+
+    def relever(texte):
+        for balise in RE_BALISE_OUVRANTE.findall(texte):
+            for m in RE_ATTR_ID.finditer(balise):
+                ident = m.group(2)
+                if not ident.startswith(prefixe) and ident != 'ch-' + slug:
+                    locaux.add(ident)
+        return texte
+
+    _hors_svg(fragment, relever)
+    if not locaux:
+        return fragment
+
+    def nouveau(ident):
+        return prefixe + ident if ident in locaux else ident
+
+    def balise(m):
+        b = m.group(0)
+        b = RE_ATTR_ID.sub(lambda a: a.group(1) + nouveau(a.group(2)) + a.group(3), b)
+        b = RE_ATTR_HREF_LOCAL.sub(lambda a: a.group(1) + nouveau(a.group(2)) + a.group(3), b)
+        return RE_ATTR_IDREFS.sub(
+            lambda a: a.group(1) + ' '.join(nouveau(t) for t in a.group(2).split()) + a.group(3), b)
+
+    return _hors_svg(fragment, lambda texte: RE_BALISE_OUVRANTE.sub(balise, texte))
+
+
 def dans_partie(fragment, rang):
     """Marque la section du chapitre comme membre de la partie `rang`."""
     return fragment.replace('<section class="szh-chapitre"',
@@ -1040,8 +1145,38 @@ def _remplacer_jetons(gabarit, remplacements):
 #   fabriquera un urn:uuid, ce qui est la bonne réponse pour un fichier qui n'en a pas
 #   encore — un identifiant faux serait pire qu'un identifiant provisoire.
 
-def metadonnees_epub(meta):
-    """Rend le texte d'un fichier de métadonnées YAML pour pandoc (--metadata-file)."""
+# Résumé d'accessibilité de l'EPUB (schema:accessibilitySummary), dans la langue du livre.
+# Il dit ce que la chaîne garantit, et que la conformité WCAG n'a pas été vérifiée en entier :
+# l'OPF ne déclare pas dcterms:conformsTo.
+RESUME_ACCESSIBILITE_EPUB = {
+    'de': 'Dieses EPUB folgt der Gliederung des gedruckten Buches: Inhaltsverzeichnis, '
+          'Überschriften zur Navigation, Fussnoten als verlinkte Anmerkungen am Ende des '
+          'Kapitels. Bilder haben einen Alternativtext, Tabellen Kopfzellen und bei Bedarf '
+          'eine ausführliche Beschreibung. Die Konformität mit WCAG 2.2 AA wurde nicht '
+          'vollständig geprüft.',
+    'fr': 'Cet EPUB suit la structure du livre imprimé : table des matières, titres pour la '
+          'navigation, notes en fin de chapitre liées à leur appel. Les images ont un texte '
+          'alternatif, les tableaux des cellules d’en-tête et, au besoin, une description '
+          'détaillée. La conformité aux WCAG 2.2 AA n’a pas été vérifiée en entier.',
+    'it': 'Questo EPUB segue la struttura del libro stampato: indice, titoli per la '
+          'navigazione, note a fine capitolo collegate al richiamo. Le immagini hanno un testo '
+          'alternativo, le tabelle celle di intestazione e, se necessario, una descrizione '
+          'estesa. La conformità alle WCAG 2.2 AA non è stata verificata per intero.',
+}
+
+
+def contenu_accessibilite(textes):
+    """(images, descriptions) : le livre contient-il une image porteuse de sens (<img> à
+    texte alternatif) ou une description longue de tableau ?"""
+    images = any(re.search(r'<img\b[^>]*\balt="[^"]+"', t) for t in textes)
+    descriptions = any('class="szh-description"' in t for t in textes)
+    return images, descriptions
+
+
+def metadonnees_epub(meta, images=False, descriptions=False):
+    """Rend le texte d'un fichier de métadonnées YAML pour pandoc (--metadata-file).
+    `images`, `descriptions` : voir contenu_accessibilite(), pour les métadonnées
+    d'accessibilité de l'OPF."""
     def guillemets(v):
         return '"' + str(v).replace('\\', '\\\\').replace('"', '\\"') + '"'
 
@@ -1051,6 +1186,9 @@ def metadonnees_epub(meta):
     if meta.get('sous-titre'):
         lignes.append('subtitle: ' + guillemets(szh_commun.titre_plat(meta['sous-titre'])))
     lignes.append('lang: ' + guillemets(str(meta.get('lang') or 'fr')))
+    # Titre de la navigation (nav.xhtml), sinon celui du livre.
+    lignes.append('toc-title: ' + guillemets(
+        TITRES_SOMMAIRE.get(str(meta.get('lang') or 'fr'), TITRES_SOMMAIRE['fr'])))
 
     # Les auteur·e·s et éditeur·rice·s de l'ouvrage au format pandoc EPUB : creator avec
     # role (aut pour auteurs, edt pour éditeurs) et text (le nom). En ouvrage collectif la
@@ -1096,6 +1234,20 @@ def metadonnees_epub(meta):
             serie += ', ' + str(meta['tome'])
         lignes.append('belongs-to-collection: ' + guillemets(serie))
     lignes.append('publisher: "Edition SZH/CSPS"')
+
+    # Accessibilité (schema.org), écrite par pandoc dans l'OPF.
+    lignes.append('accessModes: [textual%s]' % (', visual' if images else ''))
+    lignes.append('accessModeSufficient: [textual%s]' % (', "textual,visual"' if images else ''))
+    fonctions = ['tableOfContents', 'readingOrder', 'structuralNavigation']
+    if images:
+        fonctions.append('alternativeText')
+    if descriptions:
+        fonctions.append('longDescription')
+    lignes.append('accessibilityFeatures: [%s]' % ', '.join(fonctions))
+    lignes.append('accessibilityHazards: [none]')
+    langue = str(meta.get('lang') or 'fr')
+    lignes.append('accessibilitySummary: ' + guillemets(
+        RESUME_ACCESSIBILITE_EPUB.get(langue, RESUME_ACCESSIBILITE_EPUB['fr'])))
     return chr(10).join(lignes) + chr(10)
 
 
@@ -1121,7 +1273,7 @@ def main(argv):
     # jour. SZH_OUT_LIVRE en repli, pour un appel hors Makefile (tests, essai à la main).
     out_dir = os.environ.get('SZH_OUT_LIVRE') or 'out'
     feuilles, feuilles_incorporees, fragments = [], [], []
-    sans_liminaires = numeros_seuls = images_seules = False
+    sans_liminaires = numeros_seuls = images_seules = web = False
     i = 1
     while i < len(argv):
         a = argv[i]
@@ -1143,6 +1295,9 @@ def main(argv):
         elif a == '--css-embed' and i + 1 < len(argv):
             feuilles_incorporees.append(argv[i + 1])
             i += 2
+        elif a == '--web':
+            web = True
+            i += 1
         elif a == '--sans-liminaires':
             sans_liminaires = True
             i += 1
@@ -1197,6 +1352,7 @@ def main(argv):
             print('[livre] fragment illisible : %s (%s)' % (f, e), file=sys.stderr)
             return 1
     slugs = [slug_du_fragment(t) for t in frags]
+    frags = [prefixer_identifiants(t, s) for t, s in zip(frags, slugs)]
 
     # La structure (parties, pièces de fin, dédicace, impressum) est celle de la maquette
     # normal ; le FALC n'en lit rien. Tous les refus sont dits avant d'en arrêter.
@@ -1320,7 +1476,8 @@ def main(argv):
         'page-titre': lambda: page_titre(meta, langue, normal, logo),
         'sommaire':   lambda: sommaire_html(entrees,
                                             TITRES_SOMMAIRE.get(langue, 'Sommaire'),
-                                            hierarchique, auteurs, not normal),
+                                            hierarchique, auteurs, not normal,
+                                            'nav' if web else 'section'),
     }
     if normal:
         composeurs['dedicace'] = lambda: dedicace(meta)
@@ -1372,8 +1529,9 @@ def main(argv):
         '$classe-format$': 'szh-a4' if str(meta.get('format')) == 'a4' else '',
         '$mise-en-page$':  attributs_mise_en_page(reglages),
         '$css$':           liens,
-        '$liminaires$':    '\n'.join(tete),
-        '$corps$':         '\n'.join(corps),
+        # HTML web : le contenu dans un <main>, seul repère principal de la page.
+        '$liminaires$':    ('<main>\n' if web else '') + '\n'.join(tete),
+        '$corps$':         '\n'.join(corps) + ('\n</main>' if web else ''),
     }
     sortie = _remplacer_jetons(gabarit, remplacements)
 
@@ -1384,7 +1542,7 @@ def main(argv):
         fh.write(sortie)
     if meta_epub:
         with open(meta_epub, 'w', encoding='utf-8') as fh:
-            fh.write(metadonnees_epub(meta))
+            fh.write(metadonnees_epub(meta, *contenu_accessibilite(frags + list(textes_pieces.values()))))
 
     print('[livre] %d chapitre(s), %d liminaire(s), %d entree(s) de sommaire'
           % (len(fragments), len(tete), len(entrees)), file=sys.stderr)

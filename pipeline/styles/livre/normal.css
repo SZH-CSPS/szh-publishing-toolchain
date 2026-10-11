@@ -152,6 +152,10 @@ h2, h3, h4, figure { margin-break: discard; }
 .szh-sommaire .niveau-1:first-child { margin-top: 0; }
 .szh-sommaire .niveau-2 { font-weight: 500; letter-spacing: 0.02em; }
 .szh-sommaire .niveau-3 { font-weight: 300; letter-spacing: 0.02em; }
+/* Sous-liste (chapitres d'une partie, intertitres d'un chapitre) : alignée sur la liste,
+   hors de la colonne des folios et du retrait de l'entrée qui la porte. */
+.szh-sommaire li > ol { margin-right: -10mm; }
+.szh-sommaire li li { text-indent: 0; }
 
 /* ═══ Corps ═══════════════════════════════════════════════════════════════════ */
 /* Citation détachée : 8,5 pt sur 12,25, en italique, retrait gauche de 4 mm, sans alinéa.
@@ -337,6 +341,7 @@ html[data-sommaire="hierarchique"] .szh-sommaire .niveau-1 {
 }
 /* Un padding et non une marge : celle-ci se fondrait dans la marge basse du titre. */
 html[data-sommaire="hierarchique"] .szh-sommaire ol { padding-top: calc(2 * var(--ligne)); }
+html[data-sommaire="hierarchique"] .szh-sommaire ol ol { padding-top: 0; }
 html[data-sommaire="hierarchique"] .szh-sommaire .niveau-1:first-child { margin-top: 0; }
 html[data-sommaire="hierarchique"] .szh-sommaire-auteurs { display: block; font-weight: 400;
                                                            letter-spacing: 0.045em; }
@@ -457,11 +462,14 @@ html[data-sommaire="hierarchique"] .szh-sommaire .partie-partagee {
   padding-left: 5.6mm; text-indent: -5.6mm;
 }
 html[data-sommaire="hierarchique"] .szh-sommaire .partie-partagee .szh-sommaire-num { min-width: 5.6mm; }
+/* La sous-liste des chapitres sort du retrait de la partie. */
+html[data-sommaire="hierarchique"] .szh-sommaire .niveau-0 > ol { margin-left: -5.8mm; }
+html[data-sommaire="hierarchique"] .szh-sommaire .partie-partagee > ol { margin-left: -5.6mm; }
 html[data-sommaire="hierarchique"] .szh-sommaire .niveau-0:first-child { margin-top: 0; }
 html[data-sommaire="hierarchique"] .szh-sommaire .niveau-1.dans-partie {
   font-weight: 700; margin-top: var(--ligne); padding-left: 5.5mm;
 }
-html[data-sommaire="hierarchique"] .szh-sommaire .partie-seule + .dans-partie {
+html[data-sommaire="hierarchique"] .szh-sommaire .partie-seule > ol > .dans-partie:first-child {
   margin-top: calc(var(--ligne) - 1.1mm);
 }
 

@@ -95,13 +95,28 @@ for cas in json.load(open(sys.argv[1], encoding='utf-8')):
 print(json.dumps(res_))
 `;
 
-// Une entrée : classes du <li>, titre, numéro de partie et ligne d'auteurs éventuels.
+// Une entrée : classes du <li>, titre, numéro de partie et ligne d'auteurs éventuels. La
+// liste est imbriquée comme celle de livre-assembler.py : un chapitre d'une partie
+// (dans-partie) dans la sous-liste de la partie, un intertitre (niveau-2) dans celle de son
+// chapitre.
 function sommaire(entrees) {
+  const racine = [];
+  let parent = null;
+  let partie = null;
+  entrees.forEach((e, i) => {
+    const noeud = { e, i, enfants: [] };
+    if (/niveau-0/.test(e.classes)) { partie = noeud; parent = noeud; racine.push(noeud); return; }
+    if (/niveau-2/.test(e.classes) && parent) { parent.enfants.push(noeud); return; }
+    if (/dans-partie/.test(e.classes) && partie) { partie.enfants.push(noeud); parent = noeud; return; }
+    partie = null; parent = noeud; racine.push(noeud);
+  });
+  const li = (n) => '<li class="' + n.e.classes + (n.enfants.length ? ' szh-sommaire-groupe' : '') + '"><span>'
+    + (n.e.num ? '<span class="szh-sommaire-num">' + n.e.num + '</span>' : '')
+    + '<a href="#c' + n.i + '">' + n.e.titre + '</a></span>'
+    + (n.e.auteurs ? '<span class="szh-sommaire-auteurs">' + n.e.auteurs + '</span>' : '')
+    + (n.enfants.length ? '<ol>' + n.enfants.map(li).join('') + '</ol>' : '') + '</li>';
   return '<section class="szh-sommaire" id="szh-sommaire" style="--onglet-hauteur: 25mm">'
-    + '<h1>Inhalt</h1><ol>' + entrees.map((e, i) => '<li class="' + e.classes + '"><span>'
-      + (e.num ? '<span class="szh-sommaire-num">' + e.num + '</span>' : '')
-      + '<a href="#c' + i + '">' + e.titre + '</a></span>'
-      + (e.auteurs ? '<span class="szh-sommaire-auteurs">' + e.auteurs + '</span>' : '') + '</li>').join('')
+    + '<h1>Inhalt</h1><ol>' + racine.map(li).join('')
     + '</ol></section>'
     + entrees.map((e, i) => '<section class="szh-chapitre"><h1 id="c' + i + '">Kapitel ' + i
       + '</h1><p>Text.</p></section>').join('');

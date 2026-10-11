@@ -112,6 +112,9 @@ figure + p, ul + p, ol + p, blockquote + p, table + p, .szh-tableau-boite + p,
 .szh-sommaire { break-before: recto; }
 .szh-sommaire ol { list-style: none; margin: 0; padding: 0; }
 .szh-sommaire li { break-inside: avoid; position: relative; }
+/* Une entrée qui porte une sous-liste (une partie et ses chapitres, un chapitre et ses
+   intertitres) se coupe entre ses entrées, comme une suite d'entrées de même niveau. */
+.szh-sommaire li.szh-sommaire-groupe { break-inside: auto; }
 .szh-sommaire a { text-decoration: none; color: inherit; }
 .szh-sommaire a::after {
   content: target-counter(attr(href), page);

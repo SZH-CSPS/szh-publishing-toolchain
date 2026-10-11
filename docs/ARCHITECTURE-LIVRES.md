@@ -48,11 +48,11 @@ flowchart TD
 
 | | Partagé avec la revue | Propre au livre |
 |---|---|---|
-| Filtres | le socle de `filtres.mk`, dans le même ordre | `szh-livre-titre`, `szh-sauts-uniques`, `szh-livre-sous-titre` (deux fois, avant et après la typographie), `szh-livre-entete-image`, `szh-livre-auteurs`, `szh-livre-entete`, `szh-qr` |
+| Filtres | le socle de `filtres.mk`, dans le même ordre | `szh-livre-titre`, `szh-sauts-uniques`, `szh-livre-sous-titre` (deux fois, avant et après la typographie), `szh-livre-entete-image`, `szh-livre-auteurs`, `szh-livre-entete`, `szh-qr` ; pour l'EPUB, `szh-livre-epub-brut` |
 | Filtres absents | | `szh-maquette`, `szh-titre-lignes`, `szh-auteurs`, `szh-ressource`, `szh-rubrique` |
 | Filtres au comportement adapté | `szh-niveaux` laisse le `<h1>` du chapitre en place ; `szh-numerotation` numérote en continu sur tout le volume (`SZH_COMPTEURS`) ; `szh-sections` préfixe par le numéro du chapitre | |
 | Recettes | l'import Word (`UNITES_DIR`, `WORD_DIR`), `define weasy_ua`, la porte PDF/UA | `profils/livre.mk`, `define contexte_chapitre` |
-| Python | `szh_commun.py`, l'import | `livre-assembler.py`, `livre-epub-prepare.py`, `livre-scinder.py`, `livre-migrer-meta.py`, `couverture.py`, `cmjn.py`, `liens-courts.py` |
+| Python | `szh_commun.py`, l'import | `livre-assembler.py`, `livre-epub-prepare.py`, `livre-epub-finir.py`, `livre-scinder.py`, `livre-migrer-meta.py`, `couverture.py`, `cmjn.py`, `liens-courts.py` |
 | Styles | `socle.css`, `partage-filtres.css`, la couleur annuelle | `styles/livre/` : `base.css`, `normal.css`, `falc.css`, `imprimeur.css`, `couverture.css`, `web.css`, `epub.css` |
 | Gabarits | | `szh-livre.html`, `szh-livre-chapitre.html`, `szh-livre-liminaire.html`, `szh-couverture.html` |
 | Données | | `pipeline/livre/mise-en-page.json` |
@@ -307,7 +307,12 @@ courant, alors que chaque chapitre a ses propres `media/` et `tables/` (avec des
    gabarit qui ne sort que le corps. Le fragment est autonome : les images y sont incorporées ;
 2. `livre-assembler.py` relève les titres des fragments, compose les liminaires automatiques
    (demi-titre, impressum, page de titre, dédicace, sommaire), place les parties et les pièces
-   de fin, construit le sommaire en liens internes et remplit le gabarit `szh-livre.html` ;
+   de fin, construit le sommaire en liens internes et remplit le gabarit `szh-livre.html`.
+   pandoc préfixe par `<slug>-` les identifiants qu'il écrit (`--id-prefix`) ; l'assembleur
+   donne le même préfixe à ceux du HTML posé par les filtres (description longue et note de
+   tableau, en-têtes de tableau complexe), numérotés par chapitre, et réécrit les renvois
+   (`href="#…"`, `headers`, `aria-describedby`…). Aucun identifiant ne se répète ainsi
+   d'un chapitre à l'autre, dans le PDF, le HTML web et l'EPUB ;
 3. WeasyPrint met le tout en page, par `define weasy_ua`.
 
 La compilation reste incrémentale par chapitre. Quelques fichiers de `out/` servent à make :
@@ -339,7 +344,7 @@ même nom recompile donc le livre.
 | `livre-pdf` | PDF numérique | RVB, PDF/UA-1, signets, liens actifs, sans fond perdu. C'est le seul PDF du livre contrôlé par la porte PDF/UA |
 | `livre-imprimeur` | PDF imprimeur | la même pile de styles plus `imprimeur.css` (fond perdu, traits de coupe), puis la conversion CMJN (voir [Le CMJN](#le-cmjn)) |
 | `livre-couverture` | couverture | à plat (largeur × 2 + dos) en PDF/X-4 CMJN ; 1re et 4e en PDF/UA-1 et en PNG ; `-dos.json`. Demande `couverture/quatrieme.md` |
-| `livre-html-web` | HTML pour l'écran | un seul fichier, `web.css` et polices incorporées |
+| `livre-html-web` | HTML pour l'écran | un seul fichier, `web.css` et polices incorporées. Assemblé depuis les fragments EPUB : une note y est un appel lié à sa note, en fin de chapitre. Le contenu est dans un `<main>`, le sommaire dans un `<nav>` (`--web`) |
 | `livre-epub` | EPUB 3 | voir [L'EPUB](#lepub). Compile aussi la couverture, dont il prend la 1re en PNG |
 | `livre-chapitre-pdf CHAPITRE=<slug>` | un chapitre seul | même chaîne, même rang, même couleur ; sans liminaires ; folios à partir de 1 |
 
@@ -457,16 +462,33 @@ milieu de la phrase. `livre-assembler.py` colle les fragments et écrit les mét
   pour la même raison ;
 - il transforme en attributs `style=` le fond des images décoratives, écrit dans un `<style>`
   que pandoc viderait ;
-- il préfixe par le slug l'identifiant des descriptions longues de tableau, numérotées par
-  chapitre, pour qu'il reste unique.
+- il marque le `<h1>` de chaque chapitre (`data-chapitre`, et `data-partie` dans une
+  partie) ;
+- il met de côté chaque tableau (avec sa note et sa description longue) en XHTML, dans un
+  attribut `data-szh-brut`, que `szh-livre-epub-brut.lua` rend tel quel. Relu par
+  `--from=html`, un tableau complexe perdrait ses `<th>` de rangée, ses `headers=` et
+  l'identifiant de sa note. Un tableau qui contient une image reste confié à pandoc.
+
+`livre-epub-finir.py` reprend ensuite l'archive :
+
+- le `<title>` de chaque document est le titre de son chapitre ;
+- dans `nav.xhtml` et `toc.ncx`, les chapitres d'une partie passent dans une sous-liste de
+  la partie ;
+- les repères (`landmarks`) mènent à la couverture, à la page de titre, à la table des
+  matières et au premier chapitre, nommés dans la langue du livre ;
+- l'image de couverture reçoit un nom accessible (titre et sous-titre).
 
 L'archive contient :
 
-- les tableaux avec leur description longue et leurs `scope` ;
+- les tableaux avec leur description longue, leurs `scope` et leurs `headers` ;
 - la bibliographie et ses ancres ;
 - les images, extraites dans `EPUB/media/` ;
 - un `nav.xhtml` qui mène à chaque chapitre ;
-- l'OPF avec titre, langue et identifiant (l'ISBN e-book) ;
+- l'OPF avec titre, langue et identifiant (l'ISBN e-book), et les métadonnées
+  d'accessibilité (`schema:accessMode`, `accessModeSufficient`, `accessibilityFeature`,
+  `accessibilityHazard`, `accessibilitySummary` dans la langue du livre). L'OPF ne déclare pas
+  de conformité (`dcterms:conformsTo`), voir
+  [`LIMITES-ACCESSIBILITE.md`](LIMITES-ACCESSIBILITE.md#livre) ;
 - la 1re de couverture en image de couverture ;
 - dans l'ordre : le socle sans ses `@font-face` (`out/.szh-socle-epub.css`, les polices
   n'étant pas dans l'archive), `epub.css` et la couleur annuelle. Chaque `var(--x)` y a sa
@@ -474,7 +496,8 @@ L'archive contient :
 
 `test/epub-check.py` contrôle la structure sans dépendance : mimetype, `container.xml`,
 manifeste, XHTML bien formés, liens et images résolus, chaque document du *spine* atteint
-par `nav.xhtml`. Il ne remplace pas `epubcheck`, absent de l'image.
+par `nav.xhtml`, renvois `headers` et `aria-*` résolus, titres des documents, métadonnées
+d'accessibilité et repères. Il ne remplace pas `epubcheck`, absent de l'image.
 
 ## Les deux maquettes
 
@@ -549,7 +572,9 @@ Le sommaire hiérarchique utilise la police « SZH Condensed » (Open Sans Conde
   `profils/livre.mk` appelle et passe à chaque chapitre dans `SZH_NUMERO_CHAPITRE` ;
   `szh-sections.lua` l'écrit.
 - *Sommaire* : les parties au niveau 0, les chapitres au niveau 1, leurs intertitres au
-  niveau 2 avec `sommaire-niveaux: 2`. La bibliographie n'y figure pas. Une pièce écrite qui
+  niveau 2 avec `sommaire-niveaux: 2`. La liste est imbriquée : les chapitres d'une partie
+  sont dans une sous-liste de son entrée, les intertitres dans celle de leur chapitre. La
+  bibliographie n'y figure pas. Une pièce écrite qui
   suit le sommaire et chaque pièce de fin y figurent, sans numéro. Le numéro de page d'une
   entrée de plusieurs lignes se place sur sa première ligne, dans une colonne de 10 mm que le
   titre ne franchit pas (`livre/base.css`), en maquette normale comme en FALC.

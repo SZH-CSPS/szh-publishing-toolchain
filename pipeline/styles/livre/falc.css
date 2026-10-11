@@ -401,7 +401,9 @@ li { margin-bottom: 0; line-height: 1.48; }
   width: var(--onglet-largeur);
   background: var(--c-chapitre, var(--c-falc-accent-defaut));
 }
-.szh-sommaire .niveau-2, .szh-sommaire .niveau-3 { display: none; }  /* un seul niveau */
+/* Un seul niveau : les intertitres, rangés dans une sous-liste de leur chapitre, sont
+   retirés avec elle. */
+.szh-sommaire .niveau-2, .szh-sommaire .niveau-3, .szh-sommaire li > ol { display: none; }
 
 /* ═══ Figures ═════════════════════════════════════════════════════════════════ */
 figcaption { font-weight: 600; color: var(--c-falc-titre); }
