@@ -778,8 +778,12 @@ def _verifier_justifie(pdfs, erreurs):
     if not dessinees or decalees:
         erreurs.append(f'q-justifie : {dessinees} espace(s) dessinée(s), dont {decalees} '
                        'au milieu de leur écart, attendu des espaces et aucune décalée')
+    # pypdf peut couper un mot à une paire crénée (« T eilhabe » selon la police du poste) :
+    # on vérifie que rien ne manque et qu'aucun mot n'est collé à son voisin.
     mots = ' '.join(' '.join(_lignes(pdfs['q-justifie'])).split())
-    if mots != JUSTIFIE_TEXTE:
+    attendus = JUSTIFIE_TEXTE.split()
+    colles = [f'{a}{b}' for a, b in zip(attendus, attendus[1:]) if f'{a}{b}' in mots]
+    if ''.join(mots.split()) != ''.join(attendus) or colles:
         erreurs.append(f'q-justifie : texte extrait {mots!r}')
 
 
