@@ -438,7 +438,7 @@ Les deux contrôles se complètent :
 - `test/weasyprint-patch-check.py` vérifie que chaque patch fait son travail, sur le
   WeasyPrint installé (celui de l'image, ou celui de la CI) ;
 - le banc vérifie qu'aucun patch, seul ou combiné aux autres, ne casse ce qui marchait. Il
-  rend 44 petits HTML avec les patchs de la dernière version publiée, puis avec ceux du
+  rend 52 petits HTML avec les patchs de la dernière version publiée, puis avec ceux du
   dépôt, compare les PDF et désigne le patch responsable de chaque changement.
 
 Lancer le banc, dans la WSL, depuis la racine du dépôt :

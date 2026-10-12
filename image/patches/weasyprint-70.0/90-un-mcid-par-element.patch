@@ -4,9 +4,9 @@ Posé par image/patch-weasyprint.sh ; s'applique sans les autres patchs de
 image/patches/weasyprint-70.0/ (touche stream.py comme le 15 et le 30, tags.py comme le 10,
 le 15, le 30, le 60, le 65, le 80 et le 85, draw/__init__.py comme le 30, sans ligne de
 contexte commune ; une seule ligne de contexte dans stream.py et tags.py pour cela), mais
-d'une ligne à l'autre il ne fusionne que derrière l'espace de fin de ligne du 25 ou le
-trait de césure du 20 : posé seul, il ne réunit que des boîtes d'une même ligne. Pour le
-désactiver : .patch.off.
+d'une ligne à l'autre il ne fusionne que derrière l'espace de fin de ligne du 25, dessinée
+par le 20, ou un trait : posé seul, il ne réunit guère que des boîtes d'une même ligne.
+Pour le désactiver : .patch.off.
 
 weasyprint/draw/__init__.py, weasyprint/pdf/stream.py, weasyprint/pdf/tags.py. Chaque ligne
 de texte était un contenu marqué à part (un MCID et un /Span par ligne). Le lecteur PDF
@@ -14,22 +14,22 @@ d'Edge expose chaque contenu marqué comme un nœud de texte, rogné de ses espa
 enchaîne ces nœuds sans séparateur : la dernière lettre d'une ligne se collait à la
 première de la suivante (« andnot »). Désormais _text_follows relève, une fois par page et
 dans l'ordre des boîtes de _build_box_tree (et non celui du dessin), chaque boîte de texte
-précédée immédiatement d'une boîte de texte du même élément ; d'une ligne à l'autre, la
-précédente doit finir par une espace (25), un trait de césure (20) ou une espace ou un
-trait dans son texte. draw_block_level le passe à Stream.text_block. Stream.marked ne fusionne
-que si cette précédente est la dernière boîte marquée et que rien n'a été dessiné depuis
-son EMC : il retire l'EMC, n'ouvre rien, et pose box.continued_mark, que _build_box_tree
-saute ; les autres boîtes restent exigées dans _tags. Une image, un élément en ligne ou
-positionné, un lien vide, un <br>, une ligne de pre : rien n'est fusionné au travers, et
-l'ordre de l'arbre reste celui des boîtes même quand WeasyPrint peint plus tard. Un bloc
-coupé par la page garde un MCID par page.
-Rendu identique au pixel, veraPDF PDF/UA-1 inchangé ; cas y-mcid-lignes,
-y-mcid-frontieres et y-mcid-ordre de test/weasyprint-patch-check.py, démo
-image/patches/amont/90-un-mcid-par-element/.
+précédée immédiatement d'une boîte de texte du même élément. draw_block_level le passe à
+Stream.text_block. Stream.marked ne fusionne que si cette précédente est la dernière boîte
+marquée, que rien n'a été dessiné depuis son EMC et, d'une ligne à l'autre, que le dernier
+glyphe réellement dessiné (Stream.show_text, lu par sa ToUnicode) soit une espace ou un
+trait : l'espace du 25 n'est pas dessinée de droite à gauche, sur une ligne tronquée ni en
+police bitmap ou en couleur. Il retire l'EMC, n'ouvre rien, et pose box.continued_mark,
+que _build_box_tree saute ; les autres boîtes restent exigées dans _tags. Une image, un
+élément en ligne ou positionné, un lien vide, un <br>, une ligne de pre ou de droite à
+gauche : rien n'est fusionné au travers, et l'ordre de l'arbre reste celui des boîtes même
+quand WeasyPrint peint plus tard. Un bloc coupé par la page garde un MCID par page.
+Rendu identique au pixel, veraPDF PDF/UA-1 inchangé ; cas y-mcid-* de
+test/weasyprint-patch-check.py, démo image/patches/amont/90-un-mcid-par-element/.
 
 --- a/weasyprint/draw/__init__.py
 +++ b/weasyprint/draw/__init__.py
-@@ -652,6 +652,48 @@
+@@ -652,6 +652,38 @@
                  draw_replacedbox(stream, block)
          elif block.children:
              if isinstance(block.children[-1], boxes.LineBox):
@@ -47,10 +47,9 @@ image/patches/amont/90-un-mcid-par-element/.
 +    L'ordre est celui des boîtes, à plat comme dans _build_box_tree (pdf/tags.py), et
 +    non celui du dessin, qui met à part images, flottants et éléments positionnés : une
 +    boîte de texte continue la précédente si c'est sa voisine immédiate et qu'elles ont
-+    le même élément. D'une ligne à l'autre, la précédente doit aussi finir par une
-+    espace ou un trait : sans eux (<br>, pre), un lecteur du texte du contenu marqué
-+    collerait les deux mots. Calculé une fois par page, sur l'arbre d'origine, dont les
-+    boîtes de texte sont celles qu'on dessine.
++    le même élément. Valeur : (boîte précédente, vrai si elle est sur la ligne
++    d'avant). Calculé une fois par page, sur l'arbre d'origine, dont les boîtes de
++    texte sont celles qu'on dessine.
 +
 +    """
 +    follows = getattr(page, 'text_follows', None)
@@ -67,31 +66,27 @@ image/patches/amont/90-un-mcid-par-element/.
 +                    parents.append(kid)
 +                elif (isinstance(before, boxes.TextBox) and
 +                        kid.element is before.element and
-+                        kid.element_tag == before.element_tag and
-+                        (index > 0 or _ends_with_separator(before))):
-+                    follows[kid] = before
++                        kid.element_tag == before.element_tag):
++                    follows[kid] = (before, index == 0)
 +                before = kid
 +    return follows
-+
-+
-+def _ends_with_separator(box):
-+    """SZH : la boîte de texte finit-elle par une espace ou un trait ?"""
-+    hyphen = box.style['hyphenate_character'] or '-'
-+    return bool(
-+        getattr(box, 'line_end_space', False) or getattr(box, 'hyphenated', False) or
-+        box.text[-1:].isspace() or box.text.endswith(('-', '‐', '\xad', hyphen)))
 --- a/weasyprint/pdf/stream.py
 +++ b/weasyprint/pdf/stream.py
-@@ -288,4 +288,14 @@
+@@ -288,4 +288,19 @@
              self._tags[box] = {'tag': tag, 'mcid': mcid}
 -            property_list = pydyf.Dictionary({'MCID': mcid})
 -            super().begin_marked_content(tag, property_list)
 +            # SZH : une boîte de texte qui continue (text_block) la dernière boîte
 +            # marquée, rien n'ayant été dessiné depuis son EMC, reste dans son contenu
 +            # marqué : cet EMC est retiré, la boîte n'a ni MCID ni /Span (tags.py).
-+            follows = self._follows.get(box)
++            # D'une ligne à l'autre, il faut que le texte dessiné de la précédente
++            # finisse par une espace ou un trait : sinon les deux mots seraient collés
++            # dans le texte du contenu marqué (<br>, pre, droite à gauche).
++            follows, new_line = self._follows.get(box, (None, False))
 +            box.continued_mark = tag == 'Span' and follows is not None and (
-+                self._last_mark == (follows, len(self.stream)))
++                self._last_mark == (follows, len(self.stream))) and (
++                not new_line or self._shown_separator())
++            self._last_shown = None
 +            if box.continued_mark:
 +                del self._tags[box]
 +                self.stream.pop()
@@ -99,17 +94,18 @@ image/patches/amont/90-un-mcid-par-element/.
 +                property_list = pydyf.Dictionary({'MCID': mcid})
 +                super().begin_marked_content(tag, property_list)
          try:
-@@ -295,2 +305,18 @@
+@@ -295,2 +310,46 @@
                  super().end_marked_content()
 +                self._last_mark = (box, len(self.stream))
 +
-+    _follows, _last_mark = {}, None
++    _follows, _last_mark, _last_shown = {}, None, None
 +
 +    @contextmanager
 +    def text_block(self, follows):
 +        """SZH : dessin de lignes dont le texte peut continuer un contenu marqué.
 +
-+        follows : boîte de texte → boîte de texte qu'elle continue (draw/__init__.py).
++        follows : boîte de texte → (boîte qu'elle continue, vrai si celle-ci est sur la
++        ligne d'avant), voir draw/__init__.py.
 +
 +        """
 +        previous, self._follows = self._follows, follows
@@ -117,6 +113,33 @@ image/patches/amont/90-un-mcid-par-element/.
 +            yield
 +        finally:
 +            self._follows = previous
++
++    def show_text(self, text):
++        super().show_text(text)
++        self._last_shown = (self._current_font, text)
++
++    def _shown_separator(self):
++        """SZH : le dernier glyphe dessiné est-il une espace ou un trait ?
++
++        Lu dans le texte réellement dessiné, et non dans la boîte : l'espace de fin de
++        ligne n'est pas toujours dessinée (droite à gauche, ligne tronquée, police
++        bitmap ou en couleur).
++
++        """
++        if self._last_shown is None or self._last_shown[0] is None:
++            return False
++        (key, _), text = self._last_shown
++        text = str(text)
++        start, end = text.rfind('<'), text.rfind('>')
++        if start < 0 or end < start:
++            return False
++        for font in self._fonts.values():
++            if font.hash == key:
++                size = 2 if font.bitmap else 4
++                glyph = text[start + 1:end][-size:]
++                last = font.to_unicode.get(int(glyph, 16), '')[-1:] if glyph else ''
++                return bool(last) and (last.isspace() or last in '-‐‑–—\xad')
++        return False
  
 --- a/weasyprint/pdf/tags.py
 +++ b/weasyprint/pdf/tags.py

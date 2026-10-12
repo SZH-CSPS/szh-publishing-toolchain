@@ -481,11 +481,19 @@ def invariants(c, v, rec, pixels_autres):
         if k in c.get('tolere', []):
             continue
         ko[f'arbre-{k}'] = '; '.join(map(str, detail[:4])) + (' …' if len(detail) > 4 else '')
-    # Texte brut des contenus marqués, lu à la suite sans tenir compte de la position :
-    # un jeton collé au mot qui le précède. Jamais toléré.
-    colles = re.findall(r'[^\W_]+Q\d\d(?!\d)', m.get('texte_arbre_brut', ''))
+    # Texte brut des contenus marqués, lu à la suite sans tenir compte de la position,
+    # comparé au texte lu par position : un jeton collé à un mot, d'un côté ou de
+    # l'autre, ou des mots collés, qui ne le sont pas à la lecture par position. Jamais
+    # tolérés.
+    brut, position = m.get('texte_arbre_brut', ''), m.get('texte_arbre', '')
+    mots = set(position.split())
+    colles = [w for w in brut.split() if w not in mots and re.search(
+        r'[^\W_]Q\d\d(?!\d)|(?<![0-9A-Za-z])Q\d\d[^\W\d_]', w)]
     if colles:
         ko['colle-brut'] = ' '.join(colles[:6])
+    colles = mots_colles(brut, position)
+    if colles:
+        ko['mots-brut'] = ' '.join(colles[:6])
     arbre = JETON.findall(m['texte_arbre'])
     for i, ordre in enumerate(c.get('ordres', []), 1):
         vu = [j for j in arbre if j in ordre]
@@ -767,9 +775,40 @@ def coupables(R, k, inv, tous):
     return noms
 
 
+def mots_colles(brut, position):
+    """Mots du texte brut faits de plusieurs mots du texte lu par position.
+
+    Seule exception : un mot coupé en fin de ligne après un trait explicite, recollé
+    (« bien-|être »). Les deux textes ont les mêmes mots dans le même ordre : seules les
+    séparations diffèrent.
+    """
+    wb, wp = brut.split(), position.split()
+    colles, i, j = [], 0, 0
+    while i < len(wb) and j < len(wp):
+        if wb[i] == wp[j]:
+            i, j = i + 1, j + 1
+            continue
+        acc, k = wp[j], j
+        while len(acc) < len(wb[i]) and k + 1 < len(wp):
+            k += 1
+            acc += wp[k]
+        if acc != wb[i]:
+            return colles + [f'désaccord à « {wb[i]} »']
+        if not all(wp[x][-1:] in '-‐–—' for x in range(j, k)):
+            colles.append(wb[i])
+        i, j = i + 1, k + 1
+    if i < len(wb) or j < len(wp):
+        colles.append('désaccord en fin de texte')
+    return colles
+
+
+INVARIANTS_STRICTS = ('colle-brut', 'mots-brut')
+
+
 def connus_de(cas, k):
     # Des mots collés dans le texte brut ne sont jamais une limite admise.
-    return [i for i in cas[k[0]].get('connus', {}).get(k[1], []) if i != 'colle-brut']
+    return [i for i in cas[k[0]].get('connus', {}).get(k[1], [])
+            if i not in INVARIANTS_STRICTS]
 
 
 def analyser(R, E, cas, ecarts, attribution, regressions, tous):

@@ -62,7 +62,8 @@
 #      début de la suivante) ; le texte d'un élément en ligne (em, lien, lang) garde le
 #      sien, et le texte du paragraphe qui l'entoure reste coupé à ses frontières ; un
 #      objet en ligne peint plus tard (image, SVG, flottant, positionné, lien vide) coupe
-#      aussi le texte, un <br> et une ligne de pre aussi ; une boîte de texte jamais
+#      aussi le texte, un <br>, une ligne de pre ou de droite à gauche (sans espace
+#      dessinée en fin de ligne) aussi ; une boîte de texte jamais
 #      dessinée lève toujours le KeyError de WeasyPrint. Sans le 20 et le 25 : échec.
 # Ce qu'ils ne changent pas : alt="" seul reste une /Figure sans /Alt, signalée, car
 # l'import écrit alt="" pour toute image sans description. Le cas f doit donc échouer en
@@ -352,6 +353,14 @@ CAS = {
     # aurait pas de séparateur : chaque ligne garde le sien.
     'y-mcid-sauts': (MCID_LIGNES,
                      '<p>Eins<br>zwei<br><br>drei</p><pre>vier\nfünf\n\nsechs</pre>', set()),
+    # Paragraphes de droite à gauche : l'espace de fin de ligne n'y est pas dessinée,
+    # chaque ligne garde son contenu marqué (hébreu, arabe, latin dans dir="rtl").
+    'y-mcid-rtl': (MCID_LIGNES,
+                   '<style>p{width:40mm;font:4mm/5mm "DejaVu Sans",sans-serif}</style>'
+                   '<p dir="rtl" lang="he">אבג דהו זחט יכל מנס עפצ קרש תאב גדה וזח</p>'
+                   '<p dir="rtl">alpha beta gamma delta epsilon zeta eta theta iota kappa</p>'
+                   '<p dir="rtl" lang="ar">مرحبا بالعالم هذا نص طويل باللغة العربية ينتقل إلى '
+                   'السطر التالي</p>', set()),
 }
 
 # Une boîte de texte jamais dessinée (inline-block à transform: scale(0)) : WeasyPrint
@@ -905,6 +914,12 @@ def _verifier_mcid_lignes(pdfs, erreurs):
     if not sauts or sauts[0] != 3 or sum(sauts) < 6:
         erreurs.append(f'y-mcid-sauts : /Span de texte par bloc {sauts}, attendu un par '
                        'ligne (3 pour le <br>, 3 ou plus pour le pre)')
+    rtl = [sum(_propre(k) for k in _enfants(e) if isinstance(k, DictionaryObject))
+           for e in _noeuds(pdfs['y-mcid-rtl']) if str(e['/S']) == '/P']
+    if len(rtl) != 3 or min(rtl) < 2:
+        erreurs.append(f'y-mcid-rtl : /Span de texte par paragraphe {rtl}, attendu un par '
+                       'ligne : de droite à gauche, aucune espace n\'est dessinée en fin de '
+                       'ligne')
     try:
         HTML(string=ENTETE + NON_DESSINEE + PIED).write_pdf(pdf_variant='pdf/ua-1')
         erreurs.append('boîte de texte non dessinée : rendu sans erreur, attendu le '

@@ -14,8 +14,11 @@
 #                       (sauf ce que liste `tolere`) ;
 #   arbre-perte         chaque jeton du texte du HTML est dans l'arbre ;
 #   colle-brut          dans le texte des contenus marqués lu à la suite, sans tenir compte
-#                       de la position, aucun jeton n'est collé au mot qui le précède ;
-#                       jamais admis dans `connus` ;
+#                       de la position, aucun jeton n'est collé à un mot, d'un côté ou de
+#                       l'autre, s'il ne l'est pas à la lecture par position ;
+#   mots-brut           ce texte brut a les mêmes mots que le texte lu par position, sauf
+#                       un mot coupé après un trait explicite et recollé (« bien-être ») ;
+#                       ni l'un ni l'autre n'est jamais admis dans `connus` ;
 #   lien-sans-contents  toute annotation /Link a un /Contents.
 #
 # Déclarés par cas :
@@ -279,3 +282,38 @@ contenus_distincts = [["Q03", "Q04", "Q05", "Q06"]]
 [c44-mcid-note]
 titre = "Note de plusieurs lignes appelée au milieu d'un paragraphe, sans espace dessinée en fin de ligne."
 ordres = [["Q01", "Q02", "Q03", "Q04"]]
+
+[c45-mcid-rtl-court]
+titre = "Paragraphe hébreu de droite à gauche sur plusieurs lignes, sans jeton : aucune espace dessinée en fin de ligne."
+
+[c46-mcid-ltr-dans-rtl]
+titre = "Texte latin dans un paragraphe dir=rtl sur plusieurs lignes."
+ordres = [["Q01", "Q02"]]
+
+[c47-mcid-rtl-hebreu]
+connus = { ua1 = ["extraction-pypdf-perte"], tags = ["extraction-pypdf-perte"], nu = ["extraction-pypdf-perte"], a3u = ["extraction-pypdf-perte"] }
+titre = "Paragraphe hébreu de trois lignes."
+ordres = [["Q01", "Q02", "Q03"]]
+
+[c48-mcid-rtl-arabe]
+connus = { ua1 = ["extraction-pypdf-perte"], tags = ["extraction-pypdf-perte"], nu = ["extraction-pypdf-perte"], a3u = ["extraction-pypdf-perte"] }
+titre = "Paragraphe arabe de trois lignes."
+ordres = [["Q01", "Q02", "Q03"]]
+
+[c49-mcid-bidi-mixte]
+connus = { ua1 = ["extraction-pypdf-perte"], tags = ["extraction-pypdf-perte"], nu = ["extraction-pypdf-perte"], a3u = ["extraction-pypdf-perte"] }
+titre = "Passage hébreu dans un paragraphe français, mots français dans un paragraphe hébreu."
+ordres = [["Q01", "Q02", "Q03", "Q04", "Q05"]]
+
+[c50-mcid-rtl]
+connus = { ua1 = ["extraction-pypdf-perte"], tags = ["extraction-pypdf-perte"], nu = ["extraction-pypdf-perte"], a3u = ["extraction-pypdf-perte"] }
+titre = "Paragraphe hébreu, puis passage hébreu dans un paragraphe français."
+ordres = [["Q01", "Q02", "Q03", "Q04"]]
+
+[c51-mcid-trait-final]
+titre = "Composés et tirets demi-cadratins coupés en fin de ligne, mots coupés par la césure : recollés sans faux mot collé."
+ordres = [["Q01", "Q02", "Q03", "Q04", "Q05", "Q06"]]
+
+[c52-mcid-colle-source]
+titre = "Jetons collés dès le source (« finQ02 », « Q03suite ») : pas un défaut du balisage."
+ordres = [["Q01", "Q03"]]

@@ -46,14 +46,18 @@ juste.
 - `_text_follows(page)` (`draw/__init__.py`) relève, une fois par page, sur l'arbre de
   mise en page d'origine et dans l'ordre où `_build_box_tree()` le parcourt (les enfants
   d'une ligne mis à plat), chaque boîte de texte dont la voisine immédiate qui la précède
-  est une boîte de texte du même élément et du même pseudo-élément. D'une ligne à l'autre,
-  la précédente doit aussi finir par une séparation : l'espace de fin de ligne du
-  correctif 25, le trait de césure du 20, ou une espace ou un trait dans son texte.
+  est une boîte de texte du même élément et du même pseudo-élément, et si elle est sur la
+  ligne d'avant.
 - `draw_block_level()` passe ce relevé à `Stream.text_block()` pendant le dessin des
   lignes.
 - `Stream.marked()` ne fusionne une boîte que si celle qu'elle continue est la dernière
-  boîte marquée et que le flux n'a pas grandi depuis son `EMC`. Il retire cet `EMC`,
-  n'ouvre rien, et pose `box.continued_mark`.
+  boîte marquée, que le flux n'a pas grandi depuis son `EMC`, et, d'une ligne à l'autre,
+  que le dernier glyphe réellement dessiné de la précédente soit une espace ou un trait.
+  `Stream.show_text()` garde ce dernier texte, lu par la ToUnicode de sa police. On ne se
+  fie pas à `line_end_space` du 25 : le 20 ne dessine pas l'espace de droite à gauche, sur
+  une ligne tronquée ni en police bitmap ou en couleur, et un paragraphe `dir="rtl"`
+  sortait « alpha betagamma deltaepsilon ». Il retire l'`EMC`, n'ouvre rien, et pose
+  `box.continued_mark`.
 - `_build_box_tree()` saute les boîtes à `continued_mark` ; les autres restent exigées
   dans `_tags` (`tags.pop(child)`), comme dans la 70.0.
 
@@ -68,8 +72,9 @@ Ce qui reste séparé :
 - le texte d'un élément en ligne (`em`, lien, `span lang`, appel de note) ; la langue
   (correctif 60), les `/Link` et leurs `OBJR` (65), les `/Note` (80) ne bougent pas ;
 - tout objet en ligne, même peint plus tard, et un lien vide à `aria-label` ;
-- une ligne qui ne finit ni par une espace ni par un trait : après un `<br>`, dans un
-  `pre`, dans une note où le 25 ne pose pas l'espace. Le texte du contenu marqué n'y aurait
+- une ligne qui ne finit ni par une espace ni par un trait dessinés : après un `<br>`, dans
+  un `pre`, de droite à gauche (hébreu, arabe, latin dans `dir="rtl"`), dans une note où le
+  25 ne pose pas l'espace. Le texte du contenu marqué n'y aurait
   aucun séparateur, et Acrobat le lit à la suite : « Forced line breakafter » ;
 - deux pages : chaque page a son flux, un MCID ne la traverse pas ;
 - deux fragments d'un même bloc (colonnes) et deux blocs anonymes d'un même élément : ils
@@ -139,8 +144,10 @@ Cas de `test/weasyprint-patch-check.py` : `y-mcid-lignes` (un mot par ligne sur 
 un MCID et un `/Span` par page), `y-mcid-frontieres` (texte du paragraphe coupé par un
 `em`, un lien et un passage français), `y-mcid-ordre` (image, SVG, flottant, positionné,
 relatif, inline-block à `z-index`, lien vide : le texte qui suit n'est pas fusionné avec
-celui qui précède) et `y-mcid-sauts` (`<br>`, `pre`) ; une boîte de texte jamais dessinée
-lève toujours le `KeyError` de la 70.0. Cas du banc : `c28` à `c44`, avec l'invariant
-`colle-brut` sur le texte brut des contenus marqués.
+celui qui précède), `y-mcid-sauts` (`<br>`, `pre`) et `y-mcid-rtl` (hébreu, arabe, latin
+dans `dir="rtl"`) ; une boîte de texte jamais dessinée lève toujours le `KeyError` de la
+70.0. Cas du banc : `c28` à `c52`, avec les invariants `colle-brut` (jeton collé d'un côté
+ou de l'autre) et `mots-brut` (le texte brut des contenus marqués a les mêmes mots que la
+lecture par position, hors trait de fin de ligne recollé).
 
 Texte de pull request, test pytest compris : `PR.md`.

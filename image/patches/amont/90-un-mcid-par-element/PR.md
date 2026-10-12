@@ -30,7 +30,7 @@ Before 66.0, a paragraph had a single MCID (see the structure tree shown in #215
 - In `Stream.marked()`, a listed text box continues the marked content of the box it follows when this box is the last marked one and nothing has been drawn since its `EMC`: the `EMC` is removed, no new marked content is opened, and the box is flagged.
 - `_build_box_tree()` skips flagged boxes; other text boxes are still required in the tags.
 
-Across lines, this relies on the space at the end of the line being kept in the text layer: without a space or a hyphen, readers that take the text of the marked content as is (Acrobat) would stick the words together. That's why lines ending with `<br>`, lines of `pre` and lines without this space keep their own marked content.
+Across lines, this relies on the space at the end of the line being kept in the text layer: without a space or a hyphen, readers that take the text of the marked content as is (Acrobat) would stick the words together. The check reads the last glyph actually drawn (kept by `Stream.show_text()`, read through the font's ToUnicode), as the space is not drawn for right-to-left lines, truncated lines or bitmap and color fonts. That's why lines ending with `<br>`, lines of `pre`, right-to-left lines and lines without this space keep their own marked content.
 
 Rendering doesn't change: only `EMC`/`BDC` pairs are removed, and the following `ET`/`BT` pair is merged by `begin_text()`, as it already is without tags. Each text box sets its text matrix.
 
@@ -92,7 +92,7 @@ New test in `tests/test_pdf.py`, failing before the change (16 MCIDs instead of 
      ('<input value="">', ['/Tx', '/V ()']),
 --- a/weasyprint/draw/__init__.py
 +++ b/weasyprint/draw/__init__.py
-@@ -652,6 +652,47 @@
+@@ -652,6 +652,38 @@
                  draw_replacedbox(stream, block)
          elif block.children:
              if isinstance(block.children[-1], boxes.LineBox):
@@ -110,9 +110,9 @@ New test in `tests/test_pdf.py`, failing before the change (16 MCIDs instead of 
 +    Boxes are in the order used by _build_box_tree (pdf/tags.py), not in the
 +    drawing order where images, floats and positioned elements are drawn later. A
 +    text box continues the previous one if it is its direct sibling with the same
-+    element. Across lines, the previous one must end with a space or a hyphen, so
-+    that words are not stuck together in the text of the marked content. Computed
-+    once for each page, on the original tree, whose text boxes are the drawn ones.
++    element. Values are (previous box, whether it is on the previous line).
++    Computed once for each page, on the original tree, whose text boxes are the
++    drawn ones.
 +
 +    """
 +    follows = getattr(page, 'text_follows', None)
@@ -129,22 +129,13 @@ New test in `tests/test_pdf.py`, failing before the change (16 MCIDs instead of 
 +                    parents.append(kid)
 +                elif (isinstance(before, boxes.TextBox) and
 +                        kid.element is before.element and
-+                        kid.element_tag == before.element_tag and
-+                        (index > 0 or _ends_with_separator(before))):
-+                    follows[kid] = before
++                        kid.element_tag == before.element_tag):
++                    follows[kid] = (before, index == 0)
 +                before = kid
 +    return follows
-+
-+
-+def _ends_with_separator(box):
-+    """Return whether text box ends with a space or a hyphen."""
-+    hyphen = box.style['hyphenate_character'] or '-'
-+    return bool(
-+        getattr(box, 'line_end_space', False) or getattr(box, 'hyphenated', False) or
-+        box.text[-1:].isspace() or box.text.endswith(('-', '‐', '\xad', hyphen)))
 --- a/weasyprint/pdf/stream.py
 +++ b/weasyprint/pdf/stream.py
-@@ -286,13 +286,39 @@
+@@ -286,13 +286,65 @@
              mcid = len(self._tags)
              assert box not in self._tags
              self._tags[box] = {'tag': tag, 'mcid': mcid}
@@ -153,9 +144,13 @@ New test in `tests/test_pdf.py`, failing before the change (16 MCIDs instead of 
 +            # Keep a text box that continues the last marked box (see text_block)
 +            # in its marked content when nothing has been drawn since its EMC: the
 +            # EMC is removed, the box gets no MCID and no Span (see tags.py).
-+            follows = self._follows.get(box)
++            # Across lines, the drawn text of the previous box must end with a
++            # space or a hyphen, otherwise words would be stuck together.
++            follows, new_line = self._follows.get(box, (None, False))
 +            box.continued_mark = tag == 'Span' and follows is not None and (
-+                self._last_mark == (follows, len(self.stream)))
++                self._last_mark == (follows, len(self.stream))) and (
++                not new_line or self._shown_separator())
++            self._last_shown = None
 +            if box.continued_mark:
 +                del self._tags[box]
 +                self.stream.pop()
@@ -169,13 +164,14 @@ New test in `tests/test_pdf.py`, failing before the change (16 MCIDs instead of 
                  super().end_marked_content()
 +                self._last_mark = (box, len(self.stream))
 +
-+    _follows, _last_mark = {}, None
++    _follows, _last_mark, _last_shown = {}, None, None
 +
 +    @contextmanager
 +    def text_block(self, follows):
 +        """Draw lines whose text can continue marked content.
 +
-+        ``follows`` maps text boxes to the text boxes they continue.
++        ``follows`` maps text boxes to the text boxes they continue, and whether
++        these are on the previous line.
 +
 +        """
 +        previous, self._follows = self._follows, follows
@@ -183,6 +179,27 @@ New test in `tests/test_pdf.py`, failing before the change (16 MCIDs instead of 
 +            yield
 +        finally:
 +            self._follows = previous
++
++    def show_text(self, text):
++        super().show_text(text)
++        self._last_shown = (self._current_font, text)
++
++    def _shown_separator(self):
++        """Return whether the last drawn glyph is a space or a hyphen."""
++        if self._last_shown is None or self._last_shown[0] is None:
++            return False
++        (key, _), text = self._last_shown
++        text = str(text)
++        start, end = text.rfind('<'), text.rfind('>')
++        if start < 0 or end < start:
++            return False
++        for font in self._fonts.values():
++            if font.hash == key:
++                size = 2 if font.bitmap else 4
++                glyph = text[start + 1:end][-size:]
++                last = font.to_unicode.get(int(glyph, 16), '')[-1:] if glyph else ''
++                return bool(last) and (last.isspace() or last in '-‐‑–—\xad')
++        return False
  
      @contextmanager
      def artifact(self):
