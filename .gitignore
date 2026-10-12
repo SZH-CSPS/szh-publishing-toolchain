@@ -35,3 +35,7 @@ tmp/
 
 # Clés d'API locales : jamais dans le dépôt public.
 *.secret
+
+# Profil CMJN en clair, déchiffré de image/icc/*.gpg : la licence de l'ECI interdit de le
+# distribuer, et le dépôt est public.
+image/icc/*.icc

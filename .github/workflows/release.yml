@@ -188,6 +188,8 @@ jobs:
         working-directory: image
         env:
           ENGINE: docker        # Docker est préinstallé sur les runners ubuntu-latest
+          # Déchiffre le profil CMJN (image/icc/dechiffrer.sh), sans l'écrire dans le journal.
+          ICC_GPG_PASSPHRASE: ${{ secrets.ICC_GPG_PASSPHRASE }}
         run: |
           bash ./build-rootfs.sh "${{ steps.ver.outputs.v }}"
           mv szh-publishing-rootfs-*.tar.gz* "$GITHUB_WORKSPACE/"

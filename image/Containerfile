@@ -94,32 +94,23 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
 
 # ---- Profil de sortie CMJN : PSO Uncoated v3 (FOGRA52) ----
 # Profil du papier non couché (ISO 12647-2:2013, encrage max 300 %). C'est le papier, pas
-# le procédé, qui décide du profil. Le choix se confirme avec l'imprimerie : pour un autre
-# profil, seules les lignes ARG ICC_* changent.
+# le procédé, qui décide du profil. Le choix se confirme avec l'imprimerie.
 #
-# Licence : l'ECI permet d'utiliser et d'incorporer ce profil, pas de le distribuer. Il ne
-# va donc pas dans le dépôt, qui est public : on le télécharge à la construction.
-#
-# Épinglé par sha256 : un profil changé en amont changerait la couleur de tous les livres.
-# Si ICC_SHA256 est vide, l'image se construit sans profil, et pipeline/cmjn.py refuse
-# alors de produire un PDF CMJN.
-#
-# Source : le registre de l'International Color Consortium, qui sert le .icc directement.
-# Le site eci.org renvoie la même page HTML pour toute URL et ne sert plus de fichier.
-ARG ICC_URL=https://www.color.org/registry/profiles/PSOuncoated_v3_FOGRA52.icc
-ARG ICC_SHA256=7c39f74fbede1e8c85f8fbb9df7d359aea638b9b68dd0854fdd3ba386e3a02c0
+# Licence : l'ECI permet d'utiliser et d'incorporer ce profil, pas de le distribuer. Le
+# dépôt, public, n'en garde qu'une copie chiffrée (icc/*.gpg) ; build-rootfs.sh la
+# déchiffre dans le contexte de construction avant d'appeler le moteur, puis efface le
+# clair. L'empreinte attendue est dans icc/PSOuncoated_v3_FOGRA52.icc.sha256 : un profil
+# changé changerait la couleur de tous les livres.
 ARG ICC_NOM=PSOuncoated_v3_FOGRA52.icc
-RUN mkdir -p /opt/icc \
-    && if [ -n "${ICC_SHA256}" ]; then \
-         curl -fsSL "${ICC_URL}" -o "/tmp/${ICC_NOM}" \
-         && printf '%s  %s\n' "${ICC_SHA256}" "/tmp/${ICC_NOM}" | sha256sum -c - \
-         && python3 -c "import sys; d=open(sys.argv[1],'rb').read(); \
-              sys.exit(0) if d[36:40]==b'acsp' and d[16:20]==b'CMYK' else sys.exit('pas un profil ICC CMJN')" \
-              "/tmp/${ICC_NOM}" \
-         && mv "/tmp/${ICC_NOM}" "/opt/icc/${ICC_NOM}"; \
-       else \
-         echo "ICC_SHA256 vide : image construite SANS profil CMJN (voir le commentaire)"; \
-       fi
+COPY icc/${ICC_NOM} icc/${ICC_NOM}.sha256 /tmp/icc/
+RUN cd /tmp/icc \
+    && sha256sum -c "${ICC_NOM}.sha256" \
+    && python3 -c "import sys; d=open(sys.argv[1],'rb').read(); \
+         sys.exit(0) if d[36:40]==b'acsp' and d[16:20]==b'CMYK' else sys.exit('pas un profil ICC CMJN')" \
+         "${ICC_NOM}" \
+    && mkdir -p /opt/icc \
+    && mv "${ICC_NOM}" "/opt/icc/${ICC_NOM}" \
+    && rm -r /tmp/icc
 
 # ---- WeasyPrint : venv isolé, versions épinglées dans requirements.txt ----
 # Puis les correctifs de la version installée (patches/weasyprint-<version>/, un fichier

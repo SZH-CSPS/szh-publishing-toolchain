@@ -93,6 +93,9 @@ trois correctifs réparés, arrivent avec l'image WSL reconstruite (quinze corre
   donne la procédure de montée de WeasyPrint qui s'appuie sur lui.
 - `image/patches/amont/` : pour chaque nouveau correctif, un rapport, une démo, un brouillon
   d'issue et un texte de pull request avec son test.
+- Le profil CMJN FOGRA52 n'est plus téléchargé de color.org, qui ne le sert plus : une copie
+  chiffrée est dans `image/icc/`, déchiffrée par le secret `ICC_GPG_PASSPHRASE` dans la CI
+  et à la construction de l'image (`docs/MAINTENANCE.md`, « Le profil CMJN chiffré »).
 
 **Documentation.**
 - `docs/LIMITES-ACCESSIBILITE.md` relue contre l'audit et les écoutes NVDA des 11 et

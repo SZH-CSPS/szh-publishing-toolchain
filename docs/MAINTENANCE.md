@@ -307,7 +307,7 @@ un bouclage.
 | Détourage des portraits | `image/requirements-portraits.txt` ; modèles `.onnx` dans `image/Containerfile` (sha256) | — |
 | veraPDF (contrôle PDF/UA) | `image/Containerfile`, `VERAPDF_VERSION`, URL versionnée et sha256 | 1.30.2 |
 | Vale (nettoyeur de manuscrit) | `image/Containerfile`, `VALE_VERSION` et sha256 | 3.22.0 |
-| Profil de couleur FOGRA52 | `image/Containerfile` (sha256) | — |
+| Profil de couleur FOGRA52 | `image/icc/`, copie chiffrée et sha256 ([Le profil CMJN chiffré](#le-profil-cmjn-chiffré)) | PSO Uncoated v3 |
 
 pandoc reste à 3.7.0.2 : à partir de 3.8, le lecteur Word sort le contenu d'une zone de
 texte avant son paragraphe d'ancrage, et beaucoup de manuscrits réels ont des zones de texte.
@@ -336,10 +336,12 @@ texte avant son paragraphe d'ancrage, et beaucoup de manuscrits réels ont des z
 4. **Construire l'image en local**, dans la WSL de développement (podman) :
 
    ```sh
-   bash image/build-rootfs.sh <version>
+   ICC_GPG_PASSPHRASE_FILE=/mnt/c/Users/<compte>/outils/secrets/icc-gpg-passphrase.txt \
+     bash image/build-rootfs.sh <version>
    ```
 
-   Le script produit `szh-publishing-rootfs-<version>.tar.gz` et son `.sha256`.
+   Le script déchiffre d'abord le profil CMJN ([Le profil CMJN chiffré](#le-profil-cmjn-chiffré)),
+   puis produit `image/szh-publishing-rootfs-<version>.tar.gz` et son `.sha256`.
 5. **L'éprouver.** L'importer dans une distribution d'essai, y lancer
    `bash test/build-render.sh`, et comparer les PNG page à page avec ceux de la version
    précédente (méthode dans [`DEVELOPPEMENT.md`](DEVELOPPEMENT.md#le-banc-de-rendu-et-ses-empreintes)).
@@ -488,6 +490,64 @@ Quand le banc sort en 1 :
 Après une montée de veraPDF ou de son Java, vérifier que la porte PDF/UA distingue toujours
 ses trois issues : 0 conforme, 1 non conforme, 2 panne d'outillage (validateur absent, Java
 cassé, PDF illisible).
+
+### Le profil CMJN chiffré
+
+Le PDF imprimeur d'un livre est converti en CMJN par le profil `PSOuncoated_v3_FOGRA52.icc`
+(PSO Uncoated v3, FOGRA52). Sa licence, donnée par l'ECI, permet de l'utiliser et de
+l'incorporer à un PDF, mais pas de le distribuer sans accord écrit. Le dépôt étant public,
+il n'en garde qu'une copie chiffrée :
+
+| Fichier | Rôle |
+|---|---|
+| `image/icc/PSOuncoated_v3_FOGRA52.icc.gpg` | le profil, chiffré par `gpg --symmetric` (AES256) |
+| `image/icc/PSOuncoated_v3_FOGRA52.icc.sha256` | l'empreinte du profil en clair, contrôlée après chaque déchiffrement |
+| `image/icc/dechiffrer.sh` | déchiffre et contrôle l'empreinte |
+
+Le profil en clair n'est pas suivi par git (`.gitignore`), et `test/js/profil-icc.test.js`
+le vérifie.
+
+La phrase de passe est le secret GitHub `ICC_GPG_PASSPHRASE` du dépôt. Une copie est sur le
+poste de développement, dans `C:\Users\<compte>\outils\secrets\icc-gpg-passphrase.txt`.
+`dechiffrer.sh` la lit dans la variable `ICC_GPG_PASSPHRASE`, sinon dans le fichier nommé par
+`ICC_GPG_PASSPHRASE_FILE`. Sans phrase de passe, il s'arrête avec le code 2.
+
+Qui s'en sert :
+
+- `image/build-rootfs.sh` déchiffre le profil dans `image/icc/` avant la construction ; le
+  `Containerfile` le copie dans `/opt/icc/`, puis le script efface le clair ;
+- le job `pdf-ua` de `ci.yml` le déchiffre pour compiler la couverture d'impression des
+  livres du banc. Une pull request venue d'un fork ne reçoit pas les secrets : elle compile
+  les livres sans leur couverture, avec un avertissement. Sur `main`, un secret absent fait
+  échouer le job ;
+- le job `release` de `release.yml` passe le secret à `build-rootfs.sh`.
+
+Déchiffrer à la main, dans la WSL, depuis la racine du dépôt :
+
+```sh
+ICC_GPG_PASSPHRASE_FILE=/mnt/c/Users/<compte>/outils/secrets/icc-gpg-passphrase.txt \
+  bash image/icc/dechiffrer.sh /tmp/icc
+```
+
+Changer la phrase de passe :
+
+1. Déchiffrer le profil avec l'ancienne phrase (commande ci-dessus).
+2. Écrire la nouvelle phrase dans le fichier du poste, sur une seule ligne.
+3. Rechiffrer, dans la WSL :
+
+   ```sh
+   gpg --batch --yes --pinentry-mode loopback --symmetric --cipher-algo AES256 \
+     --passphrase-file /mnt/c/Users/<compte>/outils/secrets/icc-gpg-passphrase.txt \
+     -o image/icc/PSOuncoated_v3_FOGRA52.icc.gpg /tmp/icc/PSOuncoated_v3_FOGRA52.icc
+   rm -r /tmp/icc
+   ```
+
+4. Remplacer la valeur du secret `ICC_GPG_PASSPHRASE` (GitHub → Settings → Secrets and
+   variables → Actions), puis commiter le nouveau `.gpg`.
+
+Changer de profil se fait de la même façon, avec le nouveau fichier et sa nouvelle empreinte
+dans le `.sha256` ; le nom du profil est aussi dans `ICC_NOM` du `Containerfile` et dans
+`impression.profil-cmjn` de `buch.yaml`.
 
 ### Fin de support de Debian
 
@@ -771,6 +831,11 @@ différentes.**
 - Que faire : télécharger l'artefact `banc-weasyprint` du job et lire la section
   « Régressions » de `BANC.html`, qui nomme le correctif. Puis voir
   [Monter WeasyPrint de version](#monter-weasyprint-de-version), « Quand le banc sort en 1 ».
+
+**« secret ICC_GPG_PASSPHRASE absent » ou « Bad session key » dans `pdf-ua` ou `release`.**
+- Cause : le secret manque, ou ne correspond plus au `.gpg` de `image/icc/`.
+- Que faire : voir [Le profil CMJN chiffré](#le-profil-cmjn-chiffré), « Changer la phrase de
+  passe ».
 
 **Le pack de langue allemand refuse de s'installer.**
 - Cause : un pack de langue exige une version de VSCodium au moins égale à la sienne.

@@ -465,19 +465,31 @@ jobs:
       # tomber SANS ERREUR VISIBLE.
       # Le verdict se lit sur l'ABSENCE de FAIL, jamais sur la présence d'un PASS :
       # veraPDF rend une ligne par fichier, et un livre en a plusieurs.
-      # La couverture d'impression demande le profil FOGRA52 de l'image (même URL, même
-      # empreinte que image/Containerfile) et le Python du venv WeasyPrint.
+      # La couverture d'impression demande le profil FOGRA52 de l'image, déchiffré de
+      # image/icc/ par le secret ICC_GPG_PASSPHRASE, et le Python du venv WeasyPrint.
+      # Une pull request venue d'un fork ne reçoit pas les secrets : elle compile les livres
+      # sans leur couverture, et l'avertissement le dit. Partout ailleurs, notamment sur
+      # main dont le verdict pose le tag, un secret absent fait échouer le job.
       - name: Compiler et valider les livres du banc
+        env:
+          ICC_GPG_PASSPHRASE: ${{ secrets.ICC_GPG_PASSPHRASE }}
         run: |
           icc="$RUNNER_TEMP/icc"
-          mkdir -p "$icc"
-          curl -fsSL -o "$icc/PSOuncoated_v3_FOGRA52.icc" https://www.color.org/registry/profiles/PSOuncoated_v3_FOGRA52.icc
-          echo "7c39f74fbede1e8c85f8fbb9df7d359aea638b9b68dd0854fdd3ba386e3a02c0  $icc/PSOuncoated_v3_FOGRA52.icc" | sha256sum -c -
+          cibles="livre livre-couverture livre-epub"
+          if [ -n "$ICC_GPG_PASSPHRASE" ]; then
+            bash image/icc/dechiffrer.sh "$icc"
+          elif [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            echo "::warning::secret ICC_GPG_PASSPHRASE absent (pull request d'un fork) : couvertures non compilées ni validées"
+            cibles="livre livre-epub"
+          else
+            echo "::error::secret ICC_GPG_PASSPHRASE absent : le profil CMJN ne peut pas être déchiffré"
+            exit 1
+          fi
           for livre in livre-normal livre-falc; do
             echo "::group::$livre"
             ( cd "test/$livre" && make -f "$GITHUB_WORKSPACE/pipeline/Makefile" \
                 ICC_DIR="$icc" CMJN_PYTHON="$RUNNER_TEMP/weasyprint/bin/python" \
-                livre livre-couverture livre-epub )
+                $cibles )
             ua="$RUNNER_TEMP/$livre.ua"
             # La couverture d'impression est un PDF/X-4, pas un PDF/UA : hors de cette porte,
             # comme dans test/build-render.sh.
