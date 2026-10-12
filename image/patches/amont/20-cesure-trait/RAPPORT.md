@@ -53,7 +53,7 @@ la norme). veraPDF ne le contrôle pas : il passe avant comme après.
 Le patch fait 154 lignes, dont le dessin de l'espace du 25 (voir plus haut).
 
 Deux effets connus, dans pdfium seul (Chrome, des outils d'extraction, le banc au pixel de
-Pronto ; le lecteur PDF d'Edge repose sur le moteur d'Adobe) :
+Pronto ; le lecteur PDF d'Edge s'annonce « Powered by Adobe Acrobat ») :
 
 - dans un texte interlettré (`letter-spacing`), le trait de césure est dessiné environ
   0,8 pt plus loin que sans le correctif. Le TJ du trait commence par son décalage

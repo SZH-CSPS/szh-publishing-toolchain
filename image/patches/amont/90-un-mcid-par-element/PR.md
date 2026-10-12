@@ -19,7 +19,7 @@ Tout ce qui est au-dessus de cette ligne n'est pas à poster.
 
 With `pdf_tags=True` or `pdf/ua-1`, each line of a paragraph is a separate marked content, with its own MCID and its own `/Span` structure element.
 
-The PDF viewer of Edge (powered by Adobe Acrobat, with its own accessibility layer) exposes each marked content as a separate text node, trimmed of its leading and trailing spaces. NVDA reads consecutive nodes without separator: the last word of a line is stuck to the first word of the next one ("and" + "not" is read "andnot"). Nothing in ISO 32000-1 or PDF/UA requires one marked content per line; Word and LibreOffice write one per paragraph, and Edge then exposes the paragraph as a single node.
+In our tests (NVDA, October 2026), the PDF viewer of Edge 155 ("Powered by Adobe Acrobat") exposes each marked content as a separate text node, trimmed of its leading and trailing spaces. NVDA reads consecutive nodes without separator: the last word of a line is stuck to the first word of the next one ("and" + "not" is read "andnot"). Nothing in ISO 32000-1 or PDF/UA requires one marked content per line; Word and LibreOffice write one per paragraph, and Edge then exposes the paragraph as a single node.
 
 Before 66.0, a paragraph had a single MCID (see the structure tree shown in #2153). Since #2471, marked content is created for each text box.
 

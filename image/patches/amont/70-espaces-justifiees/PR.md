@@ -14,7 +14,7 @@ Tout ce qui est au-dessus de cette ligne n'est pas à poster.
 
 ## Problem
 
-In justified text, and with `word-spacing`, PDFium extracts some lines with words glued together, "states the levels" becoming "statesthelevels". PDFium is the PDF engine of Chrome and of many tools that copy, search or extract text. The PDF viewer of Edge is not affected (it is powered by Adobe Acrobat), and NVDA reads the same words in Edge and in Acrobat with or without this change.
+In justified text, and with `word-spacing`, PDFium extracts some lines with words glued together, "states the levels" becoming "statesthelevels". PDFium is the PDF engine of Chrome and of many tools that copy, search or extract text. The PDF viewer of Edge 155 ("Powered by Adobe Acrobat") is not affected in our tests, and NVDA reads the same words in Edge and in Acrobat with or without this change.
 
 The space glyphs are in the PDF, but each one is drawn in the middle of its gap. To justify, WeasyPrint stretches each space with a Pango `letter_spacing` attribute (`text/line_break.py`, `Layout.set_text()`). Pango gives half of this extra width as the `x_offset` of the space glyph, and `draw_first_line()` (`draw/text.py`) writes this offset in the `TJ` array before the glyph, and the rest after it:
 

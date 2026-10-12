@@ -6,7 +6,7 @@ Patch : `image/patches/weasyprint-70.0/70-espaces-justifiees.patch`.
 
 Sur une ligne justifiée, le texte que pdfium extrait a des mots collés (« statesthelevels »).
 pdfium est le moteur PDF de Chrome et de nombreux outils de copie, de recherche et
-d'extraction ; le lecteur PDF d'Edge, lui, repose sur le moteur d'Adobe et n'est pas
+d'extraction ; le lecteur PDF d'Edge, qui s'annonce « Powered by Adobe Acrobat », n'est pas
 concerné. Le PDF contient pourtant chaque espace, avec sa ToUnicode U+0020 : c'est sa
 position qui trompe pdfium. Il voit un écart entre la fin d'un mot et le glyphe espace, en
 déduit une espace « générée » de largeur nulle (`FPDFText_IsGenerated`) et écarte la vraie.

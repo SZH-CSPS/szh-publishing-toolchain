@@ -64,11 +64,12 @@ des textes alternatifs, titres qui décrivent leur section, sens porté par la s
 couleur).
 
 Lecteur recommandé : Acrobat ou Acrobat Reader, qui lit la langue des passages, le nom des
-liens et l'ordre des notes. Le lecteur PDF d'Edge repose sur le moteur d'Adobe, mais avec sa
-propre passerelle d'accessibilité : il expose chaque contenu marqué rogné de ses espaces, ne
-transmet ni la langue d'un élément (`/Lang`) ni le nom des liens, colle les mots à la
-frontière d'un élément en ligne, et lit « inance » pour une ligature « fi » en tête
-d'élément (écoutes NVDA des 11 et 12 octobre 2026).
+liens et l'ordre des notes. Le lecteur PDF d'Edge 155 (« Powered by Adobe Acrobat ») ne
+transmet au lecteur d'écran ni la langue d'un élément (`/Lang`) ni le nom des liens. Il
+expose chaque contenu marqué séparément, sans ses espaces de début et de fin, colle les mots
+à la frontière d'un élément en ligne, et lit « inance » pour une ligature « fi » en tête
+d'élément. Acrobat lit correctement les mêmes PDF (écoutes NVDA des 11 et 12 octobre 2026).
+La cause de cet écart n'est pas établie, et il peut changer avec une version d'Edge.
 
 ## HTML autonome
 
