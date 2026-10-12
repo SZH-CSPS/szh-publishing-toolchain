@@ -11,6 +11,95 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.11.0
+
+Medium : l'accessibilité des tableaux, du livre à l'écran et en EPUB, des articles et du
+balisage des PDF, sans qu'aucune page de PDF ne change. Release lourde : sept nouveaux correctifs de WeasyPrint, et
+trois correctifs réparés, arrivent avec l'image WSL reconstruite (quinze correctifs en tout).
+
+**Tableaux.**
+- Éditeur de tableaux : une cellule cite tous les en-têtes du `<thead>` qui couvrent sa
+  colonne, puis son titre de section, puis ses en-têtes de rangée. « 412 » se lit « 2024,
+  Filles, Degré primaire, Logopédie » ; l'année n'est plus perdue. La rangée de total ne
+  reçoit plus de titre de section ; une cellule vide à gauche d'un titre de section devient
+  un `<td>`. Un tableau déjà écrit reçoit ces règles à sa prochaine modification dans
+  l'éditeur.
+- Les identifiants internes d'un tableau sont préfixés par son rang, et dans un livre par
+  celui du chapitre (`szh-c3-t2-th-r0c1`) : deux tableaux complexes d'un même document ne
+  partagent plus aucun `id` (`szh-tableau-boite.lua`).
+- À l'écran, la boîte d'un tableau trop large est une région atteignable au clavier, nommée
+  par la légende.
+
+**Livre : HTML web et EPUB.**
+- Chaque identifiant d'un chapitre est préfixé par son slug à l'assemblage
+  (`livre-assembler.py`) : plus d'`id` en double, et la description longue d'un tableau
+  désigne le bon tableau dans le PDF, le HTML web et l'EPUB.
+- Sommaire imbriqué (les chapitres d'une partie dans sa sous-liste) dans le PDF, le HTML
+  web et la navigation de l'EPUB ; le PDF est identique au pixel.
+- HTML web : repères `<main>` et `<nav>`, notes en appels liés à leur texte en fin de
+  chapitre, tableaux lisibles en mode sombre, liens de retour à l'appel visibles avec une
+  cible de 24 px.
+- EPUB : les tableaux gardent leur balisage d'origine (`th`, `scope`, `headers`, note et
+  description) ; métadonnées d'accessibilité de schema.org avec un résumé dans la langue du
+  livre ; repères, titre de chaque document et couverture nommés dans cette langue.
+
+**Article à l'écran.**
+- Le HTML autonome (galley HTML) a une section `@media screen` : colonne centrée, aucun
+  défilement horizontal à 320 px ni à 400 %, aucun texte sous 12 px, filigrane sous le texte.
+- Le titre coupé en escalier garde l'espace devant son retour à la ligne : « lecteur
+  d'écran » n'est plus lu « lecteurd'écran ».
+- L'exergue n'est masquée aux lecteurs d'écran que si son texte figure dans le corps.
+- Le titre d'un encadré « Information » ou d'une question titrée est un vrai texte, lu et
+  balisé (`szh-encadres.lua`) ; celui d'une question n'est pas affiché.
+- Une figure à légende est nommée par sa légende ; une image décorative seule ne laisse plus
+  de paragraphe vide dans le PDF ; le lien ORCID dit « ORCID de Prénom Nom ».
+
+**Contrôles.**
+- Nouveau message `figure-legendee-decorative` (fr, de), dans les Contrôles et l'aperçu :
+  une figure numérotée dont toutes les images sont déclarées décoratives.
+
+**PDF : sept nouveaux correctifs de WeasyPrint, avec l'image reconstruite.**
+- `60-langue-element` : un passage dans une autre langue (résumé, citation,
+  `[mot]{lang=en}`) porte son `/Lang` ; Acrobat le lit avec la bonne voix.
+- `65-nom-des-liens` : un lien est annoncé par son texte, son `aria-label` ou son `title`
+  (« ORCID de Prénom Nom », « 1 » pour un appel de note), et non plus par son adresse ou
+  l'identifiant de sa cible ; un lien sans texte reçoit un `/Alt`.
+- `80-notes-balisees` : une note de bas de page est une `/Note` lue juste après son appel
+  (`/Reference`), et non plus en bas de page au milieu du flux ; appelée dans un lien, un
+  titre ou un en-tête de tableau, elle est lue après lui.
+- `85-listes-imbriquees` : une sous-liste est dans le `/LBody` de son item, une `<dl>` en
+  termes `/Lbl` et définitions `/LBody` ; un lecteur d'écran annonce le bon nombre
+  d'éléments.
+- `90-un-mcid-par-element` : les lignes d'un paragraphe, d'un item ou d'une cellule forment
+  un seul contenu marqué ; dans le lecteur PDF d'Edge, NVDA ne colle plus la fin d'une
+  ligne au début de la suivante.
+- `70-espaces-justifiees` : le texte d'une ligne justifiée que copient ou extraient Chrome
+  et les outils fondés sur pdfium n'a plus de mots collés ; rien ne change à l'écoute.
+- `75-auteurs-info` : `/Info /Author` sépare les auteurs « Nom, Prénom » par « ; ».
+  Acrobat affiche `dc:creator`, déjà juste : rien ne change à l'écoute.
+
+**PDF : trois correctifs réparés.**
+- `10-tableaux-entetes` : un `th` ou un `td` hors de la grille du tableau (`display:
+  block`) est ignoré au lieu de faire échouer la compilation.
+- `15-images-decoratives` : une image décorative dans un lien garde son annotation
+  rattachée au `/Link`.
+- `50-notes-doublon` : dans un livre, une note reportée depuis la dernière page n'est plus
+  perdue quand un renvoi de page fait repaginer.
+
+**Développement.**
+- Banc de non-régression des correctifs de WeasyPrint (`test/weasyprint-banc/`, 52 cas) :
+  il rend chaque cas avec plusieurs piles de correctifs et désigne le correctif
+  responsable d'un changement. La CI le joue dans le job `pdf-ua` ; `docs/MAINTENANCE.md`
+  donne la procédure de montée de WeasyPrint qui s'appuie sur lui.
+- `image/patches/amont/` : pour chaque nouveau correctif, un rapport, une démo, un brouillon
+  d'issue et un texte de pull request avec son test.
+
+**Documentation.**
+- `docs/LIMITES-ACCESSIBILITE.md` relue contre l'audit et les écoutes NVDA des 11 et
+  12 octobre 2026, avec le lecteur recommandé : Acrobat ou Acrobat Reader ;
+  `docs/A-FAIRE.md` : hiérarchie des titres du livre (trois options), `page-list` de
+  l'EPUB, DOI en clair liés à la prochaine majeure.
+
 ## 3.10.6
 
 Mineure : la documentation et les commentaires du code réécrits pour être lus par quelqu'un

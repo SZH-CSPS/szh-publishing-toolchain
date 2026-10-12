@@ -15,6 +15,28 @@
     "",
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
+  "3.11": {
+    "fr": {
+      "titre": "Des tableaux, des livres et des articles plus accessibles",
+      "points": [
+        "Dans l’éditeur de tableaux, chaque cellule d’un tableau complexe annonce tous ses en-têtes, l’année comprise ; un tableau déjà écrit en profite dès que vous le modifiez.",
+        "Le livre en HTML et en EPUB se parcourt au clavier et avec un lecteur d’écran : sommaire par parties, notes reliées à leur appel, tableaux lisibles en mode sombre.",
+        "Le galley HTML d’un article se lit sur un téléphone sans défilement horizontal, et dans une taille de texte confortable.",
+        "Les Contrôles signalent une figure numérotée dont l’image est déclarée décorative : la légende serait lue, l’image non.",
+        "Les PDF ne changent pas d’aspect ; après la mise à jour de l’environnement de compilation, un lecteur d’écran y entend, dans Acrobat ou Acrobat Reader, les passages en langue étrangère avec la bonne voix, les liens par leur nom et chaque note juste après son appel."
+      ]
+    },
+    "de": {
+      "titre": "Barrierefreiere Tabellen, Bücher und Artikel",
+      "points": [
+        "Im Tabelleneditor nennt jede Zelle einer komplexen Tabelle alle ihre Überschriften, auch das Jahr; eine bestehende Tabelle erhält dies, sobald Sie sie bearbeiten.",
+        "Das Buch als HTML und EPUB lässt sich mit der Tastatur und mit einem Screenreader durchgehen: Inhaltsverzeichnis nach Teilen, Anmerkungen mit ihrem Verweis verbunden, Tabellen im dunklen Modus lesbar.",
+        "Die HTML-Fassung eines Artikels lässt sich auf dem Smartphone ohne seitliches Scrollen und in angenehmer Schriftgrösse lesen.",
+        "Die Prüfungen melden eine nummerierte Abbildung, deren Bild als dekorativ markiert ist: Die Bildunterschrift würde vorgelesen, das Bild nicht.",
+        "Die PDF-Dateien sehen gleich aus; nach dem Update der Kompilierumgebung liest ein Screenreader in Acrobat oder Acrobat Reader fremdsprachige Passagen mit der passenden Stimme, Links mit ihrem Namen und jede Fussnote direkt nach ihrem Verweis."
+      ]
+    }
+  },
   "3.10": {
     "fr": {
       "titre": "Des résumés plus courts, un éditeur plus calme",
