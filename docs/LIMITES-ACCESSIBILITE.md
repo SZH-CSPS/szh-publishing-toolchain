@@ -70,6 +70,9 @@ expose chaque contenu marqué séparément, sans ses espaces de début et de fin
 à la frontière d'un élément en ligne, et lit « inance » pour une ligature « fi » en tête
 d'élément. Acrobat lit correctement les mêmes PDF (écoutes NVDA des 11 et 12 octobre 2026).
 La cause de cet écart n'est pas établie, et il peut changer avec une version d'Edge.
+Firefox 157 (pdf.js) transmet la structure, le nom des liens et l'ordre des notes, garde les
+espaces de fin de ligne, mais ne transmet pas non plus la langue d'un élément (écoute NVDA du
+12 octobre 2026).
 
 ## HTML autonome
 
