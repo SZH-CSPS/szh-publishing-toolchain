@@ -25,7 +25,7 @@ The `/Author` entry of the document information dictionary joins the `<meta name
 <p>Text.</p>
 ```
 
-`/Author` is `Doe, Jane, Roe, Richard`: is it two authors or four? PDF viewers show this string in the document properties, and harvesters and reference managers read it. The XMP metadata is already fine, with one `rdf:li` per author in `dc:creator`.
+`/Author` is `Doe, Jane, Roe, Richard`: is it two authors or four? Harvesters, reference managers and some PDF viewers read this string (Acrobat shows `dc:creator` instead). The XMP metadata is already fine, with one `rdf:li` per author in `dc:creator`.
 
 ## Fix
 

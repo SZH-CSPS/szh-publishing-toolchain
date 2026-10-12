@@ -6,9 +6,14 @@ Patch : `image/patches/weasyprint-70.0/75-auteurs-info.patch`.
 
 WeasyPrint écrit `/Info /Author` en joignant les `<meta name="author">` par « , ». Pronto
 écrit chaque auteur « Nom, Prénom ». Deux auteurs donnent donc « Fictive-Dumont, Élodie,
-Przykład, Łukasz », où l'on ne sait plus où finit un auteur. Les lecteurs PDF et les
-moissonneurs qui lisent `/Info` (propriétés du document, catalogues) affichent cette chaîne.
-Le XMP n'a pas ce défaut : `dc:creator` est une liste, un `rdf:li` par auteur.
+Przykład, Łukasz », où l'on ne sait plus où finit un auteur. Les logiciels qui lisent
+`/Info` (moissonneurs, catalogues, certains lecteurs PDF) affichent cette chaîne. Le XMP n'a
+pas ce défaut : `dc:creator` est une liste, un `rdf:li` par auteur.
+
+Acrobat n'affiche pas `/Info /Author` : ses propriétés du document montrent `dc:creator`,
+déjà juste. L'écoute NVDA du 11.10.2026 dans Acrobat annonce donc les mêmes auteurs avant
+et après ; l'effet ne s'entend pas, il ne se voit que dans un logiciel qui lit `/Info`.
+Edge n'affiche pas l'auteur.
 
 veraPDF ua1 passe avant comme après : PDF/UA ne règle pas le contenu de `/Author`.
 

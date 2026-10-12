@@ -14,7 +14,7 @@ Tout ce qui est au-dessus de cette ligne n'est pas à poster.
 
 ## Problem
 
-In justified text, and with `word-spacing`, Chrome and Edge (PDFium) extract some lines with words glued together, "states the levels" becoming "statesthelevels", and so do the screen readers that use their text layer.
+In justified text, and with `word-spacing`, PDFium extracts some lines with words glued together, "states the levels" becoming "statesthelevels". PDFium is the PDF engine of Chrome and of many tools that copy, search or extract text. The PDF viewer of Edge is not affected (it is powered by Adobe Acrobat), and NVDA reads the same words in Edge and in Acrobat with or without this change.
 
 The space glyphs are in the PDF, but each one is drawn in the middle of its gap. To justify, WeasyPrint stretches each space with a Pango `letter_spacing` attribute (`text/line_break.py`, `Layout.set_text()`). Pango gives half of this extra width as the `x_offset` of the space glyph, and `draw_first_line()` (`draw/text.py`) writes this offset in the `TJ` array before the glyph, and the rest after it:
 
@@ -45,7 +45,7 @@ The following glyphs keep exactly the same position and spaces have no ink, so t
 
 - ISO 32000-1:2008, 9.4.3 (Text-Showing Operators): numbers in a `TJ` array only move the next glyph; writing the offset after the space instead of before gives the same glyph positions.
 - ISO 32000-1:2008, 14.8.2.5 (Identifying Word Breaks): a space character (U+0020) is the explicit way to mark a word break; extractors that guess word breaks from gaps are expected to rely on it.
-- ISO 14289-1:2014 (PDF/UA-1), 7.2 (Text): text is mapped to Unicode so that assistive technologies can extract it. Here the spaces are mapped, but PDFium discards them because of their position. veraPDF can't see it.
+- ISO 14289-1:2014 (PDF/UA-1), 7.2 (Text): text is mapped to Unicode so that assistive technologies can extract it. Here the spaces are mapped, but PDFium discards them because of their position when it extracts the text. veraPDF can't see it.
 
 ## Before / after
 

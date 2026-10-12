@@ -8,7 +8,7 @@ Dans le PDF balisé de WeasyPrint 70.0, chaque ligne de texte est un contenu mar
 un MCID et un élément `/Span` par ligne, sous le `/P` du paragraphe. Un paragraphe de quatre
 lignes donne quatre `/Span`.
 
-Le lecteur PDF d'Edge (moteur d'Acrobat dans Chromium) expose chaque contenu marqué comme un
+Le lecteur PDF d'Edge (moteur d'Adobe, avec sa propre passerelle d'accessibilité) expose chaque contenu marqué comme un
 nœud de texte, rogné de ses espaces. NVDA enchaîne ces nœuds sans séparateur : la dernière
 lettre d'une ligne se colle à la première de la suivante (« and » + « not » se lit
 « andnot »). L'espace de fin de ligne que pose le correctif 25 n'y change rien, puisqu'Edge

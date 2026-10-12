@@ -7,10 +7,11 @@ commune). Pour le désactiver : .patch.off.
 weasyprint/draw/text.py, draw_first_line. Pour justifier, WeasyPrint élargit chaque espace
 par un letter-spacing Pango (text/line_break.py) ; Pango rend la moitié de cet écart en
 x_offset, que draw_first_line écrivait AVANT le glyphe espace dans le TJ. L'espace était
-donc dessinée au milieu d'un grand intervalle. pdfium (Chrome, Edge) y voit un écart entre
-deux mots, insère une espace « générée » de largeur nulle et écarte la vraie : sur une
-ligne justifiée, le texte lu par Edge et son lecteur d'écran a ses mots collés
-(« unarticle de laRevue »). Désormais, dans un texte justifié ou à word-spacing, une
+donc dessinée au milieu d'un grand intervalle. pdfium (Chrome, outils de copie, de
+recherche et d'extraction) y voit un écart entre deux mots, insère une espace « générée »
+de largeur nulle et écarte la vraie : sur une ligne justifiée, le texte qu'il extrait a ses
+mots collés (« statesthelevels »). Le lecteur PDF d'Edge, à moteur Adobe, n'est pas
+concerné. Désormais, dans un texte justifié ou à word-spacing, une
 espace (U+0020 ou U+00A0) à x_offset est dessinée contre le glyphe qui la précède, et son
 décalage s'ajoute au nombre écrit après elle : les glyphes suivants gardent leur position
 et l'espace n'a pas d'encre. Les autres glyphes, les espaces d'un texte seulement espacé

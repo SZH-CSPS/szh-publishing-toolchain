@@ -186,9 +186,6 @@ est faite. Les questions à trancher sont marquées « À décider ».
 ## Accessibilité
 
 - HTML : les notes sont lues au fil du texte ; à reprendre avec une vraie sortie web.
-- À décider : notes de fin d'article plutôt que de bas de page. Dans le PDF, le correctif
-  `80-notes-balisees` fait lire chaque note juste après son appel ; le choix ne relève plus
-  que de l'édition.
 - Lier les URL et DOI écrits en clair dans la bibliographie, à la prochaine majeure : le lien
   change l'anticrénelage de quelques glyphes des lignes touchées.
 - Livre : règles CSS pour `.szh-decor-seul` et `.szh-encadre-titre` dans
@@ -212,8 +209,8 @@ est faite. Les questions à trancher sont marquées « À décider ».
   communes au HTML du PDF et à celui de l'EPUB, marqueurs `doc-pagebreak`, `dc:source`.
 - EPUB : `conformsTo` ; EPUBCheck et Ace ne sont pas dans l'image.
 - Sommaire du livre : `/LI` sans `/Lbl` et `/Link` imbriqués, à examiner.
-- Refaire l'écoute avec NVDA sur le corpus d'essai une fois l'image reconstruite avec les
-  correctifs 60 à 75 ; essayer JAWS.
+- Refaire l'écoute avec NVDA dans Acrobat sur le corpus d'essai une fois l'image
+  reconstruite avec les correctifs 60 à 90 ; essayer JAWS.
 - Vérifier le PDF imprimeur de `test/livre-normal` (erreur `AssertionError` dans
   `resolve_math` constatée une fois).
 

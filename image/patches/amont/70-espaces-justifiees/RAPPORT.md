@@ -4,15 +4,19 @@ Patch : `image/patches/weasyprint-70.0/70-espaces-justifiees.patch`.
 
 ## Le défaut
 
-Sur une ligne justifiée, Edge et son lecteur d'écran lisent des mots collés
-(« unarticle de laRevue »). Le PDF contient pourtant chaque espace, avec sa ToUnicode
-U+0020 : c'est sa position qui trompe le lecteur de texte. pdfium, le moteur PDF de Chrome
-et d'Edge, voit un écart entre la fin d'un mot et le glyphe espace. Il en déduit une espace
-« générée » de largeur nulle (`FPDFText_IsGenerated`) et écarte la vraie. Sur
-`demo/justifie.html` : 19 espaces générées sur 62 sans le correctif, aucune avec.
+Sur une ligne justifiée, le texte que pdfium extrait a des mots collés (« statesthelevels »).
+pdfium est le moteur PDF de Chrome et de nombreux outils de copie, de recherche et
+d'extraction ; le lecteur PDF d'Edge, lui, repose sur le moteur d'Adobe et n'est pas
+concerné. Le PDF contient pourtant chaque espace, avec sa ToUnicode U+0020 : c'est sa
+position qui trompe pdfium. Il voit un écart entre la fin d'un mot et le glyphe espace, en
+déduit une espace « générée » de largeur nulle (`FPDFText_IsGenerated`) et écarte la vraie.
+Sur `demo/justifie.html` : 19 espaces générées sur 62 sans le correctif, aucune avec.
 
 pypdf, qui ajoute lui-même une espace devant tout grand écart du `TJ`, n'est pas touché.
-veraPDF passe avant comme après. Ce que lit un lecteur d'écran réel n'a pas été vérifié.
+veraPDF passe avant comme après. Écoute NVDA du 11.10.2026 : aucune différence. Dans Edge,
+les mots de l'intérieur des lignes sont séparés avant comme après ; les mots collés qu'on y
+entend sont ceux des fins de ligne, que traite le correctif 90. Acrobat ne colle aucun mot,
+avant comme après. Ce que Chrome transmet à un lecteur d'écran n'a pas été écouté.
 
 Aucun recours CSS, sauf renoncer à `text-align: justify`. `word-spacing` passe par le même
 mécanisme et produit le même défaut.

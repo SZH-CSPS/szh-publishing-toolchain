@@ -10,7 +10,7 @@ Tout ce qui est au-dessus de cette ligne n'est pas à poster.
 
 Hi!
 
-In justified text, Chrome and Edge (PDFium) extract some lines with words glued together, "anarticle ofthe journal", and so do screen readers using them. The space glyphs are in the PDF, but each one is drawn in the middle of the justification gap: the `x_offset` that Pango gives to the letter-spaced space is written in the `TJ` array before the glyph. PDFium sees a gap before the space, inserts a generated zero-width space and drops the real one.
+In justified text, PDFium (Chrome, and many tools that copy, search or extract text) extracts some lines with words glued together, "statesthelevels". The space glyphs are in the PDF, but each one is drawn in the middle of the justification gap: the `x_offset` that Pango gives to the letter-spaced space is written in the `TJ` array before the glyph. PDFium sees a gap before the space, inserts a generated zero-width space and drops the real one.
 
 ```html
 <html lang="en"><title>Test</title>

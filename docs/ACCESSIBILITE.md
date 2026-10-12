@@ -65,6 +65,7 @@ demandent un essai avec un lecteur d'écran (NVDA, par exemple). Sans cet essai,
 | `test/epub-check.py` | structure de l'EPUB d'un livre ; renvois `headers` et `aria-*`, titres des documents, métadonnées d'accessibilité, repères |
 | `test/livre-accessibilite.test.py` | identifiants par chapitre, sommaire imbriqué, repères du HTML web, chaîne EPUB d'un tableau complexe |
 | `test/weasyprint-patch-check.py` | ce que chaque correctif de WeasyPrint doit produire |
+| `test/weasyprint-banc/banc.py` | qu'aucun correctif, seul ou combiné aux autres, ne casse ce qui marchait ; désigne le correctif responsable d'un changement (job `pdf-ua` de la CI) |
 | `test/build-render.sh` | le banc de rendu ; il enchaîne la vérification PDF/UA, `polices-check.py` et `test/accessibilite/` |
 
 ## Ce qui est en place
@@ -202,7 +203,7 @@ touchent l'accessibilité :
 | `40-xmp-dc-language` | `dc:language` dans le XMP |
 | `60-langue-element` | `/Lang` sur l'élément d'un passage dans une autre langue (résumé, citation, `[mot]{lang=en}`) ; une valeur mal formée (« en_US ») ou vide n'est pas écrite |
 | `65-nom-des-liens` | `/Contents` d'un lien tiré d'`aria-label`, de son texte visible (sans les notes), de l'`alt` de ses images ou de `title` ; `/Alt` sur le `/Link` d'un lien sans texte ou à `aria-label`, jamais la cible ni sur une image |
-| `70-espaces-justifiees` | dans une ligne justifiée, pdfium (Edge) lit les vraies espaces au lieu d'en déduire de vides : mots non collés |
+| `70-espaces-justifiees` | dans une ligne justifiée, pdfium (Chrome, outils de copie et d'extraction) garde les vraies espaces au lieu d'en déduire de vides : mots non collés dans le texte extrait ; sans effet sur le lecteur PDF d'Edge ni sur Acrobat |
 | `75-auteurs-info` | `/Info /Author` sépare les auteurs « Nom, Prénom » par « ; » |
 | `80-notes-balisees` | la note de bas de page est une `/Note` à `/ID` placée juste après son appel (`/Reference`), ou après le lien, le titre ou le tableau qui contient l'appel, et non plus en bas de page dans l'arbre ; `/IDTree` dans la racine de structure |
 | `85-listes-imbriquees` | sous-liste dans le `/LBody` de son item, texte d'un item à puce en ligne aussi ; `<dl>` en `/LI` à `/Lbl` (terme) et `/LBody` (définition) |

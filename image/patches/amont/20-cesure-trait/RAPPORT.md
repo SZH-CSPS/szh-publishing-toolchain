@@ -52,7 +52,8 @@ la norme). veraPDF ne le contrôle pas : il passe avant comme après.
 
 Le patch fait 154 lignes, dont le dessin de l'espace du 25 (voir plus haut).
 
-Deux effets connus, dans pdfium seul (Chrome, Edge, le banc au pixel de Pronto) :
+Deux effets connus, dans pdfium seul (Chrome, des outils d'extraction, le banc au pixel de
+Pronto ; le lecteur PDF d'Edge repose sur le moteur d'Adobe) :
 
 - dans un texte interlettré (`letter-spacing`), le trait de césure est dessiné environ
   0,8 pt plus loin que sans le correctif. Le TJ du trait commence par son décalage
@@ -63,7 +64,7 @@ Deux effets connus, dans pdfium seul (Chrome, Edge, le banc au pixel de Pronto) 
 - le texte que pdfium extrait d'un mot coupé contient U+FFFE à la place du trait, sans fin
   de ligne (« quotidien », U+FFFE, « nement ») ; sans le correctif, « quotidien‐ » puis
   « nement » sur deux lignes. Le mot est recollé, mais ce caractère peut sortir d'un
-  copier-coller dans Chrome ou Edge (non vérifié dans un navigateur). Le texte balisé,
+  copier-coller dans Chrome (non vérifié dans un navigateur). Le texte balisé,
   qu'un lecteur d'écran reçoit, est juste (`/ActualText` U+00AD).
 
 Les deux figurent dans [`docs/LIMITES-ACCESSIBILITE.md`](../../../docs/LIMITES-ACCESSIBILITE.md).
