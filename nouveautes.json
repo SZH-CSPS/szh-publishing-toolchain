@@ -15,6 +15,28 @@
     "",
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
+  "3.12": {
+    "fr": {
+      "titre": "Travailler à plusieurs, supprimer un numéro, et la Prontogenda",
+      "points": [
+        "Quand plusieurs personnes travaillent sur le même numéro, les DOI ne créent plus de copies en conflit, et Pronto refuse de terminer l’ordre ou de supprimer un article tant qu’un autre poste enregistre.",
+        "Avant de terminer l’ordre, de supprimer un article, de paginer, de geler ou d’archiver, prévenez les autres personnes qui travaillent sur le numéro et demandez-leur de fermer Pronto.",
+        "Un numéro en cours de la Revue ou de la Zeitschrift se supprime depuis l’Accueil, onglet Produits, avec « Supprimer ce numéro… » ; une confirmation en plusieurs étapes évite les erreurs.",
+        "Sous la liste des numéros, la Prontogenda annonce les dates de la semaine : histoire du CSPS, journées internationales et fêtes suisses.",
+        "Pendant une longue compilation, la barre d’état vous fait patienter avec quelques phrases de circonstance."
+      ]
+    },
+    "de": {
+      "titre": "Gemeinsam arbeiten, eine Ausgabe löschen, und die Prontogenda",
+      "points": [
+        "Wenn mehrere Personen an derselben Ausgabe arbeiten, erzeugen die DOI keine Konfliktkopien mehr, und Pronto verweigert das Abschliessen der Reihenfolge oder das Löschen eines Artikels, solange ein anderer Arbeitsplatz speichert.",
+        "Bevor Sie die Reihenfolge abschliessen, einen Artikel löschen, paginieren, einfrieren oder archivieren, informieren Sie die anderen Personen, die an der Ausgabe arbeiten, und bitten Sie sie, Pronto zu schliessen.",
+        "Eine laufende Ausgabe der Revue oder der Zeitschrift lässt sich auf der Startseite, im Register «Produkte», mit «Diese Ausgabe löschen…» entfernen; eine mehrstufige Bestätigung verhindert Fehler.",
+        "Unter der Liste der Ausgaben kündigt die Prontogenda die Daten der Woche an: Geschichte des SZH, internationale Tage und Schweizer Feste.",
+        "Während einer langen Kompilierung vertreibt Ihnen die Statusleiste die Wartezeit mit ein paar passenden Sätzen."
+      ]
+    }
+  },
   "3.11": {
     "fr": {
       "titre": "Des tableaux, des livres et des articles plus accessibles",

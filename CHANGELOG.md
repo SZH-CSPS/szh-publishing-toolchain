@@ -11,6 +11,44 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.12.0
+
+Medium : plusieurs postes travaillent plus sûrement sur le même numéro, un numéro en cours se
+supprime depuis l'Accueil, et l'Accueil gagne la Prontogenda.
+
+**Co-édition.**
+- Les DOI calculés s'écrivent sur chaque poste, dans
+  `C:\ProgramData\SZH\dois-calcules\<id>.yaml`, et non plus dans le numéro : plus de copie en
+  conflit sur `dois-calcules.yaml`. L'ancien fichier du numéro est effacé à la première
+  ouverture. Le bandeau DOI de la couverture (`szh-maquette.lua`) se lit dans le nouveau
+  dossier ; l'instance de développement passe `SZH_DOIS_CALCULES` (`outils-dev/pronto-dev.ps1`).
+- L'import prend la main sur `ausgabe.yaml` et relit l'ordre juste avant de l'écrire : deux
+  dépôts simultanés gardent leurs articles. Si un autre poste tient le fichier, un message le
+  dit.
+- « Terminer » (Changer l'ordre) et la suppression d'un article sont refusés tant qu'une autre
+  personne écrit dans le numéro.
+- La pagination continue s'écrit par un fichier temporaire « ~$ », que OneDrive ne
+  synchronise pas.
+- Règle de bouclage, à annoncer aux rédactions (`userdoc.md`, `docs/MAINTENANCE.md`) :
+  prévenir les autres, qui ferment Pronto, avant de terminer l'ordre, supprimer un article,
+  paginer, geler ou archiver.
+
+**Supprimer un numéro.**
+- Accueil → Produits : « Supprimer ce numéro… » pour un numéro en cours de la Revue ou de la
+  Zeitschrift, avec un décompte de dix secondes et un mot à recopier. L'hôte revérifie tout
+  (verrou, autre poste, compilation ou import en cours, numéro ouvert) avant de supprimer.
+
+**Prontogenda et phrases d'attente.**
+- Onglet Produits : l'encadré PRONTOGENDA montre les dates de la semaine, lues dans
+  `vscodium-extension/szh-cockpit/calendrier.csv` (histoire du CSPS, journées
+  internationales, dont celles du handicap, fêtes suisses). Au moins un événement par semaine,
+  vérifié par `test/js/surprises.test.js` ; `test/typo-check.py` lit le fichier.
+- Les opérations longues (recompilation du numéro, exports, sorties du livre) ajoutent une
+  phrase d'attente au message de la barre d'état après cinq secondes ; la page d'aperçu en
+  compilation en montre une aussi (`lib/attente.js`).
+- `media/_jeux.js` : trois jeux cachés dans l'Accueil, aux rouges de la charte du CSPS choisis
+  selon le thème ; contraste mesuré (APCA Lc 30, WCAG 3:1).
+
 ## 3.11.0
 
 Medium : l'accessibilité des tableaux, du livre à l'écran et en EPUB, des articles et du
