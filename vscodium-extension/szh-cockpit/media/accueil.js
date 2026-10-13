@@ -15,7 +15,8 @@
 //             produits: [{ jeton, libelle, type: 'numero' | 'livre', racine, anneeZeroVolume,
 //                          hors: { nombre, dossier }, enCours: [entrée], archives: [entrée] }],
 //             dernierOuvert, historique: { edudoc: { <revue>: { <clé>: <date> } }, caracteres },
-//             journaux: [{ rang, date, verdict, ko }] }
+//             journaux: [{ rang, date, verdict, ko }],
+//             calendrier: { titre, aujourdhui, evenements: [{ date, aujourdhui, type, texte }] } }
 //     entrée : { nom, titre, chemin, modifie, verrouillee }
 //   accueilCree { ok, texte }   la création a été refusée (ok faux) ; sinon la fenêtre change
 //   accueilSupprimerPret { ok, chemin, numero, titre, articles, mot, secondes } ou { ok: false, texte }
@@ -286,6 +287,27 @@
   }, 'szh-bouton--principal');
   boutonOuvrir.id = 'prod-ouvrir';
   prodPied.appendChild(boutonOuvrir);
+
+  // La Prontogenda : les dates de calendrier.csv qui tombent cette semaine.
+  var prodCalendrier = poser(prod, 'aside', 'accueil-calendrier');
+  prodCalendrier.setAttribute('aria-labelledby', 'prod-calendrier');
+  prodCalendrier.hidden = true;
+  var prodCalendrierTete = poser(prodCalendrier, 'div', 'accueil-calendrier-tete');
+  prodCalendrierTete.appendChild(SZH.icone('calendrier'));
+  var prodCalendrierTitre = poser(prodCalendrierTete, 'p', 'accueil-calendrier-titre');
+  prodCalendrierTitre.id = 'prod-calendrier';
+  var prodCalendrierListe = poser(prodCalendrier, 'ul', 'accueil-calendrier-liste');
+  function rendreCalendrier(cal) {
+    var evenements = (cal && cal.evenements) || [];
+    prodCalendrier.hidden = evenements.length === 0;
+    prodCalendrierTitre.textContent = (cal && cal.titre) || '';
+    prodCalendrierListe.textContent = '';
+    evenements.forEach(function (e) {
+      var li = poser(prodCalendrierListe, 'li', e.aujourdhui ? 'accueil-calendrier-jour' : '');
+      poser(li, 'span', 'accueil-calendrier-date', e.aujourdhui ? cal.aujourdhui : e.date);
+      poser(li, 'span', '', e.texte);
+    });
+  }
 
   function ouvrir(chemin) { if (chemin) { api.postMessage({ type: MSG.ACCUEIL_OUVRIR, chemin: chemin }); } }
   function majOuvrir() {
@@ -2670,6 +2692,7 @@
       rendreJournaux();
       choisirProduit(produitParDefaut(msg));
       rendreProduits(true);
+      rendreCalendrier(msg.calendrier);
       activer(msg.onglet || ongletActif, !!msg.onglet);
     } else if (msg.type === MSG.ACCUEIL_ALLER) {
       activer(msg.onglet, true);

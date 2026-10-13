@@ -464,6 +464,27 @@ def extraire_js_media(lignes, langue):
                 yield i, langue, v, _remplacant_intervalle(*m.span(1))
 
 
+# Le calendrier de l'Accueil (calendrier.csv) : les colonnes « fr » et « de », nommées par
+# l'en-tête. Les lignes de commentaire commencent par « # ». Un texte entre guillemets qui
+# contient un point-virgule est lu en deux morceaux, chacun contrôlé.
+def extraire_csv_calendrier(lignes, _langue):
+    entete = None
+    for i, l in enumerate(lignes):
+        s = l.lstrip("﻿").strip()
+        if not s or s.startswith("#"):
+            continue
+        if entete is None:
+            entete = [c.strip().lower() for c in s.split(";")]
+            continue
+        debut = 0
+        for n, champ in enumerate(l.split(";")):
+            fin = debut + len(champ)
+            nom = entete[n] if n < len(entete) else ""
+            if nom in ("fr", "de") and _est_prose(champ):
+                yield i, nom, champ, _remplacant_intervalle(debut, fin)
+            debut = fin + 1
+
+
 def _remplacant_intervalle(debut, fin):
     """Recompose la ligne autour d'un seul fragment.
 
@@ -598,6 +619,7 @@ SURFACES = [
     ("revue-template/articles-word/LISEZ-MOI.txt", extraire_texte, "fr"),
     ("userdoc.md", extraire_texte, "fr"),
     ("nouveautes.json", extraire_json_nouveautes, None),
+    ("vscodium-extension/szh-cockpit/calendrier.csv", extraire_csv_calendrier, None),
     # Les notes de typographie suivent leurs propres règles ; le reste de docs/ n'est pas lu.
     ("docs/TYPOGRAPHIE.md", extraire_texte, "fr"),
     ("docs/TYPOGRAPHIE-FR.md", extraire_texte, "fr"),

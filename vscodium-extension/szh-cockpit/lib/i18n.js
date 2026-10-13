@@ -1432,6 +1432,42 @@ const TEXTES_COCKPIT = {
     'apercu.encours': 'Compilation en cours, merci de patienter quelques secondes…',
     'apercu.gele': 'Numéro gelé : la compilation automatique est coupée. Utilisez « Recompiler le PDF de cet article » (Ctrl+Alt+D, ou le bouton en survol de l’article) pour régénérer les documents.',
 
+    // ---- Phrases d'attente (lib/attente.js) : la barre d'état les fait défiler pendant une
+    // opération longue, et la page d'aperçu en cours de compilation en montre une. ----
+    'attente.phrase.01': 'Mélange de la fondue en cours…',
+    'attente.phrase.02': 'Recherche du cadratin fugitif…',
+    'attente.phrase.03': 'Négociation avec WeasyPrint…',
+    'attente.phrase.04': 'Ajustement des espaces fines au micron…',
+    'attente.phrase.05': 'Consultation du Röstigraben…',
+    'attente.phrase.06': 'Césure de « anticonstitutionnellement »…',
+    'attente.phrase.07': 'Les notes de bas de page descendent l’escalier…',
+    'attente.phrase.08': 'Rectification de l’orthographe de « nénuphar »…',
+    'attente.phrase.09': 'Vérification du contraste au clair de lune…',
+    'attente.phrase.10': 'Tri des guillemets par taille…',
+    'attente.phrase.11': 'Apprentissage du romanche, au cas où…',
+    'attente.phrase.12': 'Pliage des pages à la main…',
+    'attente.phrase.13': 'Recherche des trous dans le gruyère (il n’y en a pas)…',
+    'attente.phrase.14': 'Un chocolat chaud pour le serveur…',
+
+    // ---- Calendrier de l'Accueil (lib/calendrier.js, calendrier.csv) ----
+    'calendrier.titre': 'Prontogenda',
+    'calendrier.aujourdhui': 'aujourd’hui',
+
+    // ---- Jeux de l'Accueil (media/_jeux.js) : cinq clics de suite sur un même produit ----
+    'jeu.casse': 'Casse-briques',
+    'jeu.serpent': 'Serpent',
+    'jeu.pong': 'Pong',
+    'jeu.aide.casse': '← → ou la souris déplacent la raquette. Espace lance la balle. Échap ferme le jeu.',
+    'jeu.aide.serpent': 'Les flèches dirigent le serpent. Espace lance la partie. Échap ferme le jeu.',
+    'jeu.aide.pong': '↑ ↓ ou la souris déplacent votre raquette. Espace sert la balle. Échap ferme le jeu.',
+    'jeu.pret': 'Espace pour commencer.',
+    'jeu.score': 'Score : {0}',
+    'jeu.vies': 'Vies : {0}',
+    'jeu.pong.score': 'Vous {0} – {1} WeasyPrint',
+    'jeu.perdu': 'Perdu ! Espace pour rejouer.',
+    'jeu.gagne': 'Gagné ! Espace pour rejouer.',
+    'jeu.fermer': 'Fermer',
+
     // ---- Contrôles de la compilation (lib/journal.js) ----
     //
     // Les phrases que la rédaction lit. Chacune dit, dans cet ordre : ce qui s'est passé, ce
@@ -4035,6 +4071,38 @@ const TEXTES_COCKPIT = {
     'apercu.indisponible': 'HTML-Vorschau für diesen Artikel noch nicht kompiliert – speichern (Ctrl+S) oder neu kompilieren, dann den Artikel erneut anklicken.',
     'apercu.encours': 'Kompilierung läuft, bitte einige Sekunden warten…',
     'apercu.gele': 'Ausgabe eingefroren: die automatische Kompilierung ist abgeschaltet. Verwenden Sie «PDF dieses Artikels neu kompilieren» (Ctrl+Alt+D oder die Schaltfläche beim Überfahren des Artikels), um die Dokumente neu zu erzeugen.',
+
+    'attente.phrase.01': 'Fondue wird gerührt…',
+    'attente.phrase.02': 'Der flüchtige Geviertstrich wird gesucht…',
+    'attente.phrase.03': 'Verhandlungen mit WeasyPrint…',
+    'attente.phrase.04': 'Schmale Leerzeichen werden auf den Mikrometer justiert…',
+    'attente.phrase.05': 'Der Röstigraben wird befragt…',
+    'attente.phrase.06': 'Silbentrennung von «Donaudampfschifffahrtsgesellschaft»…',
+    'attente.phrase.07': 'Die Fussnoten steigen die Treppe hinunter…',
+    'attente.phrase.08': 'Die Rechtschreibreform wird nachverhandelt…',
+    'attente.phrase.09': 'Kontrastprüfung bei Mondschein…',
+    'attente.phrase.10': 'Die Anführungszeichen werden nach Grösse sortiert…',
+    'attente.phrase.11': 'Rätoromanisch wird gelernt, man weiss ja nie…',
+    'attente.phrase.12': 'Die Seiten werden von Hand gefaltet…',
+    'attente.phrase.13': 'Löcher im Greyerzer werden gesucht (es gibt keine)…',
+    'attente.phrase.14': 'Eine heisse Schokolade für den Server…',
+
+    'calendrier.titre': 'Prontogenda',
+    'calendrier.aujourdhui': 'heute',
+
+    'jeu.casse': 'Mauerbrecher',
+    'jeu.serpent': 'Schlange',
+    'jeu.pong': 'Pong',
+    'jeu.aide.casse': '← → oder die Maus bewegen den Schläger. Die Leertaste startet den Ball. Esc schliesst das Spiel.',
+    'jeu.aide.serpent': 'Die Pfeiltasten lenken die Schlange. Die Leertaste startet das Spiel. Esc schliesst das Spiel.',
+    'jeu.aide.pong': '↑ ↓ oder die Maus bewegen Ihren Schläger. Die Leertaste schlägt auf. Esc schliesst das Spiel.',
+    'jeu.pret': 'Leertaste zum Starten.',
+    'jeu.score': 'Punkte: {0}',
+    'jeu.vies': 'Leben: {0}',
+    'jeu.pong.score': 'Sie {0} – {1} WeasyPrint',
+    'jeu.perdu': 'Verloren! Leertaste für eine neue Runde.',
+    'jeu.gagne': 'Gewonnen! Leertaste für eine neue Runde.',
+    'jeu.fermer': 'Schliessen',
 
     // ---- Contrôles de la compilation (lib/journal.js) ----
     'action.article': 'Zum Artikel',

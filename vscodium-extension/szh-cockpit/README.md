@@ -39,6 +39,7 @@ Un module « hôte » (`*-hote.js`) tient une zone de l'interface et reçoit ses
 | `lib/accueil-reglages-hote.js` | onglet Paramètres : produit proposé, mise à jour silencieuse, mode développeur, services en ligne |
 | `lib/accueil-secretariat-hote.js` | onglet Secrétariat : les quatre exports et leur historique |
 | `lib/accueil-suppression-hote.js` | onglet Produits : supprimer un numéro en cours de la Revue ou de la Zeitschrift, après vérifications |
+| `lib/accueil-surprises.js` | la Prontogenda de l'onglet Produits, et les libellés des jeux cachés de `media/_jeux.js` (cinq clics de suite sur un même bouton de produit) |
 | `lib/bienvenue-hote.js` | invitation au tutoriel, puis « Quoi de neuf » après une mise à jour |
 | `lib/apercu.js` | aperçu HTML ou PDF en colonne 2, défilement synchronisé avec l'éditeur |
 | `lib/vue-articles-hote.js` | vue « Articles » (ou « Chapitres ») : cartes, ordre, envoi à l'auteur, PDF |
@@ -71,6 +72,8 @@ Un module « hôte » (`*-hote.js`) tient une zone de l'interface et reçoit ses
 | `lib/profil.js` | revue ou livre, chemins, capacités (`szh.peut.*`) |
 | `lib/articles.js` | ordre des articles, nom affiché, tâches éditoriales |
 | `lib/yaml.js` | lecture et écriture des YAML du numéro et des fiches, écriture atomique |
+| `lib/calendrier.js` | lecture de `calendrier.csv` et événements de la semaine en cours |
+| `lib/attente.js` | phrases d'attente des opérations longues, qui défilent dans la barre d'état après cinq secondes |
 | `lib/slug.js` | slug d'article et de portrait, identique à celui du Makefile |
 | `lib/i18n.js` | libellés fr et de, `T()` et `TP()` (variante `clé.livre`) |
 | `lib/index-textes.js` | retrouve la clé i18n d'un texte affiché, pour le mode « Trad » |
@@ -149,6 +152,7 @@ Un module « hôte » (`*-hote.js`) tient une zone de l'interface et reçoit ses
 | `mail-templates/` | gabarits des courriels ([README](mail-templates/README.md)) |
 | `export-templates/` | gabarits des exports du secrétariat et de la synthèse des compteurs |
 | `print-templates/` | `verification-meta.twig`, la feuille de vérification des métadonnées |
+| `calendrier.csv` | les dates de la Prontogenda de l'Accueil ; le format est décrit en tête du fichier |
 | `prompts/` | `resume-descriptif.json`, les consignes envoyées à Mistral par `lib/resumes.js` |
 
 Les gabarits sont lus dans le dossier de l'extension et ne sont pas copiés sur le poste. Leur

@@ -108,6 +108,13 @@ var SZH = (function () {
       ['path', { d: 'M11.3 1.7a1.5 1.5 0 0 1 2.1 0l.9.9a1.5 1.5 0 0 1 0 2.1L6 13l-3.3.7L3.4 10.4 11.3 1.7z',
         fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linejoin': 'round' }],
       ['path', { d: 'M9.7 3.3 12.7 6.3', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4' }]
+    ],
+    // Prontogenda : une page de calendrier, ses deux anneaux et la barre de l'en-tête.
+    calendrier: [
+      ['rect', Object.assign({ x: '2', y: '3', width: '12', height: '11', rx: '1.5' }, CONTOUR)],
+      ['path', { d: 'M2 6.5h12M5 1.5v3M11 1.5v3', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5',
+        'stroke-linecap': 'round' }],
+      ['rect', { x: '4.5', y: '8.5', width: '2.5', height: '2.5', rx: '.5' }]
     ]
   };
 

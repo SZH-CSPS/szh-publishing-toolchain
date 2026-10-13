@@ -283,6 +283,7 @@ const { copieConflitPour } = require('./lib/copies-conflit');
 // differer retient ce qui volerait le focus jusqu'à leur fermeture. Instance partagée avec
 // panneaux.js et formatting.js.
 const { sousGarde, differer, confirmerAbandon } = require('./lib/interaction');
+const { messageAttente } = require('./lib/attente');
 const {
   genererExportOjs, configOjs, ecrireConfigOjs, doiCalcule, typeSansDoi,
   CHAMPS_REVUE, LOCALES_REVUE, RUBRIQUES_DEFAUT, FORME_DOI
@@ -1359,7 +1360,7 @@ async function toutExporter(fournisseur, rafraichirTout) {
     return;
   }
   session.poserBuildEnCours(true);
-  const statut = vscode.window.setStatusBarMessage(T('statut.export'));
+  const statut = messageAttente(vscode.window, T('statut.export'));
   try {
     await fermerOngletsSous(path.join(racine, 'out'));
     session.poserApercuCourantUri(null);                       // tous les aperçus viennent d'être fermés
@@ -1392,7 +1393,7 @@ async function exporterXml(fournisseur, rafraichirTout) {
     return;
   }
   session.poserBuildEnCours(true);
-  const statut = vscode.window.setStatusBarMessage(T('exportOjs.statut'));
+  const statut = messageAttente(vscode.window, T('exportOjs.statut'));
   try {
     await fermerOngletsSous(path.join(racine, 'out'));
     session.poserApercuCourantUri(null);                       // « Tout exporter » fait un clean
@@ -1530,7 +1531,7 @@ async function exporterLivre(nomTache, cles) {
     return;
   }
   session.poserBuildEnCours(true);
-  const statut = vscode.window.setStatusBarMessage(T(cles.statut));
+  const statut = messageAttente(vscode.window, T(cles.statut));
   try {
     const code = await lancerTache(nomTache);
     if (code === null) { return; }                 // tâche introuvable, déjà signalé
@@ -1596,7 +1597,7 @@ async function exporterArticle(fournisseur, rafraichirTout, cible) {
     return;
   }
   session.poserBuildEnCours(true);
-  const statut = vscode.window.setStatusBarMessage(T('statut.exportArticle', [slug]));
+  const statut = messageAttente(vscode.window, T('statut.exportArticle', [slug]));
   try {
     const code = await lancerTacheObjet(tacheMakeArticle(racine, slug));
     rafraichirTout();
@@ -1870,7 +1871,7 @@ async function ouvrirArticle(fournisseur, slug, opts) {
   }
   if (obsolete) {
     session.poserBuildEnCours(true);
-    const statut = vscode.window.setStatusBarMessage(T('statut.build.de', [slug]));
+    const statut = messageAttente(vscode.window, T('statut.build.de', [slug]));
     controlesHote.annoncerAnalyse(slug);                         // voir compilerPuisAfficher
     try {
       const code = await lancerBuildUnite(racine, slug);
@@ -1944,7 +1945,7 @@ async function compilerPuisAfficher(fournisseur, slug, opts) {
   if (compilationAutoCoupee()) { return; }         // pas de compilation implicite
 
   session.poserBuildEnCours(true);
-  const statut = vscode.window.setStatusBarMessage(T('statut.build.de', [slug]));
+  const statut = messageAttente(vscode.window, T('statut.build.de', [slug]));
   let code = null;
   // Annonce l'article compilé, pour que le voile de « À corriger » ne couvre que sa carte
   // (posé au démarrage de la tâche). Retirée dans tous les cas, pour ne pas s'appliquer au
@@ -2023,7 +2024,7 @@ async function basculerApercuDocumentation(fournisseur, slug) {
     return;
   }
   session.poserBuildEnCours(true);
-  const statut = vscode.window.setStatusBarMessage(T('statut.build.de', [slug]));
+  const statut = messageAttente(vscode.window, T('statut.build.de', [slug]));
   let code = null;
   try {
     code = await lancerBuild(racine);
@@ -2191,7 +2192,7 @@ async function confirmerReimport(slug) {
 async function compilerApresReimport(racine, slug) {
   if (session.buildEnCours()) { return; }
   session.poserBuildEnCours(true);
-  const statut = vscode.window.setStatusBarMessage(T('statut.exportArticle', [slug]));
+  const statut = messageAttente(vscode.window, T('statut.exportArticle', [slug]));
   try { await lancerTacheObjet(tacheMakeArticle(racine, slug)); }
   catch (e) { /* la compilation ratée se dit par les contrôles, le réimport a eu lieu */ }
   finally { statut.dispose(); session.poserBuildEnCours(false); }

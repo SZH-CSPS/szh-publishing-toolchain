@@ -15,6 +15,7 @@ const { lireMedia } = require('./webviews/util');
 const { panneauUnique } = require('./webviews/panneau');
 const { differer } = require('./interaction');
 const { compilationAutoCoupee } = require('./cycle-vie');
+const { phraseAuHasard } = require('./attente');
 const { MSG } = require('./messages');
 
 const VUE_PDF = 'pdf.preview';
@@ -345,7 +346,7 @@ function ouvrirApercuHtml(fournisseur, slug, enAttente) {
   try { mtime = fs.statSync(fichier).mtimeMs; } catch (e) { /* page de remplacement */ }
   if (contenu === null) {
     const lignes = [echapperTexte(T('apercu.indisponible'))];
-    if (enAttente) { lignes.push(echapperTexte(T('apercu.encours'))); }
+    if (enAttente) { lignes.push(echapperTexte(T('apercu.encours')), echapperTexte(phraseAuHasard())); }
     // Numéro gelé : rien ne se compile seul, la page dit comment lancer la compilation.
     else if (compilationAutoCoupee()) { lignes.push(echapperTexte(T('apercu.gele'))); }
     contenu = '<!DOCTYPE html><html lang="fr"><head></head><body><p>'

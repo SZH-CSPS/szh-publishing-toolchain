@@ -125,6 +125,44 @@ body {
 .accueil-details > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .accueil-archives .accueil-liste { max-height: 10rem; margin-top: var(--e1); }
 
+/* La Prontogenda : une page d'agenda sous le pied de l'onglet. Le dos épais à la couleur de
+   l'accent rappelle la reliure ; le titre en capitales porte le pictogramme du calendrier. Le
+   tout reste sur le fond de page, où l'encre secondaire des dates garde son contraste. */
+.accueil-calendrier {
+  margin-top: var(--e5);
+  border: 1px solid var(--filet); border-top: 4px solid var(--accent); border-radius: var(--rayon);
+}
+.accueil-calendrier-tete {
+  display: flex; align-items: center; gap: var(--e2);
+  padding: var(--e2) var(--e3); border-bottom: 1px solid var(--filet);
+}
+.accueil-calendrier-tete svg { color: var(--accent); flex: 0 0 auto; }
+.accueil-calendrier-titre {
+  margin: 0; font-size: var(--t-libelle); font-weight: 700;
+  text-transform: uppercase; letter-spacing: .12em;
+}
+.accueil-calendrier-liste { list-style: none; margin: 0; padding: var(--e2) var(--e3); font-size: var(--t-libelle); }
+.accueil-calendrier-liste li { display: flex; gap: var(--e3); padding: 2px 0; }
+.accueil-calendrier-date { flex: 0 0 5.5rem; color: var(--encre-2); font-variant-numeric: tabular-nums; }
+.accueil-calendrier-jour { font-weight: 700; }
+.accueil-calendrier-jour .accueil-calendrier-date { color: var(--encre); }
+
+/* ═══ Jeux (media/_jeux.js) ═════════════════════════════════════════════════════ */
+.jeu-boite {
+  display: flex; flex-direction: column; gap: var(--e2); align-items: stretch;
+  padding: var(--e3); background: var(--fond); color: var(--encre);
+  border: 1px solid var(--filet-fort); border-radius: var(--rayon);
+}
+.jeu-tete { display: flex; align-items: baseline; gap: var(--e3); }
+.jeu-tete h2 { font-size: var(--t-titre); margin: 0; }
+.jeu-tete .jeu-etat { flex: 1; text-align: right; font-variant-numeric: tabular-nums; }
+.jeu-boite canvas {
+  display: block; width: 480px; max-width: calc(100vw - 6rem); height: auto;
+  border: 1px solid var(--filet); border-radius: var(--rayon-mini); background: var(--surface);
+}
+.jeu-aide { margin: 0; font-size: var(--t-libelle); color: var(--encre-2); max-width: 480px; }
+.jeu-pied { display: flex; justify-content: flex-end; }
+
 /* ═══ Nouveau ═══════════════════════════════════════════════════════════════════ */
 .accueil-formulaire { display: flex; flex-direction: column; gap: var(--e3); }
 .accueil-champs { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--e3) var(--e4); }

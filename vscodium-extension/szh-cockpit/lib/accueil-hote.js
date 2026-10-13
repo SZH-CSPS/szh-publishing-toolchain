@@ -22,6 +22,7 @@ const suppression = require('./accueil-suppression-hote');
 const resumesHote = require('./resumes-hote');
 const moissonHote = require('./moisson-hote');
 const { ouvrirAvecSysteme } = require('./ouvrir-systeme');
+const { calendrierDeLaSemaine, textesJeux } = require('./accueil-surprises');
 
 const VIEW_TYPE = 'szhAccueil';
 // Par compte : le dernier numéro ouvert depuis l'Accueil, qu'il propose en premier.
@@ -32,7 +33,9 @@ let ctx = {
   repondreModeTrad: require('./traduction-hote').repondreModeTrad,
   rafraichirTout: null,    // posé par extension.js : l'arbre suit un réglage qui change ses libellés
   // Délai avant de fermer cette fenêtre quand le numéro demandé était déjà ouvert ailleurs.
-  delaiFermeture: 1500
+  delaiFermeture: 1500,
+  // L'heure qui choisit les événements du calendrier.
+  maintenant: () => new Date()
 };
 function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
 
@@ -101,7 +104,8 @@ async function donnees() {
     anneeCourante: new Date().getFullYear(), modeTest: inv.modeTest, ancrageAbsent: inv.ancrageAbsent,
     version: versionInstallee(), exports: inventaire.racineExports(inv), produits,
     dernierOuvert: (etatPoste && etatPoste.globalState.get(CLE_DERNIER)) || '',
-    historique: secretariat.historique(), journaux: journal.listePage()
+    historique: secretariat.historique(), journaux: journal.listePage(),
+    calendrier: calendrierDeLaSemaine(ctx.maintenant(), langue)
   };
 }
 
@@ -181,8 +185,8 @@ async function surMessage(msg, panneau) {
 
 function htmlAccueil(nonce) {
   return construireHtml('accueil', nonce, {
-    cssPartage: ['_design.css'], jsPartage: ['_messages.js'], titre: T('accueil.titre'),
-    remplacements: { '__TXT__': JSON.stringify(textesAccueil()) }
+    cssPartage: ['_design.css'], jsPartage: ['_messages.js', '_jeux.js'], titre: T('accueil.titre'),
+    remplacements: { '__TXT__': JSON.stringify(textesAccueil()), '__TXT_JEUX__': JSON.stringify(textesJeux()) }
   });
 }
 

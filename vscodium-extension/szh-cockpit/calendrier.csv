@@ -1,0 +1,112 @@
+# Calendrier de l'Accueil : la Prontogenda de l'onglet Produits montre les lignes
+# dont la date tombe dans la semaine en cours, du lundi au dimanche.
+#
+# Une ligne par événement, cinq colonnes séparées par un point-virgule :
+#   date    « JJ.MM » (04.01), ou un jour de la semaine dans le mois : « 3e jeudi 05 »,
+#           « 1er lundi 09 », « dernier lundi 10 »
+#   annee   facultative : l'année de l'événement, qui remplace {ans} dans le texte par
+#           le nombre d'années écoulées
+#   type    csps (histoire de la maison), int (journée internationale), ch (Suisse), fun
+#   fr, de  le texte affiché, selon la langue de l'interface
+# Les lignes qui commencent par « # » et les lignes vides sont ignorées. Un texte qui contient
+# un point-virgule se met entre guillemets droits.
+#
+# Chaque semaine de l'année doit avoir au moins un événement : test/js/calendrier.test.js le
+# vérifie, avec le format de chaque ligne.
+date;annee;type;fr;de
+01.01;2004;csps;Il y a {ans} ans entrait en vigueur la loi sur l’égalité pour les handicapés (LHand).;Vor {ans} Jahren trat das Behindertengleichstellungsgesetz (BehiG) in Kraft.
+01.01;2009;csps;Il y a {ans} ans naissait la Fondation Centre suisse de pédagogie spécialisée.;Vor {ans} Jahren entstand die Stiftung Schweizer Zentrum für Heil- und Sonderpädagogik.
+01.01;2011;csps;Il y a {ans} ans entrait en vigueur le Concordat sur la pédagogie spécialisée.;Vor {ans} Jahren trat das Sonderpädagogik-Konkordat in Kraft.
+04.01;;int;Journée mondiale du braille.;Welt-Braille-Tag.
+06.01;;ch;Jour des Rois : qui aura la fève ?;Dreikönigstag: Wer findet den König im Kuchen?
+11.01;;fun;Journée internationale du merci : merci de relire vos épreuves.;Internationaler Tag des Dankeschöns: Danke fürs Korrekturlesen.
+14.01;;int;Journée mondiale de la logique. Pronto en a aussi, parfois.;Welttag der Logik. Pronto hat auch welche, manchmal.
+21.01;;fun;Journée internationale des câlins : câlinez l’équipe de relecture.;Internationaler Tag der Umarmung: Umarmen Sie Ihr Korrektorat.
+24.01;;int;Journée internationale de l’éducation.;Internationaler Tag der Bildung.
+28.01;;fun;Journée de la protection des données. Et ce mot de passe sur un post-it, là ?;Europäischer Datenschutztag. Und das Passwort auf dem Post-it da?
+02.02;;fun;Chandeleur : les crêpes se composent plus vite que les revues.;Mariä Lichtmess: In der Romandie gibt es heute Crêpes.
+04.02;;int;Journée internationale de la fraternité humaine.;Internationaler Tag der Geschwisterlichkeit aller Menschen.
+11.02;;int;Journée internationale des femmes et des filles de science.;Internationaler Tag der Frauen und Mädchen in der Wissenschaft.
+14.02;;fun;Saint-Valentin : Pronto ♥ WeasyPrint.;Valentinstag: Pronto ♥ WeasyPrint.
+20.02;;int;Journée mondiale de la justice sociale.;Welttag der sozialen Gerechtigkeit.
+21.02;;int;Journée internationale de la langue maternelle, langues des signes comprises.;Internationaler Tag der Muttersprache, Gebärdensprachen inbegriffen.
+28.02;;int;Journée internationale des maladies rares.;Internationaler Tag der seltenen Krankheiten.
+01.03;2017;csps;Il y a {ans} ans, Romain Lanners prenait la direction du CSPS : le premier directeur belge de la maison.;Vor {ans} Jahren übernahm Romain Lanners die Leitung des SZH, als erster belgischer Direktor.
+03.03;;int;Journée mondiale de l’audition.;Welttag des Hörens.
+08.03;;int;Journée internationale des droits des femmes.;Internationaler Frauentag.
+14.03;;fun;Jour de π : 3,14159… et pas une décimale de trop.;Pi-Tag: 3,14159… und keine Nachkommastelle zu viel.
+20.03;;int;Journée internationale de la Francophonie.;Internationaler Tag der Frankophonie.
+21.03;;int;Journée mondiale de la trisomie 21.;Welt-Down-Syndrom-Tag.
+26.03;;int;Purple Day, journée mondiale de l’épilepsie.;Purple Day, Welttag der Epilepsie.
+01.04;;fun;Toutes les revues ont été supprimées par un pirate : votre mot de passe était sur un post-it. Poisson d’avril ! Vos revues vont très bien.;Alle Zeitschriften wurden von einem Hacker gelöscht: Ihr Passwort klebte auf einem Post-it. Aprilscherz! Ihren Zeitschriften geht es bestens.
+02.04;;int;Journée mondiale de sensibilisation à l’autisme.;Welt-Autismus-Tag.
+07.04;;int;Journée mondiale de la santé.;Weltgesundheitstag.
+11.04;;int;Journée mondiale de la maladie de Parkinson.;Welt-Parkinson-Tag.
+15.04;2014;csps;Il y a {ans} ans, la Suisse adhérait à la Convention de l’ONU relative aux droits des personnes handicapées.;Vor {ans} Jahren trat die Schweiz der UNO-Behindertenrechtskonvention bei.
+18.04;;int;Journée internationale des monuments et des sites.;Internationaler Denkmaltag.
+23.04;;int;Journée mondiale du livre et du droit d’auteur : bonne fête aux éditions SZH/CSPS !;Welttag des Buches und des Urheberrechts: Alles Gute, Edition SZH/CSPS!
+28.04;;int;Journée mondiale de la sécurité et de la santé au travail.;Welttag für Sicherheit und Gesundheit am Arbeitsplatz.
+01.05;;ch;Fête du travail.;Tag der Arbeit.
+05.05;;int;Journée européenne pour l’égalité des personnes handicapées.;Europäischer Protesttag zur Gleichstellung von Menschen mit Behinderung.
+08.05;;int;Journée mondiale de la Croix-Rouge, née à Genève.;Weltrotkreuztag: Das Rote Kreuz ist in Genf entstanden.
+15.05;2014;csps;Il y a {ans} ans, la Convention de l’ONU relative aux droits des personnes handicapées entrait en vigueur en Suisse.;Vor {ans} Jahren trat die UNO-Behindertenrechtskonvention in der Schweiz in Kraft.
+3e jeudi 05;;int;Global Accessibility Awareness Day : vos PDF sont balisés pour les lecteurs d’écran.;Global Accessibility Awareness Day: Ihre PDF sind für Screenreader getaggt.
+21.05;;int;Journée mondiale de la diversité culturelle.;Welttag der kulturellen Vielfalt.
+25.05;;fun;Jour de la serviette : n’oubliez pas la vôtre.;Handtuchtag: Vergessen Sie Ihr Handtuch nicht.
+30.05;;int;Journée mondiale de la sclérose en plaques.;Welt-MS-Tag.
+01.06;;int;Journée mondiale des parents.;Welttag der Eltern.
+05.06;;int;Journée mondiale de l’environnement : les revues sont 100 % numériques depuis 2023.;Weltumwelttag: Die Zeitschriften erscheinen seit 2023 rein digital.
+10.06;1994;csps;Il y a {ans} ans s’achevait la conférence de Salamanque, où Alois Bürli représentait la Suisse.;Vor {ans} Jahren ging die Konferenz von Salamanca zu Ende, an der Alois Bürli die Schweiz vertrat.
+14.06;;ch;Grève féministe.;Feministischer Streik.
+16.06;;fun;Joyeux anniversaire, Pronto ! Premier commit le 16 juin 2026.;Alles Gute zum Geburtstag, Pronto! Erster Commit am 16. Juni 2026.
+18.06;;int;Journée de la fierté autiste.;Autistic Pride Day.
+21.06;;fun;Fête de la musique : la compilation fredonne.;Fête de la Musique: Die Kompilierung summt mit.
+27.06;1880;int;Helen Keller naissait il y a {ans} ans. Journée de la surdicécité.;Vor {ans} Jahren wurde Helen Keller geboren. Tag der Taubblindheit.
+01.07;;int;Juillet est le mois des fiertés des personnes handicapées (Disability Pride Month).;Juli ist Disability Pride Month.
+08.07;;fun;Pronto part en vacances, le cadratin aussi.;Pronto geht in die Ferien, der Geviertstrich auch.
+15.07;;int;Journée mondiale des compétences des jeunes.;Welttag der Jugendfertigkeiten.
+18.07;;int;Journée internationale Nelson Mandela.;Internationaler Nelson-Mandela-Tag.
+22.07;;fun;22/7 : jour de l’approximation de π.;22/7: Tag der Pi-Annäherung.
+26.07;1990;int;Il y a {ans} ans était signé l’Americans with Disabilities Act (ADA).;Vor {ans} Jahren wurde der Americans with Disabilities Act (ADA) unterzeichnet.
+30.07;;int;Journée internationale de l’amitié.;Internationaler Tag der Freundschaft.
+01.08;;ch;Fête nationale : bon 1er Août !;Bundesfeier: Schönen 1. August!
+05.08;;fun;Les vacances touchent à leur fin : Pronto vous a gardé une place au chaud.;Die Ferien gehen zu Ende: Pronto hat Ihnen den Platz warm gehalten.
+09.08;;int;Journée internationale des peuples autochtones.;Internationaler Tag der indigenen Völker.
+12.08;;int;Journée internationale de la jeunesse.;Internationaler Tag der Jugend.
+15.08;;ch;C’est la rentrée dans plusieurs cantons alémaniques.;Schulbeginn in vielen Deutschschweizer Kantonen.
+19.08;;int;Journée mondiale de l’aide humanitaire.;Welttag der humanitären Hilfe.
+25.08;;ch;C’est la rentrée en Suisse romande.;Schulbeginn in der Romandie.
+01.09;2011;csps;Il y a {ans} ans paraissait le premier numéro de la Revue suisse de pédagogie spécialisée.;Vor {ans} Jahren erschien die erste Ausgabe der Revue suisse de pédagogie spécialisée.
+08.09;;int;Journée internationale de l’alphabétisation.;Weltalphabetisierungstag.
+13.09;;fun;Jour du programmeur : le 256e jour de l’année.;Tag der Programmierung: der 256. Tag des Jahres.
+3e dimanche 09;;ch;Jeûne fédéral.;Eidgenössischer Dank-, Buss- und Bettag.
+19.09;;fun;Journée internationale du parler pirate : à l’abordage des manuscrits !;Internationaler Sprich-wie-ein-Pirat-Tag: Entern Sie die Manuskripte!
+23.09;;int;Journée internationale des langues des signes, en pleine Semaine internationale des sourds.;Internationaler Tag der Gebärdensprachen, mitten in der Internationalen Woche der Gehörlosen.
+26.09;;int;Journée européenne des langues.;Europäischer Tag der Sprachen.
+30.09;;int;Journée mondiale de la traduction.;Internationaler Übersetzungstag.
+01.10;;int;Journée internationale des personnes âgées.;Internationaler Tag der älteren Menschen.
+06.10;;int;Journée mondiale de la paralysie cérébrale.;Welttag der Zerebralparese.
+10.10;;int;Journée mondiale de la santé mentale.;Welttag der psychischen Gesundheit.
+2e jeudi 10;;int;Journée mondiale de la vue.;Welttag des Sehens.
+15.10;;int;Journée internationale de la canne blanche.;Internationaler Tag des weissen Stockes.
+22.10;;int;Journée internationale de sensibilisation au bégaiement.;Welttag des Stotterns.
+25.10;2007;csps;Il y a {ans} ans, la CDIP adoptait le Concordat sur la pédagogie spécialisée.;Vor {ans} Jahren verabschiedete die EDK das Sonderpädagogik-Konkordat.
+dernier lundi 10;;int;Semaine internationale du libre accès : les revues sont en Gold Open Access.;Internationale Open-Access-Woche: Die Zeitschriften erscheinen im Gold Open Access.
+31.10;;fun;Halloween : un cadratin déguisé en demi-cadratin rôde dans les manuscrits.;Halloween: Ein als Halbgeviertstrich verkleideter Geviertstrich geistert durch die Manuskripte.
+01.11;1972;csps;Il y a {ans} ans, Alois Bürli prenait ses fonctions : le Secrétariat suisse de pédagogie curative était né.;Vor {ans} Jahren trat Alois Bürli seine Stelle an: Die Schweizerische Zentralstelle für Heilpädagogik war geboren.
+08.11;1975;csps;Il y a {ans} ans, le SPC était refondé en association indépendante.;Vor {ans} Jahren wurde die SZH als eigenständige Vereinigung neu gegründet.
+13.11;;int;Journée mondiale de la gentillesse.;Welttag der Freundlichkeit.
+17.11;1973;csps;Il y a {ans} ans, le Secrétariat suisse de pédagogie curative était officiellement inauguré.;Vor {ans} Jahren wurde die Schweizerische Zentralstelle für Heilpädagogik offiziell eröffnet.
+20.11;1989;int;Journée internationale des droits de l’enfant : la Convention a {ans} ans.;Internationaler Tag der Kinderrechte: Die Konvention wird {ans} Jahre alt.
+25.11;;int;Journée internationale pour l’élimination de la violence à l’égard des femmes.;Internationaler Tag zur Beseitigung von Gewalt gegen Frauen.
+01.12;;int;Journée mondiale de lutte contre le sida.;Welt-Aids-Tag.
+03.12;;int;Journée internationale des personnes handicapées.;Internationaler Tag der Menschen mit Behinderungen.
+05.12;;int;Journée internationale des bénévoles.;Internationaler Tag des Ehrenamts.
+06.12;;ch;Saint-Nicolas a relu sa liste avec Pronto : zéro faute.;Der Samichlaus hat seine Liste mit Pronto gesetzt: null Fehler.
+10.12;;int;Journée des droits humains.;Tag der Menschenrechte.
+12.12;;ch;L’Escalade : marmite en compilation.;Escalade in Genf: Die Marmite wird kompiliert.
+13.12;2006;csps;Il y a {ans} ans, l’ONU adoptait la Convention relative aux droits des personnes handicapées.;Vor {ans} Jahren verabschiedete die UNO die Behindertenrechtskonvention.
+18.12;;int;Journée internationale des migrants.;Internationaler Tag der Migrantinnen und Migranten.
+21.12;;fun;Solstice d’hiver : jour le plus court, compilation la plus courte.;Wintersonnenwende: kürzester Tag, kürzeste Kompilierung.
+25.12;;ch;Les cadeaux sont prêts : ils sont pronto ! Joyeux Noël.;Die Geschenke sind pronto bereit. Frohe Weihnachten!
+31.12;;ch;Douze coups de minuit, zéro cadratin. L’année prochaine sera pronto !;Zwölf Glockenschläge, null Geviertstriche. Das neue Jahr wird pronto!
