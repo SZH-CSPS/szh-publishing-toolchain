@@ -27,7 +27,9 @@ const { lireAttributsImage } = require('./references');
 const { citationsParArticle } = require('./journal');
 const tableConstats = require('./constats');
 const { refuserSiArchivee, refuserSiVerrouille } = require('./cycle-vie');
-const { refusCoedition, noterLectureCoedition, libererCoedition } = require('./coedition-hote');
+const {
+  refusCoedition, refusCoeditionNumero, noterLectureCoedition, libererCoedition
+} = require('./coedition-hote');
 const { fermerTousLesApercus } = require('./apercu');
 const { construireHtml } = require('./webviews/util');
 const { panneauUnique, panneauCourant } = require('./webviews/panneau');
@@ -679,6 +681,10 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
     if (msg.id === 'ordre-annuler') { ctx.poserModeOrdre(null); return null; }
     if (msg.id === 'ordre-terminer') {
       const voulu = ctx.ordreEnCours(racine);
+      // Les dossiers renommés changent de chemin sous les yeux de qui les a ouverts : refusé
+      // tant que quelqu'un d'autre écrit dans le numéro. Le mode reste ouvert pour réessayer.
+      const refusBail = voulu ? refusCoeditionNumero(racine) : null;
+      if (refusBail) { return refusBail; }
       ctx.poserModeOrdre(null);
       if (!voulu) { return null; }
       const r = ctx.alignerDossiersSurOrdre(racine, voulu);

@@ -1030,18 +1030,26 @@ test('export : un article coché « pas de DOI » ne bloque plus l’export', ()
 
 // ---- Le fichier dérivé des DOI calculés ----
 //
-// Le bandeau DOI de la couverture (szh-article.html) imprime le DOI courant, qui n'est
-// stocké nulle part : le cockpit dépose dois-calcules.yaml à côté d'ausgabe.yaml, et
-// pipeline/filters/szh-maquette.lua le lit. Le calcul vit dans lib/articles.js ; ce
-// fichier n'en est qu'une copie.
+// Le bandeau DOI de la couverture (szh-article.html) imprime le DOI courant, qui n'est pas
+// stocké dans le numéro : le cockpit l'écrit sur le poste, dans
+// <base>\dois-calcules\<id du numéro>.yaml, et pipeline/filters/szh-maquette.lua le lit.
+// Le calcul vit dans lib/articles.js ; ce fichier n'en est qu'une copie.
 
-test('dois-calcules.yaml : porteurs seuls, write-if-changed, et numéro archivé intact', () => {
+test('DOI calculés : sur le poste, porteurs seuls, write-if-changed, et numéro archivé intact', (t) => {
   // extension.js est déjà chargé par activerHote (le crochet vscode reste posé) : on
   // reprend le module du cache, comme le ferait l'hôte lui-même.
   const ext = require(path.join(COCKPIT, 'extension.js'));
-  const revue = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-dois-'));
+  const travail = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-dois-'));
+  const revue = path.join(travail, '2026-03');
+  const base = path.join(travail, 'ProgramData');
+  fs.mkdirSync(revue);
+  const baseAvant = process.env.SZH_BASE;
+  process.env.SZH_BASE = base;
+  t.after(() => {
+    if (baseAvant === undefined) { delete process.env.SZH_BASE; } else { process.env.SZH_BASE = baseAvant; }
+  });
   const ausgabe = (cles) => fs.writeFileSync(path.join(revue, 'ausgabe.yaml'),
-    ['revue: revue', 'lang: fr', 'volume: "16"', 'numero: "03"', 'date: "2026-09-08"']
+    ['id: AbC123', 'revue: revue', 'lang: fr', 'volume: "16"', 'numero: "03"', 'date: "2026-09-08"']
       .concat(cles || []).concat(['']).join(LF));
   ausgabe();
   const slugs = ['00-edito', '01-doc', '02-a'];
@@ -1054,9 +1062,13 @@ test('dois-calcules.yaml : porteurs seuls, write-if-changed, et numéro archivé
   }
   // Le faux fournisseur n'a que ce que doisCalculesArticles lit : la racine et l'ordre.
   const fournisseur = (ordre) => ({ racine: revue, listerArticles: () => ordre });
-  const chemin = path.join(revue, 'dois-calcules.yaml');
+  const chemin = path.join(base, 'dois-calcules', 'AbC123.yaml');
+  // L'ancien fichier partagé du numéro est effacé.
+  const ancien = path.join(revue, 'dois-calcules.yaml');
+  fs.writeFileSync(ancien, '# ancien' + LF);
 
   ext._pur.ecrireDoisCalcules(fournisseur(slugs));
+  assert.ok(!fs.existsSync(ancien), 'le fichier partagé du numéro est resté');
   const texte = fs.readFileSync(chemin, 'utf8');
   assert.match(texte, /^00-edito: 10\.57161\/r2026-03-00$/m, 'l’éditorial n’ouvre pas à 00');
   assert.match(texte, /^02-a: 10\.57161\/r2026-03-01$/m,

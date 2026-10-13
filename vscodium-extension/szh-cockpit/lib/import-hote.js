@@ -17,7 +17,7 @@ const { analyserMeta, langueRevue } = require('./yaml');
 const { tige } = require('./renumerotation');
 const { alignerFichiers } = require('./renumerotation-fs');
 const { refuserSiVerrouille } = require('./cycle-vie');
-const { refusCoedition } = require('./coedition-hote');
+const { mainCoedition, rafraichirEmpreinteCoedition } = require('./coedition-hote');
 const { ouvrirImportVerif } = require('./import-verif-hote');
 
 // Identiques aux labels de vscodium-user/tasks.json.
@@ -106,15 +106,21 @@ function prefixerNouveauxArticles(racine, ordreFinal, nouveaux) {
 }
 
 // Écrit l'ordre des articles (`ordre-articles` ou `ordre-chapitres` selon le profil) avec
-// les nouveaux en queue de l'ordre existant `avant`. Sans cette écriture, ils seraient
+// les nouveaux en queue de l'ordre existant. Sans cette écriture, ils seraient
 // rangés par ordre alphabétique et le numéro mis dans le nom des Word serait perdu.
 // Entre eux, les articles numérotés viennent d'abord, par numéro ; les autres suivent dans
 // l'ordre de l'import (tri stable).
 //
+// L'ordre existant est relu sur le disque juste avant d'écrire : un import fait au même
+// moment sur un autre poste y figure déjà, et n'est pas effacé. La main est prise sur
+// ausgabe.yaml pour deux minutes ; si un autre poste la tient, l'ordre n'est pas écrit et
+// listerArticles() range les nouveaux par leur préfixe.
+//
 // -> Map ancien slug -> nouveau slug (prefixerNouveauxArticles), dont l'appelant a besoin
 // pour la suite (conversion CMJN, vérification d'import).
-function ecrireOrdreNouveauxArticles(fournisseur, avant, nouveaux, parBase) {
+function ecrireOrdreNouveauxArticles(fournisseur, nouveaux, parBase) {
   const racine = fournisseur.racine;
+  const refusMain = mainCoedition(null, racine, cheminConfig(racine), {});
   const numeroDe = new Map();
   for (const slug of nouveaux) { numeroDe.set(slug, resoudreNumeroOrdre(slug, parBase)); }
   const tries = nouveaux.slice().sort((a, b) => {
@@ -124,7 +130,9 @@ function ecrireOrdreNouveauxArticles(fournisseur, avant, nouveaux, parBase) {
     if (nb === null) { return -1; }
     return na - nb;
   });
-  const complet = Array.from(avant).concat(tries);
+  const aNouveau = new Set(nouveaux);
+  const existants = fournisseur.listerArticles().filter((slug) => !aNouveau.has(slug));
+  const complet = existants.concat(tries);
   // Le tri DOI s'applique aussi dans le fichier : ausgabe.yaml se relit à la main et doit
   // montrer l'ordre de l'écran. Cet ordre fixe le rang, donc le préfixe, de chacun.
   const ordreFinal = trierParDoi(complet, ctx.articlesSansDoi(racine, complet));
@@ -133,11 +141,12 @@ function ecrireOrdreNouveauxArticles(fournisseur, avant, nouveaux, parBase) {
   const renommes = prefixerNouveauxArticles(racine, ordreFinal, nouveaux);
   const modifies = {};
   modifies[cleOrdre()] = ordreFinal.map((slug) => renommes.get(slug) || slug);
-  // On vérifie le bail de co-édition sans le prendre. Si quelqu'un d'autre modifie
-  // ausgabe.yaml, l'ordre n'est pas écrit : listerArticles() le réparera à la prochaine
-  // lecture (repli alphabétique), avec les dossiers déjà renommés.
-  if (refusCoedition(racine, cheminConfig(racine))) { return renommes; }
+  if (refusMain) {
+    vscode.window.showWarningMessage(T('coedition.import.ordre', [refusMain.titulaire]));
+    return renommes;
+  }
   ctx.ecrireClesAusgabe(racine, modifies);
+  rafraichirEmpreinteCoedition(racine, cheminConfig(racine));
   return renommes;
 }
 
@@ -224,8 +233,8 @@ async function annoncerAucunNouveau(fournisseur) {
 // lancée hors du cockpit. `dejaCompile` : la tâche a déjà compilé (`make all`) ; on ne
 // recompile que si un dossier a été renommé ou une image convertie. Remplace dans
 // `nouveaux` les slugs renommés par leur nouveau nom.
-async function finirImport(fournisseur, rafraichirTout, avant, nouveaux, parBase, dejaCompile) {
-  const renommes = ecrireOrdreNouveauxArticles(fournisseur, avant, nouveaux, parBase);
+async function finirImport(fournisseur, rafraichirTout, nouveaux, parBase, dejaCompile) {
+  const renommes = ecrireOrdreNouveauxArticles(fournisseur, nouveaux, parBase);
   for (let i = 0; i < nouveaux.length; i++) { nouveaux[i] = renommes.get(nouveaux[i]) || nouveaux[i]; }
   // Retire ce que `make all` a compilé sous l'ancien nom, que l'export pourrait reprendre
   // (comme renumeroter()).
@@ -369,7 +378,7 @@ async function finirImportExterne(fournisseur, rafraichirTout) {
   const nouveaux = fournisseur.listerArticles().filter((s) => !e.avant.has(s));
   if (nouveaux.length === 0) { return; }
   session.poserImportEnCours(true);
-  try { await finirImport(fournisseur, rafraichirTout, e.avant, nouveaux, e.parBase, e.dejaCompile); }
+  try { await finirImport(fournisseur, rafraichirTout, nouveaux, e.parBase, e.dejaCompile); }
   finally {
     session.poserImportEnCours(false);
     ctx.rejouerCompilationsDifferees();
@@ -394,7 +403,7 @@ async function convertirDepot(fournisseur, rafraichirTout, depot, annoncer) {
   const nouveaux = [];
   for (const slug of fournisseur.listerArticles()) { if (!avant.has(slug)) { nouveaux.push(slug); } }
   if (nouveaux.length > 0) {
-    await finirImport(fournisseur, rafraichirTout, avant, nouveaux, parBase, false);
+    await finirImport(fournisseur, rafraichirTout, nouveaux, parBase, false);
     return null;
   }
   return annoncer ? () => annoncerAucunNouveau(fournisseur) : null;

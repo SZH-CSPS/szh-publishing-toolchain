@@ -121,18 +121,21 @@ local function sans_qualificatif_provenance(texte)
   return texte
 end
 
--- DOI de l'article, lu dans dois-calcules.yaml, que le cockpit dépose à côté
--- d'ausgabe.yaml. Le DOI se calcule dans le cockpit seul (lib/articles.js) ; le filtre lit
--- la valeur. La clé se compare en texte et ne passe pas par lire_cle : un slug porte des
--- tirets, qui sont des quantificateurs dans un motif Lua. Fichier ou ligne absents : '',
--- et la couverture sort sans bandeau DOI.
+-- DOI de l'article, lu dans <dossier des DOI>/<id du numéro>.yaml, que le cockpit écrit
+-- sur le poste. Le DOI se calcule dans le cockpit seul (lib/articles.js) ; le filtre lit
+-- la valeur. Le dossier est celui du poste ; SZH_DOIS_CALCULES en impose un autre
+-- (instance de développement, tests). La clé se compare en texte et ne passe pas par
+-- lire_cle : un slug porte des tirets, qui sont des quantificateurs dans un motif Lua.
+-- Fichier ou ligne absents : '', et la couverture sort sans bandeau DOI.
+local DOSSIER_DOIS_POSTE = '/mnt/c/ProgramData/SZH/dois-calcules'
+
 local function doi_calcule_du_numero(slug)
   if slug == '' then return '' end
-  local ausgabe = os.getenv('SZH_AUSGABE') or ''
-  if ausgabe == '' then return '' end
-  local racine = ausgabe:gsub('[/\\][^/\\]*$', '')
-  if racine == ausgabe then return '' end          -- pas de dossier : rien à chercher
-  local fh = io.open(racine .. '/dois-calcules.yaml', 'r')
+  local id = lire_cle(os.getenv('SZH_AUSGABE'), 'id')
+  if not id:match('^[%w]+$') then return '' end    -- pas d'id : rien à chercher
+  local dossier = os.getenv('SZH_DOIS_CALCULES')
+  if dossier == nil or dossier == '' then dossier = DOSSIER_DOIS_POSTE end
+  local fh = io.open(dossier .. '/' .. id .. '.yaml', 'r')
   if not fh then return '' end
   local valeur = ''
   for ligne in fh:lines() do

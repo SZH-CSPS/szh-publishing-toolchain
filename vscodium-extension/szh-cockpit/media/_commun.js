@@ -151,6 +151,7 @@ var SZH = (function () {
   // opts.construire(boite)   remplit la boîte, appelé une seule fois
   // opts.surOuverture(boite) / opts.surFermeture()
   // opts.focus()       l'élément à focaliser à l'ouverture
+  // opts.etiquettePar, opts.decritPar   les id du titre et du texte de la boîte
   function modale(opts) {
     var o = opts || {};
     var voile = null;
@@ -171,6 +172,8 @@ var SZH = (function () {
       voile = poser(document.body, 'div', 'szh-modale');
       voile.setAttribute('role', 'dialog');
       voile.setAttribute('aria-modal', 'true');
+      if (o.etiquettePar) { voile.setAttribute('aria-labelledby', o.etiquettePar); }
+      if (o.decritPar) { voile.setAttribute('aria-describedby', o.decritPar); }
       boite = poser(voile, 'div', o.classeBoite || 'szh-modale-boite');
       // Cliquer à côté referme ; Échap aussi, seule sortie au clavier.
       voile.addEventListener('click', function (ev) { if (ev.target === voile) { fermer(); } });

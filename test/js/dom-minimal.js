@@ -219,7 +219,7 @@ function element(balise) {
 
 // Assemble la page comme l'hôte, exécute son script, et rend de quoi lui parler.
 //   ouvrir({ racine, page, cssPartage, jsPartage, txt })
-//     -> { document, parId, messages, envoyer(msg), compter(selecteur), textes(),
+//     -> { document, parId, messages, envoyer(msg), battre(), compter(selecteur), textes(),
 //           compterPage(selecteur), conteneur() }
 // `compter` cherche sous le conteneur de la page ; `compterPage` sous <body>, pour ce
 // qu'une webview y accroche directement — une modale, un voile. `conteneur` rend
@@ -241,6 +241,7 @@ function ouvrir(opts) {
   const parId = {};
   const messages = [];
   const observes = [];
+  const intervalles = [];
   let surMessage = null;
   const document = {
     head: element('head'), body: element('body'), documentElement: element('html'),
@@ -293,7 +294,10 @@ function ouvrir(opts) {
       this.type = type;
       this.bubbles = !!(opts && opts.bubbles);
     },
-    setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {},
+    setTimeout: () => 0, clearTimeout: () => {},
+    // Retenus sans jouer ; `battre()` (plus bas) les déclenche une fois chacun.
+    setInterval: (f) => { intervalles.push(f); return intervalles.length; },
+    clearInterval: (id) => { if (id > 0) { intervalles[id - 1] = null; } },
     // Retient ce que la page observe ; `redimensionner(largeur)` (plus bas) le déclenche.
     ResizeObserver: function (fn) {
       this.observe = (el) => { observes.push({ el: el, fn: fn }); };
@@ -319,6 +323,8 @@ function ouvrir(opts) {
       surMessage({ data: msg });
     },
     // Ce que verrait un ResizeObserver : chaque élément observé prend cette largeur.
+    // Une seconde qui passe : chaque setInterval encore actif joue une fois.
+    battre: () => { for (const f of intervalles.slice()) { if (f) { f(); } } },
     redimensionner: (largeur) => {
       for (const o of observes) { o.fn([{ target: o.el, contentRect: { width: largeur, height: 600 } }]); }
     },

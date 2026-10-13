@@ -206,6 +206,68 @@ test('archiver refuse tant que quelqu’un écrit quelque part dans le numéro',
     'le numéro reste bloqué alors que plus personne n’y écrit');
 });
 
+// « Terminer » renomme les dossiers de tout le numéro : refusé tant qu'un autre poste écrit
+// dans le numéro, et le mode reste ouvert pour réessayer.
+test('« Terminer » l’ordre refuse tant que quelqu’un écrit dans le numéro', async () => {
+  await pret;
+  const dossiers = () => fs.readdirSync(path.join(REVUE, 'articles')).sort();
+  await HOTE.executer('szh.vueArticles');
+  const p = HOTE.panneauDeType('szhVueArticles');
+  await p._recepteur({ type: 'pret' });
+  const charge = () => p.messages.filter((m) => m.type === 'valeurs').pop();
+  const lignes = charge().lignes.map((l) => l.cle);
+  assert.ok(lignes.length >= 2, 'le numéro d’essai n’a pas deux articles à échanger');
+  const avantDossiers = dossiers();
+  const avantAusgabe = fs.readFileSync(AUSGABE, 'utf8');
+
+  await p._recepteur({ type: 'commande', id: 'ordre' });
+  await p._recepteur({ type: 'action', cle: lignes[1], id: 'monter' });
+  poserBailVoisin(META);
+  try {
+    await p._recepteur({ type: 'commande', id: 'ordre-terminer' });
+    assert.deepStrictEqual(dossiers(), avantDossiers, 'des dossiers ont été renommés sous la saisie d’un autre');
+    assert.strictEqual(fs.readFileSync(AUSGABE, 'utf8'), avantAusgabe, 'l’ordre a été écrit malgré le refus');
+    assert.ok(charge().ordre, 'le mode s’est refermé : la personne ne peut pas réessayer');
+  } finally { retirerBailVoisin(META); }
+  await p._recepteur({ type: 'commande', id: 'ordre-annuler' });
+});
+
+// L'import relit l'ordre sur le disque avant de l'écrire, et prend la main sur ausgabe.yaml.
+test('import : l’ordre est relu sur le disque, et rien ne s’écrit sous la main d’un autre', async () => {
+  await pret;
+  const numero = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-import-ordre-'));
+  const ausgabe = path.join(numero, 'ausgabe.yaml');
+  fs.writeFileSync(ausgabe, ['revue: revue', 'lang: fr', 'ordre-articles: [00-a]', ''].join('\n'));
+  for (const slug of ['00-a', '01-b', 'neuf']) {
+    fs.mkdirSync(path.join(numero, 'articles', slug), { recursive: true });
+    fs.writeFileSync(path.join(numero, 'articles', slug, slug + '.md'), 'Texte.\n');
+  }
+  // « 01-b » vient d'un autre poste, arrivé pendant l'import : il est sur le disque et doit
+  // rester dans l'ordre, avant le nouvel article de ce poste.
+  const fournisseur = { racine: numero, listerArticles: () => ['00-a', '01-b', 'neuf'] };
+
+  const bailVoisin = coedition.poser(numero, ausgabe, VOISIN, Date.now());
+  assert.ok(bailVoisin.ok);
+  const avant = fs.readFileSync(ausgabe, 'utf8');
+  HOTE.avertissements.length = 0;
+  P.ecrireOrdreNouveauxArticles(fournisseur, ['neuf'], new Map());
+  assert.strictEqual(fs.readFileSync(ausgabe, 'utf8'), avant, 'l’ordre a été écrit sous la main d’un autre');
+  assert.ok(HOTE.avertissements.some((m) => m.indexOf('Anne Voisine') !== -1),
+    'le refus n’est pas signalé : ' + JSON.stringify(HOTE.avertissements));
+  coedition.rendre(numero, ausgabe, VOISIN);
+
+  // Libre : l'ordre garde l'article de l'autre poste, et le nouveau prend la suite. Le
+  // dossier, déjà préfixé par la passe refusée, reprend son nom d'import.
+  fs.renameSync(path.join(numero, 'articles', '02-neuf'), path.join(numero, 'articles', 'neuf'));
+  fs.renameSync(path.join(numero, 'articles', 'neuf', '02-neuf.md'), path.join(numero, 'articles', 'neuf', 'neuf.md'));
+  P.ecrireOrdreNouveauxArticles(fournisseur, ['neuf'], new Map());
+  assert.match(fs.readFileSync(ausgabe, 'utf8'), /ordre-articles:.*00-a.*01-b.*02-neuf/,
+    'l’ordre écrit a perdu l’article de l’autre poste : ' + fs.readFileSync(ausgabe, 'utf8'));
+  // La main est à ce poste pour deux minutes : un autre poste la voit.
+  assert.ok(coedition.titulaireAutre(numero, ausgabe, VOISIN), 'la main n’a pas été prise sur ausgabe.yaml');
+  fs.rmSync(numero, { recursive: true, force: true });
+});
+
 // Avertissement de dernier recours : le bail voyage par le synchroniseur et n'arrive pas
 // toujours à temps. Une copie en conflit apparue malgré tout est signalée : c'est une
 // version du travail qui n'est pas dans le numéro.

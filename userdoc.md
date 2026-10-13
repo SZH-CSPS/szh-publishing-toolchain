@@ -988,6 +988,12 @@ fichiers est ouvert, l’outil le dit : fermez-le, puis reprenez « Changer l�
 article sans DOI reste après ceux qui en portent un, et un numéro archivé ne se
 réordonne plus.
 
+**Terminer** renomme des dossiers que d’autres personnes peuvent avoir ouverts. Il est
+refusé tant que quelqu’un d’autre enregistre dans un formulaire du numéro ; le mode reste
+alors ouvert, et il suffit de réessayer un peu plus tard. Avant de terminer l’ordre, de
+supprimer un article, de paginer, de geler ou d’archiver, prévenez les autres personnes
+qui travaillent sur le numéro, et demandez-leur de fermer Pronto.
+
 L’ordre est retenu dans `ausgabe.yaml`, sur une ligne `ordre-articles`, à côté du titre et
 du volume du numéro.
 
@@ -1506,6 +1512,27 @@ Deux boutons pour revenir en arrière, indépendants l’un de l’autre :
 
 Dans le lanceur **« Pronto »**, les numéros archivés apparaissent dans une **liste
 séparée**, et un **🔒** signale ceux qui sont verrouillés.
+
+## Supprimer un numéro
+
+Un numéro en cours de la Revue ou de la Zeitschrift se supprime depuis l’Accueil, onglet
+**Produits** : choisissez-le dans la liste, puis cliquez **« Supprimer ce numéro… »**, sous
+la liste. Les numéros archivés et les livres ne se suppriment pas depuis l’Accueil.
+
+Une fenêtre demande de confirmer :
+
+1. elle rappelle le numéro, son titre et son nombre d’articles ;
+2. elle montre un mot à recopier dans le champ qui termine la phrase
+   « with great power comes great » ;
+3. le bouton **« Supprimer »** s’active au bout de dix secondes, si le mot est juste.
+   **« Annuler »** ou la touche Échap referment la fenêtre sans rien supprimer.
+
+La suppression est refusée si le numéro est verrouillé (il faut d’abord le déverrouiller),
+si quelqu’un d’autre y travaille, si une compilation ou un import tourne sur le poste, ou
+si le numéro est ouvert dans la fenêtre.
+
+Le dossier du numéro est supprimé en entier, sources comprises. SharePoint garde les
+fichiers supprimés dans sa corbeille : c’est là qu’on les récupère en cas d’erreur.
 
 ## Un livre, dans le même outil
 

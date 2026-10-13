@@ -441,7 +441,7 @@ test('accueil : chaque TXT.x de la page est fourni et lu, et chaque clé existe 
   const js = fs.readFileSync(path.join(COCKPIT, 'media', 'accueil.js'), 'utf8');
   const lus = new Set([...js.matchAll(/\bTXT\.([A-Za-z0-9_]+)/g)].map((m) => m[1]));
   // Les clés lues par une variable (VERDICTS, ISSUES, remplir, pluriel) se nomment entre apostrophes.
-  for (const m of js.matchAll(/'((?:prod|nv|pp|sec|jrn|rg)[A-Z][A-Za-z]+)'/g)) { lus.add(m[1]); }
+  for (const m of js.matchAll(/'((?:prod|nv|pp|sec|jrn|rg|sup)[A-Z][A-Za-z]+)'/g)) { lus.add(m[1]); }
   const fournis = new Set(Object.keys(TXT));
   for (const cle of lus) {
     const pluriel = fournis.has(cle + 'Un') && fournis.has(cle + 'Plus');
@@ -464,9 +464,9 @@ test('accueil : chaque TXT.x de la page est fourni et lu, et chaque clé existe 
     assert.ok(c in TEXTES_COCKPIT.fr, 'clé sans texte français : ' + c);
     assert.ok(c in TEXTES_COCKPIT.de, 'clé sans texte allemand : ' + c);
   }
-  // Chaque clé accueil.* de lib/i18n.js sert à la page ou à l'hôte (l'Accueil, ses Paramètres
-  // et son Préprocessing).
-  const hote = ['accueil-hote.js', 'accueil-reglages-hote.js', 'accueil-preproc-hote.js']
+  // Chaque clé accueil.* de lib/i18n.js sert à la page ou à l'hôte (l'Accueil, ses Paramètres,
+  // son Préprocessing et la suppression d'un numéro).
+  const hote = ['accueil-hote.js', 'accueil-reglages-hote.js', 'accueil-preproc-hote.js', 'accueil-suppression-hote.js']
     .map((f) => fs.readFileSync(path.join(COCKPIT, 'lib', f), 'utf8')).join('\n');
   const clesHote = [...hote.matchAll(/'(accueil\.[^']+)'/g)].map((m) => m[1]);
   for (const c of clesHote) { assert.ok(c in TEXTES_COCKPIT.de, 'clé de l’hôte sans texte allemand : ' + c); }
@@ -476,7 +476,132 @@ test('accueil : chaque TXT.x de la page est fourni et lu, et chaque clé existe 
   assert.deepStrictEqual(orphelines, []);
 });
 
+// La fenêtre de suppression vit sous <body>, hors du conteneur de la page.
+const dansBody = (p, id) => p.document.body.querySelector('[id="' + id + '"]');
+const PRET_SUP = { type: MSG.ACCUEIL_SUPPRIMER_PRET, ok: true, chemin: 'C:\\P\\Revue\\2026-01', numero: '2026-01', titre: 'Un',
+  articles: 2, mot: 'responsibilities', secondes: 10 };
+// L'annonce : le numéro (en gras dans la page), puis son titre entre guillemets.
+const NUM_TITRE = '2026-01 ' + f('supTitreNumero', ['Un']);
+
+test('supprimer : seulement sur un numéro en cours d’une revue, et la fenêtre attend l’hôte', () => {
+  const p = page();
+  p.envoyer(charger());
+  const bouton = parId(p, 'prod-supprimer');
+  assert.strictEqual(bouton.hidden, false, 'pas de bouton sur un numéro en cours de la Revue');
+  assert.strictEqual(bouton.textContent, TXT.prodSupprimer);
+  assert.ok(!bouton.classList.contains('szh-bouton--principal'), 'la suppression passe au premier plan');
+  clic(parId(p, 'archive-0'));
+  assert.strictEqual(bouton.hidden, true, 'un numéro archivé se propose à la suppression');
+  const radio = (v) => tous(p, 'input[name="produit-prod"]').filter((r) => r.value === v)[0];
+  radio('livre').checked = true;
+  radio('livre').dispatchEvent({ type: 'change' });
+  assert.strictEqual(bouton.hidden, true, 'un livre se propose à la suppression');
+  radio('zeitschrift').checked = true;
+  radio('zeitschrift').dispatchEvent({ type: 'change' });
+  assert.strictEqual(bouton.hidden, false, 'pas de bouton sur un numéro en cours de la Zeitschrift');
+  clic(bouton);
+  assert.deepStrictEqual(posts(p, MSG.ACCUEIL_SUPPRIMER_PREPARER),
+    [{ type: MSG.ACCUEIL_SUPPRIMER_PREPARER, chemin: 'C:\\P\\Zeitschrift\\2026-05' }]);
+  assert.strictEqual(p.compterPage('[role="dialog"]'), 0, 'la fenêtre s’ouvre avant la réponse de l’hôte');
+  // Un refus de l'hôte s'affiche dans la page, sans fenêtre.
+  p.envoyer({ type: MSG.ACCUEIL_SUPPRIMER_PRET, ok: false, texte: 'Refusé par l’hôte.' });
+  assert.strictEqual(p.compterPage('[role="dialog"]'), 0);
+  assert.ok(parId(p, 'panneau-produits').textContent.includes('Refusé par l’hôte.'));
+});
+
+test('supprimer : décompte de 10 s et mot juste, sinon le bouton reste désactivé', () => {
+  const p = page();
+  p.envoyer(charger());
+  clic(parId(p, 'prod-supprimer'));
+  p.envoyer(PRET_SUP);
+  const dialogue = p.document.body.querySelector('[role="dialog"]');
+  assert.ok(dialogue && dialogue.classList.contains('visible'));
+  assert.strictEqual(dialogue.getAttribute('aria-modal'), 'true');
+  assert.strictEqual(dialogue.getAttribute('aria-labelledby'), 'sup-titre');
+  assert.strictEqual(dansBody(p, 'sup-titre').textContent, TXT.supTitre);
+  assert.strictEqual(dansBody(p, 'sup-annonce').textContent, f('supAnnoncePlus', [NUM_TITRE, 2]));
+  assert.strictEqual(dansBody(p, 'sup-annonce').querySelector('strong').textContent, '2026-01',
+    'le numéro n’est pas en gras');
+  assert.strictEqual(dansBody(p, 'sup-citation').textContent.trim(), 'with great power comes great');
+  assert.strictEqual(dansBody(p, 'sup-citation').getAttribute('lang'), 'en');
+  // Le mot à recopier est montré dans la consigne, et le champ termine la phrase.
+  const consigne = dansBody(p, 'sup-consigne');
+  assert.strictEqual(consigne.textContent, f('supConsigne', ['responsibilities']));
+  const saisie = dansBody(p, 'sup-mot');
+  assert.strictEqual(saisie.parent, dansBody(p, 'sup-citation'), 'le champ ne termine pas la phrase');
+  assert.strictEqual(saisie.getAttribute('aria-labelledby'), 'sup-consigne');
+  const confirmer = dansBody(p, 'sup-confirmer');
+  const vive = dialogue.querySelector('[aria-live="polite"]');
+  assert.strictEqual(saisie._focused, true, 'le focus ne va pas dans le champ');
+  assert.strictEqual(confirmer.disabled, true);
+  assert.strictEqual(confirmer.textContent, f('supBoutonDecompte', [10]));
+  assert.strictEqual(vive.textContent, f('supAttente', [10]));
+  saisie.value = 'responsibilities';
+  saisie.dispatchEvent({ type: 'input' });
+  for (let s = 9; s >= 1; s--) {
+    p.battre();
+    assert.strictEqual(confirmer.textContent, f('supBoutonDecompte', [s]));
+    assert.strictEqual(confirmer.disabled, true, 'actif avant la fin du décompte, à ' + s + ' s');
+    assert.strictEqual(vive.textContent, f('supAttente', [10]), 'le décompte s’annonce à chaque seconde');
+  }
+  p.battre();
+  assert.strictEqual(confirmer.textContent, TXT.supBouton);
+  assert.strictEqual(confirmer.disabled, false);
+  assert.strictEqual(vive.textContent, TXT.supDisponible);
+  for (const faux of ['responsibility', 'great responsibilities', '']) {
+    saisie.value = faux;
+    saisie.dispatchEvent({ type: 'input' });
+    assert.strictEqual(confirmer.disabled, true, 'actif avec « ' + faux + ' »');
+  }
+  saisie.dispatchEvent({ type: 'keydown', key: 'Enter' });
+  assert.strictEqual(posts(p, MSG.ACCUEIL_SUPPRIMER_CONFIRMER).length, 0, 'Entrée confirme un mot faux');
+  saisie.value = '  Responsibilities ';
+  saisie.dispatchEvent({ type: 'input' });
+  assert.strictEqual(confirmer.disabled, false);
+  clic(confirmer);
+  assert.deepStrictEqual(posts(p, MSG.ACCUEIL_SUPPRIMER_CONFIRMER),
+    [{ type: MSG.ACCUEIL_SUPPRIMER_CONFIRMER, chemin: 'C:\\P\\Revue\\2026-01', mot: '  Responsibilities ' }]);
+  assert.strictEqual(confirmer.disabled, true, 'une seconde confirmation peut partir');
+  assert.strictEqual(confirmer.textContent, TXT.supEnCours);
+  // Un refus de l'hôte reste dans la fenêtre ; l'issue la ferme et s'affiche dans la page.
+  p.envoyer({ type: MSG.ACCUEIL_SUPPRIMER_FIN, ok: false, refus: true, texte: 'Encore trop tôt.' });
+  assert.ok(dialogue.classList.contains('visible'));
+  assert.ok(dialogue.textContent.includes('Encore trop tôt.'));
+  clic(confirmer);
+  p.envoyer({ type: MSG.ACCUEIL_SUPPRIMER_FIN, ok: true, texte: 'Le numéro a été supprimé.' });
+  assert.ok(!dialogue.classList.contains('visible'));
+  assert.ok(parId(p, 'panneau-produits').textContent.includes('Le numéro a été supprimé.'));
+});
+
+test('supprimer : Annuler ferme la fenêtre et rend le focus au bouton ; une réouverture repart de zéro', () => {
+  const p = page();
+  p.envoyer(charger());
+  const bouton = parId(p, 'prod-supprimer');
+  clic(bouton);
+  p.envoyer(Object.assign({}, PRET_SUP, { articles: 1 }));
+  assert.strictEqual(dansBody(p, 'sup-annonce').textContent, f('supAnnonceUn', [NUM_TITRE, 1]));
+  for (let i = 0; i < 10; i++) { p.battre(); }
+  bouton._focused = false;
+  clic(dansBody(p, 'sup-annuler'));
+  const dialogue = p.document.body.querySelector('[role="dialog"]');
+  assert.ok(!dialogue.classList.contains('visible'));
+  assert.strictEqual(bouton._focused, true, 'le focus ne revient pas au bouton');
+  p.envoyer(Object.assign({}, PRET_SUP, { articles: 0 }));
+  assert.strictEqual(dansBody(p, 'sup-annonce').textContent, f('supAnnonceZero', [NUM_TITRE]));
+  assert.strictEqual(dansBody(p, 'sup-mot').value, '');
+  assert.strictEqual(dansBody(p, 'sup-confirmer').disabled, true);
+  assert.strictEqual(dansBody(p, 'sup-confirmer').textContent, f('supBoutonDecompte', [10]));
+});
+
 test('accueil : la feuille de style ne porte aucune couleur en dur', () => {
   const css = fs.readFileSync(path.join(COCKPIT, 'media', 'accueil.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
   assert.deepStrictEqual(css.match(/#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(|(?<![-\w])(?:white|black)(?![-\w])/g) || [], []);
+});
+
+test('supprimer : un numéro sans titre s’annonce par son seul numéro', () => {
+  const p = page();
+  p.envoyer(charger());
+  clic(parId(p, 'prod-supprimer'));
+  p.envoyer(Object.assign({}, PRET_SUP, { titre: '' }));
+  assert.strictEqual(dansBody(p, 'sup-annonce').textContent, f('supAnnoncePlus', ['2026-01', 2]));
 });

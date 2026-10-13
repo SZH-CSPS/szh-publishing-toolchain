@@ -413,3 +413,61 @@ body {
 .accueil-moisson .szh-notif { margin: var(--e2) 0 0; }
 .accueil-moisson-etat, .accueil-moisson-compte { font-variant-numeric: tabular-nums; }
 .accueil-moisson-nom { font-size: var(--t-libelle); }
+
+/* ═══ Produits : supprimer un numéro ═══════════════════════════════════════════════ */
+/* Le danger se dit par les filets, la bande de titre et les pictogrammes ; les textes
+   restent à l'encre. errorForeground tombe sous Lc 60 sur le fond des thèmes sombres
+   (Lc 52 en Dark+, 40 en Dark Modern), alors que l'encre sur la bande teintée tient Lc 63 à
+   71 (mesuré avec pipeline/apca.py). */
+.accueil-lien.accueil-supprimer.szh-bouton { gap: var(--e1); }
+.accueil-supprimer svg { color: var(--danger); }
+.accueil-supprimer[hidden] { display: none; }
+.accueil-sup {
+  width: min(36rem, 92vw); max-height: 90vh; overflow-y: auto; box-sizing: border-box;
+  gap: var(--e3); padding: var(--e5);
+  color: var(--encre); background: var(--fond);
+  border: 3px solid var(--danger); border-radius: var(--rayon);
+}
+.accueil-sup-tete {
+  display: flex; align-items: center; gap: var(--e3);
+  padding: var(--e3) var(--e4);
+  background: color-mix(in srgb, var(--danger) 16%, var(--fond));
+  border-left: 6px solid var(--danger); border-radius: var(--rayon-mini);
+}
+.accueil-sup-tete svg { width: 2rem; height: 2rem; flex: 0 0 auto; color: var(--danger); }
+.accueil-sup-titre {
+  margin: 0; font-size: 1.9rem; line-height: 1.1; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .06em; color: var(--encre);
+}
+.accueil-sup-annonce { margin: 0; font-size: 1.05em; line-height: 1.45; }
+.accueil-sup-irreversible { margin: 0; font-size: 1.05em; font-weight: 700; }
+.accueil-sup-champ { display: flex; flex-direction: column; gap: var(--e1); margin-top: var(--e2); }
+.accueil-sup-consigne { margin: 0; }
+.accueil-sup-citation {
+  margin: 0 0 var(--e2); padding: var(--e2) var(--e3);
+  font-family: var(--vscode-editor-font-family, monospace); font-size: 1.05em;
+  border-left: 3px solid var(--filet-fort); background: var(--surface);
+}
+.accueil-sup-mot { font-family: var(--vscode-editor-font-family, monospace); }
+/* La phrase et le champ qui la termine, sur une ligne ; le champ passe dessous si la place
+   manque. */
+.accueil-sup-citation { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--e1); }
+.accueil-sup-citation input {
+  flex: 1 1 14ch; min-width: 14ch; box-sizing: border-box;
+  font-family: inherit; font-size: inherit;
+}
+.accueil-sup .accueil-avis { margin: 0; }
+.accueil-sup-pied { justify-content: flex-end; color: inherit; margin-top: var(--e2); }
+/* Supprimer, une fois actif : cadre épais du danger, texte à l'encre. */
+.accueil-sup-bouton.szh-bouton { font-variant-numeric: tabular-nums; }
+.accueil-sup-bouton.szh-bouton:not(:disabled) {
+  color: var(--encre); background: transparent; border: 2px solid var(--danger); font-weight: 700;
+}
+.accueil-sup-bouton.szh-bouton:not(:disabled):hover {
+  color: var(--encre); background: color-mix(in srgb, var(--danger) 16%, var(--fond));
+}
+/* Lu par les lecteurs d'écran, invisible à l'écran. */
+.accueil-lecteur-seul {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+}

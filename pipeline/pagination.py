@@ -36,6 +36,8 @@ import subprocess
 import sys
 
 PIPELINE_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, PIPELINE_DIR)
+import szh_commun  # noqa: E402
 
 SCHEMA = 'szh-pagination/1'
 
@@ -146,7 +148,8 @@ def lire_pagination_enregistree(dossier):
 def ecrire_si_different(chemin, contenu):
     """N'écrit que si le contenu change ; rend True s'il y a eu écriture. .szh-folio.css est
     un prérequis make du PDF : le réécrire à l'identique ferait recompiler tout le
-    numéro."""
+    numéro. L'écriture passe par un temporaire « ~$ », que OneDrive ne synchronise pas : un
+    autre poste ne reçoit jamais un fichier à moitié écrit."""
     try:
         with open(chemin, encoding='utf-8') as f:
             ancien = f.read()
@@ -157,8 +160,8 @@ def ecrire_si_different(chemin, contenu):
     dossier_parent = os.path.dirname(chemin)
     if dossier_parent:
         os.makedirs(dossier_parent, exist_ok=True)
-    with open(chemin, 'w', encoding='utf-8', newline='\n') as f:
-        f.write(contenu)
+    szh_commun.ecrire_atomique(chemin, lambda f: f.write(contenu), binaire=False,
+                               encoding='utf-8', newline='\n', prefixe_tmp='~$')
     return True
 
 

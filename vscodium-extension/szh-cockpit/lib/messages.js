@@ -117,6 +117,11 @@ const MSG = Object.freeze({
   // Produits et Nouveau : ouvrir une entrée, afficher ses versions, créer une entrée.
   ACCUEIL_ONGLET: 'accueilOnglet', ACCUEIL_OUVRIR: 'accueilOuvrir', ACCUEIL_VERSIONS: 'accueilVersions',
   ACCUEIL_CREER: 'accueilCreer', ACCUEIL_CREE: 'accueilCree',
+  // Supprimer un numéro en cours (lib/accueil-suppression-hote.js) : PREPARER { chemin } et
+  // CONFIRMER { chemin, mot } vers l'hôte ; PRET { ok, titre, articles, mot, secondes | texte }
+  // et FIN { ok, refus, texte } en retour.
+  ACCUEIL_SUPPRIMER_PREPARER: 'accueilSupprimerPreparer', ACCUEIL_SUPPRIMER_PRET: 'accueilSupprimerPret',
+  ACCUEIL_SUPPRIMER_CONFIRMER: 'accueilSupprimerConfirmer', ACCUEIL_SUPPRIMER_FIN: 'accueilSupprimerFin',
   // Préprocessing : choisir ou déposer un manuscrit, interrompre, ouvrir le document, le
   // rapport ou leur dossier ; l'hôte envoie ses réglages, le début, chaque étape et l'issue.
   ACCUEIL_PREPROC_CHOISIR: 'accueilPreprocChoisir', ACCUEIL_PREPROC_DEPOSER: 'accueilPreprocDeposer',

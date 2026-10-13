@@ -1363,8 +1363,8 @@ async function toutExporter(fournisseur, rafraichirTout) {
   try {
     await fermerOngletsSous(path.join(racine, 'out'));
     session.poserApercuCourantUri(null);                       // tous les aperçus viennent d'être fermés
-    // La maquette lit dois-calcules.yaml : on s'assure qu'il est à jour (écrit seulement
-    // s'il change).
+    // La maquette lit les DOI calculés du poste : on s'assure qu'ils sont à jour (écrits
+    // seulement s'ils changent).
     ecrireDoisCalcules(fournisseur);
     reparerBibliosAvantCompilation(racine);
     const code = await lancerTache(NOM_TACHE_EXPORT);
@@ -2517,17 +2517,24 @@ async function supprimerArticle(fournisseur, rafraichirTout, item) {
     vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
     return;
   }
+  // La suppression renumérote les autres dossiers : personne d'autre ne doit écrire dans le
+  // numéro.
+  const refusAvant = refusCoeditionNumero(racine);
+  if (refusAvant) { vscode.window.showWarningMessage(refusAvant); return; }
   const reponse = await vscode.window.showWarningMessage(
     T('modale.supprimer.question', [slug]),
     { modal: true, detail: T('modale.supprimer.detail', [slug]) },
     T('modale.supprimer.bouton')
   );
   if (reponse !== T('modale.supprimer.bouton')) { return; }   // annulé : rien n'est touché
-  // Une compilation a pu démarrer pendant que la modale était ouverte.
+  // Une compilation a pu démarrer, ou un autre poste prendre la main, pendant que la modale
+  // était ouverte.
   if (session.buildEnCours() || session.importEnCours()) {
     vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
     return;
   }
+  const refusApres = refusCoeditionNumero(racine);
+  if (refusApres) { vscode.window.showWarningMessage(refusApres); return; }
   const dossierArticle = profils.chemins(profilCourant(), racine, slug).dossier;
   const dossierSortie = path.join(racine, 'out', slug);
   // Ferme d'abord tout ce qui tient un fichier de l'article ; un échec de fermeture se
@@ -3041,15 +3048,13 @@ function activate(context) {
   };
 
   // Rafraîchit l'arbre, le titre de la vue, la barre d'état et l'aperçu HTML (rechargé si
-  // sa sortie a été régénérée).
-  // `opts.derive: false` : le rafraîchissement vient du surveillant de fichiers, souvent du
-  // travail d'un autre poste livré par OneDrive. dois-calcules.yaml n'est alors pas
-  // réécrit : deux postes qui le réécrivent l'un après l'autre créent des copies en conflit.
-  const rafraichirTout = (opts) => {
+  // sa sortie a été régénérée). Les DOI calculés, propres au poste, sont réécrits s'ils ont
+  // changé, y compris quand l'ordre vient d'un autre poste.
+  const rafraichirTout = () => {
     // Avant tout le reste : le titre de la vue et les boutons de l'arbre en dépendent.
     majEtatNumero(fournisseur, barreEtat);
     fournisseur.rafraichir();
-    if (!opts || opts.derive !== false) { ecrireDoisCalcules(fournisseur); }
+    ecrireDoisCalcules(fournisseur);
     vue.title = fournisseur.racine ? titreVue(fournisseur.racine) : T('arbre.titre.defaut');
     majBarreApercu();
     rechargerApercuHtmlSiChange(fournisseur);
@@ -3066,8 +3071,7 @@ function activate(context) {
   let minuteur = null;
   const rafraichirBientot = () => {
     if (minuteur) { clearTimeout(minuteur); }
-    // derive: false, voir rafraichirTout.
-    minuteur = setTimeout(() => { minuteur = null; rafraichirTout({ derive: false }); }, 300);
+    minuteur = setTimeout(() => { minuteur = null; rafraichirTout(); }, 300);
   };
 
   const reinstallerWatchers = (racine) => {

@@ -274,7 +274,7 @@ L'opération remplace l'image et les extensions : il faut fermer VSCodium, puis 
 | Fichier | Contenu |
 |---|---|
 | `C:\ProgramData\SZH\logs\update-<AAAAMMJJ-HHmmss>.log` | transcription complète de chaque mise à jour ; les dix dernières sont gardées |
-| `C:\ProgramData\SZH\logs\szh-<AAAA-MM>.log` | journal du mois : passes silencieuses, renoncements, raccourcis, emplacement actif ; trois mois gardés |
+| `C:\ProgramData\SZH\logs\szh-<AAAA-MM>.log` | journal du mois : passes silencieuses, renoncements, raccourcis, emplacement actif, numéros supprimés depuis l'Accueil ; trois mois gardés |
 | `C:\ProgramData\SZH\logs\bootstrap-<horodatage>.log` | installation |
 
 L'onglet **Log** de l'Accueil liste les dix dernières mises à jour avec leur date et leur
@@ -750,7 +750,21 @@ différentes.**
 **Deux personnes ont modifié le même numéro.**
 - Ce qui se passe : un formulaire réserve pendant deux minutes le fichier qu'il modifie ;
   pour le reste, OneDrive crée une copie en conflit, que le cockpit détecte et fait résoudre.
-- Règle de travail : un article, une personne à la fois.
+- La réservation voyage par OneDrive, en quelques secondes à quelques minutes. Seuls les
+  formulaires réservent : un texte modifié dans l'éditeur ne réserve rien.
+- L'import réserve `ausgabe.yaml` et relit l'ordre des articles juste avant de l'écrire :
+  deux imports au même moment gardent les articles des deux. Si un autre poste tient déjà
+  `ausgabe.yaml`, l'ordre n'est pas écrit et un message le dit ; les nouveaux articles se
+  rangent alors par le numéro de leur dossier.
+- « Terminer » (Changer l'ordre), la suppression d'un article, le gel et l'archivage
+  refusent tant que quelqu'un d'autre a un fichier du numéro réservé.
+- Règles de travail :
+  - un article, une personne à la fois. Mise en page et traduction d'un même numéro peuvent
+    avancer en parallèle ;
+  - au bouclage, on prévient les autres, qui ferment Pronto, avant « Terminer », la
+    suppression d'un article, la pagination, le gel ou l'archivage. Ces gestes renomment
+    des dossiers ou écrivent des fichiers communs au numéro, et l'éditeur d'une autre
+    personne peut avoir un fichier ouvert sans l'avoir réservé.
 
 ### Contenu et compilation
 
@@ -1016,7 +1030,9 @@ de test) ». Elle ne déplace aucun fichier. Voir
 Le dépôt n'a pas de mécanisme de sauvegarde propre. Les données sont sur SharePoint, qui
 garde l'historique des versions de chaque fichier et une corbeille, selon les réglages de la
 bibliothèque. Un fichier écrasé ou supprimé se récupère donc depuis SharePoint (« Historique
-des versions », « Corbeille »). La chaîne elle-même se réinstalle depuis GitHub.
+des versions », « Corbeille »). Un numéro supprimé depuis l'Accueil (onglet Produits) se
+récupère de la même façon : ses fichiers sont dans la corbeille de SharePoint, et le journal
+du mois du poste note la suppression. La chaîne elle-même se réinstalle depuis GitHub.
 
 Ne sont pas transférables d'un poste à l'autre : les clés d'API (OJS, Shlink, Mistral),
 gardées chiffrées par compte. Il faut les ressaisir sur un nouveau poste (Accueil →

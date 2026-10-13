@@ -24,6 +24,16 @@ function textesAccueil() {
     prodVersion: T('accueil.produits.version'), prodVersionInconnue: T('accueil.produits.version.inconnue'),
     prodVersions: T('accueil.produits.versions'), ancrageAbsent: T('accueil.produits.ancrage'),
     prodHorsUn: T('accueil.produits.hors.un'), prodHorsPlus: T('accueil.produits.hors.plus'),
+    prodSupprimer: T('accueil.produits.supprimer'),
+
+    supTitre: T('accueil.supprimer.titre'), supAnnonceZero: T('accueil.supprimer.annonce.zero'),
+    supAnnonceUn: T('accueil.supprimer.annonce.un'), supAnnoncePlus: T('accueil.supprimer.annonce.plus'),
+    supTitreNumero: T('accueil.supprimer.titreNumero'),
+    supIrreversible: T('accueil.supprimer.irreversible'), supConsigne: T('accueil.supprimer.consigne'),
+    supCitation: T('accueil.supprimer.citation'),
+    supBouton: T('accueil.supprimer.bouton'), supBoutonDecompte: T('accueil.supprimer.bouton.decompte'),
+    supAttente: T('accueil.supprimer.attente'), supDisponible: T('accueil.supprimer.disponible'),
+    supEnCours: T('accueil.supprimer.encours'),
 
     nvAnnee: T('accueil.nouveau.annee'), nvNumero: T('accueil.nouveau.numero'),
     nvNumeroHors: T('accueil.nouveau.numero.hors'), nvVolume: T('accueil.nouveau.volume'),

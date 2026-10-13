@@ -4,6 +4,7 @@
 // Protocole. Vers l'hôte : pret, accueilOnglet { onglet }, accueilOuvrir { chemin },
 // accueilVersions, accueilCreer { produit, annee, numero, volume, volumeManuel } ou
 // { produit, titre, annee, reference, genre, maquette, format },
+// accueilSupprimerPreparer { chemin }, accueilSupprimerConfirmer { chemin, mot },
 // accueilExporter { commande, revue, numeros | cles }, accueilOjsCharger { revue, depuisAnnee },
 // accueilInterrompre { commande }, accueilAfficher { chemin },
 // accueilJournalLire { rang }, accueilJournalEditeur { rang }, accueilSignaler { phrase, rang },
@@ -17,6 +18,8 @@
 //             journaux: [{ rang, date, verdict, ko }] }
 //     entrée : { nom, titre, chemin, modifie, verrouillee }
 //   accueilCree { ok, texte }   la création a été refusée (ok faux) ; sinon la fenêtre change
+//   accueilSupprimerPret { ok, chemin, numero, titre, articles, mot, secondes } ou { ok: false, texte }
+//   accueilSupprimerFin { ok, refus, texte }   l'issue d'une confirmation
 //   accueilDebut { commande }   une tâche ou le chargement des numéros (« numeros-ojs ») part
 //   accueilLigne { commande, ligne }   une ligne JSON de secretariat-cli.js, telle quelle
 //   accueilFin { commande, ok, texte, annule, dossier, date }
@@ -242,6 +245,9 @@
   // ---- Produits ----
   var prod = panneaux.produits;
   var prodAvis = poser(prod, 'div', 'accueil-avis');
+  // L'issue d'une suppression, que le rendu de la liste n'efface pas.
+  var prodIssue = poser(prod, 'div', 'accueil-avis');
+  prodIssue.setAttribute('role', 'status');
   var prodTete = poser(prod, 'div', 'accueil-tete');
   groupeProduit(prodTete, 'produit-prod', function () { return true; });
   var prodEtiq = poser(prod, 'p', 'accueil-etiquette', TXT.prodEnCours);
@@ -267,6 +273,13 @@
   var prodInfos = poser(prodPied, 'p', 'accueil-infos');
   poser(prodPied, 'span', 'szh-pousse');
   var prodAstuce = poser(prodPied, 'span', 'accueil-astuce', TXT.prodAstuce);
+  // Supprimer vise l'entrée choisie. Il est au pied et non sur la ligne : une option de
+  // liste (role="option") ne peut pas contenir de bouton.
+  var boutonSupprimer = SZH.bouton(TXT.prodSupprimer, preparerSuppression, 'accueil-lien accueil-supprimer');
+  boutonSupprimer.insertBefore(SZH.icone('poubelle'), boutonSupprimer.firstChild);
+  boutonSupprimer.id = 'prod-supprimer';
+  boutonSupprimer.hidden = true;
+  prodPied.appendChild(boutonSupprimer);
   var boutonOuvrir = SZH.bouton(TXT.prodOuvrir, function () {
     var c = listeEnCours.selection() || listeArchives.selection();
     if (c) { ouvrir(c); }
@@ -275,7 +288,163 @@
   prodPied.appendChild(boutonOuvrir);
 
   function ouvrir(chemin) { if (chemin) { api.postMessage({ type: MSG.ACCUEIL_OUVRIR, chemin: chemin }); } }
-  function majOuvrir() { boutonOuvrir.disabled = !(listeEnCours.selection() || listeArchives.selection()); }
+  function majOuvrir() {
+    boutonOuvrir.disabled = !(listeEnCours.selection() || listeArchives.selection());
+    boutonSupprimer.hidden = !supprimable();
+  }
+  // Seul un numéro en cours de la Revue ou de la Zeitschrift se supprime.
+  function supprimable() {
+    var p = produitDe(produitChoisi);
+    return !!(p && p.type !== 'livre' && listeEnCours.selection());
+  }
+
+  // ---- Supprimer un numéro ----
+  // La fenêtre s'ouvre sur la réponse de l'hôte, qui a vérifié le numéro et compté ses
+  // articles. « Supprimer » s'active à la fin du décompte, si le mot est juste ; l'hôte
+  // revérifie l'un et l'autre. Le décompte s'annonce au début et à la fin seulement.
+  var sup = { chemin: '', numero: '', titre: '', articles: 0, mot: '', restant: 0, minuteur: 0, envoye: false, el: {} };
+  var modaleSup = SZH.modale({
+    classeBoite: 'szh-modale-boite accueil-sup', etiquettePar: 'sup-titre', decritPar: 'sup-annonce sup-irreversible',
+    construire: function (boite) {
+      var tete = poser(boite, 'div', 'accueil-sup-tete');
+      tete.appendChild(SZH.icone('attention'));
+      poser(tete, 'h2', 'accueil-sup-titre', TXT.supTitre).id = 'sup-titre';
+      sup.el.annonce = poser(boite, 'p', 'accueil-sup-annonce');
+      sup.el.annonce.id = 'sup-annonce';
+      poser(boite, 'p', 'accueil-sup-irreversible', TXT.supIrreversible).id = 'sup-irreversible';
+      // La consigne montre le mot à recopier (rempli à l'ouverture) ; le champ termine la
+      // phrase, et la consigne lui sert de nom.
+      var champ = poser(boite, 'div', 'szh-champ accueil-sup-champ');
+      sup.el.consigne = poser(champ, 'p', 'accueil-sup-consigne');
+      sup.el.consigne.id = 'sup-consigne';
+      var citation = poser(champ, 'p', 'accueil-sup-citation');
+      citation.id = 'sup-citation';
+      citation.setAttribute('lang', 'en');
+      citation.appendChild(document.createTextNode(TXT.supCitation + ' '));
+      var saisie = poser(citation, 'input', '');
+      saisie.id = 'sup-mot';
+      saisie.type = 'text';
+      saisie.setAttribute('autocomplete', 'off');
+      saisie.setAttribute('spellcheck', 'false');
+      saisie.setAttribute('aria-labelledby', 'sup-consigne');
+      saisie.setAttribute('aria-describedby', 'sup-citation');
+      saisie.addEventListener('input', majSup);
+      saisie.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter') { ev.preventDefault(); confirmerSup(); }
+      });
+      sup.el.saisie = saisie;
+      sup.el.erreur = poser(boite, 'div', 'accueil-avis');
+      sup.el.erreur.setAttribute('role', 'alert');
+      sup.el.vive = poser(boite, 'p', 'accueil-lecteur-seul');
+      sup.el.vive.setAttribute('aria-live', 'polite');
+      var pied = poser(boite, 'div', 'szh-modale-pied accueil-sup-pied');
+      var annuler = SZH.bouton(TXT.annuler, function () { modaleSup.fermer(); });
+      annuler.id = 'sup-annuler';
+      pied.appendChild(annuler);
+      sup.el.bouton = SZH.bouton(TXT.supBouton, confirmerSup, 'accueil-sup-bouton');
+      sup.el.bouton.id = 'sup-confirmer';
+      pied.appendChild(sup.el.bouton);
+      // Tab reste dans la fenêtre : du dernier élément au premier, et inversement.
+      boite.addEventListener('keydown', function (ev) {
+        if (ev.key !== 'Tab') { return; }
+        var ordre = [saisie, annuler, sup.el.bouton].filter(function (e) { return !e.disabled; });
+        var i = ordre.indexOf(document.activeElement);
+        var cible = ev.shiftKey ? (i <= 0 ? ordre[ordre.length - 1] : null) : (i === ordre.length - 1 ? ordre[0] : null);
+        if (cible) { ev.preventDefault(); cible.focus(); }
+      });
+    },
+    surOuverture: function () {
+      var n = sup.articles;
+      var cle = n === 0 ? 'supAnnonceZero' : (n === 1 ? 'supAnnonceUn' : 'supAnnoncePlus');
+      // Le numéro en gras, suivi de son titre s'il en a un.
+      var annonce = SZH.remplir(TXT, cle, [' ', n]).split(' ');
+      sup.el.annonce.textContent = annonce[0];
+      poser(sup.el.annonce, 'strong', '', sup.numero);
+      var suite = annonce.slice(1).join('');
+      if (sup.titre) { suite = ' ' + SZH.remplir(TXT, 'supTitreNumero', [sup.titre]) + suite; }
+      sup.el.annonce.appendChild(document.createTextNode(suite));
+      var morceaux = String(TXT.supConsigne).split('{0}');
+      sup.el.consigne.textContent = morceaux[0];
+      var mot = poser(sup.el.consigne, 'strong', 'accueil-sup-mot', sup.mot);
+      mot.setAttribute('lang', 'en');
+      sup.el.consigne.appendChild(document.createTextNode(morceaux.slice(1).join('{0}')));
+      sup.el.saisie.value = '';
+      sup.el.vive.textContent = '';
+      avis(sup.el.erreur, '', '');
+      majSup();
+      if (sup.minuteur) { clearInterval(sup.minuteur); }
+      sup.minuteur = setInterval(ticSup, 1000);
+    },
+    surFermeture: function () {
+      if (sup.minuteur) { clearInterval(sup.minuteur); }
+      sup.minuteur = 0;
+      sup.chemin = '';
+      if (!boutonSupprimer.hidden) { boutonSupprimer.focus(); }
+    },
+    focus: function () { return sup.el.saisie; }
+  });
+
+  function preparerSuppression() {
+    var chemin = listeEnCours.selection();
+    if (!chemin || !supprimable()) { return; }
+    avis(prodIssue, '', '');
+    api.postMessage({ type: MSG.ACCUEIL_SUPPRIMER_PREPARER, chemin: chemin });
+  }
+  function motJuste() {
+    return sup.mot !== '' && String(sup.el.saisie.value || '').trim().toLowerCase() === sup.mot;
+  }
+  function majSup() {
+    var b = sup.el.bouton;
+    if (!b) { return; }
+    if (sup.envoye) { b.textContent = TXT.supEnCours; }
+    else if (sup.restant > 0) { b.textContent = SZH.remplir(TXT, 'supBoutonDecompte', [sup.restant]); }
+    else { b.textContent = TXT.supBouton; }
+    b.disabled = sup.envoye || sup.restant > 0 || !motJuste();
+  }
+  function ticSup() {
+    if (sup.restant > 0) { sup.restant--; }
+    if (sup.restant === 0) {
+      clearInterval(sup.minuteur);
+      sup.minuteur = 0;
+      sup.el.vive.textContent = TXT.supDisponible;
+    }
+    majSup();
+  }
+  function confirmerSup() {
+    majSup();
+    if (!sup.chemin || sup.el.bouton.disabled) { return; }
+    sup.envoye = true;
+    avis(sup.el.erreur, '', '');
+    majSup();
+    api.postMessage({ type: MSG.ACCUEIL_SUPPRIMER_CONFIRMER, chemin: sup.chemin, mot: sup.el.saisie.value });
+  }
+  function surPretSup(msg) {
+    if (!msg.ok) { avis(prodIssue, 'danger', msg.texte || ''); return; }
+    sup.chemin = String(msg.chemin || '');
+    sup.numero = String(msg.numero || '');
+    sup.titre = String(msg.titre || '');
+    sup.articles = Number(msg.articles) || 0;
+    sup.mot = String(msg.mot || '').toLowerCase();
+    sup.restant = Number(msg.secondes) || 10;
+    sup.envoye = false;
+    // Le bouton déclencheur a le focus à l'ouverture : la modale le lui rend à la fermeture.
+    boutonSupprimer.focus();
+    modaleSup.ouvrir();
+    sup.el.vive.textContent = SZH.remplir(TXT, 'supAttente', [sup.restant]);
+  }
+  // Un refus laisse la fenêtre ouverte, avec son motif ; une suppression tentée la ferme.
+  function surFinSup(msg) {
+    var ouverte = sup.chemin !== '';
+    sup.envoye = false;
+    if (msg.refus && ouverte) {
+      avis(sup.el.erreur, 'danger', msg.texte || '');
+      majSup();
+      return;
+    }
+    if (ouverte) { modaleSup.fermer(); }
+    avis(prodIssue, msg.ok ? 'ok' : 'danger', msg.texte || '');
+    if (msg.ok && listeEnCours.taille()) { listeEnCours.element.focus(); }
+  }
 
   function rendreEntree(p, e) {
     return { cle: e.chemin, rendre: function (li) {
@@ -2508,6 +2677,10 @@
       return;
     } else if (msg.type === MSG.ACCUEIL_CREE) {
       if (!msg.ok) { avis(nvRefus, 'danger', SZH.remplir(TXT, 'nvRefus', [msg.texte || TXT.secEchecInconnu])); }
+    } else if (msg.type === MSG.ACCUEIL_SUPPRIMER_PRET) {
+      surPretSup(msg);
+    } else if (msg.type === MSG.ACCUEIL_SUPPRIMER_FIN) {
+      surFinSup(msg);
     } else if (MSG_PREPROC.indexOf(msg.type) !== -1) { return; } // le bloc Préprocessing les écoute
     else if (msg.type === MSG.ACCUEIL_DEBUT) { surDebut(msg); }
     else if (msg.type === MSG.ACCUEIL_LIGNE) { surLigne(msg); }

@@ -348,11 +348,19 @@ function etats(langue) {
   const ppFin = (jusqua, o) => ppDebut.concat(ppEtapes(jusqua),
     [['hote', Object.assign({ type: MSG.ACCUEIL_PREPROC_FIN }, o)]]);
   const ppReussi = { document: PP.sortie, rapport: true, rapportOuvert: true };
+  // La fenêtre de suppression, sur le numéro choisi d'office. Le décompte tourne en temps
+  // réel : capturer avec --virtual-time-budget=11000 pour le voir fini.
+  const choisi = revue === 'zeitschrift' ? ['Zeitschrift\\2026-05', '2026-05', 'Inklusive Bildung im Kindergarten']
+    : ['Revue\\2026-03', '2026-03', 'École inclusive : vingt ans après'];
+  const supprimer = [['clic', '#prod-supprimer'], ['hote', { type: MSG.ACCUEIL_SUPPRIMER_PRET, ok: true,
+    chemin: BASE + '\\' + choisi[0], numero: choisi[1], titre: choisi[2], articles: 7, mot: 'responsibilities', secondes: 10 }]];
   return {
     'P1-repos': { etapes: [] },
     'P2-archives': { etapes: [['clic', '#prod-archives'], ['clic', '#archive-1']] },
     'P3-vide': { produits: (p) => p.map((x) => (x.jeton === 'revue' ? Object.assign({}, x, { enCours: [], archives: [] }) : x)),
       etapes: [] },
+    'P4-supprimer': { etapes: supprimer },
+    'P5-supprimer-mot': { etapes: supprimer.concat([['saisir', '#sup-mot', 'responsibilities']]) },
     'N1-repos': { etapes: [['clic', '#onglet-nouveau']] },
     'N2-erreur': { etapes: [['clic', '#onglet-nouveau'], ['saisir', '#nv-numero', '3']] },
     'N3-livre': { etapes: [['clic', '#onglet-nouveau'], ['clic', '#produit-nv-livre']] },
@@ -472,7 +480,7 @@ function liste() {
   const fr = Object.keys(etats('fr')).filter((n) => !/-de$/.test(n)).map((n) => ({ nom: n, langue: 'fr' }));
   // Le Préprocessing en allemand : la Zeitschrift d'office, et une réussite.
   const preprocDe = [{ nom: 'PP1-repos', langue: 'de' }, { nom: 'PP5-alertes', langue: 'de' }];
-  return fr.concat([{ nom: 'P1-repos', langue: 'de' }, { nom: 'S1-repos', langue: 'de' }, { nom: 'R1-reglages-de', langue: 'de' }, { nom: 'R4-moissonnage-de', langue: 'de' }, { nom: 'R5-demandes-de', langue: 'de' }, { nom: 'R6-defaut-de', langue: 'de' }], preprocDe);
+  return fr.concat([{ nom: 'P1-repos', langue: 'de' }, { nom: 'P4-supprimer', langue: 'de' }, { nom: 'S1-repos', langue: 'de' }, { nom: 'R1-reglages-de', langue: 'de' }, { nom: 'R4-moissonnage-de', langue: 'de' }, { nom: 'R5-demandes-de', langue: 'de' }, { nom: 'R6-defaut-de', langue: 'de' }], preprocDe);
 }
 
 function ecrire(dossier, filtres) {

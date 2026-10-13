@@ -18,6 +18,7 @@ const secretariat = require('./accueil-secretariat-hote');
 const journal = require('./accueil-journal-hote');
 const reglages = require('./accueil-reglages-hote');
 const preproc = require('./accueil-preproc-hote');
+const suppression = require('./accueil-suppression-hote');
 const resumesHote = require('./resumes-hote');
 const moissonHote = require('./moisson-hote');
 const { ouvrirAvecSysteme } = require('./ouvrir-systeme');
@@ -154,9 +155,10 @@ async function creer(msg, panneau) {
   repondre(panneau, { type: MSG.ACCUEIL_CREE, ok: false, texte: texteRefus(r) });
 }
 
-// Les messages du Secrétariat et du Log vont à leur module.
+// Les messages du Secrétariat, du Log, du Préprocessing et de la suppression vont à leur module.
 async function surMessage(msg, panneau) {
   if (secretariat.surMessage(msg) || journal.surMessage(msg) || preproc.surMessage(msg)) { return; }
+  if (suppression.surMessage(msg)) { return; }
   if (msg.type === MSG.ACCUEIL_ONGLET) {
     reglages.surOnglet(msg.onglet, (m) => repondre(panneau, m));
     if (msg.onglet === 'reglages') { resumesHote.envoyerEtat(); moissonHote.surOnglet(); }
@@ -202,7 +204,7 @@ function ouvrirAccueil(opts) {
     html: htmlAccueil,
     surPret: (msg, p) => envoyerDonnees(p).then(() => preproc.envoyerEtat()),
     surMessage: (msg, p) => surMessage(msg, p),
-    surFermeture: () => { panneauActif = null; secretariat.arreter(); reglages.arreter(); preproc.arreter(); resumesHote.arreter(); }
+    surFermeture: () => { panneauActif = null; secretariat.arreter(); reglages.arreter(); preproc.arreter(); resumesHote.arreter(); suppression.arreter(); }
   });
   panneauActif = panneau;
   if (!nouveau && onglet) {
@@ -230,6 +232,9 @@ function configurerOnglets() {
     recharger: () => { if (panneauActif) { envoyerDonnees(panneauActif); } },
     rechargerPage: () => rechargerPage('reglages') });
   resumesHote.configurer({ envoyer });
+  suppression.configurer({ envoyer,
+    dossiersOuverts: () => (vscode.workspace.workspaceFolders || []).map((d) => d.uri.fsPath),
+    rafraichir: () => { if (panneauActif) { envoyerDonnees(panneauActif); } } });
   // Après une passe, la vue Propositions, les réglages et les résumés relisent les lots.
   moissonHote.configurer({ envoyer, apresPasse: () => {
     if (ctx.rafraichirTout) { ctx.rafraichirTout(); }
@@ -255,6 +260,7 @@ function arreter() {
   if (relecture) { clearTimeout(relecture); relecture = null; }
   if (fermeture) { clearTimeout(fermeture); fermeture = null; }
   secretariat.arreter(); reglages.arreter(); preproc.arreter(); resumesHote.arreter(); moissonHote.arreter();
+  suppression.arreter();
 }
 
 // À l'activation : la commande, et l'ouverture d'office dans une fenêtre sans dossier ni

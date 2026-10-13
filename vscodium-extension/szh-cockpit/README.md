@@ -38,6 +38,7 @@ Un module « hôte » (`*-hote.js`) tient une zone de l'interface et reçoit ses
 | `lib/accueil-preproc-hote.js` | onglet Préprocessing : le nettoyeur de manuscrit, lancé dans la WSL |
 | `lib/accueil-reglages-hote.js` | onglet Paramètres : produit proposé, mise à jour silencieuse, mode développeur, services en ligne |
 | `lib/accueil-secretariat-hote.js` | onglet Secrétariat : les quatre exports et leur historique |
+| `lib/accueil-suppression-hote.js` | onglet Produits : supprimer un numéro en cours de la Revue ou de la Zeitschrift, après vérifications |
 | `lib/bienvenue-hote.js` | invitation au tutoriel, puis « Quoi de neuf » après une mise à jour |
 | `lib/apercu.js` | aperçu HTML ou PDF en colonne 2, défilement synchronisé avec l'éditeur |
 | `lib/vue-articles-hote.js` | vue « Articles » (ou « Chapitres ») : cartes, ordre, envoi à l'auteur, PDF |

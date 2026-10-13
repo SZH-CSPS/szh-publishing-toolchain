@@ -364,6 +364,25 @@ test('langue : szh-maquette.lua — fiche avec lang: de l’emporte sur revue: r
   assert.match(r.stdout, /\nlang: de\n/, 'la fiche ne l’emporte plus sur le jeton de revue : ' + r.stdout);
 });
 
+// ── szh-maquette.lua : DOI calculé, lu dans <SZH_DOIS_CALCULES>/<id du numéro>.yaml ──
+test('DOI : szh-maquette.lua lit le DOI calculé par l’id du numéro', () => {
+  const fichiers = {
+    'essai.md': docMaquette('revue: revue\n'),
+    'ausgabe.yaml': 'id: AbC123\nrevue: revue\n',
+    'AbC123.yaml': '# dérivé\nessai-2: 10.57161/r2026-03-09\nessai: 10.57161/r2026-03-01\n'
+  };
+  const env = { SZH_AUSGABE: 'ausgabe.yaml', SZH_DOIS_CALCULES: '.' };
+  const r = pandocDansDossier(fichiers, 'essai.md', 'szh-maquette.lua', { env });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /\ndoi: 10\.57161\/r2026-03-01\n/, 'le DOI calculé n’est pas lu : ' + r.stdout);
+
+  // Sans id dans ausgabe.yaml, rien n'est cherché : pas de bandeau.
+  const sansId = Object.assign({}, fichiers, { 'ausgabe.yaml': 'revue: revue\n' });
+  const r2 = pandocDansDossier(sansId, 'essai.md', 'szh-maquette.lua', { env });
+  assert.strictEqual(r2.status, 0, r2.stderr);
+  assert.ok(!/\ndoi: /.test(r2.stdout), 'un DOI a été posé sans id de numéro : ' + r2.stdout);
+});
+
 test('langue : szh-maquette.lua — meta.lang seul', () => {
   const r = pandocDansDossier({ 'essai.md': docMaquette('lang: de\n') }, 'essai.md', 'szh-maquette.lua');
   assert.strictEqual(r.status, 0, r.stderr);

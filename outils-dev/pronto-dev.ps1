@@ -128,6 +128,7 @@ $fichiers = @(
 
 $makefileWsl = ConvertTo-SzhCheminWsl (Join-Path $racineDepot 'pipeline\Makefile')
 $configWsl = ConvertTo-SzhCheminWsl $fichierConfigDev
+$doisWsl = ConvertTo-SzhCheminWsl (Join-Path $BaseDev 'dois-calcules')
 
 $variables = [ordered]@{
   SZH_BASE            = $BaseDev
@@ -272,14 +273,15 @@ try {
   # ---- tasks.json, reecrit a chaque lancement pour qu'une retouche du depot se voie tout de suite ----
   # Le prefixe SZH_CONFIG fait lire la configuration de developpement par szh-citations.lua :
   # wsl.exe ne transmet pas l'environnement Windows sans WSLENV, et le filtre lirait sinon
-  # les titres de bibliographie de la production.
+  # les titres de bibliographie de la production. SZH_DOIS_CALCULES fait de meme pour les
+  # DOI calcules, que le cockpit de developpement ecrit sous <baseDev>\dois-calcules.
   $srcTasks = Join-Path $srcUser 'tasks.json'
   if (Test-Path -LiteralPath $srcTasks) {
     $contenu = Get-Content -LiteralPath $srcTasks -Raw -Encoding UTF8
     $motifMakefileProd = [regex]::Escape('/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile')
     $remplaceMakefile = $makefileWsl -replace '\$', '$$'
     $contenu = [regex]::Replace($contenu, $motifMakefileProd, $remplaceMakefile)
-    $remplaceConfig = '$1SZH_CONFIG=' + ($configWsl -replace '\$', '$$') + ' '
+    $remplaceConfig = '$1SZH_CONFIG=' + ($configWsl -replace '\$', '$$') + ' SZH_DOIS_CALCULES=' + ($doisWsl -replace '\$', '$$') + ' '
     $contenu = [regex]::Replace($contenu, '("bash",\s*"-c",\s*")', $remplaceConfig)
     [System.IO.File]::WriteAllText($fichierTasks, $contenu, (New-Object System.Text.UTF8Encoding($false)))
   }

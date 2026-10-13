@@ -848,18 +848,24 @@ test('import : les noms de versions de portrait sont ceux que le cockpit relit',
 
 // ---- Cohérence entre fichiers ----
 
-test('bandeau DOI : le cockpit dépose dois-calcules.yaml et la maquette le relit', () => {
+test('bandeau DOI : le cockpit dépose les DOI calculés sur le poste et la maquette les relit', () => {
   // Le DOI est calculé par le cockpit (lib/articles.js), qui l'écrit dans
-  // dois-calcules.yaml ; le pipeline le relit pour le template ($if(doi)$). Si un des trois
-  // maillons change de nom, le bandeau disparaît sans erreur.
+  // C:\ProgramData\SZH\dois-calcules\<id>.yaml ; le pipeline le relit pour le template
+  // ($if(doi)$). Si un des trois maillons change de nom, le bandeau disparaît sans erreur.
   const ext = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
-  assert.match(ext, /NOM_DOIS_CALCULES = 'dois-calcules\.yaml'/,
+  assert.match(ext, /DOSSIER_DOIS_CALCULES = 'dois-calcules'/,
     'le cockpit n’écrit plus le fichier dérivé des DOI');
+  assert.match(ext, /basePoste\(\), DOSSIER_DOIS_CALCULES, id \+ '\.yaml'/,
+    'le fichier des DOI n’est plus nommé par l’id du numéro');
   assert.match(ext, /ecrireDoisCalcules\(fournisseur\)/,
     'ecrireDoisCalcules n’est plus branché sur le rafraîchissement');
+  const poste = lire('vscodium-extension', 'szh-cockpit', 'lib', 'poste.js');
+  assert.match(poste, /BASE_DEFAUT = 'C:\\\\ProgramData\\\\SZH'/, 'la base du poste a changé');
   const lua = lire('pipeline', 'filters', 'szh-maquette.lua');
-  assert.ok(lua.includes("'/dois-calcules.yaml'"),
-    'szh-maquette.lua ne lit plus le fichier dérivé : le bandeau DOI meurt en silence');
+  assert.ok(lua.includes("'/mnt/c/ProgramData/SZH/dois-calcules'"),
+    'szh-maquette.lua ne lit plus le dossier des DOI du poste : le bandeau DOI meurt en silence');
+  assert.ok(lua.includes("dossier .. '/' .. id .. '.yaml'"),
+    'szh-maquette.lua ne cherche plus le fichier par l’id du numéro');
   assert.match(lua, /doi_calcule_du_numero/, 'le repli du bandeau DOI a disparu du filtre');
   const template = lire('pipeline', 'templates', 'szh-article.html');
   assert.ok(template.includes('$if(doi)$'), 'le template n’imprime plus le bandeau DOI');

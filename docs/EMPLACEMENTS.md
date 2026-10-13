@@ -161,6 +161,7 @@ Ces fichiers ne dépendent pas de la racine active.
 | Journal (une ligne par action, un fichier par mois) | `C:\ProgramData\SZH\logs\szh-<AAAA-MM>.log` |
 | Journaux d'installation et de mise à jour | `C:\ProgramData\SZH\logs\bootstrap-<horodatage>.log`, `update-<horodatage>.log` |
 | Auteurs et autrices publiés (autocomplétion, cache OAI-PMH) | `C:\ProgramData\SZH\auteurs.json` |
+| DOI calculés d'un numéro, lus par la maquette pour le bandeau DOI ; un fichier par numéro, nommé par la clé `id:` de son `ausgabe.yaml` | `C:\ProgramData\SZH\dois-calcules\<id>.yaml` |
 | Disque de la WSL, un par compte | `C:\ProgramData\SZH\WSL\<SID>\SZH-Publishing\ext4.vhdx` |
 | État de ce compte : ancrage en cache, langue, mise à jour silencieuse, anti-inondation des rapports, anciennes clés Shlink et OJS chiffrées | `%LOCALAPPDATA%\SZH\etat-utilisateur.json` |
 | Cadence de la mise à jour hebdomadaire, par compte | `%LOCALAPPDATA%\SZH\maj-auto.json` |

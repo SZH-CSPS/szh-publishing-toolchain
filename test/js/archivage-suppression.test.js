@@ -48,6 +48,29 @@ function ausgabe() {
 
 // ---- Supprimer un article referme le rang ---------------------------------------
 
+// La suppression renumérote les autres dossiers : refusée, avant toute question, tant
+// qu'un autre poste écrit dans le numéro.
+test('suppression : refusée tant que quelqu’un d’autre écrit dans le numéro', async () => {
+  const coedition = require(path.join(COCKPIT, 'lib', 'coedition.js'));
+  const voisin = { utilisateur: 'Anne Voisine', poste: 'PC-VOISIN' };
+  const fiche = path.join(ARTICLES, '01-essai', '01-essai.meta.yaml');
+  assert.ok(coedition.poser(REVUE, fiche, voisin, Date.now()).ok, 'décor du test');
+  const avant = dossiers();
+  const modales = HOTE.avertissements.length;
+  const questions = HOTE.modales.length;
+  try {
+    await HOTE.executer('szh.supprimerArticle', { slug: '02-sans-fiche' });
+    assert.deepStrictEqual(dossiers(), avant, 'un article a été supprimé sous la saisie d’un autre');
+    const nouveaux = HOTE.avertissements.slice(modales);
+    assert.ok(nouveaux.some((m) => m.indexOf('Anne Voisine') !== -1),
+      'le refus ne nomme pas qui travaille : ' + JSON.stringify(nouveaux));
+    assert.ok(HOTE.modales.slice(questions).every((m) => !m.options || !m.options.modal),
+      'la question de suppression a été posée malgré le refus');
+  } finally {
+    coedition.rendre(REVUE, fiche, voisin);
+  }
+});
+
 test('suppression : les dossiers restants sont renumérotés, fichiers compris', async () => {
   poserArticle('03-troisieme');
   poserArticle('04-quatrieme');

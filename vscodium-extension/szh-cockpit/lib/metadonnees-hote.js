@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { T, TP, langueCockpit } = require('./i18n');
-const { toolkitPoste } = require('./poste');
+const { toolkitPoste, basePoste } = require('./poste');
 const { MSG } = require('./messages');
 const session = require('./session');
 const profils = require('./profil');
@@ -35,7 +35,7 @@ const {
   analyserAusgabe, ecrireAtomique,
   separerFrontmatter, analyserFrontmatter, serialiserFrontmatter,
   analyserMeta, serialiserMeta, langueRevue, langueDefaut, normaliserLangueArticle, titreNumero,
-  LICENCE_DEFAUT, LICENCES_ARTICLE, normaliserLicence, etatRevue
+  LICENCE_DEFAUT, LICENCES_ARTICLE, normaliserLicence, etatRevue, idNumero
 } = require('./yaml');
 const {
   NOMS_COUVERTURE, EXTENSIONS_COUVERTURE, nomCouverture, MAX_COUVERTURE, rangDoi
@@ -911,15 +911,26 @@ function doisCalculesArticles(fournisseur) {
   return dois;
 }
 
-// Le fichier dérivé des DOI calculés, écrit à côté d'ausgabe.yaml.
+// Le fichier dérivé des DOI calculés vit sur le poste, dans <base>\dois-calcules\<id du
+// numéro>.yaml, et non dans le numéro : chaque poste écrit le sien, sans copie en conflit.
+// szh-maquette.lua le relit au même endroit.
+const DOSSIER_DOIS_CALCULES = 'dois-calcules';
+// Nom que ce fichier portait dans le dossier du numéro ; il y est effacé.
 const NOM_DOIS_CALCULES = 'dois-calcules.yaml';
+function cheminDoisCalcules(racine) {
+  const id = idNumero(racine);
+  return id ? path.join(basePoste(), DOSSIER_DOIS_CALCULES, id + '.yaml') : null;
+}
 function ecrireDoisCalcules(fournisseur) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
-  // Un livre n'a pas de DOI : pas de dois-calcules.yaml, que szh-maquette.lua ne lit que
-  // pour le bandeau DOI d'une revue.
+  // Un livre n'a pas de DOI : szh-maquette.lua ne lit ce fichier que pour le bandeau DOI
+  // d'une revue.
   if (!profilCourant().capacites.doi) { return; }
   if (etatRevue(racine).archivee) { return; }
+  const chemin = cheminDoisCalcules(racine);
+  if (!chemin) { return; }
+  try { fs.unlinkSync(path.join(racine, NOM_DOIS_CALCULES)); } catch (e) { /* déjà retiré */ }
   const dois = doisCalculesArticles(fournisseur);
   const lignes = [
     '# Fichier DÉRIVÉ, écrit par le cockpit : les DOI calculés d\'après la place de',
@@ -931,11 +942,11 @@ function ecrireDoisCalcules(fournisseur) {
     if (dois[slug] !== '') { lignes.push(slug + ': ' + dois[slug]); }
   }
   const contenu = lignes.join('\n') + '\n';
-  const chemin = path.join(racine, NOM_DOIS_CALCULES);
   try {
     let ancien = null;
     try { ancien = fs.readFileSync(chemin, 'utf8'); } catch (e) { /* pas encore écrit */ }
     if (ancien === contenu) { return; }
+    fs.mkdirSync(path.dirname(chemin), { recursive: true });
     ecrireAtomique(chemin, contenu);
   } catch (e) { /* au mieux : le bandeau DOI se rattrapera au prochain rafraîchissement */ }
 }

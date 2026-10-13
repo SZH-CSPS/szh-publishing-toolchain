@@ -63,6 +63,14 @@ est faite. Les questions à trancher sont marquées « À décider ».
   `pipeline/import-docx.sh` : un échec y passe inaperçu.
 - `lib/copies-conflit.js` ne surveille pas les `.txt` : une copie en conflit d'une décision de
   moisson ou d'une fiche Kirby n'est pas signalée.
+- Co-édition, écritures sans réservation : la fenêtre d'auteur du panneau Médias
+  (`medias-hote.js`) et le recalage des portraits (`metadonnees-hote.js`) écrivent la fiche
+  `<slug>.meta.yaml` sans passer par `ecrireSousMain`.
+- `.szh-apercu`, à la racine du numéro, porte l'article ouvert sur un poste : deux postes se
+  le disputent. Le passer au Makefile autrement que par un fichier partagé.
+- Import : les nouveaux articles sont trouvés par différence avant/après la tâche ; un
+  article d'un autre poste arrivé pendant l'import serait compté comme nouveau et
+  repréfixé.
 - Formulaire du livre : les clés `mise-en-page:`, `parties:`, `pieces-fin:`, `dedicace:`,
   `impressum:` et les réglages d'impression de `buch.yaml` n'y sont pas modifiables.
 - Désactiver un moissonneur demande aujourd'hui une release (`reglages.toml` est remplacé à
