@@ -320,6 +320,7 @@ function dossierJetable(prefixe) {
 // ce dossier sur `principal`, avec le filtre donné. `essai.meta.yaml` n'est pas passé en
 // --metadata-file : le filtre le lit lui-même, comme dans la vraie chaîne.
 // `opts.from` : le lecteur, « markdown » par défaut (PDF), « commonmark_x » pour l'aperçu.
+// `opts.to` : le writer, « markdown » par défaut, « html5 » pour lire les attributs d'un <img>.
 // `opts.env` : variables ajoutées à l'environnement (SZH_APERCU, SZH_LIVRE…).
 function pandocDansDossier(fichiers, principal, filtre, opts) {
   const o = opts || {};
@@ -330,7 +331,7 @@ function pandocDansDossier(fichiers, principal, filtre, opts) {
     }
     // `filtre` : un nom, ou un tableau de noms dans l'ordre d'exécution.
     const filtresListe = Array.isArray(filtre) ? filtre : [filtre];
-    const args = ['--from=' + (o.from || 'markdown'), '--to=markdown', '--wrap=none', '--standalone',
+    const args = ['--from=' + (o.from || 'markdown'), '--to=' + (o.to || 'markdown'), '--wrap=none', '--standalone',
       ...filtresListe.map((f) => '--lua-filter=' + path.join(FILTRES, f)), principal];
     const env = Object.assign({}, process.env, o.env || {});
     const r = spawnSync('pandoc', args, { cwd: dossier, encoding: 'utf8', env: env });
@@ -529,6 +530,78 @@ test('décor : deux images décoratives côte à côte sortent en décor, à leu
   assert.match(r.stdout, /\.szh-decor-2\{width:40%;/, 'la largeur déclarée de la 2e est perdue');
   assert.match(r.stdout, /!\[Bild 2\]\(c\.png\)/, 'l’image décrite n’est plus une image');
   assert.match(r.stdout, /!\[Bild 3\]\(d\.png\)/, 'l’image sans alt explicite n’est plus une image');
+});
+
+// ── szh-numerotation.lua : l'image d'une figure s'imprime en pleine largeur de colonne ───
+// Quelle que soit sa taille en pixels et quel que soit le width= posé par l'import Word
+// (largeur_figure). Sortie observée en HTML : l'attribut style de l'<img>. PNG_1PX est
+// carrée, le rapport hauteur/largeur vaut 1.
+const STYLE_PLEINE_LARGEUR =
+  /style="width:min\(100%,calc\(var\(--plafond-figure\) \/ 1\.0000\)\);max-height:none"/;
+
+function balisesImg(html) { return html.match(/<img [^>]*>/g) || []; }
+
+test('figure : width= et height= de Word retirés, pleine largeur de colonne posée', () => {
+  const md = '![Légende](a.png){alt="Une description" width="2.5in" height="2.5in"}\n';
+  const r = pandocDansDossier({ 'essai.md': md, 'a.png': PNG_1PX }, 'essai.md',
+    'szh-numerotation.lua', { to: 'html5' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  const imgs = balisesImg(r.stdout);
+  assert.strictEqual(imgs.length, 1, 'une seule image attendue : ' + r.stdout);
+  assert.match(imgs[0], STYLE_PLEINE_LARGEUR, 'la pleine largeur n’est pas posée : ' + imgs[0]);
+  assert.ok(!/2\.5in/.test(imgs[0]), 'la largeur Word subsiste : ' + imgs[0]);
+});
+
+test('figure (aperçu) : même règle sous commonmark_x, après szh-figure.lua', () => {
+  const md = '![Légende](a.png){alt="Une description" width="2.5in"}\n';
+  const r = pandocDansDossier({ 'essai.md': md, 'a.png': PNG_1PX }, 'essai.md',
+    ['szh-figure.lua', 'szh-numerotation.lua'], { from: 'commonmark_x', to: 'html5' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  const imgs = balisesImg(r.stdout);
+  assert.strictEqual(imgs.length, 1, 'une seule image attendue : ' + r.stdout);
+  assert.match(imgs[0], STYLE_PLEINE_LARGEUR, 'la pleine largeur n’est pas posée dans l’aperçu : ' + imgs[0]);
+  assert.ok(!/2\.5in/.test(imgs[0]), 'la largeur Word subsiste dans l’aperçu : ' + imgs[0]);
+});
+
+test('figure hors numérotation : pleine largeur avec crédit, largeur gardée sans crédit', () => {
+  const md = '![](a.png){.szh-hors-figure alt="Photo" copyright="© X" width="2.5in"}\n\n'
+    + '![](b.png){.szh-hors-figure alt="Logo" width="1in"}\n';
+  const r = pandocDansDossier({ 'essai.md': md, 'a.png': PNG_1PX, 'b.png': PNG_1PX }, 'essai.md',
+    'szh-numerotation.lua', { to: 'html5' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  const imgs = balisesImg(r.stdout);
+  assert.strictEqual(imgs.length, 2, 'deux images attendues : ' + r.stdout);
+  assert.match(imgs[0], STYLE_PLEINE_LARGEUR, 'l’image à crédit, dans une <figure>, n’est pas en pleine largeur : ' + imgs[0]);
+  assert.ok(!/2\.5in/.test(imgs[0]), 'la largeur Word subsiste sur l’image à crédit : ' + imgs[0]);
+  assert.match(imgs[1], /width:1in/, 'l’image sans crédit (un logo) a perdu sa largeur : ' + imgs[1]);
+  assert.ok(!/plafond-figure/.test(imgs[1]), 'l’image sans crédit, hors <figure>, est passée en pleine largeur : ' + imgs[1]);
+});
+
+test('figure : la classe szh-largeur-naturelle garde la largeur Word', () => {
+  const md = '![Légende](a.png){.szh-largeur-naturelle alt="Un petit schéma" width="2.5in"}\n';
+  const r = pandocDansDossier({ 'essai.md': md, 'a.png': PNG_1PX }, 'essai.md',
+    'szh-numerotation.lua', { to: 'html5' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  const imgs = balisesImg(r.stdout);
+  assert.strictEqual(imgs.length, 1, 'une seule image attendue : ' + r.stdout);
+  assert.match(imgs[0], /width:2\.5in/, 'la largeur Word est perdue malgré la classe : ' + imgs[0]);
+  assert.ok(!/plafond-figure/.test(imgs[0]), 'la pleine largeur est posée malgré la classe : ' + imgs[0]);
+});
+
+test('grille : les images perdent width= et height=, et la case seule règle leur largeur', () => {
+  const md = '::: {.szh-grille disposition="2"}\n'
+    + '![Légende](a.png){alt="A" width="2.5in"}\n'
+    + '![](b.png){alt="B" width="2.5in" height="1in"}\n'
+    + ':::\n';
+  const r = pandocDansDossier({ 'essai.md': md, 'a.png': PNG_1PX, 'b.png': PNG_1PX }, 'essai.md',
+    ['szh-grille.lua', 'szh-numerotation.lua'], { to: 'html5' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  const imgs = balisesImg(r.stdout);
+  assert.strictEqual(imgs.length, 2, 'deux images attendues : ' + r.stdout);
+  for (const img of imgs) {
+    assert.ok(!/2\.5in|1in/.test(img), 'une dimension Word subsiste dans la grille : ' + img);
+    assert.ok(!/plafond-figure/.test(img), 'un style de pleine largeur est posé dans la grille, où la case décide : ' + img);
+  }
 });
 
 test('langue : szh-numerotation.lua — meta.lang seul', () => {

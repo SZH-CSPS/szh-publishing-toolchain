@@ -53,6 +53,9 @@ est faite. Les questions à trancher sont marquées « À décider ».
 - Insertion d'une image : la légende ne doit plus être préremplie par « Légende »
   (`media/formatting.js`, `lib/medias-hote.js`). Garder la reconnaissance de l'ancien mot à
   l'export OJS (`LEGENDES_PAR_DEFAUT`).
+- Médias : une case « garder la largeur de l'image » dans le formulaire d'une figure, qui
+  poserait la classe `szh-largeur-naturelle` (`szh-numerotation.lua`, `largeur_figure`).
+  Aujourd'hui la classe s'écrit à la main dans le texte de l'article (`userdoc.md`).
 - Le badge « déjà converti » utilise `slugifierArticle` alors que l'import ajoute un suffixe
   en cas de doublon : utiliser `slugifierArticleUnique` (`extension.js`).
 - Retirer le bouton « Changer la langue de l'article » de
@@ -190,6 +193,10 @@ est faite. Les questions à trancher sont marquées « À décider ».
 ## Divers
 
 - Déplacer le dossier `traduction/` du vérificateur de traduction à son emplacement définitif.
+- `szh-tableau-boite.lua` écrit les attributs de la boîte d'un tableau (`tabindex`, `role`,
+  `aria-label`) dans un ordre qui change d'une compilation à l'autre : le md5 du HTML
+  autonome d'un article à tableau n'est pas stable, seule la comparaison au pixel l'est.
+  Trier les attributs.
 
 ## Accessibilité
 

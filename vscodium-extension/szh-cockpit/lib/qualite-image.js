@@ -3,8 +3,9 @@
 //
 // D'où viennent les nombres. Largeur de composition : print.css pose @page size A4 avec
 // 72 px de marge à gauche et à droite, soit 794 - 144 = 650 px CSS ≈ 6,77 pouces ≈ 17,2 cm.
-// Une image en pleine largeur y est ramenée par `figure img { max-width: 100% }` : sa
-// largeur en pixels décide donc de sa résolution d'impression.
+// L'image d'une figure est imprimée à cette largeur (pipeline/filters/szh-numerotation.lua,
+// largeur_figure), quelle que soit sa taille en pixels : cette taille décide donc de sa
+// résolution d'impression.
 //   2000 px sur 6,77 po ≈ 300 ppp -> qualité d'impression visée, et 2x sur un écran
 //                                    standard : c'est le conseillé.
 //   1000 px sur 6,77 po ≈ 150 ppp -> plancher ; en dessous, le flou se voit à
@@ -19,7 +20,7 @@
 // Le verdict porte sur le fichier source : une image trop petite ne se rattrape pas en aval.
 'use strict';
 
-// Deux familles, deux usages : « figure » pour une image du texte, affichable en pleine
+// Deux familles, deux usages : « figure » pour une image du texte, imprimée en pleine
 // largeur ; « portrait » pour une photo d'autrice ou d'auteur, réduite à une vignette.
 const SEUILS = {
   figure: { min: 1000, conseille: 2000 },

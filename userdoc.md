@@ -248,15 +248,29 @@ Contrôles.
   La résolution se gagne à la source : une image trop petite ne se rattrape pas à la
   composition. Le formulaire compare donc chaque fichier à ce que son usage demande.
 
-  - **Image du texte** : elle peut être affichée en **pleine largeur**, soit environ
-    17 cm dans le PDF A4. Il faut **1000 px de large au minimum**, et **2000 px** pour
-    une impression nette (300 ppp) comme pour un écran haute densité. En dessous de
-    1000, l’encadré est ferme : dépose l’original haute résolution.
+  - **Image du texte** : une figure est imprimée en **pleine largeur**, soit environ
+    17 cm dans le PDF A4 (voir plus bas). Il faut **1000 px de large au minimum**, et
+    **2000 px** pour une impression nette (300 ppp) comme pour un écran haute densité. En
+    dessous de 1000, l’encadré est ferme : dépose l’original haute résolution.
   - **Portrait** : il est réduit à une vignette de 28 mm de côté, dont le pipeline ne
     garde que la région du visage. Il faut **400 px au minimum sur le petit côté** –
     en dessous, le recadrage agrandit et la photo sort floue – et **1000 px** pour un
     résultat net.
   - Un **SVG** n’a pas de résolution : il est net à toute taille, jamais signalé.
+
+  #### Une figure prend toute la largeur de la colonne
+
+  Toute figure – numérotée, ou « sans légende ni numéro » avec ses crédits – est imprimée
+  sur **toute la largeur de la colonne**, quelle que soit la taille du fichier et quelle
+  que soit la taille que l’image avait dans le Word. Une image trop petite sort donc floue :
+  c’est l’encadré « Attention qualité » qui le dit avant.
+
+  Pour qu’une figure reste plus étroite – un petit schéma, un pictogramme –, ajoute la
+  classe `.szh-largeur-naturelle` dans les accolades de l’image, dans le texte de l’article :
+  `![Légende](media/x.png){.szh-largeur-naturelle alt="…"}`. L’image s’imprime alors à sa
+  taille en pixels, ou à celle qu’elle avait dans le Word, sans dépasser la colonne. Une
+  image « sans légende ni numéro » qui n’a ni copyright ni source (un logo, par exemple)
+  garde d’elle-même sa taille.
 
   #### Les images hautes sont bridées en hauteur
 

@@ -100,7 +100,7 @@ n'est pas fait pour être publié.
 |---|---|
 | `contenu-long` | un article de plus de six pages : titres de niveau 1 à 4, listes, citation, encadrés, deux tableaux, notes de bas de page ; les coupures de page difficiles et le dimensionnement des tableaux |
 | `couverture-stress` | la couverture sous contrainte : douze auteurs, dix mots-clés, titre et sous-titre longs |
-| `figures` | les cas d'image : figure numérotée, image hors numérotation avec et sans crédits, image décorative (`alt=""`), image de trop faible résolution (qui ne doit pas être agrandie), la même image insérée deux fois, deux grilles d'images |
+| `figures` | les cas d'image : figure numérotée, image hors numérotation avec et sans crédits, image décorative (`alt=""`), image de trop faible résolution (imprimée en pleine largeur comme toute figure), la même image insérée deux fois, deux grilles d'images |
 | `lecteur-ecran` | l'encadré « ce qu'un lecteur d'écran reçoit » de l'aperçu (`szh-apercu-lecteur-ecran.lua`) ; à regarder dans l'aperçu, pas dans le PDF |
 | `documentation` | la page Documentation, en allemand pour exercer les libellés allemands |
 

@@ -653,9 +653,11 @@ blockquote p:last-child { margin-bottom: 0; }
    Le préfixe, les crédits, les appels non liés et la description longue d'un tableau sont
    mis en forme dans styles/partage-filtres.css. */
 
-/* Toute image reste dans la colonne : une image hors numérotation sans crédits n'est pas
-   dans une <figure>, et un fichier de 2000 px de large (la résolution conseillée par le
-   cockpit) déborderait de la page.
+/* L'image d'une figure s'imprime en pleine largeur de colonne : filters/szh-numerotation.lua
+   (largeur_figure) le pose dans son attribut style, avec le plafond de hauteur rapporté à la
+   largeur. La règle ci-dessous vaut pour les autres images, à leur taille en pixels : une
+   image hors numérotation sans crédits n'est pas dans une <figure>, et un fichier de
+   2000 px de large (la résolution conseillée par le cockpit) déborderait de la page.
    `max-height` (--plafond-figure, socle.css) plafonne la hauteur : une <figure> plus haute
    qu'une page perd son `break-inside: avoid`, et WeasyPrint la coupe juste sous la
    légende. Un `break-after: avoid` sur la <figcaption> ne sert à rien, WeasyPrint

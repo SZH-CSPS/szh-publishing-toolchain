@@ -13,7 +13,8 @@
 -- - note : un paragraphe « Note : texte » sous l'image ou après </table>, de classe
 --   szh-bloc-note (szh-note est réservée aux notes de bas de page), relié lui aussi par
 --   aria-describedby ;
--- - image décorative (alt="") : un fond CSS, voir en_decor().
+-- - image décorative (alt="") : un fond CSS, voir en_decor() ;
+-- - l'image d'une figure s'imprime en pleine largeur de colonne, voir largeur_figure().
 --
 -- Format d'entrée, partagé avec le cockpit :
 --   figure     ![Légende](media/x.png){alt="description" copyright="© J. D." source="ESA"
@@ -205,18 +206,23 @@ end
 -- Rend nil si l'image est illisible : l'appelant garde alors le <img>, et le contrôle
 -- PDF/UA le signalera.
 --
--- `garder_largeur` : reprendre la largeur déclarée (width=, posée par l'import Word) plutôt
--- que la largeur naturelle. Sert aux images au fil d'un paragraphe, pour que deux photos
--- côte à côte le restent.
-local function en_decor(img, garder_largeur)
-  local largeur, hauteur = mesure_image(img.src)
-  if not largeur then return nil end
+-- `largeur` : nil, la largeur naturelle de l'image ; 'declaree', la largeur posée par
+-- l'import Word (width=), pour que deux photos côte à côte dans un paragraphe le restent ;
+-- 'colonne', la pleine largeur de colonne d'une figure (voir largeur_figure).
+local function en_decor(img, largeur)
+  local l, h = mesure_image(img.src)
+  if not l then return nil end
   local classe = CLASSE_DECOR .. '-' .. (#decors + 1)
-  local declaree = garder_largeur and img.attributes['width'] or nil
-  -- Seule une longueur CSS simple est acceptée, puisque la valeur est écrite dans un <style>.
-  if declaree and not declaree:match('^%d+%.?%d*%a*%%?$') then declaree = nil end
-  decors[#decors + 1] = { classe = classe, src = img.src, largeur_css = declaree,
-                          largeur = largeur, ratio = 100.0 * hauteur / largeur }
+  local css = nil
+  if largeur == 'declaree' then
+    css = img.attributes['width']
+    -- Seule une longueur CSS simple est acceptée, puisque la valeur est écrite dans un <style>.
+    if css and not css:match('^%d+%.?%d*%a*%%?$') then css = nil end
+  elseif largeur == 'colonne' then
+    css = '100%'
+  end
+  decors[#decors + 1] = { classe = classe, src = img.src, largeur_css = css,
+                          largeur = l, ratio = 100.0 * h / l }
   return pandoc.RawInline('html', '<span class="' .. CLASSE_DECOR .. ' ' .. classe
     .. '" role="presentation"><span></span></span>')
 end
@@ -508,10 +514,44 @@ local function traiter_tableau(html, prefixe, credit, ids, note_html)
   return html, numerote
 end
 
+-- ─── Largeur des figures ─────────────────────────────────────────────────────
+-- L'image d'une figure (dans une <figure>, numérotée ou non) s'imprime en pleine largeur de
+-- colonne, quelle que soit sa taille en pixels et quel que soit le width= posé par l'import
+-- Word : les attributs width et height sont retirés, et le style de l'image pose sa
+-- largeur, `min(100%, plafond / rapport)` : la colonne, ou moins si le plafond de hauteur
+-- (--plafond-figure, socle.css) le demande, le plafond étant divisé par le rapport
+-- hauteur/largeur comme pour un décor (style_decors). Une seule valeur de largeur, et non
+-- width et max-width : WeasyPrint écrase une image en width: 100 % que max-height
+-- plafonne, et ne centre plus (marges auto, livre à filets) une image que max-width
+-- rétrécit. Une image que pandoc ne sait pas mesurer garde la règle `img` de la feuille de
+-- style.
+--
+-- Gardent leur largeur : les images d'une grille (chaque case règle la sienne,
+-- partage-filtres.css), le substitut d'un métafichier (szh-metafichier.lua : il occupe la
+-- boîte de l'image absente) et une image de classe szh-largeur-naturelle, qui s'imprime à
+-- sa taille en pixels, ou à celle de width=, dans la limite de la colonne. Une image hors
+-- numérotation sans crédit ni note n'est pas dans une <figure> : même chose pour elle.
+local CLASSE_LARGEUR_NATURELLE = 'szh-largeur-naturelle'
+local CLASSE_GRILLE = 'szh-grille'
+local CLASSE_METAFICHIER = 'szh-image-a-remplacer'
+
+local function largeur_figure(img, grille)
+  if a_classe(img, CLASSE_LARGEUR_NATURELLE) or a_classe(img, CLASSE_METAFICHIER) then return end
+  img.attributes['width'] = nil
+  img.attributes['height'] = nil
+  if grille then return end
+  local l, h = mesure_image(img.src)
+  if not l then return end
+  local style = string.format('width:min(100%%,calc(var(--plafond-figure) / %.4f));'
+                              .. 'max-height:none', h / l)
+  local deja = img.attributes['style']
+  img.attributes['style'] = vide(deja) and style or (style .. ';' .. deja)
+end
+
 -- ─── Images hors numérotation ────────────────────────────────────────────────
 -- Une image de classe szh-hors-figure n'a ni numéro ni légende. Si elle a un crédit ou une
 -- note, elle est placée dans une <figure> dont la <figcaption> ne contient que le crédit,
--- et la note suit l'image. Sinon elle reste un simple <img>.
+-- et la note suit l'image. Sinon elle reste un simple <img>, à sa largeur.
 
 -- L'image seule d'un paragraphe, si elle porte la classe ; nil sinon.
 local function image_hors_figure(b)
@@ -542,9 +582,10 @@ local function hors_numerotation(b, lang)
     img.attributes['role'] = 'presentation'
     -- Décorative avec crédit ou note : fond CSS ici. Sans eux, la passe principale s'en
     -- charge.
-    if credit or a_note then contenu = en_decor(img) or img end
+    if credit or a_note then contenu = en_decor(img, 'colonne') or img end
   end
   if not credit and not a_note then return nil end
+  if contenu.t == 'Image' then largeur_figure(contenu, false) end
   -- La note se lit avant d'insérer l'image dans le Plain, car pandoc copie l'élément à
   -- l'insertion.
   local texte, id = prendre_note(img)
@@ -680,7 +721,7 @@ function Pandoc(doc)
       local contenu = b.content:map(function(x)
         if x.t == 'Image' and #x.caption > 0 and x.attributes['alt'] == '' then
           x.attributes['role'] = 'presentation'
-          local d = en_decor(x, true)
+          local d = en_decor(x, 'declaree')
           if d then change = true; return d end
         end
         return x
@@ -709,6 +750,7 @@ function Pandoc(doc)
     Figure = function(fig)
       -- Figure créée par la passe hors numérotation : déjà traitée.
       if a_classe(fig, CLASSE_CREDIT_SEUL) then return nil end
+      local grille = a_classe(fig, CLASSE_GRILLE)
       local legende = utils.stringify(fig.caption.long)
       if legende:match('^%s*$') then
         -- Sans légende : pas de numéro. Crédits et note sont rendus comme pour une image
@@ -716,13 +758,14 @@ function Pandoc(doc)
         local cumul, note, id_note = nouveau_cumul(), nil, nil
         fig.content = fig.content:walk({
           Image = function(img)
+            largeur_figure(img, grille)
             cumuler(cumul, img)
             if not note then note, id_note = prendre_note(img) end
             return img
           end,
         })
         local credit = credit_depuis(cumul.copyrights, cumul.sources, true)
-        if not credit and not note then return nil end
+        if not credit and not note then return fig end
         if credit then
           fig.caption.long = crediter(pandoc.Blocks({}), credit)
           local classes = pandoc.List(fig.classes)
@@ -746,6 +789,7 @@ function Pandoc(doc)
       local cumul, note, id_note = nouveau_cumul(), nil, nil
       fig.content = fig.content:walk({
         Image = function(img)
+          largeur_figure(img, grille)
           -- L'alt est dans l'attribut alt= (aperçu) ou dans la description (PDF).
           local attr_alt = img.attributes['alt']
           local alt = attr_alt or utils.stringify(img.caption)

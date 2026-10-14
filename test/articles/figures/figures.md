@@ -7,7 +7,7 @@ sont à comparer d'une passe à l'autre, en PNG, page par page.
 
 Le cas ordinaire : légende visible, texte alternatif distinct de la légende, copyright
 et source. Attendu — `Figure 1 — …` puis les crédits, dans une `<figcaption>` placée
-**avant** l'image, et l'image ramenée à la largeur de la colonne.
+**avant** l'image, et l'image en pleine largeur de colonne.
 
 ![Bandes horizontales de la charte, du bleu au sable](media/figures-fig-01.png){alt="Quatre bandes horizontales : bleu foncé, bleu ciel, sable, blanc cassé" copyright="© SZH" source="Banc d'essai"}
 
@@ -38,8 +38,9 @@ résolution, le verdict de qualité du cockpit ne le signale jamais.
 ## Figure de résolution insuffisante
 
 320 pixels de large là où la colonne en demande 1000 au minimum : le cockpit le signale
-dans le formulaire des médias, et le rendu ne doit pas pour autant agrandir l'image
-au-delà de sa taille naturelle.
+dans le formulaire des médias. Attendu — l'image est quand même imprimée en pleine largeur
+de colonne, comme toute figure, donc floue : c'est le verdict du cockpit qui prévient, pas
+le rendu.
 
 ![Petite image de contrôle, volontairement sous-dimensionnée](media/figures-fig-05.png){alt="Deux bandes horizontales, bleu foncé et sable" source="Banc d'essai"}
 

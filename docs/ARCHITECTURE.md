@@ -249,7 +249,7 @@ sont acceptés.
 | `szh-metafichier.lua` | remplace une image Word `.emf` ou `.wmf` par un repère visible |
 | `szh-grille.lua` | regroupe plusieurs images en une figure |
 | `szh-figure.lua` | construit les figures pour l'aperçu |
-| `szh-numerotation.lua` | numérote figures et tableaux, pose textes alternatifs et crédits, signale une image sans texte alternatif et une figure à légende déclarée décorative |
+| `szh-numerotation.lua` | numérote figures et tableaux, pose textes alternatifs et crédits, met l'image d'une figure en pleine largeur de colonne (`largeur_figure`), signale une image sans texte alternatif et une figure à légende déclarée décorative |
 | `szh-tableau-boite.lua` | empêche un tableau d'être coupé d'une façon qui casserait son balisage |
 | `szh-legende-avant.lua` | place la légende avant l'image dans l'ordre de lecture, et en fait le nom de la figure |
 | `szh-sections.lua` | numérote les titres |
