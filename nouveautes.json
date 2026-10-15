@@ -15,6 +15,28 @@
     "",
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
+  "3.13": {
+    "fr": {
+      "titre": "Les figures s’impriment en pleine largeur de colonne",
+      "points": [
+        "L’image d’une figure prend désormais toute la largeur de la colonne, dans la Revue comme dans un livre, quelle que soit sa taille en pixels.",
+        "La largeur qu’avait l’image dans le Word ne compte plus pour l’impression, et la hauteur maximale reste respectée sans déformer l’image.",
+        "Une image qui doit garder sa largeur naturelle peut être marquée comme telle dans le manuscrit ; les images d’une grille ou d’un tableau ne changent pas.",
+        "À la recompilation, un numéro déjà compilé peut sortir différent : une figure plus étroite que la colonne s’élargit, et le texte qui la suit se déplace.",
+        "Le contrôle de qualité du gestionnaire des médias, 1000 px au minimum et 2000 px conseillés, vaut maintenant pour toute figure."
+      ]
+    },
+    "de": {
+      "titre": "Abbildungen werden in voller Spaltenbreite gedruckt",
+      "points": [
+        "Das Bild einer Abbildung füllt nun die ganze Spaltenbreite, in der Revue wie in einem Buch, unabhängig von seiner Grösse in Pixeln.",
+        "Die Breite, die das Bild im Word hatte, zählt für den Druck nicht mehr, und die maximale Höhe wird weiterhin eingehalten, ohne das Bild zu verzerren.",
+        "Ein Bild, das seine natürliche Breite behalten soll, kann im Manuskript entsprechend markiert werden; Bilder in einem Raster oder in einer Tabelle bleiben unverändert.",
+        "Bei der erneuten Kompilierung kann eine bereits kompilierte Ausgabe anders aussehen: Eine Abbildung, die schmaler als die Spalte war, wird breiter, und der folgende Text verschiebt sich.",
+        "Die Qualitätsprüfung der Medienverwaltung, mindestens 1000 px und empfohlen 2000 px, gilt nun für jede Abbildung."
+      ]
+    }
+  },
   "3.12": {
     "fr": {
       "titre": "Travailler à plusieurs, supprimer un numéro, et la Prontogenda",

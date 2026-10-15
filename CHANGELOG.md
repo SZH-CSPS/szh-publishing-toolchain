@@ -11,6 +11,23 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.13.0
+
+Medium : l'image d'une figure s'imprime en pleine largeur de colonne.
+
+**Figures.**
+- Dans la Revue comme dans un livre, l'image d'une figure prend toute la largeur de la
+  colonne, quelle que soit sa taille en pixels et quelle que soit la largeur qu'elle avait dans
+  le Word. Le plafond de hauteur est respecté sans déformation. La règle vit dans
+  `largeur_figure()` de `pipeline/filters/szh-numerotation.lua`.
+- Une image qui doit garder sa largeur porte la classe `szh-largeur-naturelle`
+  (`![Légende](media/x.png){.szh-largeur-naturelle alt="…"}`). Les images d'une grille, d'un
+  tableau et les logos hors figure ne changent pas.
+- À la recompilation, un numéro déjà compilé qui contient une figure plus étroite que la
+  colonne sort différent : la figure et le texte qui la suit se déplacent.
+- Le contrôle de qualité du gestionnaire des médias (1000 px au minimum, 2000 px conseillés)
+  vaut maintenant pour toute figure.
+
 ## 3.12.0
 
 Medium : plusieurs postes travaillent plus sûrement sur le même numéro, un numéro en cours se
