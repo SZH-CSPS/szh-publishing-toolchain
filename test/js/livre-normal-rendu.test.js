@@ -335,11 +335,12 @@ test('rendu normal : le badge de licence suit la phrase de licence à l’impres
   proche(+(b[1] - phrase.ls[phrase.i][0]).toFixed(2), 4.8, 0.15, 'ligne de base de la phrase → haut du badge');
   proche(+(reserve.ls[reserve.i][0] - (b[1] + b[3])).toFixed(2), 6.2, 0.15, 'bas du badge → ligne de base suivante');
   proche(fin.ls[fin.i][0], 185.6, 0.3, 'dernier bloc');
-  // Une seule annotation /Link, vers l'acte, sur la boîte du badge, avec son /Contents.
+  // Une seule annotation /Link, vers l'acte, sur la boîte du badge. Son /Contents est le
+  // nom accessible du lien, l'aria-label (patch WeasyPrint du nom des liens).
   const liens = m.liens.flat();
   assert.strictEqual(liens.length, 1, JSON.stringify(m.liens));
   assert.strictEqual(liens[0].uri, ACTE);
-  assert.strictEqual(liens[0].contents, ACTE);
+  assert.strictEqual(liens[0].contents, 'Zusammenfassung der Lizenz Creative Commons CC BY-NC-ND 4.0 International');
   liens[0].boite.forEach((v, i) => proche(v, b[i], 0.05, 'annotation, cote ' + i));
 });
 
