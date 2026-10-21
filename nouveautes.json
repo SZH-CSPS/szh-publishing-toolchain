@@ -15,6 +15,28 @@
     "",
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
+  "3.14": {
+    "fr": {
+      "titre": "Commentaires gardés, objets Word signalés, une section Aide",
+      "points": [
+        "Le préprocessing garde les commentaires Word du manuscrit, sur leur passage, avec leurs réponses ; un commentaire déplacé est signalé.",
+        "Un graphique, un SmartArt ou un objet incorporé du Word devient une figure avec une image à remplacer, et l’import le signale.",
+        "Dans un livre, vous pouvez écrire {{isbn-print}} dans le texte : la valeur saisie dans le formulaire s’imprime à sa place.",
+        "Supprimer un article ou un chapitre renumérote les autres, sans trou.",
+        "Une section Aide, en bas de l’arbre, ouvre la page du wiki pour signaler un problème ; l’éditeur ne fait plus aucun son."
+      ]
+    },
+    "de": {
+      "titre": "Kommentare bleiben, Word-Objekte werden gemeldet, ein Hilfe-Bereich",
+      "points": [
+        "Das Preprocessing behält die Word-Kommentare des Manuskripts an ihrer Stelle, mit ihren Antworten; ein verschobener Kommentar wird gemeldet.",
+        "Ein Diagramm, ein SmartArt oder ein eingebettetes Objekt aus dem Word wird zu einer Abbildung mit einem Platzhalterbild, und der Import meldet es.",
+        "In einem Buch können Sie {{isbn-print}} in den Text schreiben: der im Formular erfasste Wert wird an dieser Stelle gedruckt.",
+        "Wird ein Artikel oder ein Kapitel gelöscht, werden die übrigen ohne Lücke neu nummeriert.",
+        "Ein Hilfe-Bereich unten im Baum öffnet die Wiki-Seite, um ein Problem zu melden; der Editor gibt keine Töne mehr von sich."
+      ]
+    }
+  },
   "3.13": {
     "fr": {
       "titre": "Les figures s’impriment en pleine largeur de colonne",

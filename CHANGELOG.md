@@ -11,6 +11,45 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.14.0
+
+Medium : variables dans le texte, commentaires du manuscrit gardés au préprocessing, objets
+Word convertis en figures à remplacer, section Aide, éditeur sans son.
+
+**Livres et texte.**
+- `{{cle}}` dans un chapitre, une pièce liminaire, la 4e de couverture ou un article imprime
+  la valeur de la clé dans `buch.yaml`, `ausgabe.yaml` ou la fiche (`{{isbn-print}}`).
+  Une clé absente, vide ou en liste reste imprimée telle quelle et un avertissement la nomme
+  (`szh-variables.lua`, juste avant la typographie).
+- Formulaire du livre : case « pas d'impressum automatique », qui retire `colophon` des
+  `liminaires:`. L'Accueil demande la langue d'un livre neuf ; les chapitres importés suivent
+  celle du livre.
+
+**Import Word.**
+- Un titre posé en style de caractère (« Überschrift 2 Zchn ») en tête de paragraphe, suivi
+  d'un saut de ligne manuel, devient un vrai titre (`docx-styles-corps.py`).
+- Graphique, SmartArt, dessin, forme ou objet incorporé : l'import crée une figure avec
+  l'image « à remplacer » et la légende voisine, et le signale (`objet-word-remplace`,
+  `objet-word-apercu` ; nouvelle étape `docx-objets.py`).
+- Un saut de ligne en fin de passage souligné ou gras ne s'écrit plus dans le crochet
+  (`\]{.underline}` imprimé en clair), à l'import comme par les commandes Gras et Souligner.
+
+**Préprocessing.**
+- Les commentaires Word du manuscrit sont repris dans la sortie, avec auteur, date, réponses
+  et état résolu, ancrés sur leur passage ou au plus près ; un commentaire déplacé ou non
+  repris est signalé (`Nettoyage.CommentaireDeplace`, `Nettoyage.CommentaireNonRepris`).
+
+**Cockpit.**
+- Section « Aide » en fin d'arbre, avec « Signaler un problème », qui ouvre le wiki.
+- L'éditeur ne fait plus aucun son (`accessibility.signals.*` sans son, volume à 0) ; les
+  annonces des lecteurs d'écran restent.
+- Supprimer un article ou un chapitre renumérote les autres sans trou, même si un dossier
+  résiste à l'effacement ; un dossier « _… » d'un livre n'est plus compté comme chapitre.
+
+**Poste.**
+- La tâche de mise à jour part le mardi à 14 h en heure locale, aussi en hiver ; une tâche
+  réglée en heure UTC est signalée et réécrite.
+
 ## 3.13.0
 
 Medium : l'image d'une figure s'imprime en pleine largeur de colonne.
