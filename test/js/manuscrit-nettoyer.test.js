@@ -1757,7 +1757,9 @@ test('manuscrit-nettoyer.py : les commentaires Word du manuscrit reviennent dans
       const texte = sortie.texte;
       assert.ok(texte.includes('[' + n(0) + '|bénéficient d’un soutien' + '|' + n(0) + ']'), texte);
       assert.ok(texte.includes('[' + n(1) + '|traverse plusieurs runs de suite' + '|' + n(1) + ']'), texte);
-      assert.ok(texte.includes('[' + n(2) + '|avec l’ensemble des acteurs' + '|' + n(2) + ']'), texte);
+      // L'apostrophe n'est redressée que là où la typographie du nettoyeur tourne (la WSL,
+      // pas le job contrats) : le commentaire suit le passage dans les deux cas.
+      assert.ok(new RegExp('\\[' + n(2) + '\\|avec l[\'’]ensemble des acteurs\\|' + n(2) + '\\]').test(texte), texte);
       assert.ok(texte.includes('[' + n(3) + '|[' + n(5) + '|montre des effets positifs'), texte);
       assert.ok(new RegExp('\\[' + n(10) + '\\|enseignantes[^\\]]*\\n[^\\[]*une heure\\|' + n(10) + '\\]')
         .test(texte), texte);
