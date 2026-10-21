@@ -614,6 +614,7 @@ test('exhaustivité : aucune ligne morte dans la table', () => {
     // entrée CLES_IMPORT.
     'import/bloc-valeur-non-reprise', 'import/image-absente-import',
     'import/figure-alt-a-completer', 'import/tableau-images-et-texte',
+    'import/objet-word-remplace', 'import/objet-word-apercu',
     // Émis par docx-meta.py, pronto-lire.py et docx-controle-import.py.
     'import/fichier-illisible', 'import/tableau-texte-perdu',
     // Vu par le cockpit en lisant les tableaux de l'article (constatEnteteVide).

@@ -280,6 +280,13 @@ const TABLE = Object.freeze({
   // sans description de la compilation, mais dit dès l'import.
   'import/figure-alt-a-completer': { barrage: null, nature: D, lieu: 'medias',
     focusChamp: 'image', defaut: 'defaut.figure-alt-a-completer' },
+  // Un objet Word (graphique, SmartArt, dessin) qui ne se convertit pas en image : une
+  // image de remplacement tient sa place (pipeline/docx-objets.py). Un objet incorporé
+  // gardé par son aperçu est à vérifier.
+  'import/objet-word-remplace': { barrage: null, nature: D, lieu: 'medias',
+    focusChamp: 'image', defaut: 'defaut.objet-word-remplace' },
+  'import/objet-word-apercu': { barrage: null, nature: D, lieu: 'medias',
+    focusChamp: 'image', defaut: 'defaut.objet-word-apercu' },
   // Tableau d'images sous-titrées gardé en tableau : rien n'est perdu, une information.
   // Le texte d'un tableau du Word ne se retrouve pas dans l'article : à reprendre à la main.
   'import/tableau-texte-perdu': { barrage: null, nature: D, lieu: 'article',
@@ -523,6 +530,8 @@ const SECOND_ETAGE = Object.freeze({
   'import/bloc-valeur-non-reprise': { consigne: 'consigne.bloc-valeur-non-reprise' },
   'import/image-absente-import': { consigne: 'consigne.image-absente-import' },
   'import/figure-alt-a-completer': { consigne: 'consigne.figure-alt-a-completer' },
+  'import/objet-word-remplace': { consigne: 'consigne.objet-word-remplace' },
+  'import/objet-word-apercu': { consigne: 'consigne.objet-word-apercu' },
   'import/biblio-tableau-apres-titre': { consigne: 'consigne.pronto-biblio-tableau' },
   'import/type-article-non-reconnu': { consigne: 'consigne.pronto-type-inconnu' },
   'import/cle-attendue-absente': { consigne: 'consigne.pronto-cle-absente' },

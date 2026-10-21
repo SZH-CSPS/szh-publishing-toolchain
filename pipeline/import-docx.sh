@@ -17,6 +17,9 @@
 # Étapes, dans cet ordre :
 #   0. .odt : converti en .docx par conversion_odt.py (LibreOffice). Le nom d'origine reste
 #      dans $SZH_SOURCE (champ `source:` de la fiche, empreintes du réimport).
+#   0bis. docx-objets.py : copie du Word où chaque objet que pandoc ne rend pas en image
+#      (graphique, SmartArt, dessin, objet incorporé sans aperçu) est précédé d'une image
+#      de remplacement. Les étapes suivantes lisent cette copie, s'il y en a une.
 #   1. lecteur de métadonnées -> <slug>.meta.yaml et instructions de retrait ($SZH_META) :
 #      pronto-lire.py pour un document au gabarit Pronto, docx-meta.py sinon (voir plus bas).
 #   2. docx-tables.py : tableaux -> tables/*.html, sans ceux que le lecteur a consommés
@@ -88,7 +91,8 @@ export SZH_LANGUE_LIVRE
 # Fichiers temporaires, supprimés par un seul trap à toute sortie. Initialisés vides : avec
 # `set -u`, le trap échouerait s'il se déclenchait avant leur mktemp.
 META=""; PHOTOS=""; LEGT=""; TITRES=""; MARQUE=""; CONTROLE=""; RETRAITS=""; CONVDIR=""
-trap 'rm -f "$META" "$PHOTOS" "$LEGT" "$TITRES" "$MARQUE" "$CONTROLE" "$RETRAITS"; rm -rf "$CONVDIR"' EXIT
+OBJETS=""; OBJDOCX=""
+trap 'rm -f "$META" "$PHOTOS" "$LEGT" "$TITRES" "$MARQUE" "$CONTROLE" "$RETRAITS" "$OBJETS" "$OBJDOCX"; rm -rf "$CONVDIR"' EXIT
 
 # Message pour la rédaction : sur stderr, et dans le journal $SZH_IMPORT_LOG (chemin absolu,
 # posé par la cible `import`) que lit la vue « Word » du cockpit.
@@ -123,6 +127,17 @@ esac
 if ! tail -c 70000 "$DOCX_ABS" | LC_ALL=C grep -qaF "$(printf 'PK\005\006')"; then
   refuser_fichier_illisible
 fi
+
+# Objets Word que pandoc ne rend pas en image (graphique, SmartArt, objet incorporé,
+# dessin, forme) : une copie du Word reçoit une image de remplacement à côté de chacun,
+# et toutes les étapes suivantes lisent cette copie. $SZH_OBJETS liste les objets notés,
+# signalés par docx-controle-import.py --apres-medias. Non bloquant : sur une erreur,
+# l'import continue avec l'original.
+OBJETS="$(mktemp)"
+export SZH_OBJETS="$OBJETS"
+OBJDOCX="$(mktemp --suffix=.docx)"
+python3 "$PIPE/docx-objets.py" "$DOCX_ABS" "$OBJDOCX" "$OBJETS"
+[ $? -eq 0 ] && DOCX_ABS="$OBJDOCX"
 
 mkdir -p "$DIR/media" "$DIR/tables"
 cd "$DIR" || exit 1
