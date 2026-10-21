@@ -204,7 +204,8 @@ extensions VSCodium (`.vsix`) et, seulement quand `image/` a changé, l'image WS
 ### Le déroulement
 
 1. **La tâche planifiée** `SZH - Mise a jour` part à chaque ouverture de session et chaque
-   mardi à 14 h. Elle lance `update-launcher.ps1` sans fenêtre.
+   mardi à 14 h, heure locale, été comme hiver. Elle lance `update-launcher.ps1` sans
+   fenêtre.
 2. **La passe silencieuse** remet d'aplomb les raccourcis du menu Démarrer et la tâche
    planifiée, puis, au plus une fois par semaine (depuis le dernier mardi 14 h), lit le
    `manifest.json` de la dernière version sur GitHub. Une seule passe tourne à la fois sur
@@ -659,7 +660,8 @@ Une entrée par symptôme. Dans tous les cas, commencer par le
 
 **Le journal dit « tâche planifiée refusee » ou « non corrigée (Access is denied.) ».**
 - Cause : la tâche planifiée diffère de la forme voulue (par exemple un ancien déclencheur
-  quotidien), et seul un administrateur peut la réécrire. La cadence hebdomadaire s'applique
+  quotidien, ou un déclencheur hebdomadaire écrit en heure UTC, qui tombe à 13 h en hiver),
+  et seul un administrateur peut la réécrire. La cadence hebdomadaire s'applique
   quand même.
 - Que faire : une fois, en administrateur, depuis un clone frais :
 

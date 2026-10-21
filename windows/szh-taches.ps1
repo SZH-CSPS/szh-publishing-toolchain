@@ -60,11 +60,12 @@ function New-SzhTacheMajDeclencheurs {
   } else {
     $logon = New-ScheduledTaskTrigger -AtLogOn
   }
-  return @(
-    $logon,
-    (New-ScheduledTaskTrigger -Weekly -DaysOfWeek $SzhMajJour -WeeksInterval 1 `
-       -At ('{0:00}:00' -f $SzhMajHeure))
-  )
+  # L'heure s'écrit en heure locale, sans décalage : New-ScheduledTaskTrigger l'écrit en
+  # UTC (« Z »), que le planificateur garde tel quel, et la passe tomberait à 13 h en hiver.
+  $hebdo = New-ScheduledTaskTrigger -Weekly -DaysOfWeek $SzhMajJour -WeeksInterval 1 `
+    -At ('{0:00}:00' -f $SzhMajHeure)
+  $hebdo.StartBoundary = [datetimeoffset]::Parse([string]$hebdo.StartBoundary, [Globalization.CultureInfo]::InvariantCulture).LocalDateTime.ToString('s', [Globalization.CultureInfo]::InvariantCulture)
+  return @($logon, $hebdo)
 }
 
 # StartWhenAvailable : une fenêtre manquée (poste éteint, endormi) est rattrapée à la
@@ -118,7 +119,9 @@ function Get-SzhTacheMajEcarts {
       try { if ($null -ne $d.WeeksInterval) { $semaines = [int]$d.WeeksInterval } } catch { $semaines = 1 }
       $jours = 0
       try { $jours = [int]$d.DaysOfWeek } catch { $jours = 0 }
-      if (($heure -eq $SzhMajHeure) -and ($minute -eq 0) -and ($semaines -eq 1) -and ($jours -eq $bitVoulu)) {
+      if ([string]$d.StartBoundary -match '(Z|[+-]\d\d:\d\d)$') {
+        [void]$ecarts.Add('déclencheur hebdomadaire lié à un décalage horaire (une heure plus tôt en hiver)')
+      } elseif (($heure -eq $SzhMajHeure) -and ($minute -eq 0) -and ($semaines -eq 1) -and ($jours -eq $bitVoulu)) {
         $hebdo++
       } else {
         [void]$ecarts.Add(('déclencheur hebdomadaire mal réglé (jour {0}, {1}h{2:00}, toutes les {3} semaines)' -f $jours, $heure, [Math]::Max($minute, 0), $semaines))
