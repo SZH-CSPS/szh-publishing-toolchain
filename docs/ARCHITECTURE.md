@@ -222,6 +222,15 @@ devine les métadonnées à partir de la mise en forme.
   ne sélectionne qu'une partie du paragraphe), suivie d'un saut de ligne manuel, est coupé
   en un titre et un paragraphe.
 - Un `.odt` est converti en `.docx` par LibreOffice avant toute lecture.
+- Pandoc ne rend pas en image un graphique Word, un SmartArt, un dessin (groupe de
+  formes, zone de dessin), une forme seule ni un objet incorporé sans aperçu.
+  `docx-objets.py` écrit, avant toute lecture, une copie du Word où chacun de ces objets
+  est précédé de `pipeline/media/image-a-remplacer.svg`, avec un texte alternatif qui
+  dit qu'il manque une image. L'objet devient ainsi une figure ordinaire, légende et
+  numéro compris, et toutes les étapes suivantes lisent cette copie.
+  `docx-controle-import.py` signale chaque objet (`objet-word-remplace`, ou
+  `objet-word-apercu` pour un objet incorporé gardé par son aperçu). Une zone de texte,
+  un filet et une forme invisible sont laissés à pandoc.
 - La bibliographie est détachée dans `<slug>.biblio.md`. `szh-citations.lua` la remet en place
   à la compilation et relie les appels. Les titres de bibliographie reconnus sont la liste
   `TITRES_BIB` de `szh-citations.lua`, que le cockpit relit aussi.
@@ -285,6 +294,7 @@ environnements de l'image : `/opt/weasyprint` et `/opt/portraits`.
 | `docx-meta.py`, `heritage_meta.py` | lecteur des Word hors gabarit : métadonnées, auteurs, photos, bibliographie |
 | `pronto-lire.py`, `pronto_docx.py`, `pronto_modele.py` | lecteur des Word remplis dans le gabarit Pronto ; `pronto_modele.est_gabarit()` reconnaît un tel document |
 | `docx-tables.py`, `docx-titres.py`, `docx-styles-corps.py` | tableaux en HTML, titres repérés par leur mise en forme, styles de paragraphe du gabarit |
+| `docx-objets.py` | image de remplacement pour les objets Word que pandoc ne rend pas en image |
 | `docx-controle-import.py` | vérifie que rien du Word ne s'est perdu à l'import |
 | `conversion_odt.py` | convertit `.odt` et `.docx` par LibreOffice |
 | `import-medias.py`, `cmyk-rgb.py`, `portraits.py` | fin d'import : range les photos, détoure les portraits, convertit les images CMJN en RVB |

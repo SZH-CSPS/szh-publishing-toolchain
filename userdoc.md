@@ -740,7 +740,12 @@ Deux choses sont déjà faites à l’import, sans rien demander :
   document embarque – logo de licence, filigranes, portraits – et le convertisseur
   extrayait tout. Ce qu’aucune insertion du texte ni aucun tableau ne cite n’a nulle
   part où être légendé : `media/` ne garde donc que ce qui sert. Le journal d’import
-  liste ce qui est parti.
+  liste ce qui est parti ;
+- **un graphique, un SmartArt, un dessin ou un objet incorporé** (Excel, Visio…) que
+  la conversion ne sait pas changer en image devient tout de même une figure, avec sa
+  légende et son numéro, mais son image est un cadre **« IMAGE À REMPLACER »**. Le
+  journal d’import nomme l’objet et sa légende. Exportez-le en PNG ou en SVG depuis
+  Word, puis remplacez l’image et son texte alternatif dans **Médias de l’article**.
 
 **Enregistrer** écrit les fiches ; **Fermer** prévient si des modifications ne sont pas
 enregistrées. Les articles restent modifiables plus tard par **☰ Métadonnées des articles**.

@@ -747,6 +747,7 @@ dans `Books\` et `_Archive\Books\` ([`EMPLACEMENTS.md`](EMPLACEMENTS.md)).
 - **Le réimport d'un chapitre corrigé.** `reimporter.py` est propre aux articles ; le badge
   « déjà converti » signale un Word déposé une seconde fois, qui ne sera pas relu.
 - **Les images EMF et WMF.** `szh-metafichier.lua` les remplace par un repère visible ; il
-  faut les convertir à la main.
+  faut les convertir à la main. De même pour un graphique, un SmartArt ou un dessin Word,
+  auquel `docx-objets.py` donne à l'import une image de remplacement.
 - **Un Makefile unique paramétré revue/livre**, ou la fusion de `print.css` et des feuilles
   du livre : le partage passe par le socle de filtres et de styles.

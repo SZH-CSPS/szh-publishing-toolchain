@@ -1,8 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="img"
      aria-label="IMAGE A REMPLACER / BILD ZU ERSETZEN">
-  <!-- Substitut d'une image native Word (.emf / .wmf), posé par filters/szh-metafichier.lua.
-       Bilingue à dessein : le projet n'a pas de langue par défaut, et une épreuve se relit
-       aussi bien à Berne qu'à Lausanne. Voir l'en-tête du filtre pour le pourquoi.
+  <!-- Image de remplacement : posée par filters/szh-metafichier.lua à la place d'une image
+       native Word (.emf, .wmf), et par docx-objets.py à côté d'un objet Word que pandoc
+       ne rend pas en image (graphique, SmartArt, dessin).
+       Bilingue : une épreuve se relit aussi bien à Berne qu'à Lausanne.
        Traits et texte en DejaVu Sans, la police que le rootfs installe (fonts-dejavu) :
        une police absente ferait un placeholder muet. -->
   <rect x="4" y="4" width="392" height="292" rx="8"
@@ -15,6 +16,4 @@
         font-family="DejaVu Sans, Arial, sans-serif" font-size="27" font-weight="bold">IMAGE À REMPLACER</text>
   <text x="200" y="236" text-anchor="middle" fill="#9a3412"
         font-family="DejaVu Sans, Arial, sans-serif" font-size="23">BILD ZU ERSETZEN</text>
-  <text x="200" y="268" text-anchor="middle" fill="#9a3412"
-        font-family="DejaVu Sans, Arial, sans-serif" font-size="15">.emf / .wmf</text>
 </svg>

@@ -36,6 +36,9 @@
 #    b. Toute image d'un bloc `::: {.szh-grille}` sans alt= est signalée
 #       (figure-alt-a-completer) : dans un groupe, seule la première a une légende, et une
 #       image sans alt serait décorative, muette pour un lecteur d'écran.
+#    c. Chaque objet Word noté par docx-objets.py ($SZH_OBJETS) est signalé sous le nom
+#       final de son image : objet-word-remplace (image de remplacement) ou
+#       objet-word-apercu (objet incorporé gardé par son aperçu).
 #
 # Non bloquant : code 0 même sur une erreur de lecture (dite sur stderr). Le .md est relu
 # par pandoc en JSON ; sans pandoc, la recherche se fait dans le texte brut.
@@ -654,6 +657,73 @@ def _images_des_grilles(blocs, dans_grille, sortie):
             _images_des_grilles(c[2], dans_grille, sortie)
 
 
+# Objets Word notés par docx-objets.py : type -> (fr, de), et repère -> (fr, de) avec
+# le texte du repère.
+OBJETS_NOMS = {
+    'graphique': ('Le graphique Word', 'Das Word-Diagramm'),
+    'smartart': ('Le SmartArt', 'Die SmartArt-Grafik'),
+    'ole': ('L’objet incorporé', 'Das eingebettete Objekt'),
+    'dessin': ('Le dessin Word', 'Die Word-Zeichnung'),
+    'forme': ('La forme Word', 'Die Word-Form'),
+    'objet': ('L’objet Word', 'Das Word-Objekt'),
+}
+OBJETS_REPERES = {
+    'legende': ('légende « %s »', 'Legende „%s“'),
+    'paragraphe': ('dans le paragraphe « %s »', 'im Absatz „%s“'),
+    'apres': ('après le paragraphe « %s »', 'nach dem Absatz „%s“'),
+    'debut': ('en tête du document', 'am Anfang des Dokuments'),
+}
+
+
+def signaler_objets(chemin, renommees):
+    """Un avertissement par objet Word noté dans `chemin` (voir docx-objets.py), sous le
+    nom définitif de son image : objet-word-remplace pour une image de remplacement,
+    objet-word-apercu pour un objet incorporé gardé par son aperçu."""
+    if not chemin or not os.path.isfile(chemin):
+        return
+    with open(chemin, encoding='utf-8') as f:
+        lignes = [l.rstrip('\n').split('\t') for l in f if l.strip()]
+    for champs in lignes:
+        if len(champs) < 7:
+            continue
+        fichier, genre, detail, nom, rep, texte_rep, remplace = champs[:7]
+        nom, texte_rep = sans_barre(nom), sans_barre(texte_rep)
+        if genre not in OBJETS_NOMS:
+            continue
+        image = 'media/' + renommees.get(fichier, fichier)
+        quoi_fr, quoi_de = OBJETS_NOMS[genre]
+        if detail:
+            quoi_fr += ' %s' % detail
+            quoi_de += ' %s' % detail
+        if nom:
+            quoi_fr += ' « %s »' % nom
+            quoi_de += ' „%s“' % nom
+        court = texte_rep if len(texte_rep) <= 80 else texte_rep[:79] + '…'
+        rep_fr, rep_de = OBJETS_REPERES.get(rep, OBJETS_REPERES['debut'])
+        if '%s' in rep_fr:
+            rep_fr, rep_de = rep_fr % court, rep_de % court
+        champs_ligne = ['objet « %s »' % genre, 'image « %s »' % sans_barre(image),
+                        'repère « %s »' % sans_barre(rep_fr)]
+        if remplace == '1':
+            avertir('objet-word-remplace', champs_ligne,
+                    '%s (%s) ne se convertit pas en image. Une image à remplacer tient '
+                    'sa place (%s), avec sa légende et son numéro. Exportez-le en PNG ou en '
+                    'SVG depuis Word, puis remplacez l’image et son texte alternatif dans '
+                    '« Médias de l’article ».' % (quoi_fr, rep_fr, image),
+                    '%s (%s) lässt sich nicht in ein Bild umwandeln. Ein Ersatzbild '
+                    'hält seinen Platz (%s), mit Legende und Nummer. Exportieren Sie es aus '
+                    'Word als PNG oder SVG und ersetzen Sie Bild und Alternativtext unter '
+                    '«Medien des Artikels».' % (quoi_de, rep_de, image))
+        else:
+            avertir('objet-word-apercu', champs_ligne,
+                    '%s (%s) n’est repris que par son aperçu (%s). Vérifiez qu’il est '
+                    'lisible ; sinon, exportez-le en PNG ou en SVG et remplacez l’image dans '
+                    '« Médias de l’article ».' % (quoi_fr, rep_fr, image),
+                    '%s (%s) wird nur über seine Vorschau übernommen (%s). Prüfen Sie, ob '
+                    'sie lesbar ist; sonst exportieren Sie es als PNG oder SVG und ersetzen '
+                    'das Bild unter «Medien des Artikels».' % (quoi_de, rep_de, image))
+
+
 def apres_medias(slug, dossier, chemin_etat, stats_medias):
     chemin_md = os.path.join(dossier, slug + '.md')
     renommees = {}
@@ -689,6 +759,8 @@ def apres_medias(slug, dossier, chemin_etat, stats_medias):
                     'Das Bild „%s“ aus dem Word fehlt im Artikel, und seine Datei konnte '
                     'nicht extrahiert werden: fügen Sie es unter «Medien des Artikels» erneut '
                     'aus dem Word ein.' % r['nom_word'])
+
+    signaler_objets(os.getenv('SZH_OBJETS'), renommees)
 
     # Texte alternatif des groupes d'images.
     try:
