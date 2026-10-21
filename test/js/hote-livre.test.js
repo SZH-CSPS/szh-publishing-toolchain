@@ -62,8 +62,8 @@ test('livre : l’arbre montre Chapitres et Word, jamais Traductions', async () 
   const racine = await arbre.getChildren();
   // Le raccourci « À corriger » n'est pas une section d'accordéon : il n'a pas de catégorie.
   const categories = racine.filter((it) => it.categorie).map((it) => it.categorie);
-  assert.deepStrictEqual(categories, ['chapitres', 'word'],
-    'sections attendues pour un livre : chapitres puis word — obtenu ' + categories.join(', '));
+  assert.deepStrictEqual(categories, ['chapitres', 'word', 'aide'],
+    'sections attendues pour un livre : chapitres, word puis aide — obtenu ' + categories.join(', '));
 });
 
 test('livre : la section des unités s’appelle « chapitres », pas « articles »', async () => {

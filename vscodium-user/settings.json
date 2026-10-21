@@ -96,6 +96,48 @@
     "**/*.meta.yaml": true
   },
 
+  // ---- Aucun son ----
+  // Les signaux sonores de l’éditeur sont coupés, volume à zéro. Les annonces aux lecteurs
+  // d’écran gardent leur valeur par défaut. Liste des signaux de VSCodium 1.126 ;
+  // terminalBell couvre la cloche du terminal. save et format n’acceptent que
+  // userGesture, always ou never.
+  "accessibility.signalOptions.volume": 0,
+  "accessibility.signals.chatEditModifiedFile": { "sound": "off" },
+  "accessibility.signals.chatRequestSent": { "sound": "off", "announcement": "auto" },
+  "accessibility.signals.chatResponseReceived": { "sound": "off" },
+  "accessibility.signals.chatUserActionRequired": { "sound": "off", "announcement": "auto" },
+  "accessibility.signals.clear": { "sound": "off", "announcement": "auto" },
+  "accessibility.signals.codeActionApplied": { "sound": "off" },
+  "accessibility.signals.codeActionTriggered": { "sound": "off" },
+  "accessibility.signals.diffLineDeleted": { "sound": "off" },
+  "accessibility.signals.diffLineInserted": { "sound": "off" },
+  "accessibility.signals.diffLineModified": { "sound": "off" },
+  "accessibility.signals.editsKept": { "sound": "off", "announcement": "auto" },
+  "accessibility.signals.editsUndone": { "sound": "off", "announcement": "auto" },
+  "accessibility.signals.format": { "sound": "never", "announcement": "never" },
+  "accessibility.signals.lineHasBreakpoint": { "sound": "off", "announcement": "auto" },
+  "accessibility.signals.lineHasError": { "sound": "off", "announcement": "off" },
+  "accessibility.signals.lineHasFoldedArea": { "sound": "off", "announcement": "auto" },
+  "accessibility.signals.lineHasInlineSuggestion": { "sound": "off" },
+  "accessibility.signals.lineHasWarning": { "sound": "off", "announcement": "off" },
+  "accessibility.signals.nextEditSuggestion": { "sound": "off", "announcement": "auto" },
+  "accessibility.signals.noInlayHints": { "sound": "off", "announcement": "auto" },
+  "accessibility.signals.notebookCellCompleted": { "sound": "off", "announcement": "auto" },
+  "accessibility.signals.notebookCellFailed": { "sound": "off", "announcement": "auto" },
+  "accessibility.signals.onDebugBreak": { "sound": "off", "announcement": "auto" },
+  "accessibility.signals.positionHasError": { "sound": "off", "announcement": "on" },
+  "accessibility.signals.positionHasWarning": { "sound": "off", "announcement": "on" },
+  "accessibility.signals.progress": { "sound": "off", "announcement": "off" },
+  "accessibility.signals.save": { "sound": "never", "announcement": "never" },
+  "accessibility.signals.taskCompleted": { "sound": "off", "announcement": "auto" },
+  "accessibility.signals.taskFailed": { "sound": "off", "announcement": "auto" },
+  "accessibility.signals.terminalBell": { "sound": "off", "announcement": "auto" },
+  "accessibility.signals.terminalCommandFailed": { "sound": "off", "announcement": "auto" },
+  "accessibility.signals.terminalCommandSucceeded": { "sound": "off", "announcement": "auto" },
+  "accessibility.signals.terminalQuickFix": { "sound": "off", "announcement": "auto" },
+  "accessibility.signals.voiceRecordingStarted": { "sound": "off" },
+  "accessibility.signals.voiceRecordingStopped": { "sound": "off" },
+
   // ---- Correction orthographique ----
   // Un mot est accepté s'il est valide dans au moins une des trois langues : moins de
   // faux positifs en contexte bilingue. Bascule par suffixe de fichier.

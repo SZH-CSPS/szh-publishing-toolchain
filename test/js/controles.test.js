@@ -346,29 +346,32 @@ test('hôte : rouvrir un numéro retrouve ses contrôles, sans les annoncer', as
   assert.strictEqual(defauts(charge.lignes).length, 4);
 });
 
-// La liste a un raccourci dans l'arbre, sous « Word en attente ». Son icône porte la
-// gravité, visible sans ouvrir la liste.
+// Le raccourci « Contrôles » de l'arbre, entre « Word en attente » et la section « Aide ».
+// Son icône porte la gravité, visible sans ouvrir la liste.
+function raccourciControles(racine) { return racine.find((it) => it.contextValue === 'controles'); }
+
 test('arbre : le raccourci « À corriger » suit l’état, sous « Word en attente »', async () => {
   const arbre = HOTE.arbre();
   const racine = await arbre.getChildren();
-  const dernier = racine[racine.length - 1];
-  assert.strictEqual(dernier.contextValue, 'controles',
-    'le raccourci ne ferme pas la liste des sections');
-  assert.strictEqual(racine[racine.length - 2].contextValue, 'section-word',
+  const raccourci = raccourciControles(racine);
+  assert.ok(raccourci, 'le raccourci a disparu de l’arbre');
+  assert.strictEqual(racine.indexOf(raccourci), racine.length - 2,
+    'le raccourci doit précéder la section « Aide », qui ferme l’arbre');
+  assert.strictEqual(racine[racine.indexOf(raccourci) - 1].contextValue, 'section-word',
     'le raccourci ne suit pas « Word en attente »');
-  assert.strictEqual(dernier.collapsibleState, 0, 'le raccourci ne doit pas se déplier');
-  assert.ok(dernier.command && dernier.command.command === 'szh.vueControles',
+  assert.strictEqual(raccourci.collapsibleState, 0, 'le raccourci ne doit pas se déplier');
+  assert.ok(raccourci.command && raccourci.command.command === 'szh.vueControles',
     'le raccourci n’ouvre pas la vue');
-  assert.ok(dernier.tooltip, 'raccourci sans infobulle');
+  assert.ok(raccourci.tooltip, 'raccourci sans infobulle');
   // JOURNAL_CITATIONS ne porte que des avertissements : ambre, et leur compte.
-  assert.strictEqual(dernier.iconPath.id, 'warning',
-    'trois points à vérifier, et l’icône ne les annonce pas : ' + dernier.iconPath.id);
-  assert.match(String(dernier.description), /3/);
+  assert.strictEqual(raccourci.iconPath.id, 'warning',
+    'trois points à vérifier, et l’icône ne les annonce pas : ' + raccourci.iconPath.id);
+  assert.match(String(raccourci.description), /3/);
 
   // Un journal qui bloque : l'icône passe au rouge et compte les seuls bloquants.
   poserJournal(JOURNAL_BLOQUANT);
   await HOTE.finirTache('Aperçu / Export PDF', 2);
-  const bloquants = (await arbre.getChildren()).pop();
+  const bloquants = raccourciControles(await arbre.getChildren());
   assert.strictEqual(bloquants.iconPath.id, 'error',
     'un blocage ne se voit pas dans l’arbre : ' + bloquants.iconPath.id);
   assert.match(String(bloquants.description), /^\(\d+\)$/);
@@ -388,7 +391,7 @@ test('arbre : « À corriger » compte comme la barre d’état', async () => {
   const barre = HOTE.barreQuiDit('à corriger');
   assert.ok(barre, 'la barre d’état ne dit rien');
   const n = String(barre.text).match(/(\d+)/)[1];
-  const raccourci = (await HOTE.arbre().getChildren()).pop();
+  const raccourci = raccourciControles(await HOTE.arbre().getChildren());
   assert.strictEqual(raccourci.description, '(' + n + ')',
     'l’arbre et la barre ne comptent pas pareil : ' + raccourci.description + ' / ' + barre.text);
   poserJournal(JOURNAL_CITATIONS);

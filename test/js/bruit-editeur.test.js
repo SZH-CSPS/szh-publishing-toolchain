@@ -73,3 +73,44 @@ test('aucune tâche ne réclame de problemMatcher ni ne rouvre son terminal', ()
     assert.notStrictEqual(t.presentation.focus, true, t.label + ' : focus');
   }
 });
+
+// Les signaux de l'éditeur (accessibility.signals.*) de VSCodium 1.126, avec la valeur par
+// défaut de leur annonce aux lecteurs d'écran (null : le signal n'a pas d'annonce). Un
+// signal ajouté par une version suivante s'ajoute ici et dans le gabarit.
+const SIGNAUX = {
+  chatEditModifiedFile: null, chatRequestSent: 'auto', chatResponseReceived: null,
+  chatUserActionRequired: 'auto', clear: 'auto', codeActionApplied: null,
+  codeActionTriggered: null, diffLineDeleted: null, diffLineInserted: null,
+  diffLineModified: null, editsKept: 'auto', editsUndone: 'auto', format: 'never',
+  lineHasBreakpoint: 'auto', lineHasError: 'off', lineHasFoldedArea: 'auto',
+  lineHasInlineSuggestion: null, lineHasWarning: 'off', nextEditSuggestion: 'auto',
+  noInlayHints: 'auto', notebookCellCompleted: 'auto', notebookCellFailed: 'auto',
+  onDebugBreak: 'auto', positionHasError: 'on', positionHasWarning: 'on', progress: 'off',
+  save: 'never', taskCompleted: 'auto', taskFailed: 'auto', terminalBell: 'auto',
+  terminalCommandFailed: 'auto', terminalCommandSucceeded: 'auto', terminalQuickFix: 'auto',
+  voiceRecordingStarted: null, voiceRecordingStopped: null
+};
+
+// save et format prennent userGesture / always / never ; les autres auto / on / off.
+const SANS_SON = new Set(['off', 'never']);
+
+test('aucun son : volume à zéro, chaque signal muet, annonces inchangées', () => {
+  verifierPartout('accessibility.signalOptions.volume', 0);
+  for (const [nom, annonce] of Object.entries(SIGNAUX)) {
+    const attendu = { sound: (nom === 'save' || nom === 'format') ? 'never' : 'off' };
+    if (annonce !== null) { attendu.announcement = annonce; }
+    verifierPartout('accessibility.signals.' + nom, attendu);
+  }
+  // Partout, gabarit et défauts : aucun signal n'a de son, y compris un signal ajouté à la
+  // main hors de la liste.
+  for (const [ou, table] of [['vscodium-user/settings.json', GABARIT], ['configurationDefaults', DEFAUTS]]) {
+    for (const cle of Object.keys(table).filter((c) => c.indexOf('accessibility.signals.') === 0)) {
+      const v = table[cle];
+      assert.ok(v && SANS_SON.has(v.sound), ou + ' : ' + cle + ' garde un son : ' + JSON.stringify(v));
+    }
+    // Les anciennes clés audioCues.* ne sont plus des réglages : elles ne servent qu'à la
+    // migration vers accessibility.signals.*.
+    assert.deepStrictEqual(Object.keys(table).filter((c) => c.indexOf('audioCues.') === 0), [],
+      ou + ' : clé audioCues.* inutile');
+  }
+});

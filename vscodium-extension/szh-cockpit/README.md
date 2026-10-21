@@ -71,6 +71,7 @@ Un module « hôte » (`*-hote.js`) tient une zone de l'interface et reçoit ses
 |---|---|
 | `lib/profil.js` | revue ou livre, chemins, capacités (`szh.peut.*`) |
 | `lib/articles.js` | ordre des articles, nom affiché, tâches éditoriales |
+| `lib/aide.js` | entrées de la section « Aide » de l'arbre, et l'adresse du wiki où l'on signale un problème |
 | `lib/yaml.js` | lecture et écriture des YAML du numéro et des fiches, écriture atomique |
 | `lib/calendrier.js` | lecture de `calendrier.csv` et événements de la semaine en cours |
 | `lib/attente.js` | phrases d'attente des opérations longues, qui défilent dans la barre d'état après cinq secondes |
@@ -122,7 +123,7 @@ Un module « hôte » (`*-hote.js`) tient une zone de l'interface et reçoit ses
 | `lib/coedition.js` | bail de deux minutes sur un fichier modifié par un formulaire |
 | `lib/copies-conflit.js` | détecte les copies en conflit de OneDrive et applique les choix bloc par bloc |
 | `lib/supprimer.js` | supprime un dossier sur OneDrive (attribut lecture seule, reprises) |
-| `lib/renumerotation-fs.js` | exécute le plan de renumérotation, l'ordre du numéro écrit en dernier |
+| `lib/renumerotation-fs.js` | exécute le plan de renumérotation, l'ordre du numéro écrit en dernier ; ne renomme que les unités (dossier avec son `.md` ou page de Documentation), hors pièces de travail « _ » d'un livre |
 | `lib/relance-compilation.js` | recompile un article enregistré par un formulaire (attente de 2,5 s) |
 | `lib/table-images.js` | images des cellules de tableau : aperçu et copie dans `media/` |
 | `lib/reglages-flotte.js` | réglages de l'éditeur imposés à tous les postes |

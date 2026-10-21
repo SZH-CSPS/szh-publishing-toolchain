@@ -65,10 +65,10 @@ Les deux autres entrées restent disponibles et font exactement la même chose 
 gauche (l’Explorateur). Elle regroupe tout le travail courant, sans toucher aux
 fichiers ni au terminal.
 
-[capture : la barre « Pronto » avec ses cinq sections]
+[capture : la barre « Pronto » avec ses six sections]
 
-Elle a **cinq sections** : Articles, Actualité, Traductions, Word en attente et
-Contrôles.
+Elle a **six sections** : Articles, Actualité, Traductions, Word en attente, Contrôles
+et Aide.
 
 - **Articles** – un article par ligne. **Un clic fait tout** : le texte s’ouvre à
   gauche, l’article est recompilé **si besoin** (texte ou tableau plus récent que le
@@ -84,6 +84,9 @@ Contrôles.
   - **🖼 Gérer les médias de cet article** – le formulaire décrit juste en dessous ;
   - **🗑 Supprimer l’article** – efface l’article **et** son PDF, après une demande de
     confirmation explicite (l’action est irréversible : rien n’est supprimé sans accord).
+    Les articles qui restent sont renumérotés aussitôt : leurs dossiers reprennent les
+    rangs 00, 01, 02… sans trou. Dans un livre, les dossiers dont le nom commence par
+    « _ » ne sont pas des chapitres et gardent leur nom.
 
   Les deux premiers **désignent l’article** au passage : la barre latérale le sélectionne,
   et l’outil sait dès lors de quel article on parle – sans ouvrir son texte, que le
@@ -328,9 +331,11 @@ Contrôles.
   exactement comme avec le bouton « Importer des Word ».
 - **Traductions** – l’avancement des titres, résumés et mots-clés à traduire, article
   par article (voir « La section « Traductions » », plus bas).
-- **Contrôles** – la dernière ligne, sous « Word en attente » : son icône est rouge s’il y
+- **Contrôles** – la ligne sous « Word en attente » : son icône est rouge s’il y
   a un blocage, ambre s’il y a un point à vérifier, grise sinon, et un clic ouvre la page
   des contrôles (voir « Les contrôles de la compilation », plus bas).
+- **Aide** – la dernière section, pour une revue comme pour un livre. **Signaler un
+  problème** ouvre dans le navigateur la page du wiki où l’on décrit un problème de Pronto.
 
 Le **titre de la barre** affiche le numéro en cours (p. ex. « R2026-2 | Autodétermination »),
 mis à jour dès que les métadonnées changent. En haut de la barre, le bouton **＋**, le

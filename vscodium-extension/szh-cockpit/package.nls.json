@@ -33,6 +33,7 @@
   "cmd.vueTraductions": "Suivi des traductions",
   "cmd.vueWord": "Word en attente",
   "cmd.vueControles": "Contrôles",
+  "cmd.signalerProbleme": "Signaler un problème",
   "cmd.envoyerTraduction": "Envoyer pour traduction (lien)",
   "cmd.reglages": "Réglages Pronto",
   "cmd.basculerApercu": "Aperçu : écran ⇄ PDF",

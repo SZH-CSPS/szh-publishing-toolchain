@@ -41,6 +41,10 @@ const TEXTES_COCKPIT = {
     'arbre.controles.rien': 'Rien à signaler',
     'arbre.traductions': 'TRADUCTIONS',
     'arbre.actualite': 'ACTUALITÉ',
+    // Section AIDE de l'arbre (lib/aide.js).
+    'arbre.aide': 'AIDE',
+    'arbre.aide.signaler': 'Signaler un problème',
+    'arbre.aide.signaler.tip': 'Décrire un problème de Pronto sur le wiki – clic = ouvrir la page dans le navigateur',
     // Entrées de la section ACTUALITÉ (extension.js#_itemsActualite) : chacune ouvre le
     // formulaire de Documentation sur sa vue. « Publier sur le site web » est grisée.
     'arbre.actualite.traductions.tip': 'Fiches de l’autre revue marquées « à traduire » – clic = ouvrir cette vue',
@@ -2811,6 +2815,9 @@ const TEXTES_COCKPIT = {
     'arbre.controles.rien': 'Nichts zu melden',
     'arbre.traductions': 'ÜBERSETZUNGEN',
     'arbre.actualite': 'NEWS',
+    'arbre.aide': 'HILFE',
+    'arbre.aide.signaler': 'Problem melden',
+    'arbre.aide.signaler.tip': 'Ein Problem mit Pronto im Wiki beschreiben – Klick = Seite im Browser öffnen',
     'arbre.actualite.traductions.tip': 'Karten der anderen Zeitschrift, als «zu übersetzen» markiert – Klick = diese Ansicht öffnen',
     'arbre.actualite.reservoir.tip': 'Karten der anderen Zeitschrift ohne Entscheid, und meine herrenlosen Karten – Klick = diese Ansicht öffnen',
     'arbre.actualite.numero.tip': 'Rubriken und Karten dieser Ausgabe – Klick = diese Ansicht öffnen',
