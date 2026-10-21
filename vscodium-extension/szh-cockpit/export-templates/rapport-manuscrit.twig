@@ -16,8 +16,8 @@
    vue.gabarit                     "A" | "B"
    vue.date                        "21.09.2026"
    vue.compteurs.*                 signes_total, signes_bibliographie, nb_references,
-                                    commentaires_perdus, note_commentaires, images_total,
-                                    images_sans_alt, notes_ecrites, typographie_appliquee,
+                                    commentaires_origine, commentaires_repris, note_commentaires,
+                                    images_total, images_sans_alt, notes_ecrites, typographie_appliquee,
                                     revisions_posees, commentaires_poses, alertes_renvoyees
    vue.entete                      null (cas A) ou {titre, sous_titre, auteurs[], resume,
                                     resume_signes, fourchette_resume, langue_resume,
@@ -117,7 +117,7 @@ mark { background: var(--erreur-clair); padding: 0 2px; }
   <div>{% if produit == 'zeitschrift' %}Referenzen{% else %}Références{% endif %} : {{ vue.compteurs.nb_references }}</div>
   <div>{% if produit == 'zeitschrift' %}Bilder{% else %}Images{% endif %} : {{ vue.compteurs.images_total }} ({% if produit == 'zeitschrift' %}ohne Alt-Text{% else %}sans texte alternatif{% endif %} : {{ vue.compteurs.images_sans_alt }})</div>
   <div>{% if produit == 'zeitschrift' %}Fussnoten{% else %}Notes{% endif %} : {{ vue.compteurs.notes_ecrites }}</div>
-  <div>{% if produit == 'zeitschrift' %}Verlorene Word-Kommentare{% else %}Commentaires Word perdus{% endif %} : {{ vue.compteurs.commentaires_perdus }}</div>
+  <div>{% if produit == 'zeitschrift' %}Übernommene Word-Kommentare des Manuskripts{% else %}Commentaires Word du manuscrit repris{% endif %} : {{ vue.compteurs.commentaires_repris }} / {{ vue.compteurs.commentaires_origine }}</div>
   <div>{% if vue.compteurs.typographie_appliquee %}<span class="puce puce-ok">{% if produit == 'zeitschrift' %}Typografie angewendet{% else %}Typographie appliquée{% endif %}</span>{% else %}<span class="puce puce-erreur">{% if produit == 'zeitschrift' %}Typografie NICHT angewendet{% else %}Typographie NON appliquée{% endif %}</span>{% endif %}</div>
   <div>{% if produit == 'zeitschrift' %}Im Dokument eingetragen (Änderungen/Kommentare){% else %}Posées dans le document (révisions/commentaires){% endif %} : {{ vue.compteurs.revisions_posees }} / {{ vue.compteurs.commentaires_poses }}</div>
   <div>{% if produit == 'zeitschrift' %}An diesen Bericht weitergeleitete Meldungen{% else %}Alertes renvoyées à ce rapport{% endif %} : {{ vue.compteurs.alertes_renvoyees }}</div>

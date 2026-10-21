@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 # Annote un .docx déjà au gabarit (la sortie de manuscrit_gabarit.ecrire()) avec les alertes
 # du nettoyeur : révisions Word (w:ins/w:del) pour les corrections sûres, commentaires Word
-# ancrés, en nombre plafonné, pour ce qui demande un jugement. Voir
+# ancrés, en nombre plafonné, pour ce qui demande un jugement. Il repose aussi les
+# commentaires Word du manuscrit, sur leur passage. Voir
 # docs/ARCHITECTURE-nettoyeur-manuscrit.md.
 #
 # Bibliothèque standard seule, sans python-docx ni lxml. Le module ne décide rien : les
@@ -41,14 +42,27 @@ import zipfile
 from datetime import datetime, timezone
 
 REL_COMMENTS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments'
+REL_COMMENTS_EX = 'http://schemas.microsoft.com/office/2011/relationships/commentsExtended'
+REL_PEOPLE = 'http://schemas.microsoft.com/office/2011/relationships/people'
+_CT_WML = 'application/vnd.openxmlformats-officedocument.wordprocessingml.'
+CT_COMMENTS = _CT_WML + 'comments+xml'
+CT_COMMENTS_EX = _CT_WML + 'commentsExtended+xml'
+CT_PEOPLE = _CT_WML + 'people+xml'
+
+_NS_W14 = 'http://schemas.microsoft.com/office/word/2010/wordml'
+_NS_W15 = 'http://schemas.microsoft.com/office/word/2012/wordml'
+_NS_MC = 'http://schemas.openxmlformats.org/markup-compatibility/2006'
 
 _RELS_VACIAS = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
                 '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/'
                 'relationships"></Relationships>')
 
+# w14 sert au w14:paraId du dernier paragraphe d'un commentaire, que commentsExtended.xml
+# cite pour relier une réponse à son commentaire.
 _COMMENTS_XML_DEBUT = (
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-    '<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">')
+    '<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+    'xmlns:w14="%s" xmlns:mc="%s" mc:Ignorable="w14">' % (_NS_W14, _NS_MC))
 
 _ETIQUETA_SUGGESTION = {'fr': 'Suggestion', 'de': 'Vorschlag'}
 
@@ -578,12 +592,21 @@ def _marca_fin(id_, style_marca):
         id_, rpr, id_)
 
 
-def _comentario_xml(id_, autor, fecha, iniciales, lineas):
-    parrafos = ''.join(
-        '<w:p><w:r><w:t xml:space="preserve">%s</w:t></w:r></w:p>' % _escapar(l)
-        for l in lineas)
-    return ('<w:comment w:id="%d" w:author="%s" w:date="%s" w:initials="%s">%s</w:comment>'
-            % (id_, _escapar_attr(autor), fecha, _escapar_attr(iniciales), parrafos))
+def _comentario_xml(id_, autor, fecha, iniciales, lineas, para_id=None):
+    """Un w:comment, un paragraphe par ligne. `para_id` se pose sur le dernier paragraphe
+    (w14:paraId). Une date ou des initiales à None ne s'écrivent pas."""
+    lineas = list(lineas) or ['']
+    parrafos = []
+    for i, l in enumerate(lineas):
+        attr = (' w14:paraId="%s"' % para_id) if para_id and i == len(lineas) - 1 else ''
+        texte = ('<w:r><w:t xml:space="preserve">%s</w:t></w:r>' % _escapar(l)) if l else ''
+        parrafos.append('<w:p%s>%s</w:p>' % (attr, texte))
+    attrs = ' w:author="%s"' % _escapar_attr(autor or '')
+    if fecha:
+        attrs += ' w:date="%s"' % _escapar_attr(fecha)
+    if iniciales:
+        attrs += ' w:initials="%s"' % _escapar_attr(iniciales)
+    return '<w:comment w:id="%d"%s>%s</w:comment>' % (id_, attrs, ''.join(parrafos))
 
 
 # ---------------------------------------------------------------------------------
@@ -705,8 +728,8 @@ def _construir_texto_comentario(alerta, es_sintesis, total_por_regla, langue):
 # Un paragraphe entier : révisions puis commentaires, car un commentaire peut viser un
 # passage déjà fusionné par une révision.
 
-def _puntos_extra(revisiones, comentarios, total_len):
-    pts = []
+def _puntos_extra(revisiones, comentarios, total_len, marcas=()):
+    pts = [pos for pos, _tipo, _xml in marcas]
     for span, _a in revisiones:
         pts += [span[0], span[1]]
     for span, _a, _s in comentarios:
@@ -718,12 +741,17 @@ def _puntos_extra(revisiones, comentarios, total_len):
 
 
 def _anotar_parrafo(p_xml, revisiones, comentarios, contador, autor, fecha, iniciales,
-                     style_comentario, langue, stats, total_por_regla, comments_nuevos):
+                     style_comentario, langue, stats, total_por_regla, comments_nuevos,
+                     marcas=()):
+    """Écrit dans p_xml les révisions et les commentaires du nettoyeur, puis les bornes des
+    commentaires d'origine. `marcas` : [(position, 'debut'|'fin', xml)], le XML d'une borne
+    déjà construit (son commentaire est écrit ailleurs)."""
     if p_xml.endswith('/>'):
         p_xml = p_xml[:-2] + '></w:p>'
     runs = _leer_runs(p_xml)
     total_len = sum(len(r['texto']) for r in runs)
-    atomos = _atomos_parrafo(runs, total_len, _puntos_extra(revisiones, comentarios, total_len))
+    atomos = _atomos_parrafo(runs, total_len,
+                             _puntos_extra(revisiones, comentarios, total_len, marcas))
 
     def finalizar_comentario(alerta, es_sintesis):
         id_ = next(contador)
@@ -738,14 +766,16 @@ def _anotar_parrafo(p_xml, revisiones, comentarios, contador, autor, fecha, inic
     # Paragraphe sans texte : seuls des commentaires sur le paragraphe entier ont pu s'y
     # ancrer. Leurs deux marqueurs se posent l'un après l'autre avant la fermeture.
     if not runs or not atomos:
-        marcas = []
+        marcas_vacio = []
         for _span, alerta, es_sintesis in comentarios:
             id_ = finalizar_comentario(alerta, es_sintesis)
-            marcas.append(_marca_inicio(id_))
-            marcas.append(_marca_fin(id_, style_comentario))
-        if not marcas:
+            marcas_vacio.append(_marca_inicio(id_))
+            marcas_vacio.append(_marca_fin(id_, style_comentario))
+        marcas_vacio += [xml for _p, tipo, xml in marcas if tipo == 'debut']
+        marcas_vacio += [xml for _p, tipo, xml in marcas if tipo == 'fin']
+        if not marcas_vacio:
             return p_xml
-        return p_xml[:-len('</w:p>')] + ''.join(marcas) + '</w:p>'
+        return p_xml[:-len('</w:p>')] + ''.join(marcas_vacio) + '</w:p>'
 
     for a in atomos:
         for i, r in enumerate(runs):
@@ -782,6 +812,23 @@ def _anotar_parrafo(p_xml, revisiones, comentarios, contador, autor, fecha, inic
         antes.setdefault(id(atomos[i1]), []).append(_marca_inicio(id_))
         despues.setdefault(id(atomos[i2]), []).append(_marca_fin(id_, style_comentario))
 
+    # Bornes des commentaires d'origine : un début se pose avant l'atome qui contient sa
+    # position, une fin après l'atome qui contient le caractère qui la précède. Une position
+    # tombée dans une révision fusionnée s'étend à toute la révision.
+    for pos, tipo, xml in marcas:
+        if tipo == 'debut':
+            atomo = next((a for a in atomos if a['debut'] <= pos < a['fin']), None)
+            if atomo is None:
+                despues.setdefault(id(atomos[-1]), []).append(xml)
+            else:
+                antes.setdefault(id(atomo), []).append(xml)
+        else:
+            atomo = next((a for a in atomos if a['debut'] < pos <= a['fin']), None)
+            if atomo is None:
+                antes.setdefault(id(atomos[0]), []).append(xml)
+            else:
+                despues.setdefault(id(atomo), []).append(xml)
+
     piezas = [p_xml[:runs[atomos[0]['run_ini']]['debut_xml']]]
     for i, a in enumerate(atomos):
         piezas.append(''.join(antes.get(id(a), [])))
@@ -795,15 +842,272 @@ def _anotar_parrafo(p_xml, revisiones, comentarios, contador, autor, fecha, inic
 
 
 # ---------------------------------------------------------------------------------
+# Commentaires d'origine : les commentaires Word du manuscrit (manuscrit_docx.
+# lire_commentaires()), reposés dans la sortie avec leur auteur, leur date, leur texte et leurs
+# fils. Ils ne passent ni par le plafond ni par les doublons de révision. Chacun est ancré :
+# 1. sur son passage, retrouvé dans le paragraphe correspondant (`passage`) ;
+# 2. à défaut, à la position que donne l'alignement du texte source sur le texte écrit
+#    (`approche`), ou sur le paragraphe correspondant entier (`paragraphe`) ;
+# 3. si le paragraphe n'a pas d'entrée dans la correspondance, sur la seule occurrence de son
+#    passage dans tout le document, tableaux compris (`passage`), sinon sur le bloc figure ou
+#    tableau, sinon sur le paragraphe correspondant suivant (`deplace`).
+
+_SEUIL_ALIGNEMENT = 0.5
+_LONGUEUR_MIN_RECHERCHE_GLOBALE = 4
+
+_RE_P_OUVRANT_OU_FERMANT = re.compile(r'<w:p(?=[\s>/])[^>]*?(/?)>|</w:p>')
+
+
+def _parrafos_exteriores(interior):
+    """[(debut, fin)] de chaque w:p de `interior` qui n'est pas dans un autre w:p (ceux des
+    tableaux compris), dans l'ordre."""
+    resultado, profundidad, debut = [], 0, None
+    for m in _RE_P_OUVRANT_OU_FERMANT.finditer(interior):
+        if m.group(0).startswith('</'):
+            profundidad -= 1
+            if profundidad == 0:
+                resultado.append((debut, m.end()))
+        elif m.group(1) == '/':
+            if profundidad == 0:
+                resultado.append((m.start(), m.end()))
+        else:
+            if profundidad == 0:
+                debut = m.start()
+            profundidad += 1
+    return resultado
+
+
+def _texto_parrafo(p_xml):
+    if p_xml.endswith('/>'):
+        return ''
+    return ''.join(r['texto'] for r in _leer_runs(p_xml))
+
+
+def _alineacion(fuente, salida):
+    """Les opcodes de difflib entre le texte source et le texte écrit, ou None si les deux
+    textes se ressemblent trop peu pour qu'une position se transpose."""
+    if not fuente or not salida:
+        return None
+    sm = difflib.SequenceMatcher(None, fuente, salida, autojunk=False)
+    if sm.ratio() < _SEUIL_ALIGNEMENT:
+        return None
+    return sm.get_opcodes()
+
+
+def _posicion_alineada(opcodes, pos, es_fin):
+    """La position du texte écrit qui correspond à `pos` du texte source."""
+    for tag, i1, i2, j1, j2 in opcodes:
+        if i1 <= pos < i2 or (es_fin and pos == i2 and i2 > i1):
+            if tag == 'equal':
+                return j1 + (pos - i1)
+            return j2 if es_fin else j1
+    return opcodes[-1][4] if opcodes else 0
+
+
+def _localizar_pasaje(texto, pasaje, texto_fuente, s, e):
+    """((debut, fin), 'passage'|'approche') du passage [s, e) du texte source dans `texto`,
+    ou None. Plusieurs occurrences : la plus proche de la position transposée."""
+    opcodes = _alineacion(texto_fuente, texto)
+    estimada = _posicion_alineada(opcodes, s, False) if opcodes else 0
+    if pasaje and pasaje.strip():
+        for t, p in ((texto, pasaje),
+                     (_normalizar_para_comparar(texto), _normalizar_para_comparar(pasaje))):
+            ocurrencias = [m.start() for m in re.finditer(re.escape(p), t)]
+            if ocurrencias:
+                o = min(ocurrencias, key=lambda x: abs(x - estimada))
+                return (o, o + len(pasaje)), 'passage'
+    if opcodes:
+        d, f = _posicion_alineada(opcodes, s, False), _posicion_alineada(opcodes, e, True)
+        if f > d:
+            return (d, f), 'approche'
+    return None
+
+
+def _ubicar_comentarios_origen(comentarios, interior, indices_p, origen_a_salida,
+                               origen_a_bloc):
+    """{id source: (placement, ancrage, motif)} ; placement = (clé début, position, clé fin,
+    position), une clé étant la position d'un w:p dans `interior`, ou None si le commentaire
+    n'a pu être posé nulle part."""
+    textos = {d: _texto_parrafo(interior[d:f]) for d, f in _parrafos_exteriores(interior)}
+    orden = sorted(textos)
+
+    def clave(tabla, fuente):
+        s = tabla.get(fuente) if fuente is not None else None
+        return indices_p[s][0] if s is not None and 0 <= s < len(indices_p) else None
+
+    fuentes = sorted(f for f in origen_a_salida if clave(origen_a_salida, f) is not None)
+
+    def vecino(fuente):
+        apres = [f for f in fuentes if fuente is not None and f > fuente]
+        if apres:
+            return clave(origen_a_salida, apres[0])
+        avant = [f for f in fuentes if fuente is not None and f < fuente]
+        if avant:
+            return clave(origen_a_salida, avant[-1])
+        return clave(origen_a_salida, fuentes[0]) if fuentes else None
+
+    def entero(c):
+        return (c, 0, c, len(textos.get(c, '')))
+
+    def buscar_en_todo(pasaje):
+        p = _normalizar_para_comparar((pasaje or '').strip())
+        if len(p) < _LONGUEUR_MIN_RECHERCHE_GLOBALE or '\n' in p:
+            return None
+        hallados = []
+        for d in orden:
+            for m in re.finditer(re.escape(p), _normalizar_para_comparar(textos[d])):
+                hallados.append((d, m.start()))
+            if len(hallados) > 1:
+                return None
+        if len(hallados) == 1:
+            d, o = hallados[0]
+            return (d, o, d, o + len(p))
+        return None
+
+    def reubicar(pasaje, fuente, motivo, motivo_bloc):
+        hallado = buscar_en_todo(pasaje)
+        if hallado:
+            return hallado, 'passage', None
+        cb = clave(origen_a_bloc, fuente)
+        if cb is not None:
+            return entero(cb), 'deplace', motivo_bloc
+        v = vecino(fuente)
+        if v is not None:
+            return entero(v), 'deplace', motivo
+        return None, 'non_pose', motivo
+
+    resultado = {}
+    for c in comentarios:
+        lieu = c.get('lieu')
+        if lieu == 'corps':
+            pd, pf = c['para_debut'], c['para_fin']
+            cd, cf = clave(origen_a_salida, pd), clave(origen_a_salida, pf)
+            td, tf = c.get('texte_debut') or '', c.get('texte_fin') or ''
+            if cd is not None and pd == pf:
+                loc = _localizar_pasaje(textos[cd], c.get('passage'), td, c['pos_debut'],
+                                        c['pos_fin'])
+                if loc:
+                    resultado[c['id']] = ((cd, loc[0][0], cd, loc[0][1]), loc[1], None)
+                else:
+                    resultado[c['id']] = (entero(cd), 'paragraphe', None)
+            elif cd is not None or (cf is not None and pd != pf):
+                debut, fin, exact = 0, None, True
+                if cd is not None:
+                    loc = _localizar_pasaje(textos[cd], td[c['pos_debut']:], td,
+                                            c['pos_debut'], len(td))
+                    debut = loc[0][0] if loc else 0
+                    exact = bool(loc) and loc[1] == 'passage'
+                if cf is not None and (cd is None or cf > cd):
+                    loc = _localizar_pasaje(textos[cf], tf[:c['pos_fin']], tf, 0, c['pos_fin'])
+                    fin = (cf, loc[0][1] if loc else len(textos[cf]))
+                    exact = exact and bool(loc) and loc[1] == 'passage'
+                if cd is None:
+                    debut, cd = 0, cf
+                if fin is None:
+                    fin, exact = (cd, len(textos[cd])), False
+                resultado[c['id']] = ((cd, debut) + fin, 'passage' if exact else 'approche',
+                                      None)
+            else:
+                resultado[c['id']] = reubicar(c.get('passage'), pd, 'paragraphe-disparu',
+                                              'bloc')
+        elif lieu == 'tableau':
+            resultado[c['id']] = reubicar(c.get('passage'), c['indice'], 'tableau', 'tableau')
+        elif lieu == 'note' and c.get('appel'):
+            lieu_appel, indice = c['appel']
+            tabla = origen_a_salida if lieu_appel == 'corps' else origen_a_bloc
+            ca = clave(tabla, indice)
+            ca = ca if ca is not None else vecino(indice)
+            resultado[c['id']] = ((entero(ca), 'deplace', 'note') if ca is not None
+                                  else (None, 'non_pose', 'note'))
+        else:
+            v = vecino(None)
+            motivo = 'note' if lieu == 'note' else 'inconnu'
+            resultado[c['id']] = ((entero(v), 'deplace', motivo) if v is not None
+                                  else (None, 'non_pose', motivo))
+
+    # Une réponse sans borne à elle prend l'ancrage du commentaire auquel elle répond.
+    for c in comentarios:
+        parent = resultado.get(c.get('parent'))
+        if c.get('lieu') == 'inconnu' and parent and parent[0] is not None:
+            resultado[c['id']] = parent
+
+    # Un passage vide se pose sur le paragraphe entier : Word n'affiche pas une ancre vide.
+    for id_, (placement, ancrage, motivo) in list(resultado.items()):
+        if placement is not None and placement[0] == placement[2] and placement[1] >= placement[3]:
+            resultado[id_] = (entero(placement[0]), 'paragraphe' if ancrage != 'deplace'
+                              else ancrage, motivo)
+    return resultado
+
+
+def _ids_parrafo_libres(contenidos):
+    """Générateur de w14:paraId (8 chiffres hexadécimaux, sous 0x80000000) absents de toutes
+    les parties XML."""
+    existentes = set()
+    for nombre, datos in contenidos.items():
+        if nombre.endswith('.xml'):
+            existentes |= {x.decode('ascii').upper()
+                           for x in re.findall(rb'paraId="([0-9A-Fa-f]{8})"', datos)}
+    n = 0x1C0FFEE0
+    while True:
+        n += 1
+        candidato = '%08X' % n
+        if candidato not in existentes:
+            yield candidato
+
+
+def _declarar_parte(rels_xml, ct_xml, cible, type_rel, type_contenu):
+    """Ajoute la relation de word/document.xml vers `cible` et son type de contenu, s'ils
+    manquent. Rend (rels_xml, ct_xml)."""
+    if 'Target="%s"' % cible not in rels_xml:
+        rid_existentes = [int(m) for m in re.findall(r'Id="rId(\d+)"', rels_xml)]
+        rels_xml = rels_xml.replace(
+            '</Relationships>',
+            '<Relationship Id="rId%d" Type="%s" Target="%s"/></Relationships>'
+            % (max(rid_existentes, default=0) + 1, type_rel, cible))
+    if '/word/%s"' % cible not in ct_xml:
+        ct_xml = ct_xml.replace(
+            '</Types>', '<Override PartName="/word/%s" ContentType="%s"/></Types>'
+            % (cible, type_contenu))
+    return rels_xml, ct_xml
+
+
+def _commentaires_etendus_xml(entrees):
+    """commentsExtended.xml : [(paraId, paraId du parent ou None, résolu)]."""
+    corps = ''.join(
+        '<w15:commentEx w15:paraId="%s"%s w15:done="%d"/>'
+        % (p, (' w15:paraIdParent="%s"' % parent) if parent else '', 1 if resolu else 0)
+        for p, parent, resolu in entrees)
+    return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<w15:commentsEx xmlns:mc="%s" xmlns:w15="%s" mc:Ignorable="w15">%s'
+            '</w15:commentsEx>' % (_NS_MC, _NS_W15, corps))
+
+
+def _personnes_xml(auteurs, personnes):
+    """people.xml : une w15:person par auteur, avec l'identité du manuscrit si elle y
+    figurait."""
+    corps = []
+    for a in auteurs:
+        info = (personnes or {}).get(a) or {}
+        corps.append('<w15:person w15:author="%s"><w15:presenceInfo w15:providerId="%s" '
+                     'w15:userId="%s"/></w15:person>'
+                     % (_escapar_attr(a), _escapar_attr(info.get('fournisseur') or 'None'),
+                        _escapar_attr(info.get('utilisateur') or a)))
+    return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<w15:people xmlns:mc="%s" xmlns:w15="%s" mc:Ignorable="w15">%s</w15:people>'
+            % (_NS_MC, _NS_W15, ''.join(corps)))
+
+
+# ---------------------------------------------------------------------------------
 # Point d'entrée.
 
 def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, langue='fr',
-            auteur='Relecture automatique', plafond_commentaires=25):
+            auteur='Relecture automatique', plafond_commentaires=25, origine=None):
     """Ancre les `alertes` (huit champs) sur `chemin_docx_entree`, déjà au gabarit (voir
     manuscrit_gabarit.ecrire()), grâce à `correspondance` (liste de {'source', 'sortie'}).
-    Écrit le résultat dans `chemin_docx_sortie`, qui peut être le chemin d'entrée : on écrit
-    dans un fichier temporaire puis on le met en place. Rend les statistiques
-    d'annotation."""
+    `origine` : les commentaires du manuscrit, tels que les rend
+    manuscrit_docx.lire_commentaires(), reposés avec leur auteur. Écrit le résultat dans
+    `chemin_docx_sortie`, qui peut être le chemin d'entrée : on écrit dans un fichier
+    temporaire puis on le met en place. Rend les statistiques d'annotation."""
     with zipfile.ZipFile(chemin_docx_entree) as zin:
         contenidos = {nombre: zin.read(nombre) for nombre in zin.namelist()}
 
@@ -1136,18 +1440,68 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
             (localizado, alerta, id(alerta) in sintesis_para))
         devenir[idx] = 'commentaire'
 
+    # 3 bis. Commentaires d'origine : ancrage (voir _ubicar_comentarios_origen()), puis leur
+    # XML et leurs bornes, rangées par paragraphe (clé : position du w:p dans `interior`).
+    comentarios_origen = list((origine or {}).get('commentaires') or [])
+    stats_origine = {'source': len(comentarios_origen), 'poses': 0, 'passage': 0,
+                     'approche': 0, 'paragraphe': 0, 'deplaces': 0, 'non_poses': 0,
+                     'liste': []}
+    stats['commentaires_origine'] = stats_origine
+    comments_origen_xml = []
+    etendus = []          # (paraId, paraId du parent, résolu)
+    auteurs_origine = []
+    marcas_por_clave = {}
+    if comentarios_origen:
+        ubicaciones = _ubicar_comentarios_origen(comentarios_origen, interior, indices_p,
+                                                 origen_a_salida, origen_a_bloc)
+        para_ids = _ids_parrafo_libres(contenidos)
+        para_id_de = {}
+        for c in comentarios_origen:
+            placement, ancrage, motif = ubicaciones.get(c['id'], (None, 'non_pose', 'inconnu'))
+            stats_origine['liste'].append({
+                'id': c['id'], 'auteur': c.get('auteur'), 'para': c.get('para_debut'),
+                'passage': (c.get('passage') or '')[:80], 'ancrage': ancrage, 'motif': motif})
+            if placement is None:
+                stats_origine['non_poses'] += 1
+                continue
+            stats_origine['poses'] += 1
+            stats_origine['deplaces' if ancrage == 'deplace' else ancrage] += 1
+            id_ = next(contador)
+            para_id_de[c['id']] = next(para_ids)
+            comments_origen_xml.append(_comentario_xml(
+                id_, c.get('auteur'), c.get('date'), c.get('initiales'),
+                c.get('paragraphes') or [], para_id=para_id_de[c['id']]))
+            if c.get('auteur') and c['auteur'] not in auteurs_origine:
+                auteurs_origine.append(c['auteur'])
+            cd, pos_d, cf, pos_f = placement
+            marcas_por_clave.setdefault(cd, []).append((pos_d, 'debut', _marca_inicio(id_)))
+            marcas_por_clave.setdefault(cf, []).append(
+                (pos_f, 'fin', _marca_fin(id_, style_comentario)))
+        hay_fils = False
+        for c in comentarios_origen:
+            if c['id'] in para_id_de:
+                parent = para_id_de.get(c.get('parent'))
+                hay_fils = hay_fils or bool(parent) or bool(c.get('resolu'))
+                etendus.append((para_id_de[c['id']], parent, c.get('resolu')))
+        if not hay_fils:
+            etendus = []
+
     # 4. Écriture paragraphe par paragraphe, de la fin vers le début de `interior`, pour que
     # chaque remplacement laisse valides les positions des paragraphes qui restent.
     comments_nuevos = []
-    salidas_a_tratar = sorted(set(revisiones_por_salida) | set(comentarios_por_salida),
-                               key=lambda s: indices_p[s][0], reverse=True)
-    for salida in salidas_a_tratar:
-        debut_p, fin_p = indices_p[salida]
+    fin_de_clave = dict(_parrafos_exteriores(interior))
+    fin_de_clave.update(dict(indices_p))
+    revisiones_por_clave = {indices_p[s][0]: v for s, v in revisiones_por_salida.items()}
+    comentarios_por_clave = {indices_p[s][0]: v for s, v in comentarios_por_salida.items()}
+    claves_a_tratar = sorted(set(revisiones_por_clave) | set(comentarios_por_clave)
+                             | set(marcas_por_clave), reverse=True)
+    for debut_p in claves_a_tratar:
+        fin_p = fin_de_clave[debut_p]
         p_xml = interior[debut_p:fin_p]
         nuevo_p_xml = _anotar_parrafo(
-            p_xml, revisiones_por_salida.get(salida, []), comentarios_por_salida.get(salida, []),
+            p_xml, revisiones_por_clave.get(debut_p, []), comentarios_por_clave.get(debut_p, []),
             contador, auteur, fecha, iniciales, style_comentario, langue, stats,
-            total_por_regla, comments_nuevos)
+            total_por_regla, comments_nuevos, marcas_por_clave.get(debut_p, ()))
         interior = interior[:debut_p] + nuevo_p_xml + interior[fin_p:]
 
     contenidos['word/document.xml'] = (prefijo_doc + interior + sufijo_doc).encode('utf-8')
@@ -1179,29 +1533,31 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
     if footnotes_modificado:
         contenidos['word/footnotes.xml'] = footnotes_xml.encode('utf-8')
 
-    if comments_nuevos:
+    tous_comments = comments_origen_xml + comments_nuevos
+    if tous_comments:
         if comments_previos_xml is not None:
+            if 'xmlns:w14=' not in comments_previos_xml:
+                comments_previos_xml = re.sub(r'<w:comments\b', '<w:comments xmlns:w14="%s"'
+                                              % _NS_W14, comments_previos_xml, count=1)
             comments_xml_final = comments_previos_xml.replace(
-                '</w:comments>', ''.join(comments_nuevos) + '</w:comments>')
+                '</w:comments>', ''.join(tous_comments) + '</w:comments>')
         else:
-            comments_xml_final = _COMMENTS_XML_DEBUT + ''.join(comments_nuevos) + '</w:comments>'
+            comments_xml_final = _COMMENTS_XML_DEBUT + ''.join(tous_comments) + '</w:comments>'
         contenidos['word/comments.xml'] = comments_xml_final.encode('utf-8')
-
-        if comments_previos_xml is None:
-            rid_existentes = [int(m) for m in re.findall(r'Id="rId(\d+)"', rels_xml)]
-            rid_nuevo = 'rId%d' % (max(rid_existentes, default=0) + 1)
-            rels_xml = rels_xml.replace(
-                '</Relationships>',
-                '<Relationship Id="%s" Type="%s" Target="comments.xml"/></Relationships>'
-                % (rid_nuevo, REL_COMMENTS))
-            contenidos['word/_rels/document.xml.rels'] = rels_xml.encode('utf-8')
-            if '/word/comments.xml' not in ct_xml:
-                ct_xml = ct_xml.replace(
-                    '</Types>',
-                    '<Override PartName="/word/comments.xml" ContentType='
-                    '"application/vnd.openxmlformats-officedocument.wordprocessingml.'
-                    'comments+xml"/></Types>')
-                contenidos['[Content_Types].xml'] = ct_xml.encode('utf-8')
+        rels_xml, ct_xml = _declarar_parte(rels_xml, ct_xml, 'comments.xml', REL_COMMENTS,
+                                           CT_COMMENTS)
+        if etendus:
+            contenidos['word/commentsExtended.xml'] = _commentaires_etendus_xml(
+                etendus).encode('utf-8')
+            rels_xml, ct_xml = _declarar_parte(rels_xml, ct_xml, 'commentsExtended.xml',
+                                               REL_COMMENTS_EX, CT_COMMENTS_EX)
+        if auteurs_origine:
+            contenidos['word/people.xml'] = _personnes_xml(
+                auteurs_origine, (origine or {}).get('personnes')).encode('utf-8')
+            rels_xml, ct_xml = _declarar_parte(rels_xml, ct_xml, 'people.xml', REL_PEOPLE,
+                                               CT_PEOPLE)
+        contenidos['word/_rels/document.xml.rels'] = rels_xml.encode('utf-8')
+        contenidos['[Content_Types].xml'] = ct_xml.encode('utf-8')
 
     # Avant d'écrire, chaque partie XML ou .rels est reparsée, y compris celles que ce module
     # n'a pas touchées : un XML mal formé lève une exception plutôt que de sortir un .docx

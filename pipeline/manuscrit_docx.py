@@ -1227,6 +1227,240 @@ def lire(chemin):
 
 
 # ---------------------------------------------------------------------------------
+# Point d'entrée n°1 bis : lire_commentaires(). Les commentaires Word du manuscrit, avec leur
+# ancrage, pour que manuscrit_annoter.py les repose dans la sortie. Une position dans un
+# paragraphe de premier niveau compte dans son texte tel que lire() le construit (la
+# concaténation des Fragment.texte) : c'est le même parcours des runs.
+
+W14 = '{http://schemas.microsoft.com/office/word/2010/wordml}'
+W15 = '{http://schemas.microsoft.com/office/word/2012/wordml}'
+
+_BORNES_COMMENTAIRE = {W + 'commentRangeStart': 'debut', W + 'commentRangeEnd': 'fin'}
+
+
+def _recensement_vide():
+    return {'symboles_police_speciale': 0, 'polices_symboles_vues': set()}
+
+
+def _parcourir_paragraphe(p, decalage_notes_fin):
+    """(texte, bornes, notes) d'un w:p. `bornes` : [(type, id, position)], type 'debut',
+    'fin' ou 'ref' (w:commentReference) ; `notes` : identifiants des notes appelées."""
+    morceaux, bornes, notes = [], [], []
+    recensement = _recensement_vide()
+    longueur = 0
+
+    def marcher(elements):
+        nonlocal longueur
+        for el in elements:
+            if el.tag in _BORNES_COMMENTAIRE:
+                bornes.append((_BORNES_COMMENTAIRE[el.tag], el.get(W + 'id'), longueur))
+            elif el.tag == W + 'r':
+                enfants = _enfants_utiles(el)
+                for e in enfants:
+                    if e.tag == W + 'commentReference':
+                        bornes.append(('ref', e.get(W + 'id'), longueur))
+                note = _note_depuis_enfants(enfants, decalage_notes_fin)
+                if note is not None:
+                    notes.append(note)
+                texte = _texte_depuis_enfants(enfants, recensement)
+                morceaux.append(texte)
+                longueur += len(texte)
+            elif el.tag == W + 'hyperlink' or el.tag in _CONTENEURS_PASSE_PLAT:
+                marcher(list(el))
+
+    marcher(list(p))
+    return ''.join(morceaux), bornes, notes
+
+
+def _parcourir_conteneur(el, decalage_notes_fin):
+    """(texte, bornes, notes) d'un tableau ou d'une note : le texte de ses w:t, un saut de
+    ligne entre deux paragraphes. Ces positions ne servent qu'à extraire le passage."""
+    morceaux, bornes, notes = [], [], []
+    longueur = 0
+    premier = True
+    for e in el.iter():
+        if e.tag == W + 'p':
+            if not premier:
+                morceaux.append('\n')
+                longueur += 1
+            premier = False
+        elif e.tag in _TAGS_TEXTE:
+            morceaux.append(e.text or '')
+            longueur += len(e.text or '')
+        elif e.tag in _BORNES_COMMENTAIRE:
+            bornes.append((_BORNES_COMMENTAIRE[e.tag], e.get(W + 'id'), longueur))
+        elif e.tag == W + 'commentReference':
+            bornes.append(('ref', e.get(W + 'id'), longueur))
+        elif e.tag == W + 'footnoteReference':
+            notes.append(_entier_ou_none(e.get(W + 'id')))
+        elif e.tag == W + 'endnoteReference':
+            n = _entier_ou_none(e.get(W + 'id'))
+            notes.append(None if n is None else n + decalage_notes_fin)
+    return ''.join(morceaux), bornes, [n for n in notes if n is not None]
+
+
+def _entier_ou_none(valeur):
+    try:
+        return int(valeur)
+    except (TypeError, ValueError):
+        return None
+
+
+def _texte_commentaire(commentaire):
+    """Le texte de chaque paragraphe d'un w:comment."""
+    recensement = _recensement_vide()
+    return [''.join(_texte_depuis_enfants(_enfants_utiles(r), recensement)
+                    for r in p.iter(W + 'r'))
+            for p in commentaire.iter(W + 'p')]
+
+
+def _ancrage(bornes_id, textes):
+    """L'ancrage d'un commentaire d'après ses bornes {type: (lieu, indice, position)}.
+    `textes` : {(lieu, indice): texte}. Rend {'lieu', ...} ; voir lire_commentaires()."""
+    debut = bornes_id.get('debut') or bornes_id.get('ref') or bornes_id.get('fin')
+    fin = bornes_id.get('fin') or bornes_id.get('ref') or debut
+    if debut is None:
+        return {'lieu': 'inconnu'}
+    if fin[:2] != debut[:2] and debut[0] != 'corps' and fin[0] == 'corps':
+        debut = ('corps', fin[1], 0)
+    lieu, indice, pos_d = debut
+    texte_d = textes.get((lieu, indice), '')
+    if lieu != 'corps':
+        pos_f = fin[2] if fin[:2] == debut[:2] and fin[2] >= pos_d else len(texte_d)
+        resultat = {'lieu': lieu, 'indice': indice, 'passage': texte_d[pos_d:pos_f]}
+        return resultat
+    if fin[0] != 'corps' or fin[1] < indice or (fin[1] == indice and fin[2] < pos_d):
+        fin = ('corps', indice, len(texte_d))
+    texte_f = textes.get(('corps', fin[1]), '')
+    if fin[1] == indice:
+        passage = texte_d[pos_d:fin[2]]
+    else:
+        passage = texte_d[pos_d:] + '\n' + texte_f[:fin[2]]
+    return {'lieu': 'corps', 'para_debut': indice, 'pos_debut': pos_d,
+            'para_fin': fin[1], 'pos_fin': fin[2], 'passage': passage,
+            'texte_debut': texte_d, 'texte_fin': texte_f}
+
+
+def lire_commentaires(chemin):
+    """Les commentaires Word de `chemin` : {'commentaires': [...], 'personnes': {...}}.
+
+    Chaque commentaire porte `id`, `auteur`, `initiales`, `date` (chaînes brutes, None si
+    absentes), `paragraphes` (texte de chaque paragraphe), `parent` (id du commentaire auquel
+    il répond, d'après commentsExtended.xml), `resolu`, et son ancrage :
+    - `lieu` 'corps' : `para_debut`, `pos_debut`, `para_fin`, `pos_fin` (indices des
+      paragraphes de premier niveau, comme Paragraphe.source, et positions dans leur texte),
+      `passage`, `texte_debut` et `texte_fin` (texte entier des deux paragraphes) ;
+    - `lieu` 'tableau' : `indice` (Tableau.source) et `passage` ;
+    - `lieu` 'note' : `indice` (identifiant de la note, comme dans Document.notes),
+      `passage`, et `appel`, l'ancrage ('corps' ou 'tableau', indice) de son appel ;
+    - `lieu` 'inconnu' : aucune borne trouvée dans le corps ni dans les notes (en-tête de
+      page, zone de texte…).
+    `personnes` : {auteur: {'fournisseur', 'utilisateur'}} d'après people.xml."""
+    with zipfile.ZipFile(chemin) as z:
+        racine_com = _racine_ou_none(z, 'word/comments.xml')
+        if racine_com is None:
+            return {'commentaires': [], 'personnes': {}}
+        racine = ET.fromstring(z.read('word/document.xml'))
+        racine_ext = _racine_ou_none(z, 'word/commentsExtended.xml')
+        racine_people = _racine_ou_none(z, 'word/people.xml')
+        racine_footnotes = _racine_ou_none(z, 'word/footnotes.xml')
+        racine_endnotes = _racine_ou_none(z, 'word/endnotes.xml')
+
+    decalage = _decalage_notes_fin(racine_footnotes)
+    textes = {}
+    bornes = {}      # id -> {type: (lieu, indice, position)}
+    appels = {}      # note -> (lieu, indice)
+
+    def noter(liste, lieu, indice):
+        for type_, id_, pos in liste:
+            b = bornes.setdefault(id_, {})
+            # La première borne de début et la dernière de fin font foi.
+            if type_ == 'debut' and 'debut' in b:
+                continue
+            b[type_] = (lieu, indice, pos)
+
+    body = racine.find(W + 'body')
+    if body is not None:
+        _deplier_sdt_niveau_bloc(body)
+        indice = -1
+        debuts_en_attente = []
+        precedent = None
+        for el in body:
+            if el.tag in (W + 'p', W + 'tbl'):
+                indice += 1
+                if el.tag == W + 'p':
+                    lieu = 'corps'
+                    texte, b, notes = _parcourir_paragraphe(el, decalage)
+                else:
+                    lieu = 'tableau'
+                    texte, b, notes = _parcourir_conteneur(el, decalage)
+                textes[(lieu, indice)] = texte
+                noter([('debut', i, 0) for i in debuts_en_attente] + b, lieu, indice)
+                debuts_en_attente = []
+                for n in notes:
+                    appels.setdefault(n, (lieu, indice))
+                precedent = (lieu, indice)
+            elif el.tag in _BORNES_COMMENTAIRE:
+                # Borne posée entre deux blocs : un début vaut pour le bloc suivant, une fin
+                # pour la fin du bloc précédent.
+                if _BORNES_COMMENTAIRE[el.tag] == 'debut':
+                    debuts_en_attente.append(el.get(W + 'id'))
+                elif precedent is not None:
+                    noter([('fin', el.get(W + 'id'), len(textes[precedent]))], *precedent)
+
+    for racine_notes, tag, dec in ((racine_footnotes, W + 'footnote', 0),
+                                   (racine_endnotes, W + 'endnote', decalage)):
+        if racine_notes is None:
+            continue
+        for fn in racine_notes.iter(tag):
+            if fn.get(W + 'type') in _TYPES_NOTE_TECHNIQUES:
+                continue
+            n = _entier_ou_none(fn.get(W + 'id'))
+            if n is None:
+                continue
+            texte, b, _notes = _parcourir_conteneur(fn, decalage)
+            textes[('note', n + dec)] = texte
+            noter(b, 'note', n + dec)
+
+    # Fils de discussion : commentsExtended relie le dernier paragraphe d'une réponse
+    # (w14:paraId) à celui du commentaire auquel elle répond.
+    etendus = {}
+    if racine_ext is not None:
+        for ex in racine_ext.iter(W15 + 'commentEx'):
+            etendus[ex.get(W15 + 'paraId')] = (ex.get(W15 + 'paraIdParent'),
+                                               ex.get(W15 + 'done') in ('1', 'true'))
+
+    commentaires = []
+    id_par_para = {}
+    for c in racine_com.iter(W + 'comment'):
+        id_ = c.get(W + 'id')
+        paras = list(c.iter(W + 'p'))
+        para_id = paras[-1].get(W14 + 'paraId') if paras else None
+        if para_id:
+            id_par_para[para_id] = id_
+        entree = {'id': id_, 'auteur': c.get(W + 'author'), 'initiales': c.get(W + 'initials'),
+                  'date': c.get(W + 'date'), 'paragraphes': _texte_commentaire(c),
+                  'para_id': para_id}
+        entree.update(_ancrage(bornes.get(id_, {}), textes))
+        if entree['lieu'] == 'note':
+            entree['appel'] = appels.get(entree['indice'])
+        commentaires.append(entree)
+    for entree in commentaires:
+        parent_para, resolu = etendus.get(entree.pop('para_id'), (None, False))
+        entree['parent'] = id_par_para.get(parent_para) if parent_para else None
+        entree['resolu'] = resolu
+
+    personnes = {}
+    if racine_people is not None:
+        for p in racine_people.iter(W15 + 'person'):
+            info = p.find(W15 + 'presenceInfo')
+            personnes[p.get(W15 + 'author')] = {
+                'fournisseur': info.get(W15 + 'providerId') if info is not None else None,
+                'utilisateur': info.get(W15 + 'userId') if info is not None else None}
+    return {'commentaires': commentaires, 'personnes': personnes}
+
+
+# ---------------------------------------------------------------------------------
 # Point d'entrée n°2 : projeter_pronto(). Les écarts avec pronto_docx.lire() sont décrits
 # dans l'en-tête.
 
@@ -1293,7 +1527,7 @@ def _pm_bloc_vers_json(bloc):
             'images': [list(t) for t in bloc.images]}
 
 
-_MODES = ('--diagnostic', '--projeter-pronto', '--pronto-brut', '--images')
+_MODES = ('--diagnostic', '--projeter-pronto', '--pronto-brut', '--images', '--commentaires')
 
 
 def principal(argv):
@@ -1314,6 +1548,8 @@ def principal(argv):
                         'cx': img.cx, 'cy': img.cy, 'largeur_px': img.largeur_px,
                         'hauteur_px': img.hauteur_px}
                        for img in _images_du_document(lire(chemin))]
+        elif mode == '--commentaires':
+            resultat = lire_commentaires(chemin)
         else:
             document = lire(chemin)
             resultat = {'gabarit': mm.reconnaitre_gabarit(document),

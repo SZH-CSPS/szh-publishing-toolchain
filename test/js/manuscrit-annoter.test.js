@@ -154,6 +154,10 @@ const ANNOTER_PY = [
   '                     if "word/comments.xml" in parties else None)',
   '    footnotes_xml = (z.read("word/footnotes.xml").decode("utf-8")',
   '                      if "word/footnotes.xml" in parties else None)',
+  '    ext_xml = (z.read("word/commentsExtended.xml").decode("utf-8")',
+  '               if "word/commentsExtended.xml" in parties else None)',
+  '    people_xml = (z.read("word/people.xml").decode("utf-8")',
+  '                  if "word/people.xml" in parties else None)',
   '    rels_xml = z.read("word/_rels/document.xml.rels").decode("utf-8")',
   '    ct_xml = z.read("[Content_Types].xml").decode("utf-8")',
   '    for nom in parties:',
@@ -163,7 +167,7 @@ const ANNOTER_PY = [
   '            except Exception as e:',
   '                erreurs_xml.append(nom + " : " + str(e))',
   'print(json.dumps({"stats": stats, "documentXml": doc_xml, "commentsXml": comments_xml,',
-  '                   "footnotesXml": footnotes_xml,',
+  '                   "footnotesXml": footnotes_xml, "extXml": ext_xml, "peopleXml": people_xml,',
   '                   "relsXml": rels_xml, "ctXml": ct_xml, "parties": parties,',
   '                   "erroresXml": erreurs_xml},',
   '                  ensure_ascii=True))',
@@ -1312,4 +1316,181 @@ test('langue de : synthèse du plafond, étiquettes et note en allemand, sans es
     validerBienFormees(note);
     assert.match(note.commentsXml, /Fussnote 1: Rechtschreibung/);
     assert.match(note.commentsXml, /Textstelle: «Reconnaître»/);
+  });
+
+// ---------------------------------------------------------------------------------
+// Commentaires d'origine : les commentaires Word du manuscrit (`origine`, la forme que rend
+// manuscrit_docx.lire_commentaires()), reposés avec leur auteur, hors du plafond.
+//
+// Sabotage : dans annoter(), vider `comentarios_origen` ; ou, dans _anotar_parrafo(), ne
+// plus poser les `marcas`.
+
+// Un commentaire du corps sur [debut, fin) du paragraphe source `para`, de texte `texte`.
+function commentaireOrigine(id, para, texte, debut, fin, autres) {
+  return Object.assign({
+    id: String(id), auteur: 'Anne Relectrice', initiales: 'AR', date: '2026-03-01T10:00:00Z',
+    paragraphes: ['Remarque ' + id], parent: null, resolu: false, lieu: 'corps',
+    para_debut: para, pos_debut: debut, para_fin: para, pos_fin: fin,
+    passage: texte.slice(debut, fin), texte_debut: texte, texte_fin: texte,
+  }, autres || {});
+}
+
+// Texte de document.xml avec chaque borne de commentaire rendue lisible : « [N » et « N] »,
+// une suppression « {-…-} », une insertion « {+…+} ».
+function bornesLisibles(documentXml) {
+  return documentXml
+    .replace(/<w:commentRangeStart w:id="(\d+)"\/>/g, '[$1')
+    .replace(/<w:commentRangeEnd w:id="(\d+)"\/>/g, '$1]')
+    .replace(/<w:delText[^>]*>([^<]*)<\/w:delText>/g, '{-$1-}')
+    .replace(/<w:ins\b[^>]*>(.*?)<\/w:ins>/g, (m, c) => '{+' + c.replace(/<[^>]+>/g, '') + '+}')
+    .replace(/<w:t[^>]*>([^<]*)<\/w:t>/g, '$1')
+    .replace(/<\/w:p>/g, '\n')
+    .replace(/<[^>]+>/g, '');
+}
+
+function idCommentaire(commentsXml, texte) {
+  const m = new RegExp('<w:comment w:id="(\\d+)"[^>]*>(?:(?!</w:comment>).)*' + texte).exec(commentsXml);
+  assert.ok(m, 'commentaire « ' + texte + ' » absent : ' + commentsXml);
+  return m[1];
+}
+
+test('commentaire d\'origine simple : même passage, auteur, initiales, date et texte gardés',
+  { skip: sansPython }, () => {
+    const texte = 'Les élèves bénéficient d’un soutien adapté.';
+    const resultat = anotar([{ texte }], [], [{ source: 0, sortie: 2 }],
+      { origine: { commentaires: [commentaireOrigine(0, 0, texte, 11, 35)], personnes: {} } });
+    validerBienFormees(resultat);
+    const id = idCommentaire(resultat.commentsXml, 'Remarque 0');
+    assert.match(resultat.commentsXml, new RegExp('<w:comment w:id="' + id
+      + '" w:author="Anne Relectrice" w:date="2026-03-01T10:00:00Z" w:initials="AR">'));
+    const lisible = bornesLisibles(resultat.documentXml);
+    assert.ok(lisible.includes('Les élèves [' + id + 'bénéficient d’un soutien' + id + '] adapté.'),
+      lisible);
+    const o = resultat.stats.commentaires_origine;
+    assert.deepStrictEqual([o.source, o.poses, o.passage], [1, 1, 1]);
+    // Il ne compte pas parmi les commentaires du nettoyeur.
+    assert.strictEqual(resultat.stats.commentaires, 0);
+    assert.match(resultat.relsXml, /relationships\/comments"/);
+    assert.match(resultat.relsXml, /relationships\/people"/);
+    assert.match(resultat.ctXml, /wordprocessingml\.people\+xml/);
+    assert.match(resultat.peopleXml, /w15:author="Anne Relectrice"/);
+  });
+
+test('commentaire d\'origine sur plusieurs runs : les bornes entourent les runs du passage',
+  { skip: sansPython }, () => {
+    const runs = [{ texte: 'Ce passage ' }, { texte: 'traverse ' },
+      { texte: 'plusieurs runs', rpr: { gras: true } }, { texte: ' de suite.' }];
+    const texte = runs.map((r) => r.texte).join('');
+    const resultat = anotar([{ runs }], [], [{ source: 0, sortie: 2 }],
+      { origine: { commentaires: [commentaireOrigine(4, 0, texte, 11, 34)] } });
+    validerBienFormees(resultat);
+    const id = idCommentaire(resultat.commentsXml, 'Remarque 4');
+    const lisible = bornesLisibles(resultat.documentXml);
+    assert.ok(lisible.includes('Ce passage [' + id + 'traverse plusieurs runs' + id + '] de suite.'),
+      lisible);
+    // Le gras du run commenté est gardé.
+    assert.match(resultat.documentXml, /<w:b\/><\/w:rPr><w:t[^>]*>plusieurs runs<\/w:t>/);
+  });
+
+test('commentaire d\'origine sur un passage révisé ou retouché : il entoure la révision, '
+  + 'reste hors plafond et n\'est jamais retiré comme doublon', { skip: sansPython }, () => {
+    const p0 = 'Plusieurs travaux le confirment (Dupont et Martin, 2020).';
+    // Source : apostrophe droite et double espace ; sortie : texte typographié.
+    const p1Source = "Une école  inclusive se construit avec l'ensemble des acteurs.";
+    const p1Sortie = 'Une école inclusive se construit avec l’ensemble des acteurs.';
+    const alertes = [
+      { rule: 'CSPS-Biblio.APA.Esperluette', severity: 'warning', action: 'fix', para: 0,
+        span: null, found: 'Dupont et Martin', suggested: 'Dupont & Martin', message: 'esperluette' },
+      { rule: 'Test.Commentaire', severity: 'warning', action: 'comment', para: 1, span: null,
+        found: 'construit', suggested: null, message: 'commentaire du nettoyeur' },
+    ];
+    const commentaires = [
+      // Le commentaire dit la même chose que la révision : il reste.
+      commentaireOrigine(1, 0, p0, 32, 56, { paragraphes: ['Dupont & Martin'] }),
+      commentaireOrigine(2, 1, p1Source, 34, 49),
+      commentaireOrigine(3, 1, p1Source, 4, 20),
+    ];
+    const resultat = anotar([{ texte: p0 }, { texte: p1Sortie }], alertes,
+      [{ source: 0, sortie: 2 }, { source: 1, sortie: 3 }],
+      { plafond_commentaires: 0, origine: { commentaires } });
+    validerBienFormees(resultat);
+    const lisible = bornesLisibles(resultat.documentXml);
+    const id1 = idCommentaire(resultat.commentsXml, 'Dupont &amp; Martin');
+    const id2 = idCommentaire(resultat.commentsXml, 'Remarque 2');
+    const id3 = idCommentaire(resultat.commentsXml, 'Remarque 3');
+    assert.strictEqual(resultat.stats.revisions, 1);
+    assert.ok(lisible.includes('[' + id1 + '(Dupont {-et-}{+&amp;+} Martin, 2020)' + id1 + ']'), lisible);
+    // Apostrophe : retrouvé par la comparaison tolérante ; double espace : position alignée.
+    assert.ok(lisible.includes('[' + id2 + 'avec l’ensemble' + id2 + ']'), lisible);
+    assert.ok(lisible.includes('Une [' + id3 + 'école inclusive' + id3 + ']'), lisible);
+    // Le plafond (0) refuse le commentaire du nettoyeur, pas ceux du manuscrit.
+    assert.strictEqual(resultat.stats.commentaires, 0);
+    assert.strictEqual(resultat.stats.plafond_global, 1);
+    assert.strictEqual(resultat.stats.commentaires_origine.poses, 3);
+    assert.strictEqual(resultat.stats.commentaires_origine.approche, 1);
+  });
+
+test('commentaire d\'origine avec réponse : le fil passe par commentsExtended.xml',
+  { skip: sansPython }, () => {
+    const texte = 'La recherche montre des effets positifs sur les apprentissages.';
+    const commentaires = [
+      commentaireOrigine(3, 0, texte, 13, 39, { paragraphes: ['Source ?'], resolu: true }),
+      commentaireOrigine(5, 0, texte, 13, 39, { auteur: 'Bruno Auteur', initiales: 'BA',
+        paragraphes: ['Voir Hattie (2009).', 'Et le chapitre 3.'], parent: '3' }),
+    ];
+    const personnes = { 'Anne Relectrice': { fournisseur: 'AD', utilisateur: 'S::anne@example.org' } };
+    const resultat = anotar([{ texte }], [], [{ source: 0, sortie: 2 }],
+      { origine: { commentaires, personnes } });
+    validerBienFormees(resultat);
+    const paraId = (t) => {
+      const m = new RegExp('<w:p w14:paraId="([0-9A-F]{8})"><w:r><w:t[^>]*>' + t).exec(resultat.commentsXml);
+      assert.ok(m, 'paraId absent pour « ' + t + ' » : ' + resultat.commentsXml);
+      return m[1];
+    };
+    const parent = paraId('Source \\?');
+    const reponse = paraId('Et le chapitre 3');
+    assert.match(resultat.commentsXml, /<w:p><w:r><w:t[^>]*>Voir Hattie \(2009\)\.<\/w:t>/);
+    assert.match(resultat.extXml, new RegExp('w15:paraId="' + parent + '" w15:done="1"'));
+    assert.match(resultat.extXml,
+      new RegExp('w15:paraId="' + reponse + '" w15:paraIdParent="' + parent + '"'));
+    assert.match(resultat.relsXml, /relationships\/commentsExtended"/);
+    assert.match(resultat.ctXml, /commentsExtended\+xml/);
+    assert.match(resultat.peopleXml, /w15:author="Anne Relectrice"><w15:presenceInfo w15:providerId="AD" w15:userId="S::anne@example.org"/);
+    assert.match(resultat.peopleXml, /w15:author="Bruno Auteur"><w15:presenceInfo w15:providerId="None" w15:userId="Bruno Auteur"/);
+  });
+
+test('commentaire d\'origine dont le paragraphe a disparu : passage retrouvé ailleurs, sinon '
+  + 'paragraphe correspondant suivant, signalé comme déplacé', { skip: sansPython }, () => {
+    const paragraphes = [{ texte: 'Un paragraphe qui reste.' },
+      { texte: 'Marie Dupont, Haute école pédagogique' }, { texte: 'Le paragraphe suivant.' }];
+    const commentaires = [
+      // Source 1 n'est plus dans la correspondance et son texte n'est nulle part : déplacé
+      // sur la source correspondante suivante, 3.
+      commentaireOrigine(7, 1, 'Ligne retirée par le nettoyage', 0, 30),
+      // Source 4 n'y est plus non plus, mais son texte est ailleurs, une seule fois.
+      commentaireOrigine(8, 4, 'Marie Dupont, Haute école pédagogique', 0, 12),
+      // Aucune borne trouvée dans le manuscrit.
+      { id: '9', auteur: 'Claire', initiales: 'C', date: null, paragraphes: ['Orphelin'],
+        parent: null, resolu: false, lieu: 'inconnu' },
+    ];
+    const resultat = anotar(paragraphes, [],
+      [{ source: 0, sortie: 2 }, { source: 3, sortie: 3 }, { source: 5, sortie: 4 }],
+      { origine: { commentaires } });
+    validerBienFormees(resultat);
+    const lisible = bornesLisibles(resultat.documentXml);
+    const id7 = idCommentaire(resultat.commentsXml, 'Remarque 7');
+    const id8 = idCommentaire(resultat.commentsXml, 'Remarque 8');
+    const id9 = idCommentaire(resultat.commentsXml, 'Orphelin');
+    assert.ok(new RegExp('\\[' + id8 + 'Marie Dupont' + id8 + '\\]').test(lisible), lisible);
+    assert.ok(new RegExp('\\[' + id7 + '(\\[' + id8 + ')?Marie Dupont').test(lisible), lisible);
+    assert.ok(lisible.includes('[' + id9 + 'Un paragraphe qui reste.' + id9 + ']'), lisible);
+    // Sans date dans le manuscrit, aucune date n'est inventée.
+    assert.match(resultat.commentsXml,
+      new RegExp('<w:comment w:id="' + id9 + '" w:author="Claire" w:initials="C">'));
+    const o = resultat.stats.commentaires_origine;
+    assert.deepStrictEqual([o.source, o.poses, o.deplaces, o.non_poses], [3, 3, 2, 0]);
+    const parId = Object.fromEntries(o.liste.map((c) => [c.id, c]));
+    assert.strictEqual(parId['7'].motif, 'paragraphe-disparu');
+    assert.strictEqual(parId['8'].ancrage, 'passage');
+    assert.strictEqual(parId['9'].motif, 'inconnu');
   });

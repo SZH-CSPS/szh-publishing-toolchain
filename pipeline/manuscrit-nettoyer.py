@@ -53,6 +53,10 @@
 #   `word/document.xml` mal formé sans exception. Chaque partie .xml/.rels est donc validée
 #   après annotation (`_valider_docx_bien_forme()`), et la version non annotée est restaurée
 #   si besoin.
+# - Les commentaires Word du manuscrit (md.lire_commentaires()) sont reposés par
+#   l'annotation, ou seuls (`_reposer_commentaires_seuls()`) quand elle est désactivée ou
+#   impossible. Un commentaire déplacé ou manquant donne une alerte
+#   (`_alertes_commentaires_origine()`).
 
 import collections
 import hashlib
@@ -190,7 +194,8 @@ MESURES_NETTOYEUR = (
     'images_sans_alt', 'duree_ms', 'plafond_commentaires_atteint', 'perte_mots', 'ecartes',
     'vale.indisponible', 'typo.repli', 'annotation.restauree', 'reseau.crossref.panne',
     'reseau.ror.panne', 'reseau.orcid.panne', 'doi.proposes', 'ror.proposes', 'orcid.proposes',
-    'orcid.candidats', 'entete.auteurs', 'entete.champs_vides', 'entete.ordre_incertain')
+    'orcid.candidats', 'entete.auteurs', 'entete.champs_vides', 'entete.ordre_incertain',
+    'commentaires_origine', 'commentaires_origine.deplaces', 'commentaires_origine.non_repris')
 _MOTIFS_MESURE_LIBRE = (re.compile(r'^issue\.refus:[a-z0-9_-]{1,48}$'),
                         re.compile(r'^titres\.[a-z0-9_]{1,40}$'))
 _RE_TYPE_EXCEPTION = re.compile(r'^[A-Za-z_][A-Za-z0-9_]{0,63}$')
@@ -483,6 +488,89 @@ def _alerte_annotation_impossible(langue):
                    "vollständige Liste der Anmerkungen finden Sie im Bericht.")
     return {'rule': 'Annotation.Impossible', 'severity': 'warning', 'action': 'report',
             'para': None, 'span': None, 'found': None, 'suggested': None, 'message': message}
+
+
+def _lire_commentaires_origine(chemin):
+    """Les commentaires du manuscrit (md.lire_commentaires()), ou None s'ils sont illisibles :
+    l'alerte Nettoyage.CommentaireNonRepris le dira."""
+    try:
+        return md.lire_commentaires(chemin)
+    except Exception as e:
+        progres('commentaires du manuscrit illisibles : %s' % e)
+        return None
+
+
+def _reposer_commentaires_seuls(sortie_docx, resultat_ecriture, langue, origine):
+    """Repose les commentaires du manuscrit dans `sortie_docx` sans aucune alerte (annotation
+    désactivée ou impossible). Rend leurs statistiques, ou None. Si l'écriture échoue, le
+    .docx d'avant est remis."""
+    if not origine or not origine.get('commentaires'):
+        return None
+    with open(sortie_docx, 'rb') as f:
+        octets_avant = f.read()
+    try:
+        stats = ma.annoter(sortie_docx, sortie_docx, [], resultat_ecriture['correspondance'],
+                           langue=langue, auteur=AUTEUR_ANNOTATION, origine=origine)
+        _valider_docx_bien_forme(sortie_docx)
+    except Exception as e:
+        with open(sortie_docx, 'wb') as f:
+            f.write(octets_avant)
+        progres('commentaires du manuscrit non reposés : %s' % e)
+        return None
+    return stats.get('commentaires_origine')
+
+
+# Motif d'un commentaire du manuscrit ancré loin de son passage, par langue du produit.
+_MOTIFS_COMMENTAIRE_DEPLACE = {
+    'fr': {'paragraphe-disparu': 'paragraphe retiré par le nettoyage',
+           'bloc': 'paragraphe repris dans un bloc figure ou tableau',
+           'tableau': 'passage dans un tableau',
+           'note': 'passage dans une note',
+           'inconnu': 'passage hors du corps du texte'},
+    'de': {'paragraphe-disparu': 'Absatz bei der Bereinigung entfernt',
+           'bloc': 'Absatz in einen Abbildungs- oder Tabellenblock übernommen',
+           'tableau': 'Textstelle in einer Tabelle',
+           'note': 'Textstelle in einer Fussnote',
+           'inconnu': 'Textstelle ausserhalb des Haupttextes'},
+}
+
+
+def _alertes_commentaires_origine(nombre, stats_origine, langue):
+    """Une alerte Nettoyage.CommentaireDeplace par commentaire du manuscrit ancré ailleurs que
+    sur son passage, et une alerte Nettoyage.CommentaireNonRepris pour ceux qui manquent à la
+    sortie. `nombre` : les commentaires du manuscrit."""
+    alertes = []
+    motifs = _MOTIFS_COMMENTAIRE_DEPLACE['fr' if langue == 'fr' else 'de']
+    for c in (stats_origine or {}).get('liste') or []:
+        if c.get('ancrage') != 'deplace':
+            continue
+        auteur = c.get('auteur') or '?'
+        motif = motifs.get(c.get('motif'), motifs['inconnu'])
+        if langue == 'fr':
+            message = ('Le commentaire de « %s » n’a pas retrouvé son passage (%s) : '
+                       'il est ancré sur un paragraphe voisin, à vérifier.' % (auteur, motif))
+        else:
+            message = ('Der Kommentar von «%s» hat seine Textstelle nicht wiedergefunden (%s): '
+                       'Er ist an einem benachbarten Absatz verankert, bitte prüfen.'
+                       % (auteur, motif))
+        alertes.append({'rule': 'Nettoyage.CommentaireDeplace', 'severity': 'warning',
+                        'action': 'report', 'para': c.get('para'), 'span': None,
+                        'found': c.get('passage') or None, 'suggested': None,
+                        'message': message})
+    manquants = nombre - (stats_origine or {}).get('poses', 0)
+    if manquants > 0:
+        if langue == 'fr':
+            message = ('%d commentaire(s) Word du manuscrit n’ont pas pu être repris dans le '
+                       'document nettoyé : ouvrez le manuscrit d’origine pour les lire.'
+                       % manquants)
+        else:
+            message = ('%d Word-Kommentar(e) des Manuskripts konnten nicht in das bereinigte '
+                       'Dokument übernommen werden: Öffnen Sie das Originalmanuskript, um sie '
+                       'zu lesen.' % manquants)
+        alertes.append({'rule': 'Nettoyage.CommentaireNonRepris', 'severity': 'error',
+                        'action': 'report', 'para': None, 'span': None, 'found': None,
+                        'suggested': None, 'message': message})
+    return alertes
 
 
 def _alerte_conversion_odt_impossible(detail, langue):
@@ -824,6 +912,7 @@ def _principal(argv):
     progres('lecture du manuscrit...')
     try:
         document = md.lire(chemin_lecture)
+        origine = _lire_commentaires_origine(chemin_lecture)
     except Exception as e:
         progres('lecture impossible : %s' % e)
         _ligne_stdout({'entree': entree, 'refus': True, 'code_refus': 'lecture-impossible',
@@ -851,13 +940,9 @@ def _principal(argv):
                                                      args['produit']),
                         revisions=document.revisions, sortie_nettoyeur=sortie_nettoyeur)
 
-    # Un document avec des commentaires est accepté ; le rapport dit qu'ils sont perdus.
-    note_commentaires = None
+    # Les commentaires du manuscrit sont reposés dans la sortie par l'annotation.
     if document.commentaires > 0:
-        note_commentaires = ('%d commentaire(s) trouvé(s) dans ce document : ils ne '
-                              'survivent pas au nettoyage, la sortie ne les porte pas.'
-                              % document.commentaires)
-        progres(note_commentaires)
+        progres('%d commentaire(s) Word dans le manuscrit' % document.commentaires)
 
     _etape('gabarit')
     gabarit = mm.reconnaitre_gabarit(document)
@@ -1066,6 +1151,7 @@ def _principal(argv):
     sortie_docx = None
     resultat_ecriture = None
     stats_annotation = None
+    stats_origine = None
     annotation_restauree = False
     mesure_perte = None
     if args['analyse_seule']:
@@ -1103,6 +1189,8 @@ def _principal(argv):
             pass
         elif args['sans_annotation']:
             progres('annotation désactivée (--sans-annotation)')
+            stats_origine = _reposer_commentaires_seuls(sortie_docx, resultat_ecriture, langue,
+                                                        origine)
         else:
             _etape('annotation')
             progres('annotation du document...')
@@ -1113,7 +1201,8 @@ def _principal(argv):
             try:
                 stats_annotation = ma.annoter(
                     sortie_docx, sortie_docx, alertes, resultat_ecriture['correspondance'],
-                    langue=langue, auteur=AUTEUR_ANNOTATION, plafond_commentaires=25)
+                    langue=langue, auteur=AUTEUR_ANNOTATION, plafond_commentaires=25,
+                    origine=origine)
                 # Une révision qui touche la frontière d'un <w:hyperlink> peut rendre
                 # document.xml mal formé sans exception : la validité se vérifie ici.
                 _valider_docx_bien_forme(sortie_docx)
@@ -1130,12 +1219,28 @@ def _principal(argv):
                 progres('annotation impossible : %s' % e)
                 alertes.append(_etiqueter([_alerte_annotation_impossible(langue)], 'nettoyage')[0])
                 _trier_alertes(alertes)
+                # Les commentaires du manuscrit sont reposés seuls, sans les alertes.
+                stats_origine = _reposer_commentaires_seuls(sortie_docx, resultat_ecriture,
+                                                            langue, origine)
             else:
+                stats_origine = stats_annotation.get('commentaires_origine')
                 _marquer_dans_docx(alertes, stats_annotation)
                 progres('annotation : %d révision(s), %d commentaire(s), %d renvoyée(s) au '
                         'rapport' % (stats_annotation['revisions'],
                                      stats_annotation['commentaires'],
                                      len(stats_annotation['renvoyees_au_rapport'])))
+
+    # Commentaires du manuscrit : chacun est dans la sortie, ou une alerte le dit.
+    note_commentaires = None
+    if sortie_docx is not None and document.commentaires > 0:
+        for alerte in _alertes_commentaires_origine(document.commentaires, stats_origine,
+                                                    langue):
+            alertes.append(_etiqueter([alerte], 'nettoyage')[0])
+        _trier_alertes(alertes)
+        repris = (stats_origine or {}).get('poses', 0)
+        note_commentaires = ('%d commentaire(s) Word sur %d repris dans la sortie'
+                             % (repris, document.commentaires))
+        progres(note_commentaires)
 
     # Sortie .odt (--format odt) : le .docx définitif, écrit, contrôlé et annoté, est converti
     # ici. En cas d'échec, le .docx est livré avec une alerte. `sortie` est le chemin livré,
@@ -1191,6 +1296,7 @@ def _principal(argv):
             'signes_total': signes_total, 'signes_bibliographie': signes_biblio,
             'nb_references': len(entrees_biblio), 'commentaires': document.commentaires,
             'note_commentaires': note_commentaires,
+            'commentaires_repris': (stats_origine or {}).get('poses', 0),
             'notes': len(document.notes or {}),
             'revisions': stats_annotation['revisions'] if stats_annotation else 0,
             'commentaires_poses': stats_annotation['commentaires'] if stats_annotation else 0,
@@ -1215,6 +1321,8 @@ def _principal(argv):
         'bibliographie': stats_biblio,
         'identifiants': stats_identifiants,
         'annotation': stats_annotation,
+        # Ce que sont devenus les commentaires du manuscrit, annotation désactivée comprise.
+        'commentaires_origine': stats_origine,
         # Les constats de lecture (en-têtes et pieds non lus, zones de texte...) dans leurs
         # deux langues, et les lignes de progression.
         'avertissements_import': list(_AVERTISSEMENTS_IMPORT),
@@ -1236,13 +1344,19 @@ def _principal(argv):
     refus_perte = bool(mesure_perte and mesure_perte.get('refus'))
     issue = ('refus:perte-de-contenu' if refus_perte
              else 'alertes' if code_sortie == CODE_ALERTE_ERROR else 'ok')
-    compteurs = _compteurs(_passage(entree), _mesures_passage(
+    mesures = _mesures_passage(
         issue, int(round(duree_ms)), args, gabarit, format_entree, format_sortie, alertes,
         alerte_langue, signes_total, signes_biblio,
         sum(1 for p in paragraphes_ctx if p['role'] not in ROLES_ENTETE_POUR_REGLES),
         len(entrees_biblio), len(document.notes or {}), len(images), images_sans_alt,
         stats_annotation, annotation_restauree, mesure_perte, ecartes_entete,
-        vale_indisponible, statut_typo, stats_biblio, stats_identifiants, entete, stats_titres))
+        vale_indisponible, statut_typo, stats_biblio, stats_identifiants, entete, stats_titres)
+    mesures['commentaires_origine'] = document.commentaires
+    if document.commentaires and format_sortie is not None:
+        mesures['commentaires_origine.deplaces'] = (stats_origine or {}).get('deplaces', 0)
+        mesures['commentaires_origine.non_repris'] = (
+            document.commentaires - (stats_origine or {}).get('poses', 0))
+    compteurs = _compteurs(_passage(entree), mesures)
     if refus_perte:
         # Même forme que les refus d'entrée (refuser(), plus haut), le rapport en plus : il
         # dit ce qui manquait.
