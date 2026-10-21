@@ -7,6 +7,7 @@
     powershell -ExecutionPolicy Bypass -File open-revue.ps1              # l'Accueil, dans VSCodium
     powershell -ExecutionPolicy Bypass -File open-revue.ps1 szh://...    # le numero vise
     powershell -ExecutionPolicy Bypass -File open-revue.ps1 -Versions    # selecteur de version seul
+    powershell -ExecutionPolicy Bypass -File open-revue.ps1 -Demarrage   # taches de demarrage seules
 
   Compatibilite : Windows PowerShell 5.1.
 #>
@@ -20,7 +21,10 @@ param(
   # le compte.
   [string]$Produit = '',
   # Ouvre seulement le selecteur de version.
-  [switch]$Versions
+  [switch]$Versions,
+  # Lance seulement les taches de demarrage. Le cockpit le demande quand VSCodium a ete
+  # ouvert sans passer par ce script (lib/demarrage.js).
+  [switch]$Demarrage
 )
 
 . "$PSScriptRoot\szh-common.ps1"
@@ -40,6 +44,14 @@ if ($Versions) {
   [System.Windows.Forms.Application]::EnableVisualStyles()
   [void](Set-SzhAppUserModelId (Get-SzhAppId 'maj'))
   Show-SzhVersions $null (Join-Path $PSScriptRoot 'pronto-maj.ico')
+  exit 0
+}
+
+if ($Demarrage) {
+  $taches = Invoke-SzhTachesDemarrage
+  if ($env:SZH_LANCEUR_SIMULE -eq '1') {
+    Write-SzhPlanJson ([ordered]@{ entree = 'demarrage'; taches = $taches.taches; ancrage = $taches.ancrage })
+  }
   exit 0
 }
 

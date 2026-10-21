@@ -114,6 +114,16 @@ def langue_du_produit(produit):
     if 'revue' in v:
         return 'fr'
     return ''
+
+
+def langue_du_livre(valeur=None):
+    """'fr' | 'de' | 'it' | '' : le `lang:` du livre où se convertit le chapitre, que
+    import-docx.sh pose dans $SZH_LANGUE_LIVRE. Le chapitre prend cette langue sans l'écrire
+    dans sa fiche : il suit ainsi le livre si sa langue change ensuite."""
+    if valeur is None:
+        valeur = os.getenv('SZH_LANGUE_LIVRE', '')
+    v = (valeur or '').strip().lower()[:2]
+    return v if v in ('fr', 'de', 'it') else ''
 # Champs d'un auteur, alignés sur CHAMPS_AUTEUR de lib/yaml.js (cockpit), `ror` compris.
 CHAMPS_AUTEUR = ('prenom', 'nom', 'fonction', 'affiliation', 'ror', 'orcid', 'email', 'photo')
 
@@ -1734,7 +1744,9 @@ def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
     type_article = valeurs['type'] if valeurs['type'] in TYPES_VALIDES else ''
     # La langue vient du produit du numéro. `langue_deduite` : pas de produit (hors d'un
     # numéro, ou ausgabe.yaml sans `revue:`), d'où le français et un avertissement.
-    langue = langue_du_produit(produit)
+    # Dans un livre, la langue est celle du livre, et la fiche n'en porte pas.
+    langue_livre = '' if langue_du_produit(produit) else langue_du_livre()
+    langue = langue_du_produit(produit) or langue_livre
     langue_deduite = not langue
 
     lignes_b, ligne_bt, biblio = etendue_biblio(blocs, type_article or 'article', slug)
@@ -1757,7 +1769,7 @@ def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
     if os.path.exists(chemin_meta_yaml):
         stats['avertissements'].append('meta-existant-conserve')
     else:
-        contenu = serialiser_meta(meta)
+        contenu = serialiser_meta(dict(meta, lang='') if langue_livre else meta)
         if contenu:
             szh_commun.ecrire_atomique(chemin_meta_yaml, lambda f: f.write(contenu),
                                        binaire=False, encoding='utf-8', newline='\n')

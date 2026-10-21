@@ -84,6 +84,27 @@ test('attributs : un lien interne suit l’identifiant renommé', () => {
   assert.match(md, /#section-1/, 'le lien ne suit pas le renommage : ' + md);
 });
 
+// Un saut de ligne Word en fin de passage souligné : le writer écrit « \] », et le passage
+// ne se referme plus à la relecture. L'arbre est celui que lit pandoc d'un Word dont le
+// <w:br/> est dans le run souligné.
+const SAUT_SOULIGNE = '[Para [Strong [Underline [Str "Un.", LineBreak, Str "Deux.", LineBreak]],'
+  + ' Str "Trois.", LineBreak]]';
+
+test('sauts en bord : le défaut existe bien sans le filtre', () => {
+  assert.match(pandoc(SAUT_SOULIGNE, { de: 'native' }), /\\\]\{\.underline\}/,
+    'pandoc n’écrit plus « \\] » : le défaut a changé de forme, revoir le filtre');
+});
+
+test('sauts en bord : le saut sort du souligné et du gras, le passage se relit', () => {
+  const md = pandoc(SAUT_SOULIGNE, { de: 'native', filtres: ['szh-attributs-sains.lua'] });
+  assert.ok(md.indexOf('\\]') === -1, 'un crochet échappé subsiste : ' + md);
+  assert.ok(!/\\\s*$/.test(md), 'un « \\ » final s’imprimerait tel quel : ' + md);
+  const html = pandoc(md, { de: 'markdown', vers: 'html' });
+  assert.match(html, /<u>Un\.<br \/>\s*Deux\.<\/u><\/strong><br \/>\s*Trois\./,
+    'le souligné ou le saut entre « Deux. » et « Trois. » est perdu : ' + html);
+  assert.ok(html.indexOf('{.underline}') === -1, 'l’attribut s’imprime en toutes lettres : ' + html);
+});
+
 // ── Sauts de ligne uniques ─────────────────────────────────────────────────────────────
 // La maquette FALC lit en `markdown+hard_line_breaks` : en FALC, le retour à la ligne a
 // un sens. L'import Word écrit aussi un `\` en fin de ligne : pandoc compterait deux sauts
@@ -331,7 +352,9 @@ function pandocDansDossier(fichiers, principal, filtre, opts) {
     }
     // `filtre` : un nom, ou un tableau de noms dans l'ordre d'exécution.
     const filtresListe = Array.isArray(filtre) ? filtre : [filtre];
+    // `metadonnees` : des --metadata-file, dans l'ordre (le dernier l'emporte).
     const args = ['--from=' + (o.from || 'markdown'), '--to=' + (o.to || 'markdown'), '--wrap=none', '--standalone',
+      ...(o.metadonnees || []).map((m) => '--metadata-file=' + m),
       ...filtresListe.map((f) => '--lua-filter=' + path.join(FILTRES, f)), principal];
     const env = Object.assign({}, process.env, o.env || {});
     const r = spawnSync('pandoc', args, { cwd: dossier, encoding: 'utf8', env: env });
@@ -814,6 +837,39 @@ test('langue : szh-citations.lua — rien du tout, repli français', () => {
   const r = pandocDansDossier(
     { 'essai.md': docCitations(''), 'essai.biblio.md': BIBLIO_ESSAI },
     'essai.md', 'szh-citations.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Références/, r.stdout);
+});
+
+// ── szh-citations.lua : `bibliographie: non` (livre entier ou chapitre). Le fichier de
+// bibliographie manque : sans l'option, un encadré « introuvable » et un avertissement.
+test('bibliographie : sans l’option, un fichier absent est signalé', () => {
+  const r = pandocDansDossier({ 'essai.md': docCitations('') }, 'essai.md', 'szh-citations.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Bibliographie introuvable/, r.stdout);
+  assert.match(r.stderr, /biblio-introuvable/, r.stderr);
+});
+
+test('bibliographie : avec « bibliographie: non », rien n’est imprimé ni signalé', () => {
+  const r = pandocDansDossier({ 'essai.md': docCitations('bibliographie: non\n') + '\nVoir (Dupont, 2020).\n' },
+    'essai.md', 'szh-citations.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(!/introuvable|szh-biblio/.test(r.stdout), 'le marqueur ou l’encadré subsiste : ' + r.stdout);
+  assert.ok(!/biblio-introuvable|appel-sans-reference/.test(r.stderr), 'un constat est sorti : ' + r.stderr);
+  assert.match(r.stdout, /Voir \(Dupont, 2020\)\./, 'le texte a été touché : ' + r.stdout);
+});
+
+test('bibliographie : la fiche du chapitre l’emporte sur le livre', () => {
+  // Pandoc lit buch.yaml puis la fiche : la dernière valeur gagne.
+  const livreSeul = pandocDansDossier(
+    { 'essai.md': docCitations(''), 'essai.biblio.md': BIBLIO_ESSAI, 'buch.yaml': 'bibliographie: non\n' },
+    'essai.md', 'szh-citations.lua', { metadonnees: ['buch.yaml'] });
+  assert.ok(!/Références/.test(livreSeul.stdout), 'buch.yaml seul n’est pas lu : ' + livreSeul.stdout);
+  const r = pandocDansDossier(
+    { 'essai.md': docCitations(''), 'essai.biblio.md': BIBLIO_ESSAI,
+      'buch.yaml': 'bibliographie: non\n', 'essai.meta.yaml': 'bibliographie: oui\n' },
+    'essai.md', 'szh-citations.lua',
+    { metadonnees: ['buch.yaml', 'essai.meta.yaml'] });
   assert.strictEqual(r.status, 0, r.stderr);
   assert.match(r.stdout, /Références/, r.stdout);
 });
@@ -2194,3 +2250,42 @@ for (const [langue, ausgabe, texte] of [
     }
   });
 }
+
+// ── szh-variables.lua : {{cle}} remplacé par la valeur de buch.yaml ou d'ausgabe.yaml ──
+const BUCH_VARIABLES = 'lang: de\nisbn-print: "978-3-905890-98-3"\nisbn-ebook: ""\nannee: 2027\n'
+  + 'titre: "Lebens Geschichten"\nauteurs: []\ntitle:\n  fr: "Titre"\n  de: "Titel"\n';
+const CORPS_VARIABLES = '# Ausgabe {{annee}}\n\nISBN Print: {{isbn-print}}.\\nTitel: «{{titre}}» und {{title}}.\\n'
+  + '[DOI](https://doi.org/{{isbn-print}}) und `{{isbn-print}}`.\\n'
+  + 'E-Book: {{isbn-ebook}}, {{unbekannt}}, {{auteurs}}, {{unbekannt}}.\n';
+
+for (const lecteur of ['markdown', 'commonmark_x']) {
+  test('variables (' + lecteur + ') : la valeur remplace {{cle}} dans le texte, le titre et l’adresse d’un lien, pas dans le code', () => {
+    const r = pandocDansDossier({ 'buch.yaml': BUCH_VARIABLES, 'essai.md': CORPS_VARIABLES }, 'essai.md',
+      'szh-variables.lua', { from: lecteur, metadonnees: ['buch.yaml'] });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const corps = r.stdout.replace(/^---\n[\s\S]*?\n---\n/, '');
+    assert.match(corps, /Ausgabe 2027/, corps);
+    assert.match(corps, /ISBN Print: 978-3-905890-98-3\./, corps);
+    // Une valeur de plusieurs mots, et une valeur traduite prise dans la langue du document.
+    assert.match(corps, /«Lebens Geschichten» und Titel\./, corps);
+    assert.match(corps, /https:\/\/doi\.org\/978-3-905890-98-3\)/, corps);
+    assert.match(corps, /`\{\{isbn-print\}\}`/, 'le code doit garder la variable : ' + corps);
+  });
+}
+
+test('variables : une clé absente, vide ou en liste reste imprimée, avec un avertissement par variable', () => {
+  const r = pandocDansDossier({ 'buch.yaml': BUCH_VARIABLES, 'essai.md': CORPS_VARIABLES }, 'essai.md',
+    'szh-variables.lua', { metadonnees: ['buch.yaml'] });
+  assert.strictEqual(r.status, 0, r.stderr);
+  for (const cle of ['isbn-ebook', 'unbekannt', 'auteurs']) {
+    assert.ok(r.stdout.includes('{{' + cle + '}}'), cle + ' a disparu du texte : ' + r.stdout);
+  }
+  const constats = journalCockpit.analyserJournal(r.stderr, 'fr').filter((c) => c.source === 'variables');
+  assert.deepStrictEqual(constats.map((c) => c.champs.variable + ' ' + c.code).sort(),
+    ['auteurs variable-composee', 'isbn-ebook variable-vide', 'unbekannt variable-inconnue'],
+    'un avertissement par variable, même citée deux fois : ' + r.stderr);
+  for (const c of constats) {
+    assert.strictEqual(c.slug, 'essai', 'le constat ne nomme pas son article');
+    assert.strictEqual(c.ton, 'attention');
+  }
+});

@@ -37,6 +37,12 @@ const CLES_METADONNEES = ['title', 'revue', 'volume', 'numero', 'date', 'lang', 
   // analyserAusgabe).
   'titre', 'sous-titre', 'ouvrage', 'maquette', 'format', 'collection', 'tome', 'annee',
   'isbn-print', 'isbn-ebook', 'doi', 'licence',
+  // `bibliographie: non` : aucun chapitre n'a de liste de références (szh-citations.lua) ;
+  // la page la montre par une case (champ `coche` de media/_numero.js).
+  'bibliographie',
+  // Les pièces liminaires, dans l'ordre d'impression. Le formulaire n'en règle que la
+  // présence de l'impressum composé (« colophon » ou « impressum »).
+  'liminaires',
   // Responsables de l'ouvrage : deux listes de personnes (CLES_PERSONNES), la mention qui
   // suit leurs noms, et la couleur de l'imprimé (clé de pipeline/styles/couleurs-reference.json).
   'auteurs', 'editeurs', 'mention-editeurs', 'couleur-impression',
@@ -57,7 +63,7 @@ const CLE_SANS_DOI = 'articles-sans-doi';
 // Clés qui portent une liste. `ordre-articles` donne l'ordre des articles du numéro, en
 // séquence en ligne qui se corrige à la main ; lib/articles.js la lit et la répare.
 // `ordre-chapitres` est la même clé pour un livre, dans buch.yaml.
-const CLES_LISTES = ['ordre-articles', 'ordre-chapitres', CLE_SANS_DOI];
+const CLES_LISTES = ['ordre-articles', 'ordre-chapitres', CLE_SANS_DOI, 'liminaires'];
 
 // Clés qui portent une liste de personnes (au schéma des auteur·e·s des articles) :
 // `auteurs` et `editeurs` de buch.yaml. Écrites en blocs, un dict par « - » ; une liste
@@ -776,6 +782,15 @@ function estHorsSommaire(valeur) {
   return v === 'non' || v === 'false';
 }
 
+// La clé `bibliographie` d'une fiche ou de buch.yaml : 'non', 'oui' ou '' (absente). Les
+// formes qu'accepte szh-citations.lua (sans_bibliographie) se ramènent à ces deux mots.
+function normaliserBibliographie(valeur) {
+  const v = String(valeur === undefined || valeur === null ? '' : valeur).trim().toLowerCase();
+  if (v === 'non' || v === 'nein' || v === 'no' || v === 'false') { return 'non'; }
+  if (v === 'oui' || v === 'ja' || v === 'yes' || v === 'true') { return 'oui'; }
+  return '';
+}
+
 // La licence à appliquer : celle de la fiche, sinon celle par défaut.
 function licenceArticle(valeur) {
   const cle = normaliserLicence(valeur) || LICENCE_DEFAUT;
@@ -837,22 +852,23 @@ function assurerIdNumero(racine) {
   return id;
 }
 
-// analyserMeta(texte) -> { type, lang, source, licence, doi, horsSommaire, title:{},
+// analyserMeta(texte) -> { type, lang, source, licence, doi, horsSommaire, bibliographie, title:{},
 // subtitle:{}, resume:{}, keywords:{}, author:[], _inconnues:[lignes brutes] }. Accepte les
 // maps par langue et les listes en bloc comme en ligne.
 //
 // `horsSommaire` (clé `sommaire:`, voir estHorsSommaire) ne concerne que les chapitres
-// de livre ; il vaut false pour un article.
+// de livre ; il vaut false pour un article. `bibliographie` vaut 'non', 'oui' ou '' (voir
+// normaliserBibliographie).
 //
 // `source` (nom du .docx d'origine, posé par l'import) et `licence` sont lues ici ;
 // ecrireCartesArticles() les relit du fichier, car la carte de la webview ne les porte pas.
 // Les cinq clés scalaires d'une fiche, lues sur une seule ligne : les seules qu'analyserMeta
 // puisse juger infidèles (title, subtitle, resume, keywords et author se lisent sur
 // plusieurs lignes).
-const CLES_META_SCALAIRES = ['type', 'lang', 'source', 'licence', 'doi', 'sommaire'];
+const CLES_META_SCALAIRES = ['type', 'lang', 'source', 'licence', 'doi', 'sommaire', 'bibliographie'];
 
 function analyserMeta(texte) {
-  const valeurs = { type: '', lang: '', source: '', licence: '', doi: '', horsSommaire: false, title: {}, subtitle: {}, resume: {}, keywords: {}, author: [], _inconnues: [] };
+  const valeurs = { type: '', lang: '', source: '', licence: '', doi: '', horsSommaire: false, bibliographie: '', title: {}, subtitle: {}, resume: {}, keywords: {}, author: [], _inconnues: [] };
   if (!texte) { return valeurs; }
   const brut = String(texte);
   const lignes = (brut.charAt(0) === '\uFEFF' ? brut.slice(1) : brut).split(/\r?\n/);
@@ -881,6 +897,7 @@ function analyserMeta(texte) {
     if (cle === 'licence') { valeurs.licence = normaliserLicence(decouperValeurYaml(reste).valeur); i++; continue; }
     if (cle === 'doi') { valeurs.doi = decouperValeurYaml(reste).valeur; i++; continue; }
     if (cle === 'sommaire') { valeurs.horsSommaire = estHorsSommaire(decouperValeurYaml(reste).valeur); i++; continue; }
+    if (cle === 'bibliographie') { valeurs.bibliographie = normaliserBibliographie(decouperValeurYaml(reste).valeur); i++; continue; }
     if (cle === 'title' || cle === 'subtitle' || cle === 'resume') {
       const map = {};
       const net = reste.trim();
@@ -997,6 +1014,10 @@ function serialiserMeta(valeurs) {
   // Chapitre hors sommaire : seul « sommaire: non » s'écrit ; sans la clé, il est au
   // sommaire.
   if (v.horsSommaire === true) { lignes.push('sommaire: non'); }
+  // `bibliographie: non` : pas de liste de références ; `oui` rétablit celle qu'un livre
+  // sans bibliographie retire. Sans la clé, le chapitre suit le livre.
+  const bibliographie = normaliserBibliographie(v.bibliographie);
+  if (bibliographie !== '') { lignes.push('bibliographie: ' + bibliographie); }
   for (const cle of ['title', 'subtitle', 'resume']) {
     const map = v[cle] || {};
     const sous = [];
@@ -1308,7 +1329,7 @@ module.exports = {
   REVUES, normaliserRevue,
   TYPES_ARTICLE, TYPES_DOSSIER, TYPES_HORS, LIBELLES_TYPES, GROUPES_TYPES, LANGUES_META, CHAMPS_AUTEUR,
   LANGUES_ARTICLE, normaliserLangueArticle,
-  LICENCE_DEFAUT, LICENCES_ARTICLE, normaliserLicence, licenceArticle, estHorsSommaire,
+  LICENCE_DEFAUT, LICENCES_ARTICLE, normaliserLicence, licenceArticle, estHorsSommaire, normaliserBibliographie,
   decouperValeurYaml, decouperFlowYaml, listeYamlEnLigne, analyserAusgabe,
   separerFrontmatter, analyserFrontmatter, citerFrontmatter, lignesCleFrontmatter, serialiserFrontmatter,
   langueDefaut, langueRevue, analyserMeta, serialiserMeta, libelleCourtNumero, titreNumero,

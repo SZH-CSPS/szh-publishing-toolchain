@@ -179,7 +179,8 @@ const CLES_META = {
   'marque-champ': 'ctl.meta.marque.champ',
   'marque-motcle': 'ctl.meta.marque.motcle',
   'sans-langue': 'ctl.meta.sanslangue',
-  'langue-inconnue': 'ctl.meta.langueinconnue'
+  'langue-inconnue': 'ctl.meta.langueinconnue',
+  'langue-chapitre': 'ctl.meta.languechapitre'
 };
 
 // « citations » : szh-citations.lua. « appel-sans-reference » est le message le plus
@@ -250,6 +251,7 @@ const ARGS = {
   'meta/marque-motcle': (ch, l) => [ch('motcle'), nomLangue(ch('langue'), l)],
   // Langue inconnue : son code se cite tel quel, il n'a pas de nom à traduire.
   'meta/langue-inconnue': (ch) => [ch('langue')],
+  'meta/langue-chapitre': (ch, l) => [nomLangue(ch('langue'), l), nomLangue(ch('livre'), l)],
   'citations/appel-sans-reference': (ch) => [ch('appel')],
   'citations/appel-ambigu': (ch) => [ch('appel')],
   'citations/reference-orpheline': (ch) => [ch('reference')],

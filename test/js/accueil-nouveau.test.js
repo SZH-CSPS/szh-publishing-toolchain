@@ -43,7 +43,7 @@ numero(['Books', '2025-B12-Leichte'], 'buch.yaml', ['titre: "Leichte Sprache"'])
 const creer = (demande) => nouveau.executer(nouveau.scriptCreation(demande, RACINE), { env: ENV, powershell: POWERSHELL });
 const revue = (autres) => Object.assign({ produit: 'revue', annee: 2026, numero: 3, volume: 16, volumeManuel: false }, autres);
 const livre = (autres) => Object.assign({ produit: 'livre', annee: 2026, reference: 13, titre: 'École & handicap : l’art d’être',
-  genre: 'collectif', maquette: 'falc', format: 'a4' }, autres);
+  genre: 'collectif', maquette: 'falc', format: 'a4', langue: 'de' }, autres);
 
 test('nouveau : une demande mal formée ne lance rien', () => {
   assert.strictEqual(nouveau.scriptCreation(revue({ numero: 0 }), RACINE), null);
@@ -51,6 +51,9 @@ test('nouveau : une demande mal formée ne lance rien', () => {
   assert.strictEqual(nouveau.scriptCreation(revue({ produit: 'autre' }), RACINE), null);
   assert.strictEqual(nouveau.scriptCreation(livre({ titre: '  ' }), RACINE), null);
   assert.strictEqual(nouveau.scriptCreation(livre({ maquette: "falc'; Remove-Item x; '" }), RACINE), null);
+  // Les trois langues de la chaîne seulement : pas d'anglais, pas de langue absente.
+  assert.strictEqual(nouveau.scriptCreation(livre({ langue: 'en' }), RACINE), null);
+  assert.strictEqual(nouveau.scriptCreation(livre({ langue: undefined }), RACINE), null);
   assert.ok(nouveau.scriptCreation(livre({ titre: "L'O'Neil" }), RACINE).includes("'L''O''Neil'"));
 });
 
@@ -94,6 +97,8 @@ test('nouveau : un numéro et un livre se créent depuis le gabarit, nommés par
   assert.strictEqual(path.dirname(l.chemin), path.join(BASE, 'Books'));
   assert.match(path.basename(l.chemin), /^2026-B13-Ecole_handicap_l_art_d_etre$/);
   assert.match(fs.readFileSync(path.join(l.chemin, 'buch.yaml'), 'utf8'), /^titre: "École & handicap : l’art d’être"$/m);
+  assert.match(fs.readFileSync(path.join(l.chemin, 'buch.yaml'), 'utf8'), /^lang: de$/m,
+    'la langue choisie à la création n’est pas dans buch.yaml');
 });
 
 test('nouveau : l’année zéro du volume vient du socle', { skip: sansPowerShell }, async () => {

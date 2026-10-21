@@ -7,7 +7,7 @@
 # (vérifié par test/js/chaines-filtres.test.js).
 #
 # Ordre d'un article :
-#   contexte -> maquette -> encadres -> niveaux -> listes-serrees -> tabelle-inclure -> tabelle-scope ->
+#   contexte -> maquette -> encadres -> niveaux -> listes-serrees -> tabelle-inclure -> tabelle-scope -> variables ->
 #   typographie -> titre-lignes -> metafichier -> grille -> image-introuvable -> ressource ->
 #   figure -> numerotation -> tableau-boite -> legende-avant -> sections -> auteurs ->
 #   citations -> rubrique -> cesure -> exergue -> notes
@@ -16,6 +16,8 @@
 #     presque tous les autres ;
 #   * encadres avant typographie : le titre qu'il pose dans un encadré est du texte, que la
 #     typographie traite comme le reste ;
+#   * variables juste avant typographie : la valeur d'un {{isbn-print}} reçoit la même
+#     typographie que le texte qui l'entoure ;
 #   * titre-lignes juste après typographie : il mesure le titre pour le couper en escalier,
 #     et doit le voir avec ses espaces insécables ;
 #   * typographie après tabelle-inclure, qui apporte le texte des tableaux, et avant
@@ -75,7 +77,7 @@
 # La partie commune, en tronçons, dans l'ordre.
 SOCLE_CONTEXTE  := contexte
 SOCLE_ENTREE    := niveaux listes-serrees tabelle-inclure tabelle-scope
-SOCLE_TYPO      := typographie
+SOCLE_TYPO      := variables typographie
 SOCLE_IMAGES    := metafichier grille image-introuvable
 SOCLE_NUMEROS   := figure numerotation tableau-boite legende-avant sections
 SOCLE_CITATIONS := citations

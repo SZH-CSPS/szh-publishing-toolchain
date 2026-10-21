@@ -168,6 +168,9 @@ const TABLE = Object.freeze({
     focusFixe: 'lang', defaut: 'defaut.sans-langue' },
   'meta/langue-inconnue': { barrage: 'compilation', nature: D, lieu: 'fiche',
     focusFixe: 'lang', defaut: 'defaut.langue-inconnue' },
+  // Un chapitre dans une autre langue que son livre : voulu dans un livre bilingue.
+  'meta/langue-chapitre': { barrage: null, nature: F, lieu: 'fiche',
+    focusFixe: 'lang', defaut: 'defaut.langue-chapitre' },
   // ---- Les figures ---------------------------------------------------------------
   // Rouge : une image informative sans texte alternatif fait échouer la validation PDF/UA,
   // donc l'export. Ambre sur un poste où cette validation est éteinte.
@@ -485,6 +488,7 @@ const SECOND_ETAGE = Object.freeze({
   'meta/marque-motcle': { consigne: 'consigne.marque-motcle' },
   'meta/sans-langue': { consigne: 'consigne.sans-langue' },
   'meta/langue-inconnue': { consigne: 'consigne.langue-inconnue' },
+  'meta/langue-chapitre': { consigne: 'consigne.langue-chapitre' },
   'numerotation/figure-sans-alt': { consigne: 'consigne.images-sans-description',
     infobulle: 'infobulle.images-sans-description' },
   'numerotation/figure-legendee-decorative': { consigne: 'consigne.figure-legendee-decorative' },

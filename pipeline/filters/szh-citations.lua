@@ -967,7 +967,25 @@ local LIENS_DESACTIVES = (function()
   return cfg ~= nil and cfg.desactiverLiensReferences == true
 end)()
 
+-- `bibliographie: non`, dans buch.yaml pour tout le livre ou dans la fiche d'un chapitre
+-- (la fiche l'emporte, pandoc lisant buch.yaml avant elle) : pas de liste de références.
+local function sans_bibliographie(meta)
+  local v = meta.bibliographie
+  if v == nil then return false end
+  if type(v) == 'boolean' then return v == false end
+  local t = utils.stringify(v):lower()
+  return t == 'non' or t == 'nein' or t == 'no' or t == 'false'
+end
+
 function Pandoc(doc)
+  -- Sans bibliographie : le marqueur part sans rien imprimer ni signaler, et les
+  -- parenthèses du texte ne sont pas lues comme des appels.
+  if sans_bibliographie(doc.meta) then
+    doc.blocks = doc.blocks:filter(function(b)
+      return not (b.t == 'Div' and b.classes:includes('szh-biblio'))
+    end)
+    return doc
+  end
   -- 1. la liste de références : le bloc « ::: {.szh-biblio src=…} » est remplacé par le
   -- titre et le contenu de <slug>.biblio.md.
   local slug = slug_article()

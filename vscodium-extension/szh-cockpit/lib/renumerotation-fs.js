@@ -19,8 +19,8 @@
 const fs = require('fs');
 const path = require('path');
 const { planRenumerotation, planReprise, PREFIXE_TEMPO, tige } = require('./renumerotation');
-const { serialiserAusgabe, ecrireAtomique } = require('./yaml');
-const { CLE_ORDRE } = require('./articles');
+const { serialiserAusgabe, ecrireAtomique, analyserAusgabe } = require('./yaml');
+const { CLE_ORDRE, analyserOrdre } = require('./articles');
 const { nomFichierBiblio } = require('./citations');
 const kirby = require('./kirby-contenu');
 
@@ -186,6 +186,17 @@ function ecrireOrdre(racine, slugs, options) {
   ecrireAtomique(chemin, serialiserAusgabe(contenu, modifies));
 }
 
+// Vrai si la clé d'ordre écrite n'est pas vide et diffère de `slugs` : par exemple après la
+// suppression du dernier article, qui ne renomme rien mais laisse son slug dans la clé.
+function ordreEcritDiffere(racine, slugs, options) {
+  const nomFichier = (options && options.config) || 'ausgabe.yaml';
+  const cle = (options && options.cle) || CLE_ORDRE;
+  let contenu = '';
+  try { contenu = fs.readFileSync(path.join(racine, nomFichier), 'utf8'); } catch (e) { return false; }
+  const ecrit = analyserOrdre(analyserAusgabe(contenu)[cle]);
+  return ecrit.length > 0 && ecrit.join('\n') !== slugs.map(String).join('\n');
+}
+
 // Exécute les passes de dossiers, puis aligne les fichiers. -> le nombre de dossiers
 // renommés. Lève au premier refus du système de fichiers (dossier ouvert par Windows,
 // synchronisation en cours) : les temporaires restent, et reprendre() saura finir.
@@ -206,8 +217,8 @@ function executerPasses(base, passes) {
 // renumeroter(racine, ordreVoulu) -> { erreur, renommes }
 //
 // `ordreVoulu` est la liste des slugs dans l'ordre affiché, calculée par l'appelant. Si le
-// plan ne trouve rien à faire, rien n'est écrit, pas même ausgabe.yaml (la co-édition lit
-// sa date de modification).
+// plan ne trouve rien à faire, ausgabe.yaml n'est réécrit que si son ordre nomme encore un
+// article disparu (la co-édition lit sa date de modification).
 function renumeroter(racine, ordreVoulu, options) {
   const base = dossierUnites(racine, options);
   let plan;
@@ -216,7 +227,14 @@ function renumeroter(racine, ordreVoulu, options) {
   } catch (e) {
     return { erreur: String((e && e.message) || e), renommes: 0 };
   }
-  if (!plan.aFaire) { return { erreur: null, renommes: 0 }; }
+  if (!plan.aFaire) {
+    try {
+      if (ordreEcritDiffere(racine, ordreVoulu, options)) { ecrireOrdre(racine, ordreVoulu, options); }
+    } catch (e) {
+      return { erreur: String((e && e.message) || e), renommes: 0 };
+    }
+    return { erreur: null, renommes: 0 };
+  }
   try {
     const renommes = executerPasses(base, plan.passes);
     for (const r of plan.renommages) {

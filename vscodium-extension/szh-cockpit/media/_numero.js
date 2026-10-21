@@ -76,13 +76,21 @@
     { cle: 'editeurs', genre: 'personnes', libelle: 'meta.livre.editeurs' },
     // `mention` : le filigrane est le défaut de la langue du livre (majMention).
     { cle: 'mention-editeurs', genre: 'texte', libelle: 'meta.livre.mention', mention: true },
+    // Les trois langues de la chaîne (szh-contexte.lua) : folios, sommaire, impressum et
+    // libellés des figures sortent dans cette langue.
     { cle: 'lang', genre: 'select', libelle: 'meta.livre.langue',
       options: [
         { valeur: 'fr', libelle: 'meta.langue.fr' },
         { valeur: 'de', libelle: 'meta.langue.de' },
-        { valeur: 'it', libelle: 'meta.langue.it' },
-        { valeur: 'en', libelle: 'meta.langue.en' }
+        { valeur: 'it', libelle: 'meta.langue.it' }
       ] },
+    // `bibliographie: non` dans buch.yaml : aucun chapitre n'imprime ni ne réclame de liste
+    // de références (szh-citations.lua). `coche` : la valeur écrite case cochée ; décochée,
+    // la clé est vidée.
+    { cle: 'bibliographie', genre: 'case', coche: 'non', libelle: 'meta.livre.sansBibliographie' },
+    // Sans l'impressum composé (« colophon » de `liminaires:`), pour un livre qui écrit le
+    // sien à la main. L'hôte ôte ou remet le mot dans la liste (ecrireChampsLivre).
+    { cle: 'liminaires', genre: 'case', coche: 'sans-impressum', libelle: 'meta.livre.sansImpressum' },
     { cle: 'maquette', genre: 'select', libelle: 'meta.livre.maquette',
       options: [
         { valeur: 'normal', libelle: 'meta.livre.maquette.normal' },
@@ -662,8 +670,8 @@
         }
         if (champ.genre === 'case') {
           // La valeur arrive déjà ramenée à « true » ou « false » par estVraiYaml
-          // (lib/yaml.js).
-          ctl[champ.cle].checked = (brut === 'true');
+          // (lib/yaml.js), ou à la valeur `coche` du champ.
+          ctl[champ.cle].checked = (brut === (champ.coche || 'true'));
           continue;
         }
         if (champ.genre === 'hex') {
@@ -713,7 +721,9 @@
         else if (champ.genre === 'couleurs') { envoi[champ.cle] = couleurChoisie; }
         else if (champ.genre === 'couleursRef') { envoi[champ.cle] = ctl[champ.cle].choisie; }
         else if (champ.genre === 'personnes') { envoi[champ.cle] = (personnes[champ.cle] || []).slice(); }
-        else if (champ.genre === 'case') { envoi[champ.cle] = ctl[champ.cle].checked ? 'true' : 'false'; }
+        else if (champ.genre === 'case') {
+          envoi[champ.cle] = ctl[champ.cle].checked ? (champ.coche || 'true') : (champ.coche ? '' : 'false');
+        }
         else { envoi[champ.cle] = ctl[champ.cle].value; }
       }
       api.postMessage({ type: SZH.MSG.ENREGISTRER, auto: !!auto, modifies: envoi });

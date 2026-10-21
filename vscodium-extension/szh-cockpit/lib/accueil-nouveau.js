@@ -13,6 +13,7 @@ const MARQUE = '@@SZH@@';
 const GENRES = ['monographie', 'collectif'];
 const MAQUETTES = ['normal', 'falc'];
 const FORMATS = ['standard', 'a4'];
+const LANGUES = ['fr', 'de', 'it'];
 
 // Une chaîne PowerShell entre apostrophes : chaque apostrophe se double, la typographique
 // comprise, que PowerShell lit aussi comme un délimiteur.
@@ -60,7 +61,8 @@ function scriptCreation(demande, toolkit) {
     const reference = entier(d.reference);
     const titre = String(d.titre || '').trim();
     if (!(annee > 0) || !(reference >= 1) || !titre || GENRES.indexOf(d.genre) === -1
-      || MAQUETTES.indexOf(d.maquette) === -1 || FORMATS.indexOf(d.format) === -1) { return null; }
+      || MAQUETTES.indexOf(d.maquette) === -1 || FORMATS.indexOf(d.format) === -1
+      || LANGUES.indexOf(d.langue) === -1) { return null; }
     corps.push(
       '$racine = Get-SzhEmplacementRevue \'livre\' \'encours\'',
       '$nom = Get-SzhNomLivre ' + annee + ' ' + reference + ' ' + litteral(titre),
@@ -71,7 +73,8 @@ function scriptCreation(demande, toolkit) {
         '; nom = $deja.nom; titre = $deja.titre; chemin = $deja.chemin; archive = [bool]$deja.archive }; return }',
       '& ' + litteral(path.join(windows, 'new-livre.ps1')) + ' -Dossier $cible -Titre ' + litteral(titre) +
         ' -Annee ' + annee + ' -Reference ' + reference + ' -Type ' + litteral(d.genre) +
-        ' -Maquette ' + litteral(d.maquette) + ' -Format ' + litteral(d.format) + ' | Out-Null'
+        ' -Maquette ' + litteral(d.maquette) + ' -Format ' + litteral(d.format) +
+        ' -Langue ' + litteral(d.langue) + ' | Out-Null'
     );
   } else {
     return null;

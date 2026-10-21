@@ -134,6 +134,9 @@ function Invoke-SzhTachesDemarrage {
   try { [void](Initialize-SzhEmplacementsTest) } catch { }
   [void]$taches.Add('Set-SzhEnvironnementSecrets')
   Set-SzhEnvironnementSecrets
+  # Le VSCodium lancé ensuite en hérite : le cockpit sait que les tâches ont tourné
+  # (lib/demarrage.js).
+  $env:SZH_TACHES_DEMARRAGE = '1'
   return [ordered]@{ taches = @($taches); ancrage = $ancrage }
 }
 

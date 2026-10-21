@@ -46,7 +46,11 @@ W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
 styles = ''.join('<w:style w:type="paragraph" w:styleId="%s"><w:name w:val="%s"/></w:style>' % s
                  for s in [('Normal', 'Normal'), ('EncadreX', 'SZH Important'),
                            ('MiseX', 'SZH Hervorhebung'), ('QuestionX', 'SZH Question (interview)'),
-                           ('AuhorsX', 'Auhors'), ('VarianteX', 'szh-Important')])
+                           ('AuhorsX', 'Auhors'), ('VarianteX', 'szh-Important'),
+                           ('berschrift2', 'heading 2')])
+# Le style de caractère que Word lie à « Überschrift 2 ».
+styles += ('<w:style w:type="character" w:styleId="berschrift2Zchn"><w:name w:val="Überschrift 2 Zchn"/>'
+           '<w:link w:val="berschrift2"/></w:style>')
 with zipfile.ZipFile(sortie, 'w') as z:
     z.writestr('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>')
     z.writestr('_rels/.rels', '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')
@@ -156,6 +160,56 @@ test('un document sans ces styles ressort identique à l\'octet',
         + 'print(all(a.read(n)==b.read(n) for n in a.namelist()) and a.namelist()==b.namelist())',
       docx, marque]);
       assert.strictEqual(lire.stdout.trim(), 'True', lire.stderr);
+    } finally {
+      fs.rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+// ── Titre posé en style de caractère (« Überschrift 2 Zchn ») ─────────────────────────
+// Word applique le style de caractère lié quand on clique sur « Überschrift 2 » avec une
+// partie du paragraphe sélectionnée : la ligne a l'air d'un titre, suivie d'un saut de
+// ligne manuel puis du texte.
+
+function run(texte, style) {
+  return '<w:r>' + (style ? '<w:rPr><w:rStyle w:val="' + style + '"/></w:rPr>' : '')
+    + '<w:t xml:space="preserve">' + texte + '</w:t></w:r>';
+}
+const SAUT = '<w:r><w:br/></w:r>';
+function para(contenu) { return '<w:p><w:pPr><w:pStyle w:val="Normal"/></w:pPr>' + contenu + '</w:p>'; }
+
+test('un titre en style de caractère devient un titre, et le texte qui suit un paragraphe',
+  { skip: sansPython || sansPandoc }, () => {
+    const d = jetable();
+    try {
+      const Z = 'berschrift2Zchn';
+      const docx = fabriquer(d, [
+        para(run('Mobbing', Z) + SAUT + run('Sehr schwierig war es.') + SAUT + run('Da wurde ich gemobbt.')),
+        // Le saut dans le même run que le titre, et un titre en deux runs.
+        para('<w:r><w:rPr><w:rStyle w:val="' + Z + '"/></w:rPr><w:t>Neue </w:t></w:r>'
+          + '<w:r><w:rPr><w:rStyle w:val="' + Z + '"/></w:rPr><w:t>Wohnung</w:t><w:br/><w:t>Ich zog nach Bern.</w:t></w:r>'),
+        // Tout le paragraphe au style de titre, sans saut.
+        para(run('Zukunft', Z)),
+        // Restent des paragraphes : la phrase qui se poursuit, le mot mis en forme au milieu,
+        // le titre suivi d'un texte sans saut.
+        para(run('Der Titel verbindet 3 Gedanken:', Z) + SAUT + run('Lebens-Geschichte.')),
+        para(run('Ich sage ') + run('Mobbing', Z) + SAUT + run('dazu.')),
+        para(run('Familie', Z) + run(' war wichtig.'))
+      ].join(''));
+      const marque = path.join(d, 'marque.docx');
+      const r = python([PREPASS, docx, marque]);
+      assert.strictEqual(r.status, 0, r.stderr);
+      assert.strictEqual(JSON.parse(r.stdout).titres, 3, r.stdout);
+      const blocs = versMarkdown(marque).split('\n\n').map((b) => b.trim());
+      assert.deepStrictEqual(blocs, [
+        '## Mobbing',
+        'Sehr schwierig war es.\\\nDa wurde ich gemobbt.',
+        '## Neue Wohnung',
+        'Ich zog nach Bern.',
+        '## Zukunft',
+        'Der Titel verbindet 3 Gedanken:\\\nLebens-Geschichte.',
+        'Ich sage Mobbing\\\ndazu.',
+        'Familie war wichtig.'
+      ]);
     } finally {
       fs.rmSync(d, { recursive: true, force: true });
     }

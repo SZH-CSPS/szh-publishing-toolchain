@@ -703,6 +703,13 @@ différentes.**
   autre produit : on n'y touche pas. Un raccourci épinglé à la barre des tâches est une
   copie : le désépingler et le réépingler à la main après un changement.
 
+**VSCodium est épinglé à la barre des tâches à la place de « Pronto ».**
+- Effet : Pronto s'ouvre quand même. Le cockpit voit que le lanceur n'est pas passé
+  (`SZH_TACHES_DEMARRAGE` absente) et lance lui-même `open-revue.ps1 -Demarrage`, au plus
+  une fois toutes les 12 heures (`lib/demarrage.js`). Le bandeau « dossier SharePoint
+  introuvable » disparaît de l'Accueil une fois ces tâches terminées.
+- Que faire : rien.
+
 **Le double-clic sur un `.md` n'ouvre plus Pronto.**
 - Cause probable : une autre application a repris l'association.
 - Que faire : relancer « Pronto (Updater) » ; l'utilisateur choisit ensuite une fois

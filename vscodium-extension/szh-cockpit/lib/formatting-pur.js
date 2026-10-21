@@ -20,16 +20,29 @@ function estEnrobe(t, marqueur) {
   return true;
 }
 
+// Une ligne sélectionnée en entier emporte ses blancs et son saut de ligne dur (« \ » en
+// fin de ligne). Enrobés, ils casseraient le marqueur : « [texte\]{.underline} » échappe le
+// crochet, et le passage ne se ferme plus. Ils restent donc hors des marqueurs. Un « \\ »
+// final est un antislash écrit, pas un saut : il reste dedans.
+function separerBords(texte) {
+  const m = String(texte).match(/^(\s*)([\s\S]*?)(\s*(?:(?<!\\)\\)?\s*)$/);
+  return { debut: m[1], coeur: m[2], fin: m[3] };
+}
+
 function basculerEnrobage(texte, marqueur) {
-  const t = String(texte);
-  if (estEnrobe(t, marqueur)) { return t.slice(marqueur.length, t.length - marqueur.length); }
-  return marqueur + t + marqueur;
+  // Sélection vide : les marqueurs se posent tels quels, le curseur entre eux.
+  const b = separerBords(texte);
+  if (b.coeur === '') { return marqueur + String(texte) + marqueur; }
+  const t = b.coeur;
+  if (estEnrobe(t, marqueur)) { return b.debut + t.slice(marqueur.length, t.length - marqueur.length) + b.fin; }
+  return b.debut + marqueur + t + marqueur + b.fin;
 }
 
 function basculerSouligne(texte) {
-  const t = String(texte);
-  const m = t.match(/^\[([\s\S]*)\]\{\.underline\}$/);
-  return m ? m[1] : '[' + t + ']{.underline}';
+  const b = separerBords(texte);
+  if (b.coeur === '') { return '[' + String(texte) + ']{.underline}'; }
+  const m = b.coeur.match(/^\[([\s\S]*)\]\{\.underline\}$/);
+  return b.debut + (m ? m[1] : '[' + b.coeur + ']{.underline}') + b.fin;
 }
 
 function basculerTitre(texte, niveau) {

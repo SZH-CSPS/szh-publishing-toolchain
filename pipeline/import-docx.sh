@@ -26,7 +26,8 @@
 #   3bis. docx-styles-corps.py : copie du .docx où les paragraphes « SZH Important »,
 #      « SZH Hervorhebung », « SZH Question (interview) » et, pour un livre, la ligne
 #      d'auteurs (style « Auhors » et variantes) portent un marqueur. Pandoc perd les styles
-#      de paragraphe.
+#      de paragraphe. Un titre posé en style de caractère (« Überschrift 2 Zchn ») en tête
+#      de paragraphe, suivi d'un saut de ligne manuel, y devient un paragraphe de titre.
 #   4. pandoc et ses filtres Lua, dans cet ordre :
 #        szh-styles-corps     marqueur -> bloc ::: {.important}, {.highlight}, {.question},
 #                             {.szh-auteurs} ; en premier
@@ -41,7 +42,9 @@
 #        szh-attributs-sains  en dernier : assainit classes et identifiants. Le lecteur docx
 #                             met le nom du style Word en classe (« Titre 2 (small) »), et
 #                             pandoc ne relit pas une parenthèse dans une classe : le bloc
-#                             d'attributs s'imprimerait tel quel.
+#                             d'attributs s'imprimerait tel quel. Sort aussi un saut de
+#                             ligne de la fin d'un passage souligné ou gras, que le
+#                             writer écrirait « \] ».
 #   4bis. contrôle : aucun bloc HTML brut dans le .md.
 #   4ter. docx-controle-import.py --avant-medias : toute valeur de bloc et toute image du
 #      Word doivent se retrouver dans l'article ; ce qui manque y est remis et signalé.
@@ -73,10 +76,14 @@ export SZH_SLUG="$SLUG"
 
 # Produit du numéro (« revue » ou « zeitschrift »), lu avant le cd, là où est ausgabe.yaml.
 # Le lecteur du gabarit en tire la langue de l'article ; un article italien se corrige à la
-# main dans la fiche. Vide (livre, pas d'ausgabe.yaml) : le lecteur prend le français et le
-# signale.
+# main dans la fiche. Dans un livre, c'est le `lang:` de buch.yaml ($SZH_LANGUE_LIVRE) : le
+# chapitre le prend sans l'écrire dans sa fiche, et suit donc le livre. Sans l'un ni
+# l'autre, le lecteur prend le français et le signale.
 SZH_PRODUIT="$(pandoc lua "$PIPE/filters/szh-lire-config.lua" ausgabe.yaml revue 2>/dev/null || true)"
 export SZH_PRODUIT
+SZH_LANGUE_LIVRE=""
+[ -n "$LIVRE_RACINE" ] && SZH_LANGUE_LIVRE="$(pandoc lua "$PIPE/filters/szh-lire-config.lua" buch.yaml lang 2>/dev/null || true)"
+export SZH_LANGUE_LIVRE
 
 # Fichiers temporaires, supprimés par un seul trap à toute sortie. Initialisés vides : avec
 # `set -u`, le trap échouerait s'il se déclenchait avant leur mktemp.

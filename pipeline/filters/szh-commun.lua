@@ -159,6 +159,19 @@ local function avertir_sans_langue(slug, lang_num)
       ', der Sprache der Ausgabe. Öffnen Sie «Metadaten der Artikel» und legen Sie die Sprache des Artikels fest.')
 end
 
+-- Chapitre dont la fiche fixe une autre langue que celle du livre : voulu dans un livre
+-- bilingue, sinon reste d'un import fait avant que la langue du livre soit choisie.
+local function signaler_langue_chapitre(slug, lang, lang_livre)
+  M.constat('meta', 'info', 'langue-chapitre',
+    { 'chapitre « ' .. slug .. ' »', 'langue « ' .. lang .. ' »', 'livre « ' .. lang_livre .. ' »' },
+    'Chapitre « ' .. slug .. ' » : composé ' .. M.EN_LANGUE.fr[lang] .. ', alors que le livre est ' ..
+      M.EN_LANGUE.fr[lang_livre] .. '. Si c’est voulu, rien à faire ; sinon, changez la langue du ' ..
+      'chapitre dans « Métadonnées des chapitres ».',
+    'Kapitel «' .. slug .. '»: gesetzt ' .. M.EN_LANGUE.de[lang] .. ', das Buch ist aber ' ..
+      M.EN_LANGUE.de[lang_livre] .. '. Ist das gewollt, ist nichts zu tun; sonst ändern Sie die ' ..
+      'Sprache des Kapitels unter «Metadaten der Kapitel».')
+end
+
 -- Une langue hors des trois de la maison arrête la compilation.
 local function bloquer_langue_inconnue(slug, brut)
   M.bloquer('meta', 'langue-inconnue', { chp_article(slug), 'langue « ' .. brut .. ' »' },
@@ -215,7 +228,8 @@ end
 -- du numéro ou de buch.yaml (relu dans SZH_AUSGABE, car la fiche a pu l'écraser dans meta ;
 -- sinon meta.lang), puis le français.
 -- Avec `signaler`, hors livre : avertit d'une fiche sans langue et bloque sur une langue
--- inconnue. Sans lui, une fiche invalide est traitée comme absente, sans message.
+-- inconnue ; dans un livre, signale un chapitre composé dans une autre langue que le livre.
+-- Sans lui, une fiche invalide est traitée comme absente, sans message.
 function M.calculer_contexte(meta, signaler)
   local m = meta or {}
   local livre = (os.getenv('SZH_LIVRE') or '') ~= ''
@@ -238,6 +252,9 @@ function M.calculer_contexte(meta, signaler)
     fiche_invalide = dire and bloquer_langue_inconnue or nil,
     repli = function() return lang_num end,
   })
+  if signaler and livre and lang ~= lang_num then
+    signaler_langue_chapitre(M.slug_article(), lang, lang_num)
+  end
   return { lang = lang, produit = produit, unite = livre and 'chapitre' or 'article' }
 end
 

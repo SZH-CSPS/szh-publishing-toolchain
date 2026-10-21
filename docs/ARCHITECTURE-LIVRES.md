@@ -117,7 +117,7 @@ Le modèle d'un livre neuf est `livre-template/buch.yaml`. Les clés :
 titre: "Berufliche Teilhabe von Erwachsenen mit dem Asperger-Syndrom"
 sous-titre: "Strategien von Arbeitnehmer:innen und Arbeitgeber:innen"
 ouvrage: monographie       # monographie | collectif : décide où vivent les auteur·e·s
-lang: de                   # langue du texte, lue par szh-contexte.lua
+lang: de                   # fr | de | it : langue du texte, lue par szh-contexte.lua
 maquette: normal           # normal | falc
 format: standard           # standard (155 × 225) | a4 (210 × 297, FALC seulement)
 collection: "Sonderpädagogische Forschung in der Schweiz"
@@ -127,6 +127,7 @@ isbn-print: "978-3-905890-96-9"
 isbn-ebook: "978-3-905890-95-2"
 doi: "10.57161/b327"
 licence: cc-by-nc-nd-4.0
+bibliographie: non         # aucun chapitre n'a de liste de références ; absente : chacun la sienne
 couleur: "#5F9FBC"          # couleur numérique (PDF écran, EPUB, web)
 couleur-impression: bleu-acier  # clé de styles/couleurs-reference.json : couverture
 couverture:
@@ -182,11 +183,22 @@ version-toolkit: ""
 
 Dans `liminaires`, les mots `demi-titre`, `impressum` (ou `colophon`), `page-titre`,
 `dedicace` et `sommaire` sont composés par l'assembleur ; un nom de fichier `.md` désigne une
-pièce écrite à la main dans `liminaires/`.
+pièce écrite à la main dans `liminaires/`. La case « Pas d'impressum automatique » du
+formulaire ôte `colophon` (ou `impressum`) de cette liste, pour un livre qui écrit le sien ;
+décochée, elle le remet après `demi-titre`.
 
 Le cockpit édite ces clés dans le formulaire « Métadonnées du livre »
 (`media/metadata-book.*`), réglages d'impression compris ; le dos calculé y est affiché en
 lecture seule.
+
+**La langue.** `lang:` se choisit à la création du livre, dans l'Accueil, et se change dans
+le formulaire. Elle décide de tout ce que la chaîne écrit d'elle-même : folios (« Seite 3
+von 12 »), titre du sommaire, impressum, licence, mention des éditeurs, couverture,
+repères de l'EPUB, et, pour chaque chapitre, typographie et libellés des figures. Un
+chapitre importé prend la langue du livre sans l'écrire dans sa fiche, et le formulaire des
+chapitres n'écrit pas une langue égale à celle du livre : changer la langue du livre change
+donc celle de tous ses chapitres. Un chapitre dont la fiche fixe une autre langue est
+signalé à la compilation (`langue-chapitre`), ce qui est voulu dans un livre bilingue.
 
 **Monographie ou ouvrage collectif.** La clé s'appelle `ouvrage` et non `type`, parce que
 `type` est la rubrique d'un article : pandoc fusionne les métadonnées en laissant gagner la
@@ -211,9 +223,29 @@ chapitre vers sa fiche, sans écraser une valeur existante. L'import Word d'un c
   tranche, ni entrée. Le chapitre est quand même compilé à sa place : sa pagination, ses
   compteurs et son rang ne changent pas. Les autres chapitres sont numérotés sans trou, et
   l'index à pouce se répartit entre eux.
+- `bibliographie: non` : le chapitre n'a pas de liste de références. `szh-citations.lua`
+  retire le marqueur `.szh-biblio` sans rien imprimer ni signaler, même si le fichier
+  `<slug>.biblio.md` manque, et ne lit pas les parenthèses comme des appels. La même clé
+  dans `buch.yaml` vaut pour tout le livre ; `bibliographie: oui` dans une fiche la lève
+  pour ce chapitre. Le formulaire du livre et la carte de chaque chapitre portent la case
+  « Pas de bibliographie ».
 - `picto-entete: ecouter` pose un picto de lecture audio au coin extérieur de chaque page du
   chapitre, par le même élément courant que l'onglet de tranche (`szh-livre-chapitre.html`,
   `styles/livre/base.css`).
+
+#### Les variables dans le texte
+
+`{{cle}}` dans un chapitre, une pièce liminaire ou la 4e de couverture imprime la valeur de
+`cle` dans `buch.yaml` : `ISBN Print: {{isbn-print}}` sort « ISBN Print: 978-3-905890-96-9 ».
+La fiche du chapitre l'emporte sur `buch.yaml`, comme pour les autres clés. Une valeur
+traduite (`title:` à sous-clés `fr`, `de`) donne celle de la langue du chapitre.
+
+`szh-variables.lua` le fait juste avant la typographie, dans le texte et dans l'adresse
+d'un lien (`https://doi.org/{{doi}}`), pas dans le code entre accents graves. Le nom
+s'écrit sans espace entre les accolades. Une clé absente, vide ou en liste ne remplace
+rien : `{{cle}}` reste imprimé, et un avertissement `[variables-avertissement]` nomme le
+chapitre et la variable. Le même filtre est dans la chaîne d'un article, avec les clés
+d'`ausgabe.yaml`.
 
 #### L'encadré `falc-header`
 
@@ -657,6 +689,9 @@ Traits de la charte :
 - sommaire à filets, avec la pastille de chaque chapitre ;
 - une phrase par ligne : le lecteur pandoc est en `markdown+hard_line_breaks`, et le texte
   est au fer à gauche, sans césure ;
+- un paragraphe n'est jamais coupé entre deux pages : il passe en entier à la page
+  suivante (`break-inside: avoid` sur `p`, dans `falc.css`), sauf s'il est plus haut
+  qu'une page ;
 - gras sur les mots-clés, listes numérotées courtes.
 
 La couleur de chaque chapitre suit un cycle de six teintes (`PALETTE_CHAPITRE` dans
@@ -686,7 +721,8 @@ Le cockpit est une seule extension pour la revue et le livre. Le profil `livre` 
 - `horsSommaire` : la case « hors sommaire » d'un chapitre ;
 - `titreEnLignes` : le « // » d'un titre montré en lignes ;
 - `sortiesLivre` : PDF imprimeur, couverture, EPUB, HTML web ;
-- `paletteLivre` : l'en-tête FALC et le QR dans la mise en forme.
+- `paletteLivre` : l'en-tête FALC et le QR dans la mise en forme ;
+- `sansBibliographie` : la case « Pas de bibliographie » de l'ouvrage et d'un chapitre.
 
 Il n'a pas les capacités de la revue (DOI, OJS, traductions, Documentation, pagination,
 réimport, envoi aux auteur·e·s…). Les libellés passent par `TP()`, qui prend la variante

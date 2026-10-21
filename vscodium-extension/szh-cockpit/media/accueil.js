@@ -615,6 +615,10 @@
       options(nvChamps.maquette, [['normal', TXT.nvMaquetteNormal], ['falc', TXT.nvMaquetteFalc]]);
       champ(ligne, 'format', TXT.nvFormat, 'select');
       options(nvChamps.format, [['standard', TXT.nvFormatStandard], ['a4', TXT.nvFormatA4]]);
+      // La langue du texte : folios, sommaire et libellés du livre sortent dans cette langue.
+      champ(ligne, 'langue', TXT.nvLangue, 'select');
+      options(nvChamps.langue, [['fr', TXT.nvLangueFr], ['de', TXT.nvLangueDe], ['it', TXT.nvLangueIt]]);
+      nvChamps.langue.value = TXT.nvLangueDefaut;
       nvChamps.annee.value = String(donnees.anneeCourante);
       nvChamps.reference.value = String(referenceSuivante(p));
     } else {
@@ -695,6 +699,7 @@
       m.genre = nvChamps.genre.value;
       m.maquette = nvChamps.maquette.value;
       m.format = nvChamps.format.value;
+      m.langue = nvChamps.langue.value;
     } else {
       m.numero = Number(nvChamps.numero.value);
       m.volume = Number(nvChamps.volume.value);

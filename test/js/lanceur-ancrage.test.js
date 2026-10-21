@@ -210,6 +210,10 @@ fs.writeFileSync(path.join(PROGRAMDATA_2, 'config.json'), JSON.stringify({
 const envAbsent = { SZH_BASE: PROGRAMDATA_2, USERPROFILE: PROFIL_2, LOCALAPPDATA: LOCALAPPDATA_2 };
 const absentRevue = (function () { return executer(OUVRIR_REVUE, [], envAbsent); })();
 const absentVersions = (function () { return executer(OUVRIR_REVUE, ['-Versions'], envAbsent); })();
+// Les tâches seules, comme les demande le cockpit (lib/demarrage.js).
+const essaiDemarrage = (function () {
+  return executer(OUVRIR_REVUE, ['-Demarrage'], Object.assign({}, envEssai, { SZH_BASE: PROGRAMDATA_2 }));
+})();
 
 test('sans ancrage trouvable nulle part, le lanceur sort proprement -- meme code de sortie, JSON exploitable',
   { skip: sansPowerShell }, () => {
@@ -246,6 +250,22 @@ test('-Versions reste atteignable meme sans ancrage : le selecteur de version ne
     assert.strictEqual(Object.prototype.hasOwnProperty.call(r, 'ancrage'), false,
       '-Versions ne devrait jamais atteindre le bloc d\'ancrage');
   });
+
+test('-Demarrage lance les taches de demarrage seules : ancrage resolu, aucun VSCodium ouvert',
+  { skip: sansPowerShell }, () => {
+    verifierExecution(essaiDemarrage, 'essai-demarrage');
+    const r = essaiDemarrage.sortie;
+    assert.strictEqual(r.entree, 'demarrage');
+    assert.strictEqual(r.ancrage.chemin, ANCRAGE_1);
+    assert.strictEqual(r.taches[0], 'Initialize-SzhAncrage');
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(r, 'codium'), false, '-Demarrage ne doit pas ouvrir l\'editeur');
+  });
+
+test('Invoke-SzhTachesDemarrage pose SZH_TACHES_DEMARRAGE, que lit le cockpit', () => {
+  assert.match(SOURCE_TACHES,/\$env:SZH_TACHES_DEMARRAGE = '1'/);
+  const cockpit = fs.readFileSync(path.join(RACINE, 'vscodium-extension', 'szh-cockpit', 'lib', 'demarrage.js'), 'utf8');
+  assert.ok(cockpit.indexOf('SZH_TACHES_DEMARRAGE') !== -1, 'lib/demarrage.js ne lit plus SZH_TACHES_DEMARRAGE');
+});
 
 // =====================================================================================
 // ---- Contrôles statiques : l'ordre du câblage, vérifié sur le texte source -------------

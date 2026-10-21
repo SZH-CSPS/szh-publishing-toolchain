@@ -908,6 +908,28 @@
         carte.appendChild(aideSommaire);
       }
 
+      // Pas de bibliographie : livre seulement. Cochée, la fiche porte `bibliographie: non`
+      // et szh-citations.lua n'imprime ni ne signale de liste de références. Décochée, la
+      // clé part, sauf un `oui` écrit à la main, qui se garde (data-avant).
+      if (CAP.sansBibliographie === true) {
+        var caseBiblio = document.createElement('label');
+        caseBiblio.className = 'case-sommaire';
+        var cocheBiblio = document.createElement('input');
+        cocheBiblio.type = 'checkbox';
+        cocheBiblio.dataset.cle = 'bibliographie';
+        cocheBiblio.dataset.avant = v.bibliographie || '';
+        cocheBiblio.checked = v.bibliographie === 'non';
+        cocheBiblio.addEventListener('change', function () { marquer(carte, slug); });
+        caseBiblio.appendChild(cocheBiblio);
+        caseBiblio.appendChild(document.createTextNode(TXT.biblioCase || ''));
+        appeler('champ', caseBiblio, 'bibliographie');
+        carte.appendChild(caseBiblio);
+        var aideBiblio = document.createElement('p');
+        aideBiblio.className = 'case-sommaire-aide';
+        aideBiblio.textContent = TXT.biblioAide || '';
+        carte.appendChild(aideBiblio);
+      }
+
       // Les champs multilingues vivent dans leur propre zone, reconstruite au changement
       // de langue : la langue de l'article vient en premier, les autres en dessous.
       var textes = [['title', TXT.titreChamp, false], ['subtitle', TXT.sousTitre, false],
@@ -1185,7 +1207,7 @@
     }
 
     function collecter(carte) {
-      var resultat = { type: '', lang: '', licence: '', doi: '', horsSommaire: false, title: {}, subtitle: {}, resume: {}, keywords: {}, author: [] };
+      var resultat = { type: '', lang: '', licence: '', doi: '', horsSommaire: false, bibliographie: '', title: {}, subtitle: {}, resume: {}, keywords: {}, author: [] };
       var sel = carte.querySelector('select[data-cle=type]');
       if (sel) { resultat.type = sel.value; }
       var selLangue = carte.querySelector('select[data-cle=lang]');
@@ -1196,6 +1218,11 @@
       // false, et `sommaire: non` n'est pas écrit.
       var cocheSommaire = carte.querySelector('input[data-cle=sommaire]');
       if (cocheSommaire) { resultat.horsSommaire = !!cocheSommaire.checked; }
+      var cocheBiblio = carte.querySelector('input[data-cle=bibliographie]');
+      if (cocheBiblio) {
+        resultat.bibliographie = cocheBiblio.checked ? 'non'
+          : (cocheBiblio.dataset.avant === 'oui' ? 'oui' : '');
+      }
       // Le doi n'est collecté qu'en mode manuel : case décochée, la fiche repart sans doi, et
       // le calculé affiché n'est pas écrit.
       var cocheDoi = carte.querySelector('[data-cle="doi-manuel"]');

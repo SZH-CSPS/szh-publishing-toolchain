@@ -23,6 +23,7 @@ const resumesHote = require('./resumes-hote');
 const moissonHote = require('./moisson-hote');
 const { ouvrirAvecSysteme } = require('./ouvrir-systeme');
 const { calendrierDeLaSemaine, textesJeux } = require('./accueil-surprises');
+const demarrage = require('./demarrage');
 
 const VIEW_TYPE = 'szhAccueil';
 // Par compte : le dernier numéro ouvert depuis l'Accueil, qu'il propose en premier.
@@ -287,6 +288,12 @@ function demarrer(context) {
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
     if (e.affectsConfiguration('szh.formatTravail')) { preproc.envoyerEtat(); }
   }));
+  // VSCodium ouvert sans « Pronto » : les tâches de démarrage tournent ici, puis l'Accueil
+  // ouvert se relit (l'ancrage peut avoir été trouvé).
+  demarrage.lancerSiBesoin(context.globalState).then((lance) => {
+    if (lance && panneauActif) { return envoyerDonnees(panneauActif); }
+    return null;
+  }).catch(() => { /* l'Accueil garde ses données */ });
   if (!sansDossier()) { return; }
   if (sansOnglet()) { ouvrirAccueil(); return; }
   relecture = setTimeout(() => {

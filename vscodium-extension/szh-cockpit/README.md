@@ -116,6 +116,7 @@ Un module « hôte » (`*-hote.js`) tient une zone de l'interface et reçoit ses
 | `lib/portraits.js` | détourage des portraits par `pipeline/portraits.py` dans la WSL |
 | `lib/cmyk.js` | détecte les JPEG CMJN et les convertit dans la WSL |
 | `lib/archivage.js` | archivage par `windows/archive-revue.ps1`, `config.json`, version installée |
+| `lib/demarrage.js` | tâches de démarrage du lanceur (`open-revue.ps1 -Demarrage`) quand VSCodium a été ouvert sans « Pronto », au plus une fois toutes les 12 heures |
 | `lib/cycle-vie.js` | verrouillage, archivage, désarchivage, copies en conflit à résoudre |
 | `lib/verrou.js` | numéro gelé : tout le dossier en lecture seule |
 | `lib/coedition.js` | bail de deux minutes sur un fichier modifié par un formulaire |

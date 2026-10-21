@@ -35,7 +35,8 @@ const {
   analyserAusgabe, ecrireAtomique,
   separerFrontmatter, analyserFrontmatter, serialiserFrontmatter,
   analyserMeta, serialiserMeta, langueRevue, langueDefaut, normaliserLangueArticle, titreNumero,
-  LICENCE_DEFAUT, LICENCES_ARTICLE, normaliserLicence, etatRevue, idNumero
+  LICENCE_DEFAUT, LICENCES_ARTICLE, normaliserLicence, normaliserBibliographie, etatRevue, idNumero,
+  listeYamlEnLigne
 } = require('./yaml');
 const {
   NOMS_COUVERTURE, EXTENSIONS_COUVERTURE, nomCouverture, MAX_COUVERTURE, rangDoi
@@ -296,7 +297,8 @@ function envoyerValeursMetadonnees(panneau, racine) {
 // dos imposé, fond perdu, traits de coupe, profil CMJN.
 const LIBELLES_LIVRE = ['meta.livre.titre', 'meta.livre.soustitre', 'meta.livre.ouvrage',
   'meta.livre.ouvrage.monographie', 'meta.livre.ouvrage.collectif', 'meta.livre.langue',
-  'meta.langue.fr', 'meta.langue.de', 'meta.langue.it', 'meta.langue.en',
+  'meta.langue.fr', 'meta.langue.de', 'meta.langue.it', 'meta.livre.sansBibliographie',
+  'meta.livre.sansImpressum',
   'meta.livre.maquette', 'meta.livre.maquette.normal', 'meta.livre.maquette.falc',
   'meta.livre.format', 'meta.livre.format.standard', 'meta.livre.format.a4',
   'meta.livre.collection', 'meta.livre.tome', 'meta.livre.annee',
@@ -523,6 +525,10 @@ function chargeLivre(racine) {
   }
   valeurs['impression.traits-de-coupe'] = estVraiYaml(valeurs['impression.traits-de-coupe']) ? 'true' : 'false';
   valeurs['couverture.illustration-plein'] = estVraiYaml(valeurs['couverture.illustration-plein']) ? 'true' : 'false';
+  valeurs.bibliographie = normaliserBibliographie(valeurs.bibliographie);
+  // La page ne montre de `liminaires` que la case « pas d'impressum » : la liste elle-même
+  // se relit du fichier à l'écriture (impressumDansLiminaires).
+  valeurs.liminaires = aImpressum(listeYamlEnLigne(valeurs.liminaires)) ? '' : SANS_IMPRESSUM;
   for (const cle of CLES_TITRES_LIGNES) { valeurs[cle] = titreVersLignes(valeurs[cle]); }
   const reference = couleursReference();
   return {
@@ -532,6 +538,18 @@ function chargeLivre(racine) {
       cle: cle, nom: reference[cle].nom, rgb: reference[cle].rgb
     }))
   };
+}
+
+// L'impressum composé par livre-assembler.py : le mot « colophon » ou « impressum » de
+// `liminaires:`. La case du formulaire l'ôte de la liste, ou le remet après le demi-titre.
+const MOTS_IMPRESSUM = ['colophon', 'impressum'];
+const SANS_IMPRESSUM = 'sans-impressum';
+function aImpressum(liste) { return liste.some((p) => MOTS_IMPRESSUM.indexOf(p) !== -1); }
+function impressumDansLiminaires(liste, avec) {
+  if (!avec) { return liste.filter((p) => MOTS_IMPRESSUM.indexOf(p) === -1); }
+  if (aImpressum(liste)) { return liste.slice(); }
+  const apres = liste.indexOf('demi-titre') + 1;
+  return liste.slice(0, apres).concat(['colophon'], liste.slice(apres));
 }
 
 // -> null, ou le message de l'échec. Pendant d'ecrireChampsNumero, avec sa propre
@@ -558,6 +576,21 @@ function ecrireChampsLivre(racine, brut) {
       modifies[cle] = (CLES_TITRES_LIGNES.indexOf(cle) !== -1 ? lignesVersTitre(brut[cle]) : brut[cle])
         .replace(/[\r\n]+/g, ' ').slice(0, 500).trim();
     }
+  }
+  // Case « Pas d'impressum » : la liste du fichier, impressum ôté ou remis. Une liste vide
+  // ou absente n'imprime aucun liminaire : on n'y ajoute rien.
+  if ('liminaires' in modifies) {
+    let actuelle = [];
+    try { actuelle = listeYamlEnLigne(analyserAusgabe(fs.readFileSync(cheminConfig(racine), 'utf8')).liminaires); }
+    catch (e) { /* illisible : rien à changer */ }
+    const voulue = actuelle.length === 0 ? actuelle
+      : impressumDansLiminaires(actuelle, modifies.liminaires !== SANS_IMPRESSUM);
+    if (voulue.join('|') === actuelle.join('|')) { delete modifies.liminaires; }
+    else { modifies.liminaires = voulue.join(', '); }
+  }
+  // Case « Pas de bibliographie dans cet ouvrage » : `bibliographie: non`, ou la clé vidée.
+  if ('bibliographie' in modifies) {
+    modifies.bibliographie = normaliserBibliographie(modifies.bibliographie) === 'non' ? 'non' : '';
   }
   // Couleur d'impression et fond de couverture : la liste fermée de la référence.
   const reference = couleursReference();
@@ -724,6 +757,8 @@ function textesCarteArticle() {
     // Case « hors sommaire » : livre seulement (capacites.horsSommaire). Voir
     // construireCarte() dans media/_fiches.js.
     sommaireCase: T('fiches.sommaire'), sommaireAide: T('fiches.sommaire.aide'),
+    // Case « pas de bibliographie » : livre seulement (capacites.sansBibliographie).
+    biblioCase: T('fiches.sansBibliographie'), biblioAide: T('fiches.sansBibliographie.aide'),
     // Aide sous titre et sous-titre d'un chapitre (livre seulement, media/_fiches.js).
     brAide: T('meta.livre.brAide')
   }, textesAuteur());
@@ -808,15 +843,20 @@ function ecrireCartesArticles(fournisseur, cartes, slugsAutorises, panneau) {
         if (!cap.licence && carte.licence === '') { carte.licence = ancien.licence; }
         if (!cap.doi && carte.doi === '') { carte.doi = ancien.doi; }
         if (!cap.motsCles && Object.keys(carte.keywords).length === 0) { carte.keywords = ancien.keywords; }
+        if (!cap.sansBibliographie) { carte.bibliographie = ancien.bibliographie; }
         langAvant = ancien.lang || langueNumero;
       } catch (e) { /* pas de fiche existante */ }
+      // Un chapitre dans la langue du livre n'écrit pas sa langue : il suit le livre si
+      // celle-ci change.
+      const langCarte = carte.lang;
+      if (profilCourant().cle === 'livre' && carte.lang === langueNumero) { carte.lang = ''; }
       ecrireAtomique(fichierMeta, serialiserMeta(carte));
       rafraichirEmpreinteCoedition(fournisseur.racine, fichierMeta);
       n++;
       ecrits.push(slug);
       // La langue a changé : les statuts du suivi de traduction suivent leurs contenus.
-      if (langAvant && carte.lang && carte.lang !== langAvant) {
-        try { ctx.permuterStatutsTraduction(fournisseur.racine, slug, langAvant, carte.lang); }
+      if (langAvant && langCarte && langCarte !== langAvant) {
+        try { ctx.permuterStatutsTraduction(fournisseur.racine, slug, langAvant, langCarte); }
         catch (e) { vscode.window.showWarningMessage(T('fiches.statuts.echec', [slug])); }
       }
     } catch (e) {
@@ -984,7 +1024,7 @@ function nettoyerCarte(brut) {
   // trim avant la troncature : la forme attendue est ancrée (^...$), et un espace resté en
   // bout de chaîne la rendrait fausse.
   const doiPropre = (v) => String(v === undefined || v === null ? '' : v).trim().replace(/[\r\n]+/g, ' ').slice(0, 200);
-  const carte = { type: '', lang: '', source: '', licence: '', doi: doiPropre(brut && brut.doi), horsSommaire: false, title: {}, subtitle: {}, resume: {}, keywords: {}, author: [] };
+  const carte = { type: '', lang: '', source: '', licence: '', doi: doiPropre(brut && brut.doi), horsSommaire: false, bibliographie: '', title: {}, subtitle: {}, resume: {}, keywords: {}, author: [] };
   const type = texteCourt(brut && brut.type, 40);
   if (TYPES_ARTICLE.indexOf(type) !== -1) { carte.type = type; }
   carte.lang = normaliserLangueArticle(brut && brut.lang);
@@ -992,6 +1032,8 @@ function nettoyerCarte(brut) {
   carte.licence = normaliserLicence(brut && brut.licence);
   // Case « hors sommaire » : écrite pour un livre seulement, quoi que la carte envoie.
   if (profilCourant().capacites.horsSommaire) { carte.horsSommaire = (brut && brut.horsSommaire) === true; }
+  // Case « pas de bibliographie » : livre seulement. 'oui', écrit à la main, se garde.
+  if (profilCourant().capacites.sansBibliographie) { carte.bibliographie = normaliserBibliographie(brut && brut.bibliographie); }
   for (const cle of ['title', 'subtitle', 'resume']) {
     const map = (brut && brut[cle]) || {};
     const max = cle === 'resume' ? 2000 : 500;

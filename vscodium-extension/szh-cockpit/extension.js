@@ -2523,8 +2523,8 @@ async function supprimerArticle(fournisseur, rafraichirTout, item) {
   const refusAvant = refusCoeditionNumero(racine);
   if (refusAvant) { vscode.window.showWarningMessage(refusAvant); return; }
   const reponse = await vscode.window.showWarningMessage(
-    T('modale.supprimer.question', [slug]),
-    { modal: true, detail: T('modale.supprimer.detail', [slug]) },
+    TP('modale.supprimer.question', profilCourant(), [slug]),
+    { modal: true, detail: TP('modale.supprimer.detail', profilCourant(), [slug]) },
     T('modale.supprimer.bouton')
   );
   if (reponse !== T('modale.supprimer.bouton')) { return; }   // annulé : rien n'est touché
@@ -2553,7 +2553,7 @@ async function supprimerArticle(fournisseur, rafraichirTout, item) {
   if (echec) {
     reprendrePlusTard([echecArticle ? dossierArticle : null, echecSortie ? dossierSortie : null],
       rafraichirTout);
-    vscode.window.showErrorMessage(T('err.suppression.article', [slug, echec]));
+    vscode.window.showErrorMessage(TP('err.suppression.article', profilCourant(), [slug, echec]));
     return;
   }
   // Referme le trou dans la numérotation des dossiers (01, 03, 04), par le même renommage
@@ -2561,12 +2561,12 @@ async function supprimerArticle(fournisseur, rafraichirTout, item) {
   const rangs = controlesHote.alignerDossiersSurOrdre(racine, fournisseur.listerArticles());
   rafraichirTout();
   if (rangs.erreur) {
-    vscode.window.showWarningMessage(T('art.suppr.renumerote.echec', [rangs.erreur]));
+    vscode.window.showWarningMessage(TP('art.suppr.renumerote.echec', profilCourant(), [rangs.erreur]));
     return;
   }
   vscode.window.setStatusBarMessage(
-    rangs.renommes === 0 ? T('statut.supprime', [slug])
-      : T('statut.supprime.renumerote', [slug, rangs.renommes]), 3000);
+    rangs.renommes === 0 ? TP('statut.supprime', profilCourant(), [slug])
+      : TP('statut.supprime.renumerote', profilCourant(), [slug, rangs.renommes]), 3000);
 }
 
 // ---- Suivi de traduction ---------------------------------------------------------

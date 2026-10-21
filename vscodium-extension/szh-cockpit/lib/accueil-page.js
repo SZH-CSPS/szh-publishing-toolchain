@@ -46,6 +46,10 @@ function textesAccueil() {
     nvMaquette: T('accueil.nouveau.maquette'), nvMaquetteNormal: T('accueil.nouveau.maquette.normal'),
     nvMaquetteFalc: T('accueil.nouveau.maquette.falc'), nvFormat: T('accueil.nouveau.format'),
     nvFormatStandard: T('accueil.nouveau.format.standard'), nvFormatA4: T('accueil.nouveau.format.a4'),
+    nvLangue: T('accueil.nouveau.langue'), nvLangueFr: T('accueil.nouveau.langue.fr'),
+    nvLangueDe: T('accueil.nouveau.langue.de'), nvLangueIt: T('accueil.nouveau.langue.it'),
+    // Le code de la langue proposée d'office : celle de l'interface.
+    nvLangueDefaut: T('accueil.nouveau.langue.defaut'),
     nvCreer: T('accueil.nouveau.creer'), nvRefus: T('accueil.nouveau.refus'),
 
     ppIntro: T('accueil.preproc.intro'), ppDeposer: T('accueil.preproc.deposer'), ppOu: T('accueil.preproc.ou'),

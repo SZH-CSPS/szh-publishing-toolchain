@@ -70,7 +70,9 @@ function journalDEssai(prose) {
     ligne('meta-blocage', 'marque-motcle',
       ['article « 02-ecole »', 'motcle 3', 'langue « it »'], p('motcle'), p('Schlagwort')),
     ligne('meta-blocage', 'langue-inconnue',
-      ['article « 02-ecole »', 'langue « xx »'], p('inconnue'), p('unbekannt'))
+      ['article « 02-ecole »', 'langue « xx »'], p('inconnue'), p('unbekannt')),
+    ligne('meta-info', 'langue-chapitre',
+      ['chapitre « 01-recit »', 'langue « fr »', 'livre « de »'], p('livre'), p('Buch'))
   ].join(LF) + LF;
 }
 
@@ -90,7 +92,8 @@ test('codes : reformuler un message du pipeline ne change rien à l’écran', (
     'citations/bilan', 'citations/appel-sans-reference', 'citations/appel-ambigu',
     'citations/reference-orpheline', 'citations/ancrage-inconnu',
     'citations/caractere-sans-repli', 'meta/sans-langue', 'meta/champ-vide',
-    'meta/marque-champ', 'meta/marque-motcle', 'meta/langue-inconnue'
+    'meta/marque-champ', 'meta/marque-motcle', 'meta/langue-inconnue',
+    'meta/langue-chapitre'
   ], 'un cas du pipeline n’arrive plus');
   // La source, le code, le ton, l'article, la clé d'i18n et ses substitutions sont
   // identiques. Seule la prose du pipeline diffère, et elle ne sert pas.

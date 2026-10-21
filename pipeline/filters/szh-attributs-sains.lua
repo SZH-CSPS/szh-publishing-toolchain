@@ -1,6 +1,7 @@
 --[[
-szh-attributs-sains.lua : import Word. Rend relisibles par pandoc les identifiants et
-les classes des éléments importés.
+szh-attributs-sains.lua : import Word. Rend relisible par pandoc le markdown écrit : les
+identifiants et les classes des éléments importés, et les sauts de ligne en bord de mise
+en forme.
 
 Le lecteur docx pose le nom du style Word en classe sur chaque titre : « Titre 2 (small) »
 devient la classe `Titre-2-(small)`, que le writer markdown écrit telle quelle :
@@ -17,6 +18,16 @@ document importé.
 
 Les lettres accentuées sont acceptées par pandoc et conservées. Seul ce qui casserait la
 relecture est remplacé par un tiret.
+
+Un saut de ligne Word (Maj+Entrée) pris dans un passage souligné, gras ou en italique
+reste dans ce passage. En dernière position, le writer markdown l'écrit « \ » juste avant
+le crochet fermant :
+
+    **[Alle Menschen können teilhaben.\]{.underline}**
+
+À la relecture, le crochet est échappé : le passage ne se ferme plus et « {.underline} »
+s'imprime en toutes lettres. Le saut sort donc du passage, devant ou derrière lui. Un saut
+en fin de paragraphe est retiré : le writer l'écrirait en « \ » final, imprimé tel quel.
 ]]
 
 -- Garde les lettres et chiffres ASCII, le tiret, le souligné et tout caractère non-ASCII.
@@ -76,9 +87,43 @@ local function reparer_lien(lien)
   return nil
 end
 
+-- Sort les sauts de ligne placés en tête ou en fin d'un élément à contenu (souligné, gras,
+-- lien…), du plus profond vers l'extérieur.
+local function sortir_sauts(inlines)
+  local sortie = pandoc.List({})
+  for _, el in ipairs(inlines) do
+    if el.t ~= 'Image' and el.t ~= 'Note' and el.content ~= nil
+        and pandoc.utils.type(el.content) == 'Inlines' then
+      el.content = sortir_sauts(el.content)
+      local avant, apres = pandoc.List({}), pandoc.List({})
+      while #el.content > 0 and el.content[1].t == 'LineBreak' do
+        avant:insert(el.content:remove(1))
+      end
+      while #el.content > 0 and el.content[#el.content].t == 'LineBreak' do
+        apres:insert(1, el.content:remove())
+      end
+      sortie:extend(avant)
+      if #el.content > 0 then sortie:insert(el) end
+      sortie:extend(apres)
+    else
+      sortie:insert(el)
+    end
+  end
+  return sortie
+end
+
+local function sauts_du_paragraphe(bloc)
+  local contenu = sortir_sauts(bloc.content)
+  while #contenu > 0 and contenu[#contenu].t == 'LineBreak' do contenu:remove() end
+  while #contenu > 0 and contenu[1].t == 'LineBreak' do contenu:remove(1) end
+  bloc.content = contenu
+  return bloc
+end
+
 -- Deux passages : tous les renommages doivent être connus avant de réparer les liens, sinon
 -- un lien placé avant sa cible serait manqué.
 function Pandoc(doc)
+  doc = doc:walk({ Para = sauts_du_paragraphe, Plain = sauts_du_paragraphe })
   doc = doc:walk({ Block = assainir, Inline = assainir })
   if next(renommes) ~= nil then
     doc = doc:walk({ Link = reparer_lien })

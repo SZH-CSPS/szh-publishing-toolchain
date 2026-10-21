@@ -41,6 +41,7 @@ const PROFILS = {
       motsCles: true,       // mots-clés edudoc par unité
       tutoriel: true,       // parcours de démarrage
       horsSommaire: false,  // case « hors sommaire » d'une unité
+      sansBibliographie: false, // case « pas de bibliographie » d'une unité et de l'ouvrage
       titreEnLignes: false, // « // » d'un titre montré en lignes
       sortiesLivre: false,  // imprimeur, couverture, EPUB, web et aperçu du livre entier
       paletteLivre: false,  // en-tête FALC et code QR dans la mise en forme
@@ -59,6 +60,7 @@ const PROFILS = {
       reimport: false, envoiAuteur: false, pdfArticle: false, vueFiches: false,
       typeArticle: false, licence: false, motsCles: false, tutoriel: false,
       horsSommaire: true, titreEnLignes: true, sortiesLivre: true, paletteLivre: true,
+      sansBibliographie: true,
     },
   },
 };

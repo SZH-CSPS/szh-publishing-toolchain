@@ -205,7 +205,8 @@ Pronto (reconnu à sa propriété cachée `SZH-Gabarit`, ou à défaut à ses st
 devine les métadonnées à partir de la mise en forme.
 
 - La langue de l'article vient du produit du numéro : Revue → français, Zeitschrift →
-  allemand. Un article en italien se corrige ensuite dans sa fiche.
+  allemand. Un article en italien se corrige ensuite dans sa fiche. Un chapitre prend le
+  `lang:` de `buch.yaml` sans l'écrire dans sa fiche : il suit le livre si sa langue change.
 - Dans le gabarit, les deux premiers tableaux sont lus par leur position : le premier porte
   les métadonnées, le second les auteurs.
 - Une figure ou un tableau du gabarit est précédé de paragraphes de style `SZH Cle Abb` ou
@@ -216,7 +217,10 @@ devine les métadonnées à partir de la mise en forme.
   l'import : rien n'est créé, et le Word reste en attente avec un message qui la nomme.
 - Pandoc perd les styles de paragraphe d'un Word. `docx-styles-corps.py` prépare donc une
   copie où les styles utiles (« SZH Important », « SZH Question »…) sont marqués, et
-  `szh-styles-corps.lua` les retrouve.
+  `szh-styles-corps.lua` les retrouve. Dans la même copie, un paragraphe qui commence par
+  une ligne au style de caractère d'un titre (« Überschrift 2 Zchn », posé par Word quand on
+  ne sélectionne qu'une partie du paragraphe), suivie d'un saut de ligne manuel, est coupé
+  en un titre et un paragraphe.
 - Un `.odt` est converti en `.docx` par LibreOffice avant toute lecture.
 - La bibliographie est détachée dans `<slug>.biblio.md`. `szh-citations.lua` la remet en place
   à la compilation et relie les appels. Les titres de bibliographie reconnus sont la liste
@@ -245,6 +249,7 @@ sont acceptés.
 | `szh-listes-serrees.lua` | resserre les listes courtes |
 | `szh-tabelle-inclure.lua` | insère les tableaux de `tables/` à leur place |
 | `szh-tabelle-scope.lua` | marque les cellules d'en-tête des tableaux écrits en Markdown |
+| `szh-variables.lua` | remplace `{{cle}}` par la valeur de la clé dans `buch.yaml`, `ausgabe.yaml` ou la fiche |
 | `szh-typographie.lua` | applique la typographie maison selon la langue ([`TYPOGRAPHIE.md`](TYPOGRAPHIE.md)) |
 | `szh-metafichier.lua` | remplace une image Word `.emf` ou `.wmf` par un repère visible |
 | `szh-grille.lua` | regroupe plusieurs images en une figure |

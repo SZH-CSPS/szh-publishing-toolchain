@@ -442,6 +442,31 @@ test('livre : le décalage passe la validation de l’hôte, les valeurs absurde
   assert.strictEqual(lu['couverture.illustration-x-mm'], '', 'vider le champ doit remettre le décalage à zéro');
 });
 
+// Les deux cases « pas de… » du formulaire : `bibliographie: non`, et l'impressum composé
+// ôté de `liminaires:` ou remis après le demi-titre, sans toucher aux autres pièces.
+test('livre : les cases « pas de bibliographie » et « pas d’impressum » écrivent buch.yaml', async () => {
+  const { LIVRE, p } = await ouvrirLivre();
+  const chemin = path.join(LIVRE, 'buch.yaml');
+  const avant = fs.readFileSync(chemin, 'utf8');
+  fs.writeFileSync(chemin, avant.replace(/\n?$/, '\nliminaires: [demi-titre, colophon, page-titre, sommaire, avant-propos.md]\n'));
+  const ecrire = async (modifies) => {
+    await p._recepteur({ type: 'enregistrer', auto: false, modifies: modifies });
+    return yaml.analyserAusgabe(fs.readFileSync(chemin, 'utf8'));
+  };
+  try {
+    let lu = await ecrire({ bibliographie: 'non', liminaires: 'sans-impressum' });
+    assert.strictEqual(lu.bibliographie, 'non');
+    assert.deepStrictEqual(yaml.listeYamlEnLigne(lu.liminaires),
+      ['demi-titre', 'page-titre', 'sommaire', 'avant-propos.md'], 'l’impressum n’a pas quitté la liste');
+    lu = await ecrire({ bibliographie: '', liminaires: '' });
+    assert.strictEqual(lu.bibliographie, '', 'la bibliographie n’est pas rétablie');
+    assert.deepStrictEqual(yaml.listeYamlEnLigne(lu.liminaires),
+      ['demi-titre', 'colophon', 'page-titre', 'sommaire', 'avant-propos.md'], 'l’impressum n’est pas remis à sa place');
+  } finally {
+    fs.writeFileSync(chemin, avant);
+  }
+});
+
 test('livre : champs de décalage dans le bloc de couverture, aide « Entrée » sous titre et sous-titre', async () => {
   const { page, formulaire } = await pageDuLivre('titre: "T"\nlang: fr\ncouverture:\n  illustration-x-mm: -2\n');
   const x = parCle(formulaire, 'couverture.illustration-x-mm')[0];

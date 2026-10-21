@@ -4,7 +4,7 @@
     powershell -ExecutionPolicy Bypass -File new-livre.ps1 -Dossier "$env:OneDrive\Livres\2026-B330-Nom"
 
   L'Accueil (lib/accueil-nouveau.js) passe en plus -Titre, -Annee, -Reference, -Type,
-  -Maquette et -Format. Sans -Titre ou -Annee, ils se lisent dans le nom du dossier
+  -Maquette, -Format et -Langue. Sans -Titre ou -Annee, ils se lisent dans le nom du dossier
   (« <année>-B<référence>-<nom> »).
 
   Copie le gabarit livre-template/, écrit dans buch.yaml les valeurs reçues et pose
@@ -26,7 +26,10 @@ param(
   [string]$Maquette = '',
   # standard | a4 ; vide : valeur du gabarit. « a4 » n'existe qu'en FALC : avec la maquette
   # normale, il devient « standard », seul format que styles/livre/normal.css compose.
-  [string]$Format = ''
+  [string]$Format = '',
+  # fr | de | it ; vide : valeur du gabarit. Langue du texte : folios, sommaire et
+  # libellés imprimés la suivent, et chaque chapitre importé la prend.
+  [string]$Langue = ''
 )
 
 . "$PSScriptRoot\szh-common.ps1"
@@ -84,6 +87,11 @@ if (-not $existait) {
   $formatCode = ([string]$Format).ToLower()
   if (($formatCode -ne 'a4') -or ($maquetteCode -ne 'falc')) { $formatCode = 'standard' }
   if ($Format) { [void](Set-SzhAusgabeCle $chemin 'format' $formatCode $false $false 'buch.yaml') }
+
+  $langueCode = ([string]$Langue).ToLower()
+  if (@('fr', 'de', 'it') -contains $langueCode) {
+    [void](Set-SzhAusgabeCle $chemin 'lang' $langueCode $false $false 'buch.yaml')
+  }
 
   if (($Type -and ($typeCode -eq 'collectif')) -or (-not $Type)) {
     Write-SzhInfo 'Ouvrage collectif : les auteur·e·s se saisissent dans la fiche de chaque chapitre, pas dans buch.yaml.'

@@ -337,7 +337,7 @@ Pour désactiver l'épinglage sur un poste, dans `config.json` :
 | `windows/szh-produits.ps1` · `Get-SzhDossierSysteme` | le chemin d'un sous-dossier de `_Systeme\` |
 | `windows/szh-produits.ps1` · `Get-SzhVolumePour`, `Find-SzhNumeroVolume` | le volume d'après l'année (Zeitschrift : année − 1994 ; Revue : année − 2010), et le refus d'un numéro déjà existant |
 | `windows/szh-ancrage.ps1` · `Resolve-SzhAncrage`, `Initialize-SzhAncrage` | l'ancrage SharePoint |
-| `windows/szh-shell.ps1` · `Invoke-SzhTachesDemarrage` | au lancement : ancrage, envoi des rapports en attente, inventaire, épinglage, dossiers de test, secrets |
+| `windows/szh-shell.ps1` · `Invoke-SzhTachesDemarrage` | au lancement : ancrage, envoi des rapports en attente, inventaire, épinglage, dossiers de test, secrets ; pose `SZH_TACHES_DEMARRAGE`, sans laquelle le cockpit les lance lui-même (`lib/demarrage.js`) |
 | `windows/new-revue.ps1`, `new-livre.ps1`, `archive-revue.ps1` | création et archivage, dans la racine active |
 | `windows/szh-migration.ps1` | rangement de l'ancienne forme, dans la racine de test seulement |
 | `lib/inventaire.js` | côté cockpit : la racine active et les numéros listés par l'Accueil |

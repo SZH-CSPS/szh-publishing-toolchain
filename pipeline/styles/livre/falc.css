@@ -89,8 +89,10 @@
    Pas d'alinéa : c'est l'espace vertical qui sépare, comme dans les documents FALC.
    `white-space` reste normal — les retours de ligne sont produits par le lecteur pandoc
    en <br>, pas par du texte préformaté, sans quoi le texte ne se réagencerait pas dans
-   la sortie web ni dans l'EPUB. */
-p { margin-bottom: var(--esp-para); }
+   la sortie web ni dans l'EPUB.
+   Un paragraphe n'est jamais coupé entre deux pages : il passe en entier à la page
+   suivante. Seul un paragraphe plus haut qu'une page se coupe. */
+p { margin-bottom: var(--esp-para); break-inside: avoid; }
 
 /* ═══ Titres ══════════════════════════════════════════════════════════════════
    Chapitre 18 pt, section 16 pt, sous-section 14 pt — tous en demi-gras, tous noirs : le

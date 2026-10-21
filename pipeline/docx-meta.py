@@ -53,7 +53,7 @@ import xml.etree.ElementTree as ET
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import szh_commun
-from pronto_modele import (langue_du_produit, aplatir, citer, cle_comparaison, lire_titres_bib,
+from pronto_modele import (langue_du_produit, langue_du_livre,aplatir, citer, cle_comparaison, lire_titres_bib,
                            slugifier_portrait)
 # Tous les noms, pas seulement ceux utilisés ici : livre-migrer-meta.py et
 # outils-dev/lexique/generer-noms.py les cherchent dans ce module.
@@ -769,9 +769,12 @@ def principal(argv):
     # Le produit du numéro décide, comme pour pronto-lire.py ($SZH_PRODUIT, posé par
     # import-docx.sh). La langue détectée ci-dessus ne sert qu'à signaler un désaccord : un
     # article de la Zeitschrift commence souvent par un résumé français. Sans produit
-    # (appel hors d'un numéro), la langue détectée est gardée.
+    # (appel hors d'un numéro), la langue détectée est gardée. Dans un livre, la langue du
+    # livre tient lieu de produit et ne s'écrit pas dans la fiche.
     langue_detectee, source_detectee = langue, langue_source
     langue_produit = langue_du_produit(os.getenv('SZH_PRODUIT', ''))
+    langue_livre = '' if langue_produit else langue_du_livre()
+    langue_produit = langue_produit or langue_livre
     if langue_produit:
         langue, langue_source = langue_produit, 'produit'
     if not langue:
@@ -932,7 +935,7 @@ def principal(argv):
         # Les instructions de retrait sont quand même écrites.
         stats['avertissements'].append('meta-existant-conserve')
     else:
-        contenu = serialiser_meta(meta)
+        contenu = serialiser_meta(dict(meta, lang='') if langue_livre else meta)
         if contenu:
             szh_commun.ecrire_atomique(chemin_meta_yaml, lambda f: f.write(contenu),
                                        binaire=False, encoding='utf-8', newline='\n')

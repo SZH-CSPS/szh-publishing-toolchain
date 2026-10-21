@@ -126,6 +126,19 @@ test('exécution : rien à faire ne touche rien, pas même ausgabe.yaml', () => 
   fs.rmSync(racine, { recursive: true, force: true });
 });
 
+// La suppression du dernier article ne renomme rien : son slug ne doit pas rester dans
+// l'ordre, où la compilation d'un livre le signalerait comme introuvable.
+test('exécution : l’ordre perd l’article supprimé même sans renommage', () => {
+  const racine = numero(['00-edito', '01-inclusion', '02-varia']);
+  fs.rmSync(path.join(racine, 'articles', '02-varia'), { recursive: true, force: true });
+  const r = hote.renumeroter(racine, ['00-edito', '01-inclusion']);
+  assert.strictEqual(r.erreur, null, 'renumérotation refusée : ' + r.erreur);
+  assert.strictEqual(r.renommes, 0);
+  assert.deepStrictEqual(ordreEcrit(racine), ['00-edito', '01-inclusion'],
+    'l’article supprimé est resté dans ordre-articles');
+  fs.rmSync(racine, { recursive: true, force: true });
+});
+
 test('exécution : les documents produits des articles renommés sont retirés', () => {
   // out/<slug>/ porte le nom d'avant : le garder ferait cohabiter deux PDF pour un même
   // article, dont un périmé que l'export pourrait reprendre.

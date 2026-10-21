@@ -203,6 +203,24 @@ test('basculerSouligne : pose, retire, aller-retour', () => {
   assert.strictEqual(pur.basculerSouligne(pur.basculerSouligne('mot')), 'mot');
 });
 
+// Une ligne FALC sélectionnée en entier finit par « \ », le saut de ligne dur. Enrobé, il
+// échapperait le crochet : « [Alle.\]{.underline} » ne se ferme plus et s'imprime en clair.
+test('souligné et gras : le saut de ligne dur et les blancs restent hors des marqueurs', () => {
+  const B = '\\';
+  const ligne = 'Alle Menschen können teilhaben.' + B;
+  assert.strictEqual(pur.basculerSouligne(ligne), '[Alle Menschen können teilhaben.]{.underline}' + B);
+  assert.strictEqual(pur.basculerEnrobage(pur.basculerSouligne(ligne), '**'),
+    '**[Alle Menschen können teilhaben.]{.underline}**' + B);
+  assert.strictEqual(pur.basculerEnrobage('**mot**' + B, '**'), 'mot' + B, 'le retrait ne voit plus le gras');
+  assert.strictEqual(pur.basculerSouligne('[mot]{.underline}' + B), 'mot' + B);
+  assert.strictEqual(pur.basculerEnrobage('  mot  ', '*'), '  *mot*  ');
+  // « \\ » final est un antislash écrit, pas un saut : il reste dans le passage.
+  assert.strictEqual(pur.basculerEnrobage('a' + B + B, '**'), '**a' + B + B + '**');
+  // Sélection vide : les marqueurs se posent, le curseur ira entre eux.
+  assert.strictEqual(pur.basculerEnrobage('', '**'), '****');
+  assert.strictEqual(pur.basculerSouligne(''), '[]{.underline}');
+});
+
 test('basculerTitre : les trois niveaux, et rebasculer un titre déjà à ce niveau le retire', () => {
   assert.strictEqual(pur.basculerTitre('Titre', 1), '# Titre');
   assert.strictEqual(pur.basculerTitre('Titre', 2), '## Titre');
