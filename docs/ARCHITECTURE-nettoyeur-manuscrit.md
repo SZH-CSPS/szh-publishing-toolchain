@@ -97,7 +97,7 @@ python3 pipeline/manuscrit-nettoyer.py <entree.docx|.odt> --produit revue|zeitsc
 | `--format` | format du document produit, `docx` par défaut. Indépendant du format d'entrée. |
 | `--analyse-seule` | n'écrit aucun document, seulement le rapport. |
 | `--sans-typo` | ne passe pas par le filtre typographique. |
-| `--sans-annotation` | n'écrit ni révision ni commentaire. |
+| `--sans-annotation` | n'écrit ni révision ni commentaire du nettoyeur ; les commentaires du manuscrit sont repris. |
 | `--sans-reseau` | aucune requête vers Crossref, ROR ou ORCID. Les tests le posent toujours ; le cockpit jamais. |
 | `--base-auteurs` | chemin de la base d'auteurs OJS ; sinon recherche automatique (voir [Base de noms et lexique](#base-de-noms-et-lexique)). |
 | `--etapes` | écrit chaque étape atteinte sur stderr, `[manuscrit-nettoyer] etape <nom>`. |
@@ -131,8 +131,8 @@ Les refus, avant tout travail et sans rien écrire :
 
 Le `message` d'un refus est une phrase courte qui dit quoi faire, dans la langue du produit
 pour le suivi de modifications et la lecture impossible. Un document qui porte des
-commentaires Word n'est pas refusé : ils sont comptés, signalés, et ne passent pas dans la
-sortie.
+commentaires Word n'est pas refusé : ils sont repris dans la sortie (voir [Commentaires du
+manuscrit](#commentaires-du-manuscrit)).
 
 ## Ce que produit le nettoyeur
 
@@ -152,6 +152,10 @@ rédaction accepte tout d'un clic dans Word. Ce qui demande un jugement devient 
 en ligne sont aussi des révisions, sous l'auteur `Recherche ROR/ORCID — à vérifier`
 (`ROR/ORCID-Suche — bitte prüfen` en allemand). Voir [Annotation](#annotation).
 
+Les commentaires Word que porte le manuscrit sont reposés dans la sortie, sur le même
+passage, avec leur auteur, leur date et leurs réponses (voir [Commentaires du
+manuscrit](#commentaires-du-manuscrit)).
+
 ### Le rapport
 
 Le rapport JSON est la sortie complète. Ses clés principales :
@@ -163,7 +167,8 @@ Le rapport JSON est la sortie complète. Ses clés principales :
 | `analyse_seule`, `sans_typo`, `sans_annotation`, `sans_reseau` | les options |
 | `controles.vale` | `effectue` ou `indisponible` |
 | `controles.perte_de_contenu` | la mesure du contrôle de perte (`null` en analyse seule) |
-| `compteurs` | signes du corps et de la bibliographie, références, notes, commentaires d'origine, révisions et commentaires posés, images avec leurs dimensions en pixels |
+| `compteurs` | signes du corps et de la bibliographie, références, notes, commentaires du manuscrit (`commentaires`) et ceux repris dans la sortie (`commentaires_repris`), révisions et commentaires posés, images avec leurs dimensions en pixels |
+| `commentaires_origine` | ce que sont devenus les commentaires du manuscrit (voir [Commentaires du manuscrit](#commentaires-du-manuscrit)) ; `null` quand ni l'annotation ni la reprise des commentaires n'ont tourné |
 | `decisions.entete` | l'en-tête reconnu (`donnees`), les paragraphes consommés, la trace ; `null` en cas A |
 | `decisions.titres`, `decisions.formatage` | statistiques et trace, une ligne lisible par paragraphe |
 | `decisions.typographie` | traces, paragraphes abandonnés, avertissements du filtre, `statut` (`appliquee`/`repli`) |
@@ -707,7 +712,8 @@ le verdict vient de `lib/qualite-image.js` (1000 px au moins pour une figure, 20
 La CLI ajoute ses propres alertes, d'origine `nettoyage` : `Langue.DesaccordProduit`,
 `Reseau.RechercheImpossible`, `Nettoyage.ContenuPerdu`, `Nettoyage.ControleImpossible`,
 `Nettoyage.ContenuEcarte`, `Nettoyage.NoteReprise`, `Annotation.Impossible`,
-`Nettoyage.ConversionOdtImpossible`. `Typo.ApplicationImpossible` et `Vale.Indisponible`
+`Nettoyage.ConversionOdtImpossible`, `Nettoyage.CommentaireDeplace`,
+`Nettoyage.CommentaireNonRepris`. `Typo.ApplicationImpossible` et `Vale.Indisponible`
 portent l'origine de leur module.
 
 ### Règles Vale
@@ -925,7 +931,7 @@ Si la relecture échoue, l'alerte `Nettoyage.ControleImpossible` le dit.
 
 ```python
 annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, langue='fr',
-        auteur='Relecture automatique', plafond_commentaires=25) -> stats
+        auteur='Relecture automatique', plafond_commentaires=25, origine=None) -> stats
 ```
 
 L'entrée et la sortie peuvent être le même fichier : l'écriture passe par un fichier
@@ -980,7 +986,57 @@ compte ceux qu'il a refusés.
 **Filet.** Chaque partie `.xml` et `.rels` du résultat est relue par `ET.fromstring` avant
 l'écriture, et la CLI revérifie le `.docx` (`_valider_docx_bien_forme()`). Si l'annotation
 lève une exception ou laisse un XML mal formé, la CLI remet le `.docx` d'avant l'annotation
-et lève `Annotation.Impossible` : le document livré est toujours lisible.
+et lève `Annotation.Impossible` : le document livré est toujours lisible. Elle repose
+ensuite les seuls commentaires du manuscrit, par un second appel sans alerte.
+
+### Commentaires du manuscrit
+
+Les commentaires Word du manuscrit sont reposés dans la sortie par `annoter()`, argument
+`origine`. Sans annotation (`--sans-annotation`, ou annotation impossible), la CLI appelle
+`annoter()` avec ses seuls commentaires (`_reposer_commentaires_seuls()`).
+
+**Lecture.** `manuscrit_docx.lire_commentaires()` rend chaque commentaire avec son auteur,
+ses initiales, sa date, le texte de ses paragraphes, son parent (`commentsExtended.xml`,
+`w15:paraIdParent`), son état résolu, et son ancrage : paragraphe de premier niveau et
+position du début et de la fin, dans le texte que construit `lire()`, et le passage commenté.
+Un commentaire dans un tableau ou une note porte l'indice du tableau ou de la note ; un
+commentaire sans borne dans le corps ni dans les notes (en-tête de page, zone de texte) a le
+lieu `inconnu`. `people.xml` donne l'identité Word de chaque auteur.
+
+**Ancrage dans la sortie**, dans l'ordre :
+
+1. le paragraphe correspondant (`correspondance`) : le passage y est cherché tel quel, puis
+   par la comparaison qui confond apostrophes, espaces spéciales et tirets. S'il apparaît
+   plusieurs fois, l'occurrence retenue est la plus proche de la position attendue ;
+2. sinon, les positions du manuscrit sont transposées par un alignement des deux textes
+   (`difflib`, à partir de 50 % de ressemblance) : c'est ce qui suit un passage retouché par
+   la typographie ; sinon le commentaire couvre le paragraphe entier ;
+3. un commentaire sur deux paragraphes ou plus garde son début et sa fin dans leurs
+   paragraphes correspondants ;
+4. un paragraphe absent de la correspondance (repris dans l'en-tête, retiré parce que vide) :
+   le passage est cherché dans tout le document, tableaux fixes compris, et retenu s'il n'y
+   apparaît qu'une fois (4 caractères au moins). Sinon le commentaire va sur le bloc figure
+   ou tableau du paragraphe, sinon sur le paragraphe correspondant suivant ;
+5. un commentaire de tableau suit la même recherche ; un commentaire de note va sur le
+   paragraphe qui appelle la note ; un commentaire `inconnu` sur le premier paragraphe
+   correspondant, ou sur celui du commentaire auquel il répond.
+
+Un passage révisé par le nettoyeur reste dans le commentaire : ses bornes entourent toute la
+révision. Les commentaires du manuscrit gardent leur auteur et ne comptent ni dans les
+plafonds ni dans le retrait des doublons de révision.
+
+**Écriture.** Chaque commentaire reçoit un `w:id` du compteur commun et un `w14:paraId` neuf
+sur son dernier paragraphe. `commentsExtended.xml` est écrit quand un commentaire répond à un
+autre ou est résolu ; `people.xml` porte une entrée par auteur du manuscrit. Les parties sont
+déclarées dans `[Content_Types].xml` et les relations de `document.xml`.
+
+**Compte.** `stats['commentaires_origine']` : `source`, `poses`, `passage`, `approche`,
+`paragraphe`, `deplaces`, `non_poses`, et `liste` (pour chaque commentaire : `id`, `auteur`,
+`para`, les 80 premiers signes du passage, `ancrage`, `motif`). Les étapes 4 et 5, hors
+passage retrouvé, comptent comme `deplace`, avec le motif `paragraphe-disparu`, `bloc`,
+`tableau`, `note` ou `inconnu`. La CLI émet une alerte `Nettoyage.CommentaireDeplace`
+(warning) par commentaire déplacé, et `Nettoyage.CommentaireNonRepris` (error) si la sortie
+en porte moins que le manuscrit.
 
 ### Sortie en .odt
 
@@ -999,7 +1055,7 @@ tiret.
 | Fichier | Rôle |
 |---|---|
 | `manuscrit-nettoyer.py` | la commande : enchaîne les étapes, écrit le rapport, la ligne JSON et les compteurs |
-| `manuscrit_docx.py` | lit un `.docx` vers le modèle de document ; `projeter_pronto()` rend la même chose que `pronto_docx.lire()` |
+| `manuscrit_docx.py` | lit un `.docx` vers le modèle de document ; `projeter_pronto()` rend la même chose que `pronto_docx.lire()` ; `lire_commentaires()` lit les commentaires Word |
 | `manuscrit_modele.py` | le modèle de document ; cas A ou B, classement des titres, nettoyage de la mise en forme ; sérialisation JSON |
 | `manuscrit_entete.py` | en-tête de l'article et bloc final des auteurs ; propagation de l'ordre des noms sur le document |
 | `manuscrit_noms.py` | ordre prénom/nom d'un nom reconnu ; base de noms |
@@ -1064,6 +1120,7 @@ Node les utilisent, car ils ne peuvent pas importer le Python.
 | `manuscrit_docx.py --diagnostic <f.docx>` | un fichier | `{gabarit, document}` |
 | `manuscrit_docx.py --projeter-pronto` / `--pronto-brut <f.docx>` | un fichier | les blocs de `projeter_pronto()` ou de `pronto_docx.lire()` |
 | `manuscrit_docx.py --images <f.docx>` | un fichier | une entrée par image : nom, longueur, sha256, alt, dimensions |
+| `manuscrit_docx.py --commentaires <f.docx>` | un fichier | `lire_commentaires()` : les commentaires et leur ancrage, `personnes` |
 | `manuscrit_regles.py --diagnostiquer` | un contexte | `{alertes, groupes}` ; code 1 dès une alerte `error` |
 | `manuscrit_regles.py --catalogue` | rien | le catalogue : `id`, `famille`, `langue`, `produit`, `severite`, `action`, `chapitre` |
 | `manuscrit_vale.py --analyser` | `{paragraphes_corps, paragraphes_biblio, langue}` | `{alertes, indisponible}` |
@@ -1117,8 +1174,8 @@ n'entre dans le dépôt. Aucun test ne lit `C:\ProgramData\SZH`, ni n'appelle le
 | `manuscrit-biblio.test.js`, `manuscrit-biblio-langue.test.js` | analyse des références, croisement, ordre, DOI, Crossref (réseau injecté), différences fr/de |
 | `manuscrit-gabarit.test.js` | sortie relue par `pronto-lire.py`, blocs, séparateurs, XML bien formé, table de correspondance |
 | `manuscrit-figures.test.js` | clés tapées, groupes d'images, légendes, cas A |
-| `manuscrit-annoter.test.js` | ancrage, révisions, commentaires, plafond, chevauchements, liens, notes, XML bien formé |
-| `manuscrit-nettoyer.test.js` | la commande entière : refus, codes de sortie, langue du produit, repli typographique, origines, `dans_docx`, perte de contenu, sortie `.odt` |
+| `manuscrit-annoter.test.js` | ancrage, révisions, commentaires, plafond, chevauchements, liens, notes, XML bien formé ; commentaires du manuscrit (passage, runs, révision, fil, paragraphe disparu) |
+| `manuscrit-nettoyer.test.js` | la commande entière : refus, codes de sortie, langue du produit, repli typographique, origines, `dans_docx`, perte de contenu, sortie `.odt`, commentaires du manuscrit repris |
 | `manuscrit-compteurs.test.js` | la liste blanche des compteurs et la ligne de plantage : aucun texte du manuscrit ne sort |
 | `manuscrit-rapport.test.js` | la vue du rapport HTML |
 | `accueil-preproc.test.js` | l'onglet Préprocessing du cockpit |
@@ -1149,5 +1206,8 @@ n'entre dans le dépôt. Aucun test ne lit `C:\ProgramData\SZH`, ni n'appelle le
 - **Ce que le lecteur ne lit pas** : en-têtes et pieds de page, zones de texte, champs Word
   non résolus. Il le dit dans le rapport.
 - **`--` tapé tel quel** n'est pas converti en tiret (voir [Typographie](#typographie)).
-- **Commentaires d'origine.** Ils ne passent pas dans la sortie.
+- **Commentaires du manuscrit.** Leur texte est repris paragraphe par paragraphe, sans mise
+  en forme, mention ni image. Un commentaire posé dans une note s'ancre sur tout le
+  paragraphe qui appelle la note. `commentsIds.xml` (identifiants durables de Word 2019 et
+  suivants) n'est pas reproduit.
 - **Livres.** Le nettoyeur ne traite que les articles.

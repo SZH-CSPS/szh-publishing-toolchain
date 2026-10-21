@@ -45,7 +45,8 @@ const MESURES_NETTOYEUR = Object.freeze(['issue.ok', 'issue.alertes', 'issue.pla
   'images_sans_alt', 'duree_ms', 'plafond_commentaires_atteint', 'perte_mots', 'ecartes',
   'vale.indisponible', 'typo.repli', 'annotation.restauree', 'reseau.crossref.panne',
   'reseau.ror.panne', 'reseau.orcid.panne', 'doi.proposes', 'ror.proposes', 'orcid.proposes',
-  'orcid.candidats', 'entete.auteurs', 'entete.champs_vides', 'entete.ordre_incertain']);
+  'orcid.candidats', 'entete.auteurs', 'entete.champs_vides', 'entete.ordre_incertain',
+  'commentaires_origine', 'commentaires_origine.deplaces', 'commentaires_origine.non_repris']);
 const MOTIFS_NETTOYEUR = Object.freeze([/^issue\.refus:[a-z0-9_-]{1,48}$/, /^titres\.[a-z0-9_]{1,40}$/]);
 const MESURES_IMPORT = Object.freeze(['auteurs', 'auteurs_orcid', 'auteurs_ror', 'langue_deduite']);
 

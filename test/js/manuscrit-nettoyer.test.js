@@ -1537,3 +1537,343 @@ test('manuscrit-nettoyer.py : recherche en ligne en panne -> un avertissement au
     obj.doi.message);
   assert.ok(obj.tout_de.message.indexOf('DOI sowie ROR und ORCID') !== -1, obj.tout_de.message);
 });
+
+// ---------------------------------------------------------------------------------
+// Commentaires Word du manuscrit : chacun revient dans la sortie avec son auteur, ses
+// initiales, sa date, son texte et son fil, ancré sur le même passage ; un commentaire qui
+// n'a pas pu l'être est signalé (Nettoyage.CommentaireDeplace, Nettoyage.CommentaireNonRepris).
+//
+// Sabotage : dans principal(), passer `origine=None` à ma.annoter() ; ou, dans
+// manuscrit_docx.lire_commentaires(), rendre une liste vide.
+
+// Fabrique un manuscrit commenté. `paras` : liste de paragraphes, chacun une liste de
+// segments {t, b} (texte, gras), {debut: id} ou {fin: id} ; ou {tableau: [[segments, …], …]}
+// (une rangée par élément, une cellule par liste de segments). `commentaires` :
+// [{id, auteur, initiales, date, texte, parent}] ; `parent` donne le fil (commentsExtended).
+const FABRIQUER_DOCX_COMMENTE = [
+  'import json, sys, zipfile',
+  'chemin, spec = sys.argv[1], json.loads(sys.argv[2])',
+  'W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"',
+  'W14 = "http://schemas.microsoft.com/office/word/2010/wordml"',
+  'W15 = "http://schemas.microsoft.com/office/word/2012/wordml"',
+  'def esc(t):',
+  '    return t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")',
+  'def seg_xml(s):',
+  '    if "debut" in s:',
+  '        return \'<w:commentRangeStart w:id="%d"/>\' % s["debut"]',
+  '    if "fin" in s:',
+  '        return (\'<w:commentRangeEnd w:id="%d"/><w:r><w:rPr><w:rStyle w:val="Marque"/></w:rPr>\'',
+  '                \'<w:commentReference w:id="%d"/></w:r>\') % (s["fin"], s["fin"])',
+  '    rpr = "<w:rPr><w:b/></w:rPr>" if s.get("b") else ""',
+  '    return \'<w:r>%s<w:t xml:space="preserve">%s</w:t></w:r>\' % (rpr, esc(s["t"]))',
+  'def p_xml(segs):',
+  '    return "<w:p>%s</w:p>" % "".join(seg_xml(s) for s in segs)',
+  'def bloc_xml(b):',
+  '    if isinstance(b, dict):',
+  '        rangees = "".join("<w:tr>%s</w:tr>" % "".join(',
+  '            "<w:tc><w:tcPr/>%s</w:tc>" % p_xml(c) for c in r) for r in b["tableau"])',
+  '        return ("<w:tbl><w:tblPr/><w:tblGrid><w:gridCol/><w:gridCol/></w:tblGrid>%s</w:tbl>"',
+  '                % rangees)',
+  '    return p_xml(b)',
+  'doc = (\'<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="%s"><w:body>%s\'',
+  '       \'<w:sectPr/></w:body></w:document>\') % (W, "".join(bloc_xml(b) for b in spec["paras"]))',
+  'pid = lambda c: "%08X" % (0x10000000 + c["id"])',
+  'coms = "".join(',
+  '    (\'<w:comment w:id="%d" w:author="%s" w:date="%s" w:initials="%s"><w:p w14:paraId="%s">\'',
+  '     \'<w:r><w:annotationRef/></w:r><w:r><w:t xml:space="preserve">%s</w:t></w:r></w:p>\'',
+  '     \'</w:comment>\') % (c["id"], esc(c["auteur"]), c["date"], c["initiales"], pid(c),',
+  '                         esc(c["texte"])) for c in spec["commentaires"])',
+  'comments = (\'<?xml version="1.0" encoding="UTF-8"?><w:comments xmlns:w="%s" xmlns:w14="%s">\'',
+  '            \'%s</w:comments>\') % (W, W14, coms)',
+  'par_id = {c["id"]: c for c in spec["commentaires"]}',
+  'ext = (\'<?xml version="1.0" encoding="UTF-8"?><w15:commentsEx xmlns:w15="%s">%s\'',
+  '       \'</w15:commentsEx>\') % (W15, "".join(',
+  '    \'<w15:commentEx w15:paraId="%s"%s w15:done="0"/>\' % (',
+  '        pid(c), (\' w15:paraIdParent="%s"\' % pid(par_id[c["parent"]])) if c.get("parent") is not None else "")',
+  '    for c in spec["commentaires"]))',
+  'people = (\'<?xml version="1.0" encoding="UTF-8"?><w15:people xmlns:w15="%s">\'',
+  '          \'<w15:person w15:author="Anne Relectrice"><w15:presenceInfo w15:providerId="AD" \'',
+  '          \'w15:userId="S::anne@example.org"/></w15:person></w15:people>\') % W15',
+  'styles = (\'<?xml version="1.0" encoding="UTF-8"?><w:styles xmlns:w="%s">\'',
+  '          \'<w:style w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>\') % W',
+  'CT = "application/vnd.openxmlformats-officedocument.wordprocessingml."',
+  'ct = (\'<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\'',
+  '      \'<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>\'',
+  '      \'<Default Extension="xml" ContentType="application/xml"/>\'',
+  '      \'<Override PartName="/word/document.xml" ContentType="%sdocument.main+xml"/>\'',
+  '      \'<Override PartName="/word/comments.xml" ContentType="%scomments+xml"/>\'',
+  '      \'<Override PartName="/word/commentsExtended.xml" ContentType="%scommentsExtended+xml"/>\'',
+  '      \'<Override PartName="/word/people.xml" ContentType="%speople+xml"/></Types>\') % (CT, CT, CT, CT)',
+  'REL = \'<Relationship Id="%s" Type="%s" Target="%s"/>\'',
+  'rels = (\'<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\'',
+  '        + REL % ("rId1", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments", "comments.xml")',
+  '        + REL % ("rId2", "http://schemas.microsoft.com/office/2011/relationships/commentsExtended", "commentsExtended.xml")',
+  '        + REL % ("rId3", "http://schemas.microsoft.com/office/2011/relationships/people", "people.xml")',
+  '        + "</Relationships>")',
+  'racine = (\'<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\'',
+  '          + REL % ("rId1", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument", "word/document.xml")',
+  '          + "</Relationships>")',
+  'with zipfile.ZipFile(chemin, "w") as z:',
+  '    for nom, contenu in (("[Content_Types].xml", ct), ("_rels/.rels", racine),',
+  '                         ("word/document.xml", doc), ("word/_rels/document.xml.rels", rels),',
+  '                         ("word/styles.xml", styles), ("word/comments.xml", comments),',
+  '                         ("word/commentsExtended.xml", ext), ("word/people.xml", people)):',
+  '        z.writestr(nom, contenu.encode("utf-8"))',
+].join('\n');
+
+// Lit les commentaires d'un .docx écrit : chaque commentaire (id, auteur, initiales, date,
+// texte, paraId), les fils de commentsExtended.xml, et le texte du corps avec ses bornes
+// lisibles (« [N| », « |N] », « {-supprimé-} », « {+inséré+} »).
+const LIRE_COMMENTAIRES_SORTIE = [
+  'import json, re, sys, zipfile',
+  'import xml.etree.ElementTree as ET',
+  'z = zipfile.ZipFile(sys.argv[1])',
+  'W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"',
+  'W14 = "{http://schemas.microsoft.com/office/word/2010/wordml}"',
+  'W15 = "{http://schemas.microsoft.com/office/word/2012/wordml}"',
+  'noms = z.namelist()',
+  'for n in noms:',
+  '    if n.endswith(".xml") or n.endswith(".rels"):',
+  '        ET.fromstring(z.read(n))',
+  'coms = []',
+  'if "word/comments.xml" in noms:',
+  '    for c in ET.fromstring(z.read("word/comments.xml")).iter(W + "comment"):',
+  '        ps = list(c.iter(W + "p"))',
+  '        coms.append({"id": c.get(W + "id"), "auteur": c.get(W + "author"),',
+  '                     "initiales": c.get(W + "initials"), "date": c.get(W + "date"),',
+  '                     "texte": "".join(t.text or "" for t in c.iter(W + "t")),',
+  '                     "paraId": ps[-1].get(W14 + "paraId") if ps else None})',
+  'fils = []',
+  'if "word/commentsExtended.xml" in noms:',
+  '    for e in ET.fromstring(z.read("word/commentsExtended.xml")).iter(W15 + "commentEx"):',
+  '        fils.append([e.get(W15 + "paraId"), e.get(W15 + "paraIdParent")])',
+  'd = z.read("word/document.xml").decode("utf-8")',
+  'd = re.sub(r"<w:commentRangeStart w:id=\\"(\\d+)\\"/>", r"[\\1|", d)',
+  'd = re.sub(r"<w:commentRangeEnd w:id=\\"(\\d+)\\"/>", r"|\\1]", d)',
+  'd = re.sub(r"<w:delText[^>]*>([^<]*)</w:delText>", r"{-\\1-}", d)',
+  'd = re.sub(r"<w:ins\\b[^>]*>(.*?)</w:ins>", lambda m: "{+" + re.sub(r"<[^>]+>", "", m.group(1)) + "+}", d)',
+  'd = re.sub(r"<w:t(?:\\s[^>]*)?>([^<]*)</w:t>", r"\\1", d)',
+  'd = re.sub(r"</w:p>", "\\n", d)',
+  'd = re.sub(r"<[^>]+>", "", d).replace("&amp;", "&")',
+  'print(json.dumps({"commentaires": coms, "fils": fils, "texte": d,',
+  '                  "ins": z.read("word/document.xml").decode("utf-8").count("<w:ins "),',
+  '                  "relations": z.read("word/_rels/document.xml.rels").decode("utf-8")}))',
+].join('\n');
+
+function lireCommentairesSortie(chemin) {
+  const r = python(['-c', LIRE_COMMENTAIRES_SORTIE, chemin]);
+  assert.strictEqual(r.status, 0, 'lecture de la sortie impossible : ' + r.stderr);
+  return JSON.parse(r.stdout);
+}
+
+const T = (t, b) => ({ t, b: !!b });
+const D = (id) => ({ debut: id });
+const F = (id) => ({ fin: id });
+
+function manuscritCommente() {
+  const paras = [
+    [D(7), T('Titre de l’article sur l’inclusion scolaire'), F(7)],
+    [D(8), T('Marie Dupont, Haute école pédagogique du canton de Vaud'), F(8)],
+    [T('Introduction', true)],
+    // Simple.
+    [T('Les élèves à besoins particuliers '), D(0), T('bénéficient d’un soutien'), F(0),
+      T(' adapté dans la classe ordinaire.')],
+    // Sur plusieurs runs.
+    [T('Ce passage '), D(1), T('traverse '), T('plusieurs runs', true), T(' de suite'), F(1),
+      T(' dans un même paragraphe.')],
+    // Texte retouché par la typographie (apostrophe droite).
+    [T('Une école inclusive se construit '), D(2), T("avec l'ensemble des acteurs"), F(2),
+      T(' du terrain.')],
+    // Un commentaire et sa réponse, sur le même passage.
+    [T('La recherche '), D(3), D(5), T('montre des effets positifs'), F(3), F(5),
+      T(' sur les apprentissages.')],
+    // Deux paragraphes vides : le second, commenté, disparaît au nettoyage.
+    [],
+    [D(9), F(9)],
+    [T('Méthode', true)],
+    // Sur deux paragraphes.
+    [T('Nous avons interrogé vingt '), D(10), T('enseignantes et enseignants du canton de Vaud.')],
+    [T('Les entretiens ont duré une heure'), F(10), T(' en moyenne.')],
+    { tableau: [[[T('Groupe')], [T('Effectif')]],
+      [[D(11), T('Classes inclusives'), F(11)], [T('12')]]] },
+    [T('Références', true)],
+    [T('Dupont, M., & Martin, P. (2020). Un titre. Revue, 1(2), 3-4.')],
+  ];
+  const c = (id, auteur, initiales, texte, parent) => ({
+    id, auteur, initiales, texte, parent, date: '2026-03-' + String(10 + id) + 'T10:00:00Z' });
+  const commentaires = [
+    c(0, 'Anne Relectrice', 'AR', 'Préciser la nature du soutien.'),
+    c(1, 'Bruno Auteur', 'BA', 'Phrase sur plusieurs runs.'),
+    c(2, 'Anne Relectrice', 'AR', 'Formulation ?'),
+    c(3, 'Anne Relectrice', 'AR', 'Source ?'),
+    c(5, 'Bruno Auteur', 'BA', 'Voir Hattie (2009).', 3),
+    c(7, 'Claire Éditrice', 'CÉ', 'Titre trop long.'),
+    c(8, 'Claire Éditrice', 'CÉ', 'Affiliation complète ?'),
+    c(9, 'Claire Éditrice', 'CÉ', 'Ligne vide à supprimer.'),
+    c(10, 'Bruno Auteur', 'BA', 'Deux paragraphes.'),
+    c(11, 'Bruno Auteur', 'BA', 'Libellé du tableau.'),
+  ];
+  return { paras, commentaires };
+}
+
+function nettoyerManuscritCommente(options) {
+  const base = dossierJetable();
+  const entree = path.join(base, 'commente.docx');
+  const spec = manuscritCommente();
+  const r0 = python(['-c', FABRIQUER_DOCX_COMMENTE, entree, JSON.stringify(spec)]);
+  assert.strictEqual(r0.status, 0, 'fabrication du .docx impossible : ' + r0.stderr);
+  const sortie = path.join(base, 'sortie');
+  fs.mkdirSync(sortie);
+  const r = (options && options.programme)
+    ? python(['-c', options.programme, PIPELINE, NETTOYEUR, entree, '--produit', 'revue',
+      '--sortie', sortie, '--sans-reseau'].concat((options && options.args) || []))
+    : nettoyer([entree, '--produit', 'revue', '--sortie', sortie, '--sans-reseau']
+      .concat((options && options.args) || []));
+  const obj = ligneUniqueJson(r.stdout);
+  const rapport = cheminDepuisPython(JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8')));
+  return { base, spec, obj, rapport, sortie: lireCommentairesSortie(obj.sortie_docx), stderr: r.stderr };
+}
+
+// Vérifie que chaque commentaire du manuscrit est dans la sortie, intact, et rend la table
+// id du manuscrit -> id de la sortie.
+function verifierCommentairesIntacts(spec, sortie) {
+  const parTexte = new Map(sortie.commentaires.map((c) => [c.texte, c]));
+  const ids = {};
+  for (const c of spec.commentaires) {
+    const s = parTexte.get(c.texte);
+    assert.ok(s, 'commentaire « ' + c.texte + ' » perdu : ' + JSON.stringify(sortie.commentaires));
+    assert.deepStrictEqual([s.auteur, s.initiales, s.date], [c.auteur, c.initiales, c.date]);
+    ids[c.id] = s;
+  }
+  return ids;
+}
+
+test('manuscrit-nettoyer.py : les commentaires Word du manuscrit reviennent dans la sortie, '
+  + 'sur leur passage, avec leur auteur et leur fil', { skip: sansPython }, () => {
+    const { base, spec, obj, rapport, sortie } = nettoyerManuscritCommente();
+    try {
+      const ids = verifierCommentairesIntacts(spec, sortie);
+      const n = (id) => ids[id].id;
+      const texte = sortie.texte;
+      assert.ok(texte.includes('[' + n(0) + '|bénéficient d’un soutien' + '|' + n(0) + ']'), texte);
+      assert.ok(texte.includes('[' + n(1) + '|traverse plusieurs runs de suite' + '|' + n(1) + ']'), texte);
+      assert.ok(texte.includes('[' + n(2) + '|avec l’ensemble des acteurs' + '|' + n(2) + ']'), texte);
+      assert.ok(texte.includes('[' + n(3) + '|[' + n(5) + '|montre des effets positifs'), texte);
+      assert.ok(new RegExp('\\[' + n(10) + '\\|enseignantes[^\\]]*\\n[^\\[]*une heure\\|' + n(10) + '\\]')
+        .test(texte), texte);
+      // Titre et tableau : leur passage est retrouvé là où l'écrivain l'a mis.
+      assert.ok(texte.includes('[' + n(7) + '|Titre de'), texte);
+      assert.ok(texte.includes('[' + n(11) + '|Classes inclusives' + '|' + n(11) + ']'), texte);
+      // Le fil : la réponse cite le paraId de son commentaire.
+      assert.deepStrictEqual(sortie.fils.find((f) => f[0] === ids[5].paraId), [ids[5].paraId, ids[3].paraId]);
+      assert.match(sortie.relations, /commentsExtended\.xml/);
+      assert.match(sortie.relations, /people\.xml/);
+
+      // La ligne d'affiliation et le paragraphe vide disparaissent : déplacés et signalés.
+      const deplaces = rapport.alertes.liste.filter((a) => a.rule === 'Nettoyage.CommentaireDeplace');
+      assert.strictEqual(deplaces.length, 2, JSON.stringify(deplaces));
+      assert.ok(deplaces.every((a) => a.severity === 'warning' && a.action === 'report'));
+      assert.ok(deplaces.some((a) => a.message.includes('Claire Éditrice')), JSON.stringify(deplaces));
+      assert.ok(!rapport.alertes.liste.some((a) => a.rule === 'Nettoyage.CommentaireNonRepris'));
+
+      assert.strictEqual(rapport.compteurs.commentaires, 10);
+      assert.strictEqual(rapport.compteurs.commentaires_repris, 10);
+      assert.strictEqual(rapport.commentaires_origine.deplaces, 2);
+      // Les commentaires du manuscrit ne sont pas ceux du nettoyeur.
+      assert.strictEqual(rapport.compteurs.commentaires_poses, rapport.annotation.commentaires);
+      assert.strictEqual(sortie.commentaires.length, 10 + rapport.annotation.commentaires);
+      const m = obj.compteurs.mesures;
+      assert.strictEqual(m.commentaires_origine, 10);
+      assert.strictEqual(m['commentaires_origine.deplaces'], 2);
+      assert.strictEqual(m['commentaires_origine.non_repris'], undefined);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+test('manuscrit-nettoyer.py : --sans-annotation garde les commentaires du manuscrit, sans '
+  + 'rien ajouter', { skip: sansPython }, () => {
+    const { base, spec, rapport, sortie } = nettoyerManuscritCommente({ args: ['--sans-annotation'] });
+    try {
+      verifierCommentairesIntacts(spec, sortie);
+      assert.strictEqual(sortie.commentaires.length, 10);
+      assert.strictEqual(sortie.ins, 0);
+      assert.strictEqual(rapport.annotation, null);
+      assert.strictEqual(rapport.compteurs.commentaires_repris, 10);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+test('manuscrit-nettoyer.py : annotation en panne -> les commentaires du manuscrit sont '
+  + 'reposés seuls ; s\'ils ne peuvent pas l\'être, une alerte error le dit', { skip: sansPython }, () => {
+    const pont = (condition) => [
+      'import importlib.util, sys',
+      'sys.path.insert(0, sys.argv[1])',
+      'spec = importlib.util.spec_from_file_location("nettoyeur_sabote", sys.argv[2])',
+      'mod = importlib.util.module_from_spec(spec)',
+      'spec.loader.exec_module(mod)',
+      '_annoter, _appels = mod.ma.annoter, []',
+      'def _annoter_sabote(*a, **k):',
+      '    _appels.append(1)',
+      '    if ' + condition + ':',
+      '        raise ValueError("SABOTAGE")',
+      '    return _annoter(*a, **k)',
+      'mod.ma.annoter = _annoter_sabote',
+      'sys.argv = [sys.argv[2]] + sys.argv[3:]',
+      'sys.exit(mod.principal(sys.argv))',
+    ].join('\n');
+
+    // Panne du premier appel seulement : le second, sans alertes, repose les commentaires.
+    const a = nettoyerManuscritCommente({ programme: pont('len(_appels) == 1') });
+    try {
+      verifierCommentairesIntacts(a.spec, a.sortie);
+      assert.ok(a.rapport.alertes.liste.some((x) => x.rule === 'Annotation.Impossible'));
+      assert.strictEqual(a.rapport.compteurs.commentaires_repris, 10);
+    } finally {
+      fs.rmSync(a.base, { recursive: true, force: true });
+    }
+
+    // Panne totale : aucun commentaire, et l'alerte le dit.
+    const b = nettoyerManuscritCommente({ programme: pont('True') });
+    try {
+      assert.strictEqual(b.sortie.commentaires.length, 0);
+      const alerte = b.rapport.alertes.liste.find((x) => x.rule === 'Nettoyage.CommentaireNonRepris');
+      assert.ok(alerte, JSON.stringify(b.rapport.alertes.liste.map((x) => x.rule)));
+      assert.strictEqual(alerte.severity, 'error');
+      assert.match(alerte.message, /^10 commentaire\(s\) Word du manuscrit/);
+      assert.strictEqual(b.obj.compteurs.mesures['commentaires_origine.non_repris'], 10);
+    } finally {
+      fs.rmSync(b.base, { recursive: true, force: true });
+    }
+  });
+
+test('manuscrit-nettoyer.py : un commentaire du manuscrit sur un passage que le nettoyeur '
+  + 'révise entoure la révision', { skip: sansPython || sansVale }, () => {
+    const base = dossierJetable();
+    try {
+      const entree = path.join(base, 'revise.docx');
+      const spec = {
+        paras: [[T('Titre de l’article sur l’inclusion scolaire')], [T('Introduction', true)],
+          [T('Plusieurs travaux le confirment '), D(6), T('(Dupont et Martin, 2020)'), F(6), T('.')],
+          [T('Références', true)],
+          [T('Dupont, M., & Martin, P. (2020). Un titre. Revue, 1(2), 3-4.')]],
+        commentaires: [{ id: 6, auteur: 'Anne Relectrice', initiales: 'AR',
+          date: '2026-03-16T10:00:00Z', texte: 'Citation à vérifier.' }],
+      };
+      const r0 = python(['-c', FABRIQUER_DOCX_COMMENTE, entree, JSON.stringify(spec)]);
+      assert.strictEqual(r0.status, 0, r0.stderr);
+      const sortie = path.join(base, 'sortie');
+      fs.mkdirSync(sortie);
+      const obj = ligneUniqueJson(nettoyer([entree, '--produit', 'revue', '--sortie', sortie,
+        '--sans-reseau']).stdout);
+      const lu = lireCommentairesSortie(obj.sortie_docx);
+      const n = verifierCommentairesIntacts(spec, lu)[6].id;
+      // Les bornes d'un commentaire du nettoyeur peuvent s'intercaler : elles sont retirées.
+      const ancre = new RegExp('\\[' + n + '\\|([^]*?)\\|' + n + '\\]').exec(lu.texte);
+      assert.ok(ancre, lu.texte);
+      assert.strictEqual(ancre[1].replace(/\[\d+\||\|\d+\]/g, ''), '(Dupont {-et-}{+&+} Martin, 2020)');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });

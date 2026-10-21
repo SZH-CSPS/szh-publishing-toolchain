@@ -348,7 +348,8 @@ connaît que des totaux.
 
 - nettoyeur : alertes par règle et par traitement (révision, commentaire, rapport), nombre de
   signes, de paragraphes, de notes, d'images, refus par motif, plantages, pannes réseau par
-  service, DOI, ROR et ORCID proposés, plafond de commentaires atteint ;
+  service, DOI, ROR et ORCID proposés, plafond de commentaires atteint, commentaires Word du
+  manuscrit (nombre, déplacés, non repris) ;
 - import : codes d'avertissement de chaque article converti, nombre d'auteurs et
   d'autrices, combien ont un ORCID ou un ROR, langue devinée ou non.
 

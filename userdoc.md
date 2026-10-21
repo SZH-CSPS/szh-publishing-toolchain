@@ -1917,6 +1917,11 @@ absent), le nettoyage ne part pas et l’onglet le dit, sans rien écrire ailleu
 la zone de l’onglet, **en maintenant Maj** au moment de le lâcher : sans Maj, VSCodium
 l’ouvre lui-même.
 
+Les commentaires Word du manuscrit se retrouvent dans le document nettoyé, sur le même
+passage, avec leur auteur et leurs réponses. Quand un passage commenté a disparu (une ligne
+reprise dans les tableaux du gabarit, un paragraphe vide retiré), le commentaire est posé sur
+un paragraphe voisin et le rapport le signale.
+
 ## L’onglet « Export et secrétariat »
 
 Menu Démarrer → **Pronto** porte un onglet de plus, à côté de Revue,
