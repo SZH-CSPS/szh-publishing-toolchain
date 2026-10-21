@@ -13,6 +13,8 @@ const path = require('path');
 // Seul état lu : le profil posé par l'extension.
 const session = require('./session');
 
+// `unites.prefixeEcarte` : préfixe des dossiers rangés parmi les unités sans en être (les
+// pièces de travail d'un livre, que pipeline/profils/livre.mk n'imprime pas), ou null.
 // `contexte` est la clé posée par `setContext` et lue par les `when` du package.json ;
 // `cible` est la cible make lancée par Ctrl+S. `capacites` dit quelles fonctions existent
 // dans le profil : chacune devient le contexte `szh.peut.<nom>` (contextes()), lu par les
@@ -21,7 +23,8 @@ const PROFILS = {
   revue: {
     cle: 'revue',
     config: 'ausgabe.yaml',
-    unites: { dossier: 'articles', mot: 'article', ordre: 'ordre-articles', vue: 'szh.vueArticles' },
+    unites: { dossier: 'articles', mot: 'article', ordre: 'ordre-articles', vue: 'szh.vueArticles',
+              prefixeEcarte: null },
     depot: 'articles-word',
     sortie: 'out',
     cible: 'all',
@@ -50,7 +53,8 @@ const PROFILS = {
   livre: {
     cle: 'livre',
     config: 'buch.yaml',
-    unites: { dossier: 'chapitres', mot: 'chapitre', ordre: 'ordre-chapitres', vue: 'szh.vueChapitres' },
+    unites: { dossier: 'chapitres', mot: 'chapitre', ordre: 'ordre-chapitres', vue: 'szh.vueChapitres',
+              prefixeEcarte: '_' },
     depot: 'chapitres-word',
     sortie: 'out',
     cible: 'livre',

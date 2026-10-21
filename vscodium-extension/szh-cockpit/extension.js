@@ -299,6 +299,8 @@ const {
 // Les fiches à champs (livre, film, intervention…) et les rubriques de prose (références
 // du dossier, tour d'horizon…), dans documentation.<lang>.txt et les dossiers de fiches.
 const kirbyLib = require('./lib/kirby-contenu');
+// ---- Section « Aide » de l'arbre -> lib/aide.js
+const { ADRESSE_SIGNALER_PROBLEME, ENTREES_AIDE } = require('./lib/aide');
 const { traiterPortraits } = require('./lib/portraits');
 // ---- Journal de compilation -> lib/journal.js ------------------------------------
 const {
@@ -479,7 +481,8 @@ const COULEURS_SECTION = {
   // Les sections d'un même arbre ont des couleurs distinctes (test/js/hote.test.js).
   actualite: 'charts.purple',
   traductions: 'charts.green',
-  word: 'editorWarning.foreground'
+  word: 'editorWarning.foreground',
+  aide: 'charts.foreground'
 };
 
 // Icône d'avancement d'un article, sur le modèle des états de traduction : cercle vide =
@@ -659,14 +662,17 @@ class FournisseurRevue {
       }
       sections.push(
         this._section('word', T('arbre.word'), 'inbox', n > 0 ? '(' + n + ')' : undefined));
-      // Les Contrôles en dernier : ce n'est pas une étape du travail mais sa vérification.
+      // Les Contrôles après le travail : ce n'en est pas une étape mais sa vérification.
       sections.push(this._itemControles());
+      // L'Aide ferme l'arbre, pour une revue comme pour un livre.
+      sections.push(this._section('aide', T('arbre.aide'), 'question', undefined));
       return sections;
     }
     if (element.categorie === categorieUnites()) { return this._itemsArticles(); }
     if (element.categorie === 'actualite') { return this._itemsActualite(); }
     if (element.categorie === 'word') { return this._itemsWord(); }
     if (element.categorie === 'traductions') { return this._itemsTraductions(); }
+    if (element.categorie === 'aide') { return this._itemsAide(); }
     if (element.contextValue === 'article') { return this._itemsTables(element.slug); }
     if (element.contextValue === 'traduction-article') { return this._itemsChampsTraduction(element.slug); }
     return [];
@@ -854,6 +860,19 @@ class FournisseurRevue {
     it.tooltip = T('arbre.controles.tooltip');
     it.command = { command: 'szh.vueControles', title: T('arbre.controles'), arguments: [] };
     return it;
+  }
+
+  // Entrées de la section « Aide » (lib/aide.js) : chacune lance sa commande au clic.
+  _itemsAide() {
+    return ENTREES_AIDE.map((e) => {
+      const it = new vscode.TreeItem(T(e.libelle), vscode.TreeItemCollapsibleState.None);
+      it.id = 'aide:' + e.cle;
+      it.contextValue = 'aide-entree';
+      it.iconPath = new vscode.ThemeIcon(e.icone);
+      it.tooltip = T(e.tip);
+      it.command = { command: e.commande, title: T(e.libelle), arguments: [] };
+      return it;
+    });
   }
 
   // Entrée « Métadonnées du livre », qui ouvre le formulaire de buch.yaml. Sans `categorie`,
@@ -2554,16 +2573,20 @@ async function supprimerArticle(fournisseur, rafraichirTout, item) {
     reprendrePlusTard([echecArticle ? dossierArticle : null, echecSortie ? dossierSortie : null],
       rafraichirTout);
     vscode.window.showErrorMessage(TP('err.suppression.article', profilCourant(), [slug, echec]));
-    return;
   }
+  // Un article dont le .md est encore là n'est pas supprimé : rien à renuméroter.
+  const restants = fournisseur.listerArticles();
+  if (restants.indexOf(slug) !== -1) { return; }
   // Referme le trou dans la numérotation des dossiers (01, 03, 04), par le même renommage
-  // en deux passes que « Changer l'ordre ». Un renommage qui échoue se reprend plus tard.
-  const rangs = controlesHote.alignerDossiersSurOrdre(racine, fournisseur.listerArticles());
+  // en deux passes que « Changer l'ordre ». Les restes d'un effacement partiel ne sont plus
+  // une unité et gardent leur nom jusqu'à la reprise différée.
+  const rangs = controlesHote.alignerDossiersSurOrdre(racine, restants);
   rafraichirTout();
   if (rangs.erreur) {
     vscode.window.showWarningMessage(TP('art.suppr.renumerote.echec', profilCourant(), [rangs.erreur]));
     return;
   }
+  if (echec) { return; }
   vscode.window.setStatusBarMessage(
     rangs.renommes === 0 ? TP('statut.supprime', profilCourant(), [slug])
       : TP('statut.supprime.renumerote', profilCourant(), [slug, rangs.renommes]), 3000);
@@ -3197,6 +3220,9 @@ function activate(context) {
       (item) => ouvrirVueEnsemble(fournisseur, rafraichirTout, 'word', item)),
     vscode.commands.registerCommand('szh.vueControles',
       () => ouvrirVueEnsemble(fournisseur, rafraichirTout, 'controles')),
+    // Ouvre la page du wiki où l'on signale un problème (section « Aide » de l'arbre).
+    vscode.commands.registerCommand('szh.signalerProbleme',
+      () => vscode.env.openExternal(vscode.Uri.parse(ADRESSE_SIGNALER_PROBLEME))),
     // Fabriquer un lien ne modifie rien : disponible même sur un numéro verrouillé.
     cmd('szh.envoyerTraduction', (item) => traductionHote.envoyerPourTraduction(fournisseur, item)),
     // `item` est accepté (contrat des boutons de constat) mais inutilisé : aucun constat ne

@@ -43,9 +43,9 @@ function sousDossiers(base) {
   } catch (e) { return []; }
 }
 
-// Les articles tels que le plan les attend : nom de dossier et fichiers posés directement
-// dedans. media/ et tables/ ne comptent pas : leur contenu est désigné en chemin relatif
-// depuis le .md.
+// Les sous-dossiers tels que le plan les attend : nom de dossier et fichiers posés
+// directement dedans. media/ et tables/ ne comptent pas : leur contenu est désigné en
+// chemin relatif depuis le .md.
 function listerUnites(racine, options) {
   const base = dossierUnites(racine, options);
   return sousDossiers(base).filter((nom) => nom.indexOf(PREFIXE_TEMPO) !== 0).map((nom) => ({
@@ -53,6 +53,20 @@ function listerUnites(racine, options) {
     fichiers: fs.readdirSync(path.join(base, nom), { withFileTypes: true })
       .filter((e) => e.isFile()).map((e) => e.name)
   }));
+}
+
+// Un dossier est une unité, comme pour le Makefile, s'il contient <nom>.md ou la page d'une
+// Documentation Kirby. Les autres (reste d'une suppression, dossier créé à la main) ne sont
+// ni renommés ni comptés.
+function estUnite(unite) {
+  return unite.fichiers.some((f) => f === unite.slug + '.md' || estFichierPage(f));
+}
+
+// Vrai si le dossier porte le préfixe des pièces de travail du profil
+// (`options.prefixeEcarte`, « _ » pour un livre) : il garde son nom et n'a pas de rang.
+function estEcarte(nom, options) {
+  const p = options && options.prefixeEcarte;
+  return !!p && String(nom).indexOf(p) === 0;
 }
 
 // Un lot interrompu se reconnaît à ses dossiers temporaires.
@@ -214,39 +228,46 @@ function executerPasses(base, passes) {
   return renommes;
 }
 
-// renumeroter(racine, ordreVoulu) -> { erreur, renommes }
+// renumeroter(racine, ordreVoulu, options) -> { erreur, renommes }
 //
-// `ordreVoulu` est la liste des slugs dans l'ordre affiché, calculée par l'appelant. Si le
-// plan ne trouve rien à faire, ausgabe.yaml n'est réécrit que si son ordre nomme encore un
-// article disparu (la co-édition lit sa date de modification).
+// `ordreVoulu` est la liste des slugs dans l'ordre affiché, calculée par l'appelant. Les
+// dossiers écartés (estEcarte) en sont retirés. Si le plan ne trouve rien à faire,
+// ausgabe.yaml n'est réécrit que si son ordre nomme encore un article disparu (la
+// co-édition lit sa date de modification). `renommes` compte les dossiers renommés.
 function renumeroter(racine, ordreVoulu, options) {
   const base = dossierUnites(racine, options);
+  const voulu = (ordreVoulu || []).map(String).filter((slug) => !estEcarte(slug, options));
+  const voulus = new Set(voulu);
   let plan;
   try {
-    plan = planRenumerotation(listerUnites(racine, options), ordreVoulu);
+    // Un dossier nommé dans l'ordre est toujours compté : un ordre qui nomme un dossier
+    // absent reste refusé par le plan.
+    const unites = listerUnites(racine, options)
+      .filter((u) => !estEcarte(u.slug, options) && (voulus.has(u.slug) || estUnite(u)));
+    plan = planRenumerotation(unites, voulu);
   } catch (e) {
     return { erreur: String((e && e.message) || e), renommes: 0 };
   }
   if (!plan.aFaire) {
     try {
-      if (ordreEcritDiffere(racine, ordreVoulu, options)) { ecrireOrdre(racine, ordreVoulu, options); }
+      if (ordreEcritDiffere(racine, voulu, options)) { ecrireOrdre(racine, voulu, options); }
     } catch (e) {
       return { erreur: String((e && e.message) || e), renommes: 0 };
     }
     return { erreur: null, renommes: 0 };
   }
   try {
-    const renommes = executerPasses(base, plan.passes);
+    executerPasses(base, plan.passes);
     for (const r of plan.renommages) {
       alignerFichiers(base, r.vers);
       retirerOut(racine, r.de);
     }
-    ecrireOrdre(racine, plan.renommages.length === 0 ? ordreVoulu
-      : ordreVoulu.map((slug, i) => {
+    ecrireOrdre(racine, plan.renommages.length === 0 ? voulu
+      : voulu.map((slug, i) => {
         const r = plan.renommages.find((x) => x.de === slug);
         return r ? r.vers : slug;
       }), options);
-    return { erreur: null, renommes: renommes };
+    return { erreur: null, renommes: plan.renommages.length };
   } catch (e) {
     return { erreur: String((e && e.message) || e), renommes: 0 };
   }
@@ -268,7 +289,8 @@ function reprendre(racine, options) {
     const renommes = executerPasses(base, plan.passes);
     for (const etape of plan.passes[0]) { alignerFichiers(base, etape.vers); }
     // L'ordre se reconstruit depuis les préfixes des dossiers, qui sont leur rang.
-    ecrireOrdre(racine, sousDossiers(base).sort(), options);
+    ecrireOrdre(racine, listerUnites(racine, options)
+      .filter((u) => !estEcarte(u.slug, options) && estUnite(u)).map((u) => u.slug).sort(), options);
     return { erreur: null, renommes: renommes };
   } catch (e) {
     return { erreur: String((e && e.message) || e), renommes: 0 };

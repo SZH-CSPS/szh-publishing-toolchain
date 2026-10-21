@@ -84,8 +84,10 @@ function alignerDossiersSurOrdre(racine, voulu) {
   // config/cle : le fichier et la clé où « Terminer » écrit l'ordre (ausgabe.yaml pour une
   // revue, buch.yaml pour un livre). Sans eux, ecrireOrdre() (lib/renumerotation-fs.js)
   // prendrait le défaut de la revue et créerait un ausgabe.yaml dans un livre.
+  // prefixeEcarte : les pièces de travail d'un livre (« _… ») gardent leur nom.
   const r = renumerotation.renumeroter(racine, voulu,
-    { dossier: dossierUnites(), config: profilCourant().config, cle: profilCourant().unites.ordre });
+    { dossier: dossierUnites(), config: profilCourant().config, cle: profilCourant().unites.ordre,
+      prefixeEcarte: profilCourant().unites.prefixeEcarte });
   // Les constats nomment les anciens slugs : ils sont périmés pour les articles renommés,
   // et la prochaine compilation les reposera sous leur nouveau nom.
   if (r.renommes > 0 && journal.racine === racine) {

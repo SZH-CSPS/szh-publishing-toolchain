@@ -1074,6 +1074,12 @@ choisit ensuite (thème, zoom, taille de police, langue, mode d'aperçu) survit 
 jour. `keybindings.json` et `tasks.json`, eux, sont remplacés à chaque mise à jour. Les
 raccourcis clavier sont décrits dans [`userdoc.md`](../userdoc.md).
 
+L'éditeur ne fait aucun son : `accessibility.signalOptions.volume` vaut 0 et chaque signal
+`accessibility.signals.*` a son `sound` à `off` (`never` pour `save` et `format`). Les
+annonces aux lecteurs d'écran gardent leur valeur par défaut. La liste est celle de
+VSCodium 1.126 ; un signal ajouté par une version suivante s'ajoute au gabarit, à
+`contributes.configurationDefaults` et à `test/js/bruit-editeur.test.js`.
+
 ### Les réglages protégés
 
 Trois blocs décrivent la chaîne de publication plutôt que le confort d'une personne : la

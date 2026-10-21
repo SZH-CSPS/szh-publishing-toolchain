@@ -446,3 +446,55 @@ test('options.config/cle : sans eux, ecrireOrdre() garde son défaut de revue (n
   assert.deepStrictEqual(ordreEcrit(racine), ['00-inclusion', '01-edito']);
   fs.rmSync(racine, { recursive: true, force: true });
 });
+
+// ---- dossiers qui ne sont pas des unités ----------------------------------------------
+//
+// Un dossier sans <nom>.md ni page de Documentation (reste d'une suppression, dossier créé
+// à la main) n'est ni renommé ni compté : il ne doit pas empêcher de refermer le rang.
+test('renumeroter : un dossier sans .md est ignoré, et le rang se referme', () => {
+  const racine = numero(['00-edito', '02-varia']);
+  const reste = path.join(racine, 'articles', '01-supprime');
+  fs.mkdirSync(path.join(reste, 'media'), { recursive: true });
+  fs.writeFileSync(path.join(reste, 'media', 'fig.png'), 'PNG');
+  const r = hote.renumeroter(racine, ['00-edito', '02-varia']);
+  assert.strictEqual(r.erreur, null, 'renumérotation refusée : ' + r.erreur);
+  assert.strictEqual(r.renommes, 1, 'le compte doit être celui des dossiers renommés');
+  assert.deepStrictEqual(dossiers(racine), ['00-edito', '01-supprime', '01-varia']);
+  assert.deepStrictEqual(ordreEcrit(racine), ['00-edito', '01-varia']);
+  fs.rmSync(racine, { recursive: true, force: true });
+});
+
+// Un article présent sur le disque mais absent de l'ordre reste refusé : l'ordre a été
+// calculé sur une liste périmée.
+test('renumeroter : un article avec son .md, absent de l’ordre, fait toujours refuser', () => {
+  const racine = numero(['00-edito', '01-inclusion']);
+  const r = hote.renumeroter(racine, ['00-edito']);
+  assert.ok(r.erreur, 'un ordre périmé doit être refusé');
+  assert.deepStrictEqual(dossiers(racine), ['00-edito', '01-inclusion']);
+  fs.rmSync(racine, { recursive: true, force: true });
+});
+
+// Les pièces de travail d'un livre (« _… », pipeline/profils/livre.mk) n'ont pas de rang et
+// gardent leur nom, même nommées dans l'ordre.
+test('options.prefixeEcarte : « _restes » garde son nom et ne prend pas de rang', () => {
+  const racine = livre(['01-ouverture', '03-fin', '_restes']);
+  const r = hote.renumeroter(racine, ['_restes', '01-ouverture', '03-fin'],
+    Object.assign({ prefixeEcarte: '_' }, optionsLivre));
+  assert.strictEqual(r.erreur, null, 'renumérotation refusée : ' + r.erreur);
+  assert.deepStrictEqual(fs.readdirSync(path.join(racine, 'chapitres')).sort(),
+    ['00-ouverture', '01-fin', '_restes']);
+  assert.match(fs.readFileSync(path.join(racine, 'buch.yaml'), 'utf8'),
+    /ordre-chapitres:\s*\["00-ouverture",\s*"01-fin"\]/);
+  fs.rmSync(racine, { recursive: true, force: true });
+});
+
+test('reprise : l’ordre reconstruit ne nomme que les unités', () => {
+  const racine = numero(['00-edito']);
+  const base = path.join(racine, 'articles');
+  fs.renameSync(path.join(base, '00-edito'), path.join(base, '~ordre-01-edito'));
+  fs.mkdirSync(path.join(base, 'Nouveau dossier'));
+  const r = hote.reprendre(racine);
+  assert.strictEqual(r.erreur, null, 'reprise refusée : ' + r.erreur);
+  assert.deepStrictEqual(ordreEcrit(racine), ['01-edito']);
+  fs.rmSync(racine, { recursive: true, force: true });
+});
