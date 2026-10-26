@@ -259,6 +259,18 @@ function Save-SzhEtatUtilisateur($Etat) {
   } catch { return $false }
 }
 
+# Écrit les clés données sans effacer le reste du fichier : il porte aussi l'ancrage
+# SharePoint, la langue, la mise à jour silencieuse et les compteurs des rapports d'erreur.
+function Set-SzhEtatUtilisateurCles($Cles) {
+  $etat = Get-SzhEtatUtilisateur
+  if (-not $etat) { $etat = New-Object psobject }
+  foreach ($c in @($Cles.Keys)) {
+    if ($etat.PSObject.Properties[$c]) { $etat.$c = $Cles[$c] }
+    else { $etat | Add-Member -MemberType NoteProperty -Name $c -Value $Cles[$c] -Force }
+  }
+  return (Save-SzhEtatUtilisateur $etat)
+}
+
 function Get-SzhEtatUtilisateurChamp($Etat, [string]$Nom) {
   if (-not $Etat) { return '' }
   try { if ($null -ne $Etat.$Nom) { return [string]$Etat.$Nom } } catch { }

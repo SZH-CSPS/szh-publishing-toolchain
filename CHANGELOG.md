@@ -11,6 +11,16 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.14.1
+
+Mineure : la mise à jour garde l'état du compte.
+
+- La fin de `update.ps1` réécrivait `etat-utilisateur.json` avec ses seules clés. Le dossier
+  SharePoint mis en cache, la langue de l'interface, la mise à jour silencieuse et les
+  compteurs des rapports d'erreur disparaissaient, et l'Accueil affichait « dossier
+  SharePoint introuvable » jusqu'au lancement suivant par « Pronto ». Les clés de la mise à
+  jour s'ajoutent désormais au fichier (`Set-SzhEtatUtilisateurCles`, `szh-common.ps1`).
+
 ## 3.14.0
 
 Medium : variables dans le texte, commentaires du manuscrit gardés au préprocessing, objets

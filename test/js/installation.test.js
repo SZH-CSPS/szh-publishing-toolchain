@@ -75,7 +75,10 @@ test('l’état est coupé en deux : ce qui est au poste, ce qui est au compte',
   // update.ps1 écrit les deux, et retire de l'état commun ce qui est par compte.
   assert.match(UPDATE, /Set-SzhStateCles \(\[ordered\]@\{/);
   assert.match(UPDATE, /-Retirer @\('rootfs', 'vsix'\)/);
-  assert.match(UPDATE, /Save-SzhEtatUtilisateur \(\[ordered\]@\{/);
+  // Clé par clé : le fichier porte aussi l'ancrage SharePoint et les réglages du compte.
+  assert.match(UPDATE, /Set-SzhEtatUtilisateurCles \(\[ordered\]@\{/);
+  assert.ok(UPDATE.indexOf('Save-SzhEtatUtilisateur') === -1,
+    'update.ps1 réécrit l’état du compte en entier, ancrage et réglages compris');
   // La version de l'environnement se lit chez le compte.
   assert.ok(UPDATE.indexOf("Get-SzhEtatUtilisateurChamp $etatUtil 'rootfs'") !== -1);
   assert.ok(LANCEUR.indexOf("Get-SzhEtatUtilisateurChamp $etatUtil 'rootfs'") !== -1);
@@ -216,7 +219,7 @@ test('l’environnement de fabrication ne peut plus priver le rédacteur du rest
 test('un ennui retenu se dit à l’écran, et l’état est écrit avant', () => {
   // Ni « terminé », ni un écran d'erreur nu : le bilan dit ce qui a réussi. L'état s'écrit
   // d'abord, pour que ce qui a réussi ne soit pas réinstallé au passage suivant.
-  const iEtat = UPDATE.indexOf('Save-SzhEtatUtilisateur ([ordered]@{');
+  const iEtat = UPDATE.indexOf('Set-SzhEtatUtilisateurCles ([ordered]@{');
   const iPartiel = UPDATE.indexOf('if ($ennuis.Count -gt 0) {');
   assert.ok(iEtat !== -1 && iPartiel > iEtat, 'l’état doit être écrit avant l’écran de fin');
   const bloc = UPDATE.slice(iPartiel, iPartiel + 900);
@@ -423,6 +426,12 @@ const PILOTE = [
   '$eu = Get-SzhEtatUtilisateur',
   '$r.util = [ordered]@{ rootfs = (Get-SzhEtatUtilisateurChamp $eu "rootfs")',
   '  absent = (Get-SzhEtatUtilisateurChamp $eu "jamais-ecrit"); fichier = (Test-Path $SzhEtatUtilisateurFile) }',
+  // 3 bis. les clés de la mise à jour s'ajoutent sans effacer l'ancrage ni les réglages du compte
+  'Set-SzhJson $SzhEtatUtilisateurFile ([ordered]@{ ancrageSharePoint = "C:\\Ancrage"; langueInterface = "fr"; majSilencieuse = $true; rootfs = "2026.08.42" })',
+  '[void](Set-SzhEtatUtilisateurCles ([ordered]@{ compte = $moi.nom; rootfs = "2026.08.55" }))',
+  '$eg = Get-SzhEtatUtilisateur',
+  '$r.garde = [ordered]@{ ancrage = [string]$eg.ancrageSharePoint; langue = [string]$eg.langueInterface',
+  '  silence = [bool]$eg.majSilencieuse; rootfs = [string]$eg.rootfs; compte = [string]$eg.compte }',
   // 4. le reste d'installation : le nôtre s'écarte, un dossier étranger jamais
   '$mien = Get-SzhDossierDistro',
   'New-Item -ItemType Directory -Force -Path $mien | Out-Null',
@@ -501,6 +510,15 @@ test('l’état par utilisateur s’écrit, se relit, et ne devine rien', { skip
   assert.strictEqual(u.fichier, true, 'l’état par utilisateur n’a pas été écrit');
   assert.strictEqual(u.rootfs, '2026.08.42');
   assert.strictEqual(u.absent, '', 'un champ jamais écrit doit rendre une chaîne vide');
+});
+
+test('la mise à jour garde l’ancrage, la langue et la mise à jour silencieuse du compte', { skip: sansPowerShell }, () => {
+  const g = bilan.r.garde;
+  assert.strictEqual(g.ancrage, 'C:\\Ancrage', 'la mise à jour efface l’ancrage SharePoint mis en cache');
+  assert.strictEqual(g.langue, 'fr');
+  assert.strictEqual(g.silence, true);
+  assert.strictEqual(g.rootfs, '2026.08.55');
+  assert.ok(g.compte, 'la clé de la mise à jour n’a pas été écrite');
 });
 
 test('le reste s’écarte, le dossier de quelqu’un d’autre est intouchable', { skip: sansPowerShell }, () => {

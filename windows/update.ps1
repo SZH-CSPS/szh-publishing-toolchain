@@ -547,7 +547,7 @@ try {
     toolkit    = $manifest.version
     misAJourLe = (Get-Date -Format 's')
   }) -Retirer @('rootfs', 'vsix') | Out-Null
-  Save-SzhEtatUtilisateur ([ordered]@{
+  Set-SzhEtatUtilisateurCles ([ordered]@{
     compte     = $moi.nom
     rootfs     = $rootfsPose
     vsix       = $etatVsix
