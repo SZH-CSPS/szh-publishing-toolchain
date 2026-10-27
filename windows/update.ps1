@@ -274,12 +274,14 @@ try {
       if (($libre -ge 0) -and ($libre -lt 5)) { throw (T 'err.espace' @($libre, 5)) }
 
       # Lancée depuis le menu Démarrer, cette fenêtre n'a pas encore vérifié le moment :
-      # même test que la passe silencieuse, pour ne pas couper une compilation.
-      $moment = Test-SzhMomentMaj -RemplaceEnvironnement
+      # même test que la passe silencieuse, pour ne pas couper une compilation. Sans
+      # distribution enregistrée, rien ne peut compiler ni être remplacé : l'éditeur ouvert
+      # n'empêche pas une première installation.
+      $moment = Test-SzhMomentMaj -RemplaceEnvironnement:$distroPresente
       if (-not $moment.propice) {
         # Le message à l'écran couvre les deux cas ; le journal précise lequel.
         Write-SzhLog ('update : environnement non remplacé, moment défavorable -> ' + $moment.raison)
-        throw (T 'err.wsl')
+        throw (T 'err.wsl.moment')
       }
 
       Write-SzhInfo (T 'maj.install')
@@ -296,11 +298,15 @@ try {
         throw (T 'err.wsl.dossier')
       }
       New-Item -ItemType Directory -Force -Path $dirDistro | Out-Null
-      & $wsl --import $SzhDistro $dirDistro $tar --version 2
-      if ($LASTEXITCODE -ne 0) {
-        # Deux pannes pour un même code de retour, qui demandent des actions différentes.
-        if (Test-Path (Join-Path $dirDistro 'ext4.vhdx')) { throw (T 'err.wsl.dossier') }
-        throw (T 'err.wsl')
+      $sortieImport = Invoke-SzhNatif { & $wsl --import $SzhDistro $dirDistro $tar --version 2 2>&1 }
+      $codeImport = $LASTEXITCODE
+      # Affichée telle quelle : c'est elle que le support demande.
+      @($sortieImport) | ForEach-Object { ([string]$_) -replace "`0", '' } | Out-Host
+      if ($codeImport -ne 0) {
+        # Trois pannes pour un même code de retour, qui demandent des actions différentes.
+        Write-SzhLog ('update : wsl --import en échec ({0}) -> {1}' -f $codeImport,
+          (((@($sortieImport) | ForEach-Object { [string]$_ }) -join ' ') -replace "`0", ''))
+        throw (T (Resolve-SzhEchecImport -Sortie $sortieImport -DisquePresent (Test-Path (Join-Path $dirDistro 'ext4.vhdx'))))
       }
       Invoke-SzhNatif { & $wsl --terminate $SzhDistro 2>$null | Out-Null }   # force la relecture de /etc/wsl.conf
 

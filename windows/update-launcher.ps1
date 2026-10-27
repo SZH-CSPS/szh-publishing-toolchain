@@ -201,9 +201,11 @@ try {
     Write-SzhLog ('check : mise à jour {0} -> {1}' -f $actuel, $manifest.version)
   }
 
-  # Le moment ne compte que si l'environnement de fabrication change : le remplacer oblige à
-  # désenregistrer la distribution, ce qui échoue pendant une compilation.
-  $remplace = ($rootfsActuel -ne $manifest.rootfs.version)
+  # Le moment ne compte que si un environnement de fabrication existe et change : le
+  # remplacer oblige à désenregistrer la distribution, ce qui échoue pendant une
+  # compilation. Une première installation passe même éditeur ouvert.
+  $remplace = (($rootfsActuel -ne $manifest.rootfs.version) -and
+    ((Get-SzhDistrosEnregistrees) -contains $SzhDistro))
 
   $moment = Test-SzhMomentMaj -RemplaceEnvironnement:$remplace -Presse:$presse
   if (-not $moment.propice) {

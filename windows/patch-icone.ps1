@@ -122,9 +122,17 @@ if (-not (Test-Path -LiteralPath $cible)) {
 # Tous les .lnk qui visent VSCodium.exe : menus Démarrer commun et du compte, bureaux,
 # barre des tâches. On lit la cible de chaque .lnk, car l'installeur range ses raccourcis
 # ailleurs selon qu'il s'agit de la variante système ou par utilisateur.
-$racinesLnk = @(
+#
+# Dans les menus Démarrer, le raccourci reçoit en plus l'identité 'installeur' : l'installeur
+# lui donne celle de VSCodium, que porte aussi « Pronto », et le menu ne montre qu'une entrée
+# par identité. Le paquet système range son raccourci dans le menu commun, que la mise à jour
+# sans élévation ne peut pas réécrire (Set-SzhRaccourcisCodium) : c'est donc ici, en
+# administrateur, qu'il change d'identité. Ailleurs, l'identité est gardée.
+$menusLnk = @(
   (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs'),
-  (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'),
+  (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs')
+)
+$racinesLnk = $menusLnk + @(
   (Join-Path $env:APPDATA 'Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar'),
   (Join-Path $env:PUBLIC 'Desktop'),
   [Environment]::GetFolderPath('Desktop')
@@ -135,6 +143,7 @@ $trouves = 0
 
 foreach ($racineLnk in $racinesLnk) {
   if ((-not $racineLnk) -or (-not (Test-Path -LiteralPath $racineLnk))) { continue }
+  $dansMenu = ($menusLnk -contains $racineLnk)
   $liens = @(Get-ChildItem -LiteralPath $racineLnk -Filter '*.lnk' -Recurse -ErrorAction SilentlyContinue)
   foreach ($lien in $liens) {
     $raccourci = $null
@@ -145,36 +154,44 @@ foreach ($racineLnk in $racinesLnk) {
 
     $voulu = ''
     if ($Restaurer) { $voulu = ',0' } else { $voulu = ($ico + ',0') }
-    if ($raccourci.IconLocation -eq $voulu) {
+    # L'AppUserModelID rattache la fenêtre au raccourci, donc à son image. Hors des menus, on
+    # garde celui qu'il porte ; Save() peut le perdre, on le remet alors.
+    $identite = Get-SzhLnkAppId $lien.FullName
+    $identiteVoulue = $identite
+    if ($dansMenu) {
+      if ($Restaurer) { $identiteVoulue = Get-SzhAppId 'codium' } else { $identiteVoulue = Get-SzhAppId 'installeur' }
+    }
+    $iconeAJour = ($raccourci.IconLocation -eq $voulu)
+    if ($iconeAJour -and ($identite -eq $identiteVoulue)) {
       Info ('Raccourci déjà à jour : ' + $lien.FullName)
       continue
     }
     if ($Simuler) {
-      Info ('[SIMULE] ' + $lien.FullName + ' -> ' + $voulu)
+      Info ('[SIMULE] ' + $lien.FullName + ' -> ' + $voulu + ' ; identité « ' + $identiteVoulue + ' »')
       continue
     }
 
-    # L'AppUserModelID rattache la fenêtre au raccourci, donc à son image. On le relit après
-    # l'écriture et on le remet par szh-shell.ps1 s'il a été perdu.
-    $identite = Get-SzhLnkAppId $lien.FullName
-    try {
-      $raccourci.IconLocation = $voulu
-      $raccourci.Save()
-    } catch {
-      Attention ('Raccourci non écrit (' + $lien.FullName + ') : ' + $_.Exception.Message)
-      $script:Soucis++
-      continue
+    if (-not $iconeAJour) {
+      try {
+        $raccourci.IconLocation = $voulu
+        $raccourci.Save()
+      } catch {
+        Attention ('Raccourci non écrit (' + $lien.FullName + ') : ' + $_.Exception.Message)
+        $script:Soucis++
+        continue
+      }
     }
-    if ($identite -and ((Get-SzhLnkAppId $lien.FullName) -ne $identite)) {
-      if (Set-SzhLnkAppId $lien.FullName $identite) {
-        Info ('AppUserModelID « ' + $identite +' » remis sur ' + $lien.Name)
+    # Après Save() : WScript.Shell réécrit le fichier entier.
+    if ($identiteVoulue -and ((Get-SzhLnkAppId $lien.FullName) -ne $identiteVoulue)) {
+      if (Set-SzhLnkAppId $lien.FullName $identiteVoulue) {
+        Info ('AppUserModelID « ' + $identiteVoulue + ' » posé sur ' + $lien.Name)
       } else {
-        Attention ('AppUserModelID « ' + $identite + ' » perdu sur ' + $lien.FullName + ' : le bouton de la barre gardera l''ancienne icône.')
+        Attention ('AppUserModelID « ' + $identiteVoulue + ' » non posé sur ' + $lien.FullName + ' : « ' + $SzhNomApplication + ' » peut rester caché du menu Démarrer.')
         $script:Soucis++
       }
     }
     Fait ('Raccourci : ' + $lien.FullName)
-    Write-SzhLog ('patch-icone : ' + $lien.FullName + ' -> ' + $voulu)
+    Write-SzhLog ('patch-icone : ' + $lien.FullName + ' -> ' + $voulu + ', identité ' + $identiteVoulue)
     $script:Poses++
   }
 }

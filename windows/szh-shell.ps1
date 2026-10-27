@@ -416,7 +416,6 @@ function Get-SzhLnkAppId([string]$Lnk) {
 #   vscodium-extension/…/mail-templates/ traduction.fr.twig et traduction.de.twig
 #   vscodium-extension/…/package.nls*.json  'tuto.ouvrir.texte'
 #   revue-template/BIENVENUE.md, livre-template/BIENVENUE.md
-#   windows/Installer le poste SZH.cmd   (où « & » s'échappe en « ^& »)
 #
 # Le nom devient un nom de fichier .lnk : il ne doit contenir aucun des neuf caractères
 # interdits par Windows (« / » compris, sinon CreateShortcut échoue sans message). « & »

@@ -207,22 +207,24 @@ function Get-SzhIdentite {
 }
 
 # Le compte dont la session graphique est ouverte : le propriétaire d'explorer.exe. C'est
-# lui le rédacteur, même quand le script tourne sous un autre compte. Vide si personne n'est
-# connecté ou si la mesure échoue : l'installation continue, le journal le dit. Avec
-# plusieurs sessions, le premier propriétaire lisible, ce qui suffit pour dire « ce n'est
-# pas ce compte ».
-function Get-SzhSessionUtilisateur {
+# lui le rédacteur, même quand le script tourne sous un autre compte. Rend son nom et le
+# numéro de sa session Windows, où bootstrap.ps1 lance la tâche de mise à jour. Nom vide et
+# session -1 si personne n'est connecté ou si la mesure échoue : l'installation continue, le
+# journal le dit. Avec plusieurs sessions, le premier propriétaire lisible, ce qui suffit
+# pour dire « ce n'est pas ce compte ».
+function Get-SzhSessionOuverte {
   try {
     foreach ($p in @(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'" -ErrorAction Stop)) {
       $rep = $null
       try { $rep = Invoke-CimMethod -InputObject $p -MethodName GetOwner -ErrorAction Stop } catch { $rep = $null }
       if ($rep -and $rep.User) {
-        if ([string]$rep.Domain) { return (([string]$rep.Domain) + '\' + ([string]$rep.User)) }
-        return [string]$rep.User
+        $nom = [string]$rep.User
+        if ([string]$rep.Domain) { $nom = ([string]$rep.Domain) + '\' + $nom }
+        return [ordered]@{ nom = $nom; session = [int]$p.SessionId }
       }
     }
   } catch { }
-  return ''
+  return [ordered]@{ nom = ''; session = -1 }
 }
 
 # ---- État par utilisateur ----
@@ -1033,6 +1035,20 @@ function Test-SzhDistroRepond {
     Invoke-SzhNatif { & $wsl -d $SzhDistro --exec /bin/true 2>$null | Out-Null }
     return ($LASTEXITCODE -eq 0)
   } catch { return $false }
+}
+
+# Clé du message pour un `wsl --import` en échec, d'après ce qu'il a écrit. Une erreur à
+# l'étape CreateVm (HCS_E_SERVICE_NOT_AVAILABLE, HCS_E_HYPERV_NOT_INSTALLED, 0x80370102)
+# dit que Windows ne peut pas créer la machine virtuelle de WSL : plateforme de machine
+# virtuelle absente, ou virtualisation coupée dans le firmware. Elle passe avant le disque
+# resté en place, qui n'en est alors qu'une suite.
+function Resolve-SzhEchecImport {
+  param([object[]]$Sortie = @(), [bool]$DisquePresent = $false)
+  # wsl.exe écrit en UTF-16 : PowerShell 5.1 en lit des octets nuls entre les lettres.
+  $texte = ((@($Sortie) | ForEach-Object { [string]$_ }) -join "`n") -replace "`0", ''
+  if ($texte -match '/CreateVm/|HCS_E_|0x80370102') { return 'err.wsl.moteur' }
+  if ($DisquePresent) { return 'err.wsl.dossier' }
+  return 'err.wsl'
 }
 
 # Exécute un natif sans que ErrorActionPreference = 'Stop' ne fasse d'une ligne de stderr

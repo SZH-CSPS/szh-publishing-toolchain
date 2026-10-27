@@ -39,7 +39,7 @@ Write-SzhBanniere 'Diagnostic du poste'
 # ---- Qui, et pour qui ----
 Write-SzhTitre 'Comptes'
 $moi = Get-SzhIdentite
-$session = Get-SzhSessionUtilisateur
+$session = (Get-SzhSessionOuverte).nom
 Dire 'note' 'Compte qui exécute' ('{0} (admin : {1})' -f $moi.nom, $moi.admin)
 Dire 'note' 'SID' $moi.sid
 if ($session) {
@@ -346,6 +346,26 @@ else { Dire 'manque' 'Raccourcis du menu Démarrer' ('absents : ' + ($absents -j
 if ($absents.Count -eq 0) {
   if ($sansId.Count -eq 0) { Dire 'ok' 'Icône dans la barre des tâches' ('les {0} entrées portent leur identité' -f $raccourcisMenu.Count) }
   else { Dire 'manque' 'Icône dans la barre des tâches' (($sansId -join ', ') + ' : sans identité, le bouton reprend l''icône de PowerShell — une mise à jour la repose') }
+}
+
+# Un raccourci de VSCodium qui porte encore l'identité de VSCodium cache « Pronto », qui
+# porte la même : le menu Démarrer ne montre qu'une entrée par identité. Celui du menu
+# commun ne se corrige qu'en administrateur (patch-icone.ps1).
+$rivaux = New-Object System.Collections.ArrayList
+$shDiag = New-Object -ComObject WScript.Shell
+foreach ($m in @((Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs'), $menu)) {
+  foreach ($f in @(Get-ChildItem -LiteralPath $m -Filter '*.lnk' -Recurse -ErrorAction SilentlyContinue)) {
+    try {
+      $cible = [string]$shDiag.CreateShortcut($f.FullName).TargetPath
+      if ($cible -and ((Split-Path $cible -Leaf) -eq 'VSCodium.exe') -and
+          ((Get-SzhLnkAppId $f.FullName) -eq (Get-SzhAppId 'codium'))) { [void]$rivaux.Add($f.FullName) }
+    } catch { }
+  }
+}
+if ($rivaux.Count -eq 0) {
+  Dire 'ok' ('« ' + $SzhNomApplication + ' » visible au menu') 'aucun raccourci de VSCodium ne partage son identité'
+} else {
+  Dire 'manque' ('« ' + $SzhNomApplication + ' » visible au menu') (($rivaux -join ' ; ') + ' : le menu Démarrer montre ce raccourci à la place de « ' + $SzhNomApplication + ' ». Un administrateur lance windows\patch-icone.ps1.')
 }
 
 # ⚠ Ces deux chemins de registre sont recopiés de Set-SzhProgIdMarkdown (update.ps1:51-102)

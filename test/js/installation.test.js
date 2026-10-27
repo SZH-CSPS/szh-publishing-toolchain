@@ -172,7 +172,7 @@ test('trois pannes WSL, trois messages, trois gestes — dans les trois langues'
     assert.ok(UPDATE.indexOf("T '" + cle + "'") !== -1, 'update.ps1 n’emploie pas ' + cle);
   }
   // Le disque virtuel présent après un import raté désigne le dossier, pas l'éditeur.
-  assert.match(UPDATE, /if \(Test-Path \(Join-Path \$dirDistro 'ext4\.vhdx'\)\) \{ throw \(T 'err\.wsl\.dossier'\) \}/);
+  assert.match(UPDATE, /-DisquePresent \(Test-Path \(Join-Path \$dirDistro 'ext4\.vhdx'\)\)/);
 });
 
 test('un import réussi ne suffit pas : la distribution doit répondre', () => {
@@ -242,10 +242,65 @@ test('tout ce qui est posé par utilisateur nomme son compte au journal', () => 
   }
   // La fonction qui dit qui exécute, et celle qui dit pour qui la session est ouverte :
   // leur écart révèle une élévation avec un autre compte.
-  for (const f of ['Get-SzhIdentite', 'Get-SzhSessionUtilisateur']) {
+  for (const f of ['Get-SzhIdentite', 'Get-SzhSessionOuverte']) {
     assert.ok(COMMUN.indexOf('function ' + f) !== -1, 'szh-common.ps1 ne déclare plus ' + f);
   }
-  assert.match(fonction(COMMUN, 'Get-SzhSessionUtilisateur'), /explorer\.exe/);
+  const session = fonction(COMMUN, 'Get-SzhSessionOuverte');
+  assert.match(session, /explorer\.exe/);
+  // Le numéro de session, où bootstrap.ps1 lance la mise à jour du rédacteur.
+  assert.match(session, /session = \[int\]\$p\.SessionId/);
+});
+
+test('le raccourci système de VSCodium ne cache plus « Pronto » au menu Démarrer', () => {
+  // Le paquet système range son raccourci dans le menu commun avec l'identité de VSCodium,
+  // celle de « Pronto ». La mise à jour sans élévation ne peut pas l'y changer :
+  // patch-icone.ps1, lancé en administrateur par bootstrap.ps1, le fait.
+  const patch = lire('windows', 'patch-icone.ps1');
+  assert.match(patch, /\$menusLnk = @\(\s*\(Join-Path \$env:ProgramData 'Microsoft\\Windows\\Start Menu\\Programs'\)/);
+  assert.match(patch, /\$dansMenu = \(\$menusLnk -contains \$racineLnk\)/);
+  assert.match(patch, /\$identiteVoulue = Get-SzhAppId 'installeur'/);
+  assert.match(patch, /Set-SzhLnkAppId \$lien\.FullName \$identiteVoulue/);
+  // Une icône déjà posée ne dispense plus de l'identité : c'est le cas des postes déjà
+  // installés.
+  assert.match(patch, /if \(\$iconeAJour -and \(\$identite -eq \$identiteVoulue\)\)/);
+  assert.match(BOOTSTRAP, /'patch-icone\.ps1'/);
+  // Le diagnostic nomme le raccourci qui cache « Pronto ».
+  assert.match(DIAGNOSTIC, /\(Get-SzhLnkAppId \$f\.FullName\) -eq \(Get-SzhAppId 'codium'\)/);
+});
+
+test('une installation élevée par un compte de support lance la mise à jour dans la session ouverte', () => {
+  // Sans quoi le rédacteur n'a ni raccourcis ni environnement avant sa prochaine ouverture
+  // de session. Start-ScheduledTask ne choisit pas la session : RunEx, drapeau
+  // TASK_RUN_USE_SESSION_ID.
+  const lancer = fonction(TACHES, 'Start-SzhTacheMajDansSession');
+  assert.match(lancer, /New-Object -ComObject 'Schedule\.Service'/);
+  assert.match(lancer, /\$TASK_RUN_USE_SESSION_ID = 4/);
+  assert.match(lancer, /\.RunEx\(\$null, \$TASK_RUN_USE_SESSION_ID, \$Session, ''\)/);
+  assert.match(lancer, /if \(\$Session -lt 0\)/);
+  // GetFolder rend 0x8007007B sur « \Dossier\ », la forme des cmdlets.
+  assert.match(lancer, /\$dossier = \$Chemin\.TrimEnd\('\\'\)/);
+
+  const i = BOOTSTRAP.indexOf('# ---- Première mise à jour, en fenêtre visible ----');
+  assert.ok(i !== -1, 'bootstrap.ps1 ne lance plus la première mise à jour');
+  const fin = BOOTSTRAP.slice(i);
+  const iSinon = fin.indexOf('} else {');
+  const iLance = fin.indexOf('Start-SzhTacheMajDansSession -Session $sessionOuverte.session');
+  assert.ok(iSinon !== -1 && iLance > iSinon,
+    'la tâche n’est plus lancée dans la session ouverte quand le compte diffère');
+
+  // Le diagnostic décrirait le compte de support : il n'est joué que sous le compte de la
+  // session.
+  const iDiag = fin.indexOf("'diagnostic.ps1'");
+  const garde = fin.lastIndexOf('if ($memeCompte) {', iDiag);
+  assert.ok(garde !== -1 && garde > fin.indexOf('Info \'Terminé.\''),
+    'le diagnostic est encore affiché sous un compte de support');
+
+  // Le dernier mot vient de bootstrap.ps1, qui sait pour quel compte ; le .cmd ne nomme
+  // plus de menu.
+  assert.match(fin, /foreach \(\$ligne in \$conclusion\)/);
+  const cmd = lire('windows', 'Installer le poste SZH.cmd');
+  assert.ok(cmd.indexOf('Installation terminee') === -1 && cmd.indexOf('Zeitschrift') === -1,
+    'Installer le poste SZH.cmd affiche encore son propre message de fin');
 });
 
 // ---- Le réseau du poste ----
@@ -637,3 +692,75 @@ test('le bloc empreinte/signature d’Install-SzhAppEpinglee lève sur un exécu
     assert.strictEqual(r.leve, true, 'un exécutable non signé n’a pas fait lever l’installation');
     assert.match(r.message, /NotSigned/, 'le message ne nomme pas l’état de la signature : ' + r.message);
   });
+
+// ---- Première installation de l'environnement, et virtualisation absente ----
+
+test('sans environnement à remplacer, l’éditeur ouvert ne bloque pas sa première installation', () => {
+  // Le moment ne protège que le remplacement : sans distribution enregistrée, aucune
+  // compilation ne peut tourner et il n'y a rien à désenregistrer.
+  assert.ok(UPDATE.indexOf('Test-SzhMomentMaj -RemplaceEnvironnement:$distroPresente') !== -1,
+    'update.ps1 mesure le moment même quand aucun environnement n’existe');
+  assert.match(LANCEUR,
+    /\$remplace = \(\(\$rootfsActuel -ne \$manifest\.rootfs\.version\) -and[\s\S]{0,80}Get-SzhDistrosEnregistrees\) -contains \$SzhDistro\)\)/);
+  // Un renoncement laisse l'ancien environnement en place : son message le dit, et ne
+  // parle pas d'une installation ratée.
+  const iMoment = UPDATE.indexOf('Test-SzhMomentMaj -RemplaceEnvironnement');
+  assert.ok(UPDATE.slice(iMoment, iMoment + 500).indexOf("throw (T 'err.wsl.moment')") !== -1,
+    'le renoncement n’a pas son propre message');
+  const lignes = TEXTES.match(/'err\.wsl\.moment'\s*=\s*(.+)/g) || [];
+  assert.strictEqual(lignes.length, 3, 'il manque une traduction de err.wsl.moment');
+});
+
+test('un import refusé faute de virtualisation désigne la virtualisation', { skip: sansPowerShell }, () => {
+  const travail = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-import-'));
+  const pilote = path.join(travail, 'import.ps1');
+  const sortie = path.join(travail, 'bilan.json');
+  // wsl.exe écrit en UTF-16 : PowerShell 5.1 en lit des octets nuls entre les lettres.
+  const hcs = 'Fehlercode : Wsl/Service/RegisterDistro/CreateVm/HCS/HCS_E_SERVICE_NOT_AVAILABLE';
+  fs.writeFileSync(pilote, [
+    '. "' + COMMUN_PS1 + '"',
+    '$hcs = "' + hcs + '"',
+    '$nul = ($hcs.ToCharArray() | ForEach-Object { [string]$_ + "`0" }) -join ""',
+    '$r = [ordered]@{',
+    '  hcs      = (Resolve-SzhEchecImport -Sortie @("Les VHD clairsemées…", $hcs))',
+    '  hcsNul   = (Resolve-SzhEchecImport -Sortie @($nul))',
+    '  hyperv   = (Resolve-SzhEchecImport -Sortie @("Wsl/Service/CreateInstance/CreateVm/HCS/HCS_E_HYPERV_NOT_INSTALLED"))',
+    '  code     = (Resolve-SzhEchecImport -Sortie @("Error code: 0x80370102"))',
+    '  dossier  = (Resolve-SzhEchecImport -Sortie @("Wsl/Service/RegisterDistro/ERROR_FILE_EXISTS") -DisquePresent $true)',
+    '  autre    = (Resolve-SzhEchecImport -Sortie @("Wsl/Service/RegisterDistro/E_ACCESSDENIED"))',
+    '  vide     = (Resolve-SzhEchecImport)',
+    '}',
+    'Set-SzhJson $args[0] $r'
+  ].join('\r\n') + '\r\n', 'utf8');
+  const run = spawnSync(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', pilote, sortie],
+    { encoding: 'utf8', windowsHide: true, timeout: 60000 });
+  const r = fs.existsSync(sortie) ? JSON.parse(fs.readFileSync(sortie, 'utf8')) : null;
+  fs.rmSync(travail, { recursive: true, force: true });
+  assert.ok(r, 'le pilote PowerShell a échoué : ' + (run.stderr || ''));
+  assert.strictEqual(r.hcs, 'err.wsl.moteur');
+  assert.strictEqual(r.hcsNul, 'err.wsl.moteur');
+  assert.strictEqual(r.hyperv, 'err.wsl.moteur');
+  assert.strictEqual(r.code, 'err.wsl.moteur');
+  assert.strictEqual(r.dossier, 'err.wsl.dossier');
+  assert.strictEqual(r.autre, 'err.wsl');
+  assert.strictEqual(r.vide, 'err.wsl');
+  // update.ps1 lit la sortie de l'import et s'en remet à cette fonction.
+  assert.match(UPDATE, /\$sortieImport = Invoke-SzhNatif \{ & \$wsl --import \$SzhDistro \$dirDistro \$tar --version 2 2>&1 \}/);
+  assert.match(UPDATE, /throw \(T \(Resolve-SzhEchecImport -Sortie \$sortieImport -DisquePresent/);
+});
+
+test('l’installation du poste active la plateforme de machine virtuelle', () => {
+  // `wsl --status` répond dès que le paquet WSL est là, même sans cette plateforme : le
+  // poste passait l'installation, et l'import échouait ensuite chez la rédactrice.
+  const iMoteur = BOOTSTRAP.indexOf('# ---- Moteur WSL ----');
+  const iApps = BOOTSTRAP.indexOf('# ---- Applications du poste');
+  assert.ok(iMoteur !== -1 && iApps > iMoteur, 'sections de bootstrap.ps1 introuvables');
+  const moteur = BOOTSTRAP.slice(iMoteur, iApps);
+  assert.match(moteur, /Get-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform/);
+  assert.match(moteur, /Enable-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform -All -NoRestart/);
+  // Activée, elle ne sert qu'après un redémarrage : bootstrap s'arrête et le demande.
+  assert.match(moteur, /EnablePending/);
+  // La virtualisation du firmware ne s'active pas par logiciel : on la signale.
+  assert.match(moteur, /VirtualizationFirmwareEnabled/);
+  assert.match(moteur, /HypervisorPresent/);
+});

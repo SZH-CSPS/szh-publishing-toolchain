@@ -11,6 +11,33 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.14.2
+
+Mineure : « Pronto » visible au menu Démarrer sur les postes à VSCodium système, une
+installation faite avec un compte de support qui va au bout sans attendre, et un
+environnement des PDF qui s'installe ou dit pourquoi il ne le peut pas.
+
+- Le raccourci de VSCodium que l'installeur système range dans le menu Démarrer commun
+  portait l'identité de barre des tâches de « Pronto ». Le menu ne montre qu'une entrée par
+  identité : il affichait « VSCodium » avec l'icône Pronto et cachait « Pronto ».
+  `patch-icone.ps1` donne maintenant à ce raccourci sa propre identité. Sur un poste déjà
+  installé, un administrateur relance une fois `Installer le poste SZH.cmd` (ou
+  `patch-icone.ps1` après la mise à jour) ; `diagnostic.ps1` signale le cas sur la ligne
+  « « Pronto » visible au menu ».
+- Installé avec un compte de support depuis la session d'une rédactrice, `bootstrap.ps1`
+  lance la mise à jour dans la session ouverte (`RunEx` du planificateur), au lieu
+  d'attendre la prochaine ouverture de session. Il n'affiche plus le diagnostic du compte de
+  support, et son dernier message dit pour quel compte la mise à jour tourne.
+- La mise à jour installe l'environnement des PDF même éditeur ouvert quand le compte n'en a
+  pas encore : seul le remplacement d'un environnement existant attend que l'éditeur soit
+  fermé, et son message dit alors que l'ancienne version reste en place (`err.wsl.moment`).
+- Un import refusé faute de virtualisation (`HCS_E_SERVICE_NOT_AVAILABLE`) affiche le
+  message sur la virtualisation, et non plus « fermez l'éditeur »
+  (`Resolve-SzhEchecImport`, `szh-common.ps1`).
+- L'installation du poste active la fonctionnalité Windows « Plateforme de machine
+  virtuelle » si elle manque (redémarrage puis relance), et signale une virtualisation
+  coupée dans le firmware.
+
 ## 3.14.1
 
 Mineure : la mise à jour garde l'état du compte.

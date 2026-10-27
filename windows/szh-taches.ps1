@@ -237,6 +237,39 @@ function Set-SzhTacheMaj {
   return $bilan
 }
 
+# Lance la tâche tout de suite dans une session Windows donnée, celle du rédacteur quand un
+# compte de support installe le poste. Start-ScheduledTask et schtasks /run ne savent pas
+# choisir la session : seul RunEx de l'API COM du planificateur le permet, avec le drapeau
+# TASK_RUN_USE_SESSION_ID (4). Rend { etat = 'lancee' | 'refusee' ; message }, sans lever.
+function Start-SzhTacheMajDansSession {
+  param(
+    [Parameter(Mandatory = $true)][int]$Session,
+    [string]$Nom    = '',
+    [string]$Chemin = '\'
+  )
+  if (-not $Nom) { $Nom = $SzhTacheMaj }
+  $bilan = [ordered]@{ etat = 'lancee'; message = '' }
+  if ($Session -lt 0) {
+    $bilan.etat = 'refusee'
+    $bilan.message = 'session du rédacteur introuvable'
+    return $bilan
+  }
+  try {
+    $planificateur = New-Object -ComObject 'Schedule.Service'
+    $planificateur.Connect()
+    # Les cmdlets écrivent le dossier « \SZH\ », GetFolder refuse la barre finale.
+    $dossier = $Chemin.TrimEnd('\')
+    if (-not $dossier) { $dossier = '\' }
+    $tache = $planificateur.GetFolder($dossier).GetTask($Nom)
+    $TASK_RUN_USE_SESSION_ID = 4
+    $null = $tache.RunEx($null, $TASK_RUN_USE_SESSION_ID, $Session, '')
+  } catch {
+    $bilan.etat = 'refusee'
+    $bilan.message = (([string]$_.Exception.Message) -replace '\s+', ' ').Trim()
+  }
+  return $bilan
+}
+
 # ---- Cadence de la passe silencieuse ----
 #
 # Les déclencheurs ouvrent des occasions (chaque ouverture de session, ou un ancien

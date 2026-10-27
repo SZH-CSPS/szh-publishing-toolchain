@@ -93,7 +93,11 @@ Une fois par poste, en administrateur.
    Le double-clic sur `windows\Installer le poste SZH.cmd` fait la même chose.
 
 2. Le script :
-   - active la WSL si elle manque. Il faut alors redémarrer le poste et relancer le script ;
+   - active la WSL si elle manque, puis la fonctionnalité Windows « Plateforme de machine
+     virtuelle », sans laquelle `wsl --status` répond mais aucune distribution ne démarre
+     (`HCS_E_SERVICE_NOT_AVAILABLE`). Dans les deux cas, il faut redémarrer le poste et
+     relancer le script. Une virtualisation coupée dans le firmware est signalée, pas
+     corrigée ;
    - installe VSCodium et SumatraPDF pour toute la machine, dans les versions de
      `windows/apps.lock`, après vérification du sha256 et de la signature
      ([`windows/APPS.md`](../windows/APPS.md)) ;
@@ -110,9 +114,11 @@ Une fois par poste, en administrateur.
 3. **Le piège de l'élévation.** Si l'élévation se fait avec un compte de support depuis la
    session d'un rédacteur, le script tourne sous le compte de support : extensions,
    réglages, raccourcis et distribution WSL iraient dans le profil du support. Le script le
-   détecte, l'écrit au journal et ne lance pas la première mise à jour. Le rédacteur reçoit
-   tout à sa prochaine ouverture de session, par la tâche planifiée. Pour ne pas attendre :
-   dans la session du rédacteur, sans élévation, menu Démarrer → « Pronto (Updater) ».
+   détecte, n'affiche pas le diagnostic du compte de support et lance la tâche planifiée
+   « SZH - Mise a jour » dans la session ouverte : les raccourcis apparaissent, puis la
+   fenêtre de mise à jour s'ouvre chez le rédacteur. Le dernier message de l'installation
+   dit si ce lancement a réussi. S'il a échoué, la tâche fera le travail à la prochaine
+   ouverture de session ; pour ne pas attendre, fermer la session et la rouvrir.
 
 4. **Poser les exclusions antivirus.** Le script les affiche mais ne les pose pas. Sans
    elles, l'antivirus inspecte le disque Linux à chaque compilation, qui prend alors
@@ -225,9 +231,10 @@ extensions VSCodium (`.vsix`) et, seulement quand `image/` a changé, l'image WS
 
 ### Ce qui retient une mise à jour
 
-Toolkit, extensions et réglages s'installent même si l'éditeur est ouvert. Remplacer
-l'image WSL, non : il faut désenregistrer la distribution. Dans ce cas seulement, la mise à
-jour renonce si VSCodium est ouvert ou si une compilation tourne. Elle le note au journal
+Toolkit, extensions et réglages s'installent même si l'éditeur est ouvert, comme la
+première image WSL d'un compte qui n'en a pas. Remplacer une image déjà enregistrée, non :
+il faut désenregistrer la distribution. Dans ce cas seulement, la mise à jour renonce si
+VSCodium est ouvert ou si une compilation tourne ; l'ancienne image reste en place. Elle le note au journal
 (`check : renoncement, …`) et réessaie au déclenchement suivant, le plus souvent à
 l'ouverture de session du lendemain, avant que l'éditeur soit ouvert.
 
@@ -607,6 +614,14 @@ Une entrée par symptôme. Dans tous les cas, commencer par le
 - Que faire : dans la session du rédacteur, sans élévation, « Pronto (Updater) ». Puis
   `diagnostic.ps1`.
 
+**« Pronto » n'apparaît pas au menu Démarrer, seul « VSCodium » s'y montre, avec l'icône Pronto.**
+- Cause : le raccourci de VSCodium du menu commun porte encore l'identité `VSCodium.VSCodium`,
+  celle de « Pronto », et le menu ne montre qu'une entrée par identité. Seul
+  `patch-icone.ps1`, en administrateur, change cette identité : un VSCodium réinstallé la
+  remet. La ligne « « Pronto » visible au menu » de `diagnostic.ps1` nomme ce raccourci.
+- Que faire : un administrateur lance `windows\patch-icone.ps1` depuis
+  `C:\ProgramData\SZH\toolkit`. Le menu se met à jour en quelques secondes, sans redémarrer.
+
 **`Ctrl+S` ne produit plus rien, ou la compilation reste bloquée.**
 - Cause probable : WSL figée (souvent après une veille).
 - Que faire : `wsl --shutdown`, puis recompiler.
@@ -623,8 +638,10 @@ Une entrée par symptôme. Dans tous les cas, commencer par le
   « Plateforme de machine virtuelle » et « Sous-système Windows pour Linux » sont coupées.
 - Que faire : `wsl -l -v` doit montrer `SZH-Publishing` en version 2. Sinon,
   « Pronto (Updater) » dans la session du compte. Si la mise à jour dit que
-  l'environnement « refuse de démarrer », faire activer la virtualisation par
-  l'informatique. En dernier recours, relancer `bootstrap.ps1` en administrateur depuis
+  l'environnement « ne peut pas démarrer », l'import ou le premier démarrage a échoué faute
+  de virtualisation (`…/CreateVm/HCS/HCS_E_SERVICE_NOT_AVAILABLE` dans sa sortie) :
+  relancer `bootstrap.ps1` en administrateur, qui active la plateforme, redémarrer, et
+  faire activer VT-x / AMD-V dans le firmware s'il le signale. En dernier recours, relancer `bootstrap.ps1` en administrateur depuis
   un clone frais.
 
 **La mise à jour dit « son dossier est déjà pris sur ce poste ».**

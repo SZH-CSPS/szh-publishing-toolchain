@@ -68,11 +68,10 @@ echo.
 powershell -NoProfile -ExecutionPolicy Bypass -File "%SZH_BOOTSTRAP%"
 set "SZH_CODE=%errorlevel%"
 
-echo.
-if "%SZH_CODE%"=="0" (
-  echo   Installation terminee.
-  echo   Le menu Demarrer porte desormais "Revue ^& Zeitschrift".
-) else (
+rem En cas de succes, bootstrap.ps1 dit lui-meme le dernier mot : il sait pour quel compte
+rem la mise a jour tourne.
+if not "%SZH_CODE%"=="0" (
+  echo.
   echo   L'installation s'est arretee ^(code %SZH_CODE%^).
   echo   Le detail est au-dessus, et dans C:\ProgramData\SZH\logs.
 )

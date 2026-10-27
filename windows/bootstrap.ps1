@@ -16,7 +16,7 @@
 
   La première mise à jour installe aussi ce qui est propre au compte qui exécute le
   script. Si ce compte n'est pas celui de la session ouverte (compte de support), elle
-  n'est pas lancée : la tâche planifiée s'en charge à la prochaine ouverture de session.
+  est lancée dans la session ouverte, par la tâche planifiée.
 
   Compatibilité : Windows PowerShell 5.1.
 #>
@@ -48,19 +48,20 @@ try { Start-Transcript -Path $journalInstall | Out-Null } catch { }
 #
 # Élevé depuis la session d'un rédacteur avec un compte de support, le script tourne sous
 # ce compte : HKCU, %APPDATA%, %LOCALAPPDATA% et les distributions WSL sont les siens. Ce
-# qui est propre au compte ne peut pas être installé pour le rédacteur depuis ici. On le
-# dit, et on n'installe pas l'environnement pour le compte de support.
+# qui est propre au compte ne peut pas être installé pour le rédacteur depuis ici : on
+# n'installe pas l'environnement pour le compte de support, et on lance à la fin la tâche de
+# mise à jour dans la session du rédacteur.
 $moi = Get-SzhIdentite
-$sessionUtilisateur = Get-SzhSessionUtilisateur
+$sessionOuverte = Get-SzhSessionOuverte
+$sessionUtilisateur = $sessionOuverte.nom
 $memeCompte = ((-not $sessionUtilisateur) -or ($sessionUtilisateur -eq $moi.nom))
 Info ('Compte qui installe : ' + $moi.nom)
-Write-SzhLog ('bootstrap : compte {0}, session ouverte pour « {1} »' -f $moi.nom, $sessionUtilisateur)
+Write-SzhLog ('bootstrap : compte {0}, session ouverte pour « {1} » (session {2})' -f $moi.nom, $sessionUtilisateur, $sessionOuverte.session)
 if (-not $memeCompte) {
   Attention ('Session ouverte pour ' + $sessionUtilisateur + ', installation élevée sous ' + $moi.nom + '.')
   Attention 'Ce qui est par utilisateur (extensions, réglages, raccourcis, environnement WSL) ne peut pas'
-  Attention ('être posé dans le profil de ' + $sessionUtilisateur + " depuis ici : c'est fait à sa prochaine")
-  Attention 'ouverture de session, par la tâche planifiée. Rien à faire de plus, sinon vérifier ensuite'
-  Attention 'avec windows\diagnostic.ps1, lancé dans sa session et sans élévation.'
+  Attention ('être posé dans le profil de ' + $sessionUtilisateur + ' depuis ici : la mise à jour sera lancée')
+  Attention 'dans sa session à la fin de l''installation.'
 }
 
 # ---- Dossiers et droits ----
@@ -96,6 +97,40 @@ Invoke-SzhNatif { $null = & $wsl --status 2>&1 }
 if ($LASTEXITCODE -ne 0) {
   Attention 'WSL absent -> installation du moteur (sans distribution). Redémarrage requis ensuite.'
   & $wsl --install --no-distribution
+  Attention 'Redémarrer le poste puis relancer bootstrap.ps1.'
+  return
+}
+
+# La virtualisation du processeur se règle dans le firmware, pas par logiciel : on la
+# signale seulement. Un hyperviseur déjà actif la masque (VirtualizationFirmwareEnabled lit
+# alors faux), d'où HypervisorPresent d'abord.
+try {
+  $hyperviseur = [bool](Get-CimInstance Win32_ComputerSystem -ErrorAction Stop).HypervisorPresent
+  $coupee = @(Get-CimInstance Win32_Processor -ErrorAction Stop |
+    Where-Object { -not $_.VirtualizationFirmwareEnabled }).Count -gt 0
+  if ((-not $hyperviseur) -and $coupee) {
+    Attention 'Virtualisation désactivée dans le firmware (VT-x / AMD-V) : à activer dans le BIOS/UEFI, sinon aucun PDF ne sortira.'
+    Write-SzhLog 'bootstrap : virtualisation désactivée dans le firmware'
+  }
+} catch { }
+
+# `wsl --status` répond dès que le paquet WSL est là, même sans la plateforme de machine
+# virtuelle : l'import échouerait ensuite chez le rédacteur
+# (Wsl/Service/RegisterDistro/CreateVm/HCS/HCS_E_SERVICE_NOT_AVAILABLE). Activée, elle ne
+# sert qu'après un redémarrage.
+$plateforme = ''
+try {
+  $plateforme = [string](Get-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform -ErrorAction Stop).State
+} catch {
+  Attention ('État de la plateforme de machine virtuelle illisible, contrôle sauté : ' + $_.Exception.Message)
+}
+if ($plateforme -and ($plateforme -ne 'Enabled') -and ($plateforme -ne 'EnablePending')) {
+  Attention 'Plateforme de machine virtuelle désactivée -> activation. Redémarrage requis ensuite.'
+  Write-SzhLog ('bootstrap : plateforme de machine virtuelle {0} -> activation' -f $plateforme)
+  Enable-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform -All -NoRestart | Out-Null
+  $plateforme = 'EnablePending'
+}
+if ($plateforme -eq 'EnablePending') {
   Attention 'Redémarrer le poste puis relancer bootstrap.ps1.'
   return
 }
@@ -406,13 +441,17 @@ if ($chauffeConforme) {
 
 # ---- Première mise à jour, en fenêtre visible ----
 #
-# Seulement sous le compte de la session : sinon l'environnement, les extensions et les
-# réglages iraient dans le profil du compte de support.
+# Sous le compte de la session : update.ps1, ici même. Sous un compte de support : la tâche
+# planifiée, lancée dans la session du rédacteur, sans quoi l'environnement, les extensions
+# et les réglages iraient dans le profil du support, ou attendraient la prochaine ouverture
+# de session. La tâche pose les raccourcis puis ouvre la fenêtre de mise à jour
+# (update-launcher.ps1).
 #
 # -Wait : « Terminé » ne s'affiche qu'une fois la mise à jour finie, pour qu'on ne ferme pas
 # la session en plein import.
 #
 # update.ps1 et diagnostic.ps1 sont lancés depuis $SzhDossierScripts (voir plus haut).
+$conclusion = @('Installation terminée.', ('Le menu Démarrer porte désormais « ' + $SzhNomApplication + ' ».'))
 try {
   if ($memeCompte) {
     Info 'Lancement de la première mise à jour (fenêtre visible)…'
@@ -421,8 +460,25 @@ try {
       '-File', (Join-Path $SzhDossierScripts 'update.ps1')
     )
   } else {
-    Info 'Première mise à jour laissée à la session du rédacteur (tâche planifiée à l''ouverture).'
-    Write-SzhLog ('bootstrap : première mise à jour non lancée ici, elle appartient à ' + $sessionUtilisateur)
+    $bilanLancement = Start-SzhTacheMajDansSession -Session $sessionOuverte.session
+    if ($bilanLancement.etat -eq 'lancee') {
+      Write-SzhLog ('bootstrap : première mise à jour lancée dans la session {0} de {1}' -f $sessionOuverte.session, $sessionUtilisateur)
+      $conclusion = @(
+        'Installation terminée pour le poste.',
+        ('La mise à jour tourne maintenant dans la session de ' + $sessionUtilisateur + ' : les raccourcis'),
+        ('« ' + $SzhNomApplication + ' » apparaissent au menu Démarrer, puis une fenêtre de mise à jour s''ouvre.'),
+        ('Laissez-la aller au bout (quelques minutes) avant d''ouvrir ' + $SzhNomApplication + '.')
+      )
+    } else {
+      # Le menu Démarrer du rédacteur est encore vide : seule la tâche, à l'ouverture de
+      # session, peut prendre le relais.
+      Write-SzhLog ('bootstrap : première mise à jour non lancée dans la session de {0} -> {1}' -f $sessionUtilisateur, $bilanLancement.message)
+      $conclusion = @(
+        'Installation terminée pour le poste.',
+        ('La mise à jour n''a pas pu démarrer dans la session de ' + $sessionUtilisateur + ' (' + $bilanLancement.message + ').'),
+        'Fermez cette session et rouvrez-la : la tâche planifiée fera la mise à jour à l''ouverture.'
+      )
+    }
   }
 
   Write-Host ''
@@ -434,18 +490,25 @@ try {
   Attention ('Mise à jour à la demande : menu Démarrer > « ' + $SzhNomMiseAJour + ' ».')
   Attention ('Contrôle : powershell -ExecutionPolicy Bypass -File "{0}", dans la session du rédacteur.' -f (Join-Path $SzhToolkit 'windows\diagnostic.ps1'))
 
-  # Le diagnostic, à l'écran, pour le compte qui installe. Dans son propre processus : il
-  # sort en code 1 quand il manque quelque chose, et un `exit` dans un script dot-sourcé
-  # arrêterait bootstrap.
-  Write-Host ''
-  try {
-    Invoke-SzhNatif {
-      & $psExe -NoProfile -ExecutionPolicy Bypass `
-        -File (Join-Path $SzhDossierScripts 'diagnostic.ps1') | Out-Host
+  # Le diagnostic, à l'écran, seulement sous le compte de la session : sous un compte de
+  # support, il décrirait un profil qui ne servira pas, et ses manques passeraient pour des
+  # échecs. Dans son propre processus : il sort en code 1 quand il manque quelque chose, et
+  # un `exit` dans un script dot-sourcé arrêterait bootstrap.
+  if ($memeCompte) {
+    Write-Host ''
+    try {
+      Invoke-SzhNatif {
+        & $psExe -NoProfile -ExecutionPolicy Bypass `
+          -File (Join-Path $SzhDossierScripts 'diagnostic.ps1') | Out-Host
+      }
+    } catch {
+      Attention ('Diagnostic non exécuté : ' + $_.Exception.Message)
     }
-  } catch {
-    Attention ('Diagnostic non exécuté : ' + $_.Exception.Message)
   }
+
+  # Le dernier mot, celui que la fenêtre du .cmd laisse à l'écran.
+  Write-Host ''
+  foreach ($ligne in $conclusion) { Write-Host ('  ' + $ligne) -ForegroundColor Green }
 } finally {
   if ($script:SzhDossierScriptsTemp -and (Test-Path $script:SzhDossierScriptsTemp)) {
     Remove-Item -LiteralPath $script:SzhDossierScriptsTemp -Recurse -Force -ErrorAction SilentlyContinue
